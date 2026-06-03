@@ -655,7 +655,7 @@ public:
         asc_dump_gm(gmTileQ.Data().Get(), 1, runInfo.actMSize * constInfo.dSize);
 
         auto layoutKL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(constInfo.dSize, runInfo.actSingleLoopS2Size);
-        uint64_t offsetKL1 = (runInfo.actMSize + 15) / 16 * constInfo.dSize * AscendC::Te::C0_SIZE<Q_T>;
+        uint64_t offsetKL1 = ((runInfo.actMSize + 15) >> 4) * constInfo.dSize * AscendC::Te::C0_SIZE<Q_T>;
         AscendC::printf("--- offsetKL1 = [%ld] ---\n", offsetKL1);
         auto tensorKL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, KV_T>(offsetKL1), layoutKL1);
         auto gmTileK = gmK.Slice(

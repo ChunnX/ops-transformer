@@ -719,59 +719,48 @@ template <typename L0ADType, typename L0BDType, typename L0CDType, typename Tens
 __aicore__ inline void MatMulKTensorAPI(const TensorAL1 &aL1Tensor, const TensorBL1 &bL1Tensor, 
                                         const TensorCL0C &cL0Tensor, const MMParam &param)
 {
-    AscendC::printf("---------------- entry of MatMulKTensorAPI -------------------\n");
-    uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
-    uint32_t tailSize = param.singleK % baseK;
-    uint32_t tailK = tailSize ? tailSize : baseK;
-    uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
-    uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4; 
- 
-    for (uint32_t k = 0; k < kLoops; k++) {
-        uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
-        AscendC::printf("--- param.singleM = [%ld] --- tileK = [%ld] --- param.singleN = [%ld] ---\n", param.singleM, tileK, param.singleN);
-        // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-        auto L0ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<L0ADType>>(param.singleM, tileK);
-        auto L0ATensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0A, L0ADType>(0), L0ALayout);
-        auto sliceAL1Tensor = AscendC::Te::Slice(aL1Tensor, AscendC::Te::MakeCoord(0, k * tileK), AscendC::Te::MakeShape(param.singleM, tileK));
-        auto CopyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
-        AscendC::Te::Copy(CopyL12L0A, L0ATensor, sliceAL1Tensor);
+    AscendC::printf("--- param.singleM = [%ld] --- baseK = [%ld] --- param.singleN = [%ld] ---\n", param.singleM, baseK, param.singleN);
+    // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
+    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+    auto L0ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<L0ADType>>(param.singleM, baseK);
+    auto L0ATensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0A, L0ADType>(0), L0ALayout);
+    auto sliceAL1Tensor = AscendC::Te::Slice(aL1Tensor, AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(param.singleM, baseK));
+    auto CopyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
+    AscendC::Te::Copy(CopyL12L0A, L0ATensor, sliceAL1Tensor);
 
-        auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<L0BDType>>(tileK, param.singleN);
-        auto L0BTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0B, L0BDType>(0), L0BLayout);
-        auto sliceBL1Tensor = AscendC::Te::Slice(bL1Tensor, AscendC::Te::MakeCoord(k * tileK, 0), AscendC::Te::MakeShape(tileK, param.singleN));
-        auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
-        AscendC::Te::Copy(CopyL12L0B, L0BTensor, sliceBL1Tensor);
+    auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<L0BDType>>(baseK, param.singleN);
+    auto L0BTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0B, L0BDType>(0), L0BLayout);
+    auto sliceBL1Tensor = AscendC::Te::Slice(bL1Tensor, AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(baseK, param.singleN));
+    auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
+    AscendC::Te::Copy(CopyL12L0B, L0BTensor, sliceBL1Tensor);
 
-        // mte1搬运完后，通知可以开始matmul
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+    // mte1搬运完后，通知可以开始matmul
+    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
 
-        AscendC::Te::MmadParams mmadParams;
-        mmadParams.m = param.singleM;
-        if (param.realM != 0) {
-            mmadParams.m = param.realM;
-        }
-        mmadParams.n = param.singleN;
-        mmadParams.k = tileK;
-        if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
-            mmadParams.m = 16;
-        }
-        mmadParams.cmatrixInitVal = param.isOutKFisrt && (k == 0);
-        if (param.unitFlag != 0) {
-            mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
-                                  UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
-        }
-        AscendC::printf("--- mmad Params --- m = [%ld] --- n = [%ld] --- k = [%ld] --- cmatrixInitVal = [%ld] --- unitFlag = [%ld] ---\n",
-                        mmadParams.m, mmadParams.n, mmadParams.k, mmadParams.cmatrixInitVal, mmadParams.unitFlag);
-        AscendC::Te::Mmad(
-            AscendC::Te::MmadAtom<
-                AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault>>{}.with(mmadParams), 
-            cL0Tensor, L0ATensor, L0BTensor);
- 
-        // matmul完成后，通知mte1可以开始搬运新数据到L0A
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+    AscendC::Te::MmadParams mmadParams;
+    mmadParams.m = param.singleM;
+    if (param.realM != 0) {
+        mmadParams.m = param.realM;
     }
+    mmadParams.n = param.singleN;
+    mmadParams.k = baseK;
+    if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
+        mmadParams.m = 16;
+    }
+    mmadParams.cmatrixInitVal = param.isOutKFisrt;
+    if (param.unitFlag != 0) {
+        mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+    }
+    AscendC::printf("--- mmad Params --- m = [%ld] --- n = [%ld] --- k = [%ld] --- cmatrixInitVal = [%ld] --- unitFlag = [%ld] ---\n",
+                    mmadParams.m, mmadParams.n, mmadParams.k, mmadParams.cmatrixInitVal, mmadParams.unitFlag);
+    AscendC::Te::Mmad(
+        AscendC::Te::MmadAtom<
+            AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault>>{}.with(mmadParams), 
+        cL0Tensor, L0ATensor, L0BTensor);
+
+    // matmul完成后，通知mte1可以开始搬运新数据到L0A
+    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
 }
 
 // 切K
