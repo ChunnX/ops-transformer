@@ -41,10 +41,9 @@ class QuantLightningIndexerV2MetadataOpBuilder(OpBuilder):
             num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, quant_mode: int,
             cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None,
             seqused_q: Optional[Tensor] = None, seqused_k: Optional[Tensor] = None,
-            cmp_residual_k: Optional[Tensor] = None,
-            batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
-            layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
-            cmp_ratio: Optional[int] = None):
+            cmp_residual_k: Optional[Tensor] = None, batch_size: Optional[int] = None,
+            max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None, layout_q: Optional[str] = None,
+            layout_k: Optional[str] = None, mask_mode: Optional[int] = None, cmp_ratio: Optional[int] = None):
             return torch.empty((1024), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
@@ -56,10 +55,9 @@ op_module = quant_lightning_indexer_v2_metadata_op_builder.load()
 def npu_quant_lightning_indexer_v2_metadata(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, quant_mode: int,
     cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None, seqused_q: Optional[Tensor] = None,
-    seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None,
-    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
-    layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
-    cmp_ratio: Optional[int] = None):
+    seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None, batch_size: Optional[int] = None,
+    max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None, layout_q: Optional[str] = None,
+    layout_k: Optional[str] = None, mask_mode: Optional[int] = None, cmp_ratio: Optional[int] = None):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
@@ -73,24 +71,21 @@ def npu_quant_lightning_indexer_v2_metadata(
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
  
     return op_module.npu_quant_lightning_indexer_v2_metadata(
-        num_heads_q, num_heads_k, head_dim, topk, quant_mode,
-        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
-        batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
+        num_heads_q, num_heads_k, head_dim, topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
 
 
 @torch.library.register_kernel("npu_ops_transformer::npu_quant_lightning_indexer_v2_metadata", None)
 def npu_quant_lightning_indexer_v2_metadata_fallback(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, quant_mode: int,
     cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None, seqused_q: Optional[Tensor] = None,
-    seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None,
-    batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
-    layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
-    cmp_ratio: Optional[int] = None):
+    seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None, batch_size: Optional[int] = None,
+    max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None, layout_q: Optional[str] = None,
+    layout_k: Optional[str] = None, mask_mode: Optional[int] = None, cmp_ratio: Optional[int] = None):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
     return npu_quant_lightning_indexer_v2_metadata(
-        num_heads_q, num_heads_k, head_dim, topk, quant_mode,
-        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
-        batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
+        num_heads_q, num_heads_k, head_dim, topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
         
 torch.compiler.allow_in_graph(npu_quant_lightning_indexer_v2_metadata)

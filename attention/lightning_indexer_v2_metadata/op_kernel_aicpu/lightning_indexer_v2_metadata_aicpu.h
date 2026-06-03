@@ -216,12 +216,11 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     bool ParamsCheck();
-    bool CheckTensorData();
     int32_t GetQueryBatchSize();
+    ValidSocVersion ProcessSocVersion();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
-    ValidSocVersion ProcessSocVersion();
 
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
@@ -272,10 +271,10 @@ private:
     // output
     Tensor *metadata_ = nullptr;
     // attributes
-    std::string socVersion_ = "";
+    std::string socVersion_ = "Ascend950";
     bool supportFd_ = false;
-    uint32_t aicCoreNum_ = 24U;
-    uint32_t aivCoreNum_ = 48U;
+    uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;
+    uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
     int32_t batchSize_ = 0;
     int32_t maxSeqlenQ_ = 0;
     int32_t maxSeqlenK_ = 0;
@@ -288,7 +287,6 @@ private:
     int32_t maskMode_ = 0;
     int32_t cmpRatio_ = 1;
     uint32_t attentionMode_ = 0;
-    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
 
     // SplitParams
     int64_t  preToken_ = INT64_MAX;

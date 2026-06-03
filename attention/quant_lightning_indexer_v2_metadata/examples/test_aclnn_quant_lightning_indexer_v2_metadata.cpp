@@ -30,8 +30,8 @@
     } while (0)
 
 // 参考 quant_lightning_indexer_v2_metadata.h
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
 constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
 constexpr uint32_t QLD_V2_METADATA_SIZE = 8;
 
@@ -55,8 +55,8 @@ constexpr uint32_t QLD_V2_M_START_INDEX = 5;
 constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 
 struct QliV2Metadata {
-    uint32_t faData[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
-    uint32_t fdData[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
+    uint32_t faData[AIC_CORE_MAX_NUM][QLI_V2_METADATA_SIZE];
+    uint32_t fdData[AIV_CORE_MAX_NUM][QLD_V2_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -307,7 +307,7 @@ int main() {
     ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
         printf("AIC Core%u\n", i);
         printf("    Core Enable : %u\n", result.faData[i][QLI_V2_CORE_ENABLE_INDEX]);
         printf("    Start BN2   : %u\n", result.faData[i][QLI_V2_BN2_START_INDEX]);
@@ -318,7 +318,7 @@ int main() {
         printf("    End S2      : %u\n", result.faData[i][QLI_V2_S2_END_INDEX]);
         printf("    First Worksapce Index : %u\n", result.faData[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX]);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
         printf("AIV Core%u\n", i);
         printf("    Core Enable             : %u\n", result.fdData[i][QLD_V2_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][QLD_V2_BN2_IDX_INDEX]);

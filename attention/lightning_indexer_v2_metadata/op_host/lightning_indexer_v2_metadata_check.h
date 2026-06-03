@@ -85,10 +85,9 @@ int64_t GetKeyBatchSizeLiV2(int64_t batchSize, const aclTensor *cuSeqlensKOption
     return batchSize;
 }
 
-aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t topk,
-    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
-    const char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
-    uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
+aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t topk, int64_t batchSize,
+    int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional, const char *layoutKOptional, int64_t maskMode,
+    int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // num_heads_q 校验
     CHECK_COND(numHeadsQ >= 0, ACLNN_ERR_PARAM_INVALID,
@@ -129,12 +128,12 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
             "For layout_k != PA_BBND, layout_q and layout_k must be the same!");
     }
     // 核心数校验
-    CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "AIC num should be larger than 0, but got %u", aicCoreNum);
-    CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "AIV num should be larger than 0, but got %u", aivCoreNum);
-    CHECK_COND(socVersion.find("Ascend950") != std::string::npos, ACLNN_ERR_PARAM_INVALID,
-        "This operator supports [Ascend950], but now is on %s", socVersion.c_str());
+    CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
+    CHECK_COND(aicCoreNum <= optiling::AIC_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
+        "The maximum supported AIC num is %u., but got %u", optiling::AIC_CORE_MAX_NUM, aicCoreNum);
+    CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
+    CHECK_COND(aivCoreNum <= optiling::AIV_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
+        "The maximum supported AIV num is %u., but got %u", optiling::AIV_CORE_MAX_NUM, aivCoreNum);
     return ACLNN_SUCCESS;
 }
 
@@ -168,8 +167,7 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
+aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
     const aclTensor *cmpResidualKOptional, const char *layoutQOptional, const char *layoutKOptional,
     const aclTensor *metadata)
 {

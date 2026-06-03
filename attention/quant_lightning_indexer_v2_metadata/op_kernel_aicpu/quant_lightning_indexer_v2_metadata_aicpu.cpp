@@ -15,8 +15,10 @@
 
 using namespace optiling;
 
-#define KERNEL_STATUS_OK 0
-#define KERNEL_STATUS_PARAM_INVALID 1
+constexpr uint32_t KERNEL_STATUS_OK = 0;
+constexpr uint32_t KERNEL_STATUS_PARAM_INVALID = 1;
+constexpr uint32_t COST_WEIGHT_M = 6U;
+constexpr uint32_t COST_WEIGHT_S2 = 10U;
 
 namespace aicpu {
 uint32_t QuantLightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx)
@@ -66,36 +68,11 @@ bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
 {
-    return CheckTensorData();
-}
-
-bool QuantLightningIndexerV2MetadataCpuKernel::CheckTensorData()
-{
-    auto isValid = [](Tensor* t) {
-        return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0;
-    };
-    if (isValid(cuSeqlensQ_) && cuSeqlensQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
+    if (metadata_ == nullptr) {
+        KERNEL_LOG_ERROR("Output metadata is nullptr");
         return false;
-    }
-    if (isValid(cuSeqlensK_) && cuSeqlensK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_k is nullptr!");
-        return false;
-    }
-    if (isValid(sequsedQ_) && sequsedQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
-        return false;
-    }
-    if (isValid(sequsedK_) && sequsedK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
-        return false;
-    }
-    if (isValid(cmpResidualK_) && cmpResidualK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cmp_residual_k is nullptr!");
-        return false;
-    }
-    if (!isValid(metadata_) || metadata_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("metadata tensor is nullptr!");
+    } else if (metadata_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("Output metadata data is nullptr");
         return false;
     }
     return true;
@@ -122,6 +99,16 @@ int32_t QuantLightningIndexerV2MetadataCpuKernel::GetQueryBatchSize()
     return batchSize_;
 }
 
+ValidSocVersion QuantLightningIndexerV2MetadataCpuKernel::ProcessSocVersion()
+{
+    const std::string ascend950 = "Ascend950";
+    if (socVersion_.find(ascend950) != std::string::npos) {
+        return ValidSocVersion::ASCEND950;
+    } else {
+        return ValidSocVersion::ASCEND910B;
+    }
+}
+
 bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
@@ -135,6 +122,14 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND910B){
+        s2BaseSize_ = 2048U;
+    } else if (validSocVersion == ValidSocVersion::ASCEND950){
+        s2BaseSize_ = 128U;
+    } else {
+        s2BaseSize_ = 128U;
+    }
     return true;
 }
 
@@ -194,8 +189,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
-        splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
-        splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
+        splitInfo.s1GBaseNum[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
+        splitInfo.s1GTailSize[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
         splitInfo.s2TailSize[bIdx] = s2Size % s2BaseSize_;
         if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
@@ -240,7 +235,7 @@ int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcCost(
     uint32_t alignCoefS2 = 64U;
     uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
+    return static_cast<int64_t>(COST_WEIGHT_M * alignBasicM + COST_WEIGHT_S2 * alignBasicS2);
 }
 
 BlockCost<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
@@ -612,7 +607,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &
 
     // 计算归约数据的FD均衡划分信息
     uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                            (s1Size * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
+                            (static_cast<uint64_t>(s1Size) * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
     // 记录
     result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
     // 若存在头归约，则切分点一定为上一个核结束的位置
