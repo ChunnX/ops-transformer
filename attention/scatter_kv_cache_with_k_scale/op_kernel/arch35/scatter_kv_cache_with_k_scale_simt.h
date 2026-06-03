@@ -260,7 +260,6 @@ __aicore__ inline void Process(GM_ADDR key, GM_ADDR value, GM_ADDR keyCache, GM_
     uint64_t kH = static_cast<uint64_t>(t->kHeadSize);
     uint64_t vH = static_cast<uint64_t>(t->vHeadSize);
     uint64_t bS = static_cast<uint64_t>(t->blockSize);
-    // TODO: int32条件 需要增加cache判断
     uint64_t total = nT * nH * ((kH > vH) ? kH : vH);
     bool use32 = (total <= static_cast<uint64_t>(INT32_MAX));
 

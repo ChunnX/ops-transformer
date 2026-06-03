@@ -23,8 +23,8 @@
     ```
     key:[batch * seq_len, num_head, head_size]
     value:[batch * seq_len, num_head, head_size]
-    key_cache:[num_blocks, block_size, num_head, head_size]
-    value_cache:[num_blocks, block_size, num_head, head_size]
+    key_cache:[num_blocks, num_head, block_size, head_size]
+    value_cache:[num_blocks, num_head, block_size, head_size]
     slot_mapping:[batch * seq_len]
     key_scale:[batch * seq_len, num_head]
     key_scale_cache:[num_blocks, block_size, num_head, 1]
