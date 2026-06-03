@@ -31,6 +31,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -411,8 +412,34 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
         ACLNN_ERR_PARAM_NULLPTR,
         "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
     // Check if input tensors are empty
-    if (gradOutput->IsEmpty() || x->IsEmpty() || hRes->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclnn_mhc_post_backward do not support empty tensor!");
+    if (gradOutput->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMhcPostBackwardGetWorkspaceSize", "gradOutput",
+            Ops::Base::ToString(gradOutput->GetViewShape()).c_str(),
+            "aclnnMhcPostBackwardGetWorkspaceSize does not support empty tensor");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (x->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMhcPostBackwardGetWorkspaceSize", "x",
+            Ops::Base::ToString(x->GetViewShape()).c_str(),
+            "aclnnMhcPostBackwardGetWorkspaceSize does not support empty tensor");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (hRes->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMhcPostBackwardGetWorkspaceSize", "hRes",
+            Ops::Base::ToString(hRes->GetViewShape()).c_str(),
+            "aclnnMhcPostBackwardGetWorkspaceSize does not support empty tensor");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (hOut->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMhcPostBackwardGetWorkspaceSize", "hOut",
+            Ops::Base::ToString(hOut->GetViewShape()).c_str(),
+            "aclnnMhcPostBackwardGetWorkspaceSize does not support empty tensor");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (hPost->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMhcPostBackwardGetWorkspaceSize", "hPost",
+            Ops::Base::ToString(hPost->GetViewShape()).c_str(),
+            "aclnnMhcPostBackwardGetWorkspaceSize does not support empty tensor");
         return ACLNN_ERR_PARAM_INVALID;
     }
     MhcPostBackwardParams params{gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost};
@@ -479,7 +506,8 @@ aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpE
     L2_DFX_PHASE_2(aclnnMhcPostBackward);
     auto ret = CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "This is an error in MhcPostBackward launch aicore");
+        OP_LOGE("aclnnMhcPostBackward",
+                "This is an error in MhcPostBackward launch aicore");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

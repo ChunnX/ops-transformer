@@ -145,35 +145,45 @@ ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
     auto gradYDtype = gradYDesc->GetDataType();
     OP_CHECK_IF(
         gradYDtype != ge::DataType::DT_BF16 && gradYDtype != ge::DataType::DT_FLOAT16,
-        OP_LOGE(context_->GetNodeName(), "grad_y dtype only supports bf16,half."),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "grad_y",
+                                ge::TypeUtils::DataTypeToSerialString(gradYDtype).c_str(),
+                                "BF16 or FP16"),
         return ge::GRAPH_FAILED);
     
     auto xDesc = context_->GetInputDesc(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
     OP_CHECK_IF(
         xDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context_->GetNodeName(), "the dtype of x should be same with grad_y."),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x",
+                                ge::TypeUtils::DataTypeToSerialString(xDesc->GetDataType()).c_str(),
+                                ge::TypeUtils::DataTypeToSerialString(gradYDtype).c_str()),
         return ge::GRAPH_FAILED);
     
     auto hOutDesc = context_->GetInputDesc(H_OUT_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hOutDesc);
     OP_CHECK_IF(
         hOutDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context_->GetNodeName(), "the dtype of h_out should be same with grad_y."),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "h_out",
+                                ge::TypeUtils::DataTypeToSerialString(hOutDesc->GetDataType()).c_str(),
+                                ge::TypeUtils::DataTypeToSerialString(gradYDtype).c_str()),
         return ge::GRAPH_FAILED);
 
     auto hResDesc = context_->GetInputDesc(H_RES_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hResDesc);
     OP_CHECK_IF(
         hResDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context_->GetNodeName(), "h_res dtype only supports float32."),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "h_res",
+                                ge::TypeUtils::DataTypeToSerialString(hResDesc->GetDataType()).c_str(),
+                                "FP32"),
         return ge::GRAPH_FAILED);
 
     auto hPostDesc = context_->GetInputDesc(H_POST_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, hPostDesc);
     OP_CHECK_IF(
         hPostDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context_->GetNodeName(), "h_post dtype only supports float32."),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "h_post",
+                                ge::TypeUtils::DataTypeToSerialString(hPostDesc->GetDataType()).c_str(),
+                                "FP32"),
         return ge::GRAPH_FAILED);
 
     const auto dFPostResShape = gradYTensor->GetStorageShape();
@@ -192,7 +202,8 @@ ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
         n = dFPostResShape.GetDim(DIM_INDEX_2);
         channel = dFPostResShape.GetDim(DIM_INDEX_3);
     } else {
-        OP_LOGE(context_->GetNodeName(), "grad_y dim num should be 3 (TND) or 4 (BSND), but got %u.", dimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "grad_y",
+                                   std::to_string(dimNum).c_str(), "3 or 4");
         return ge::GRAPH_FAILED;
     }
 
