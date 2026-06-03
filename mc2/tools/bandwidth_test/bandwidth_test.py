@@ -236,7 +236,7 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     mean_time_s = mean_time_us / 1e6
     min_time_s = min_time_us / 1e6
     
-    single_rank_data_bytes = test_bs * data_size_bytes
+    single_rank_data_bytes = test_bs * data_size_bytes * ((num_world_size-1) / num_world_size)
     total_data_bytes = single_rank_data_bytes * num_world_size
     mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 / (num_world_size-1)
     max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / (num_world_size-1)
