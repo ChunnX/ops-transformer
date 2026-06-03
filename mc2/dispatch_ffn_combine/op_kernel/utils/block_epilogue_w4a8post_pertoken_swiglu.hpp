@@ -288,7 +288,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[ubListId]);
             AscendC::Add(ubCFp32, ubCFp32, ubweighAux, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[ubListId]);
-            dcci(gmPerTokenScale1.GetPhtAddr(gmScaleOffset + row), 0);
+            dcci(gmPerTokenScale1.GetPhtAddr(loopIdx), 0);
             // Get per-token scale value from the loopIdx-th row of gmPerTokenScale
             ElementPerTokenScale perTokenScale = gmPerTokenScale1(loopIdx);
 
