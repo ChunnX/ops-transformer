@@ -54,6 +54,7 @@ public:
     {
         WaitAicMte1ToAivMte3AConsumed();
         vec_.WaitVToMte2InputBufferReusable(tile);
+        vec_.WaitMte3ToVQkOutBufferReusable(tile);
         vec_.ComputeTile(tile);
         SetAivMte3ToAicMte1AReady();
         vec_.PostprocessV(tile);
@@ -61,6 +62,7 @@ public:
         if (aivTileCount_ > 0U) {
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile);
+            vec_.SetMte3ToVQkOutBufferReusable(lastTile);
             SetAivMte3ToAicFixCConsumed();
         }
         ++aivTileCount_;
@@ -77,6 +79,7 @@ public:
         if (aivTileCount_ > 0U) {
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile);
+            vec_.SetMte3ToVQkOutBufferReusable(lastTile);
             SetAivMte3ToAicFixCConsumed();
             aivTileCount_ = 0U;
         }

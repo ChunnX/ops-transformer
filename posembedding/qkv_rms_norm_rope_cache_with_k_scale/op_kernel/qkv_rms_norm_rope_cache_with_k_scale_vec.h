@@ -73,6 +73,18 @@ public:
         SetVToMte2InputBufferReusable(bufferId);
     }
 
+    __aicore__ inline void WaitMte3ToVQkOutBufferReusable(const TileParam &tile)
+    {
+        const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
+        WaitMte3ToVQkOutBufferReusable(bufferId);
+    }
+
+    __aicore__ inline void SetMte3ToVQkOutBufferReusable(const TileParam &tile)
+    {
+        const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
+        SetMte3ToVQkOutBufferReusable(bufferId);
+    }
+
     __aicore__ inline void PostprocessQk(const TileParam &tile)
     {
         const AivSlice slice = MakeAivSlice(tile, tilingData_->qkHeadTile, aivLocalId_);
@@ -255,7 +267,6 @@ private:
 
     __aicore__ inline void PreprocessQkv(const TileParam &tile, const AivSlice &slice)
     {
-        WaitMte3ToVQkOutBufferReusable(activeBufferId_);
         if (slice.tokenSize == 0U || slice.rowSize == 0U) {
             return;
         }
@@ -452,7 +463,6 @@ private:
     __aicore__ inline void QuantAndScatterQk(const TileParam &tile, const AivSlice &slice)
     {
         if (slice.rowSize == 0U) {
-            SetMte3ToVQkOutBufferReusable(activeBufferId_);
             return;
         }
 
@@ -460,7 +470,6 @@ private:
         SetVToMte3QkOutReady(activeBufferId_);
         WaitVToMte3QkOutReady(activeBufferId_);
         ScatterQkOutputs(tile, slice);
-        SetMte3ToVQkOutBufferReusable(activeBufferId_);
     }
 
     __aicore__ inline void QuantQkToFp8(const AivSlice &slice)
