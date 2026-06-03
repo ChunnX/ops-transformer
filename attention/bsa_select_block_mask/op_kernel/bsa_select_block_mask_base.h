@@ -140,7 +140,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
                             constInfo.xBlocks, constInfo.yBlocks, sizeof(IN_T), expAttnScoreSize);
             uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
-            uint64_t expTopkWsSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.coreNum + constInfo.coreNum + constInfo.coreNum) * sizeof(int32_t);
+            uint64_t expSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
+            uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), expSortLen);
+            uint64_t expTotalTileNum = (expSortLen + expTileLen - 1) / expTileLen;
+            uint64_t expTopkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.coreNum + constInfo.coreNum + constInfo.coreNum) * sizeof(int32_t);
+            uint64_t expTopkTileDataSize = expTotalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
+            uint64_t expTopkWsSize = expTopkHeaderSize + expTopkTileDataSize;
 
             AscendC::printf("=== Kernel Tiling Verification (core 0) ===\n");
             AscendC::printf("[baseParams]\n");
