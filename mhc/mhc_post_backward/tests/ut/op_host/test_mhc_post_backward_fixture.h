@@ -75,7 +75,42 @@ enum class ErrorType {
     EMPTY_TENSOR_BS_ZERO,
     EMPTY_TENSOR_T_ZERO,
     EMPTY_TENSOR_D_ZERO,
-    EMPTY_TENSOR_N_ZERO
+    EMPTY_TENSOR_N_ZERO,
+    // ======================== 新增ErrorType用于精确匹配日志行 ===========================
+    EMPTY_TENSOR_GRAD_OUTPUT,
+    EMPTY_TENSOR_X,
+    EMPTY_TENSOR_H_RES,
+    EMPTY_TENSOR_H_OUT,
+    EMPTY_TENSOR_H_POST,
+    PLATFORM_INFO_NULL,
+    GRAD_OUTPUT_NULL,
+    DTYPE_INVALID,
+    DTYPE_INVALID_GRAD_OUTPUT,
+    DTYPE_INVALID_X,
+    DTYPE_INVALID_H_OUT,
+    DTYPE_INVALID_H_RES,
+    DTYPE_INVALID_H_POST,
+    DTYPE_INVALID_GRAD_X,
+    DTYPE_INVALID_GRAD_H_OUT,
+    DTYPE_INVALID_GRAD_H_RES,
+    DTYPE_INVALID_GRAD_H_POST,
+    SHAPEDIM_INVALID,
+    SHAPEDIM_INVALID_GRAD_OUTPUT,
+    SHAPEDIM_INVALID_X,
+    SHAPEDIM_INVALID_H_RES,
+    SHAPEDIM_INVALID_H_OUT,
+    SHAPEDIM_INVALID_H_POST,
+    SHAPEDIM_INVALID_GRAD_X,
+    SHAPEDIM_INVALID_GRAD_H_RES,
+    SHAPEDIM_INVALID_GRAD_H_OUT,
+    SHAPEDIM_INVALID_GRAD_H_POST,
+    SHAPE_INVALID,
+    CHECK_NULLPTR_FAILED,
+    CHECK_DTYPE_FAILED,
+    CHECK_SHAPE_FAILED,
+    CHECK_SPEC_FAILED,
+    CHECK_POSITIVE_FAILED,
+    MATMUL_TILING_FAILED
 };
 
 // ==================== 测试夹具类 ====================
@@ -332,6 +367,170 @@ protected:
                     context.inputTensorDesc_[0].shape_ = {{T, 0, D}, {T, 0, D}};
                 } else {
                     context.inputTensorDesc_[0].shape_ = {{B, S, 0, D}, {B, S, 0, D}};
+                }
+                break;
+
+            // 新增ErrorType：精确匹配日志行（映射到已有场景）
+            case ErrorType::EMPTY_TENSOR_GRAD_OUTPUT:
+                context.inputTensorDesc_[0].shape_ = {{},{}};
+                break;
+            case ErrorType::EMPTY_TENSOR_X:
+                context.inputTensorDesc_[1].shape_ = {{},{}};
+                break;
+            case ErrorType::EMPTY_TENSOR_H_RES:
+                context.inputTensorDesc_[2].shape_ = {{},{}};
+                break;
+            case ErrorType::EMPTY_TENSOR_H_OUT:
+                context.inputTensorDesc_[3].shape_ = {{},{}};
+                break;
+            case ErrorType::EMPTY_TENSOR_H_POST:
+                context.inputTensorDesc_[4].shape_ = {{},{}};
+                break;
+            case ErrorType::PLATFORM_INFO_NULL:
+                context.inputTensorDesc_[0].shape_ = {{},{}};
+                break;
+            case ErrorType::GRAD_OUTPUT_NULL:
+                context.inputTensorDesc_[0].shape_ = {{},{}};
+                break;
+            case ErrorType::DTYPE_INVALID:
+                context.inputTensorDesc_[0].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_GRAD_OUTPUT:
+                context.inputTensorDesc_[0].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_X:
+                context.inputTensorDesc_[1].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_H_OUT:
+                context.inputTensorDesc_[3].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_H_RES:
+                context.inputTensorDesc_[2].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_H_POST:
+                context.inputTensorDesc_[4].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_GRAD_X:
+                context.outputTensorDesc_[0].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_GRAD_H_OUT:
+                context.outputTensorDesc_[2].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_GRAD_H_RES:
+                context.outputTensorDesc_[1].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::DTYPE_INVALID_GRAD_H_POST:
+                context.outputTensorDesc_[3].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::SHAPEDIM_INVALID:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_GRAD_OUTPUT:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_X:
+                if (isTshape) {
+                    context.inputTensorDesc_[1].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[1].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_H_RES:
+                if (isTshape) {
+                    context.inputTensorDesc_[2].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[2].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_H_OUT:
+                if (isTshape) {
+                    context.inputTensorDesc_[3].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[3].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_H_POST:
+                if (isTshape) {
+                    context.inputTensorDesc_[4].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.inputTensorDesc_[4].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_GRAD_X:
+                if (isTshape) {
+                    context.outputTensorDesc_[0].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.outputTensorDesc_[0].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_GRAD_H_RES:
+                if (isTshape) {
+                    context.outputTensorDesc_[1].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.outputTensorDesc_[1].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_GRAD_H_OUT:
+                if (isTshape) {
+                    context.outputTensorDesc_[2].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.outputTensorDesc_[2].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPEDIM_INVALID_GRAD_H_POST:
+                if (isTshape) {
+                    context.outputTensorDesc_[3].shape_ = {{T, n}, {T, n}};
+                } else {
+                    context.outputTensorDesc_[3].shape_ = {{B, S}, {B, S}};
+                }
+                break;
+            case ErrorType::SHAPE_INVALID:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{0, n, D}, {0, n, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{0, S, n, D}, {0, S, n, D}};
+                }
+                break;
+            case ErrorType::CHECK_NULLPTR_FAILED:
+                context.inputTensorDesc_[0].shape_ = {{},{}};
+                break;
+            case ErrorType::CHECK_DTYPE_FAILED:
+                context.inputTensorDesc_[0].dtype_ = ge::DT_INT32;
+                break;
+            case ErrorType::CHECK_SHAPE_FAILED:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n, D, n}, {T, n, D, n}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, n, D, n}, {B, S, n, D, n}};
+                }
+                break;
+            case ErrorType::CHECK_SPEC_FAILED:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, 5, D}, {T, 5, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, 5, D}, {B, S, 5, D}};
+                }
+                break;
+            case ErrorType::CHECK_POSITIVE_FAILED:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{0, n, D}, {0, n, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{0, S, n, D}, {0, S, n, D}};
+                }
+                break;
+            case ErrorType::MATMUL_TILING_FAILED:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n, D}, {T, n, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, n, D}, {B, S, n, D}};
                 }
                 break;
 
