@@ -392,11 +392,11 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.barrier_all()
                                 T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                                 T.barrier_all()
-                        T.copy(
-                            DQ_L0C[s1_row, :],
-                            dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
-                        )
-                        T.barrier_all()
+                            T.copy(
+                                DQ_L0C[s1_row, :],
+                                dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
+                            )
+                            T.barrier_all()
 
                 T.set_cross_flag("FIX", 3)
 
