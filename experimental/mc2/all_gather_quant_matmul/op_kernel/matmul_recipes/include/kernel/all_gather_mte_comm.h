@@ -23,7 +23,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
 #include "all_gather_mte_utils.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "inc/kernel/moe_distribute_base.h"
 
 
 namespace AscendC {

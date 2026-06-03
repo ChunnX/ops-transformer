@@ -17,7 +17,7 @@
 #include "all_gather_mte_comm.h"
 #include "block/block_mmad.h"
 #include "block/block_scheduler_policy.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "inc/kernel/moe_distribute_base.h"
 #include "kernel/quant_matmul_mx_kernel_swat.h"
 #include "kernel_utils/common_utils.h"
 #include "block/quant_matmul_mx_block_mmad_swat.h"

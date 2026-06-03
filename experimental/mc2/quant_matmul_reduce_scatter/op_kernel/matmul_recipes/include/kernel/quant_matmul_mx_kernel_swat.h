@@ -29,7 +29,7 @@
 #include "../block/quant_matmul_mx_block_scheduler_swat.h"
 #include "../utils/constant.h"
 #include "adv_api/hccl/hccl.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "inc/kernel/moe_distribute_base.h"
 
 namespace Kernel {
 // Keep the class template parameter list in one place so the declaration and
