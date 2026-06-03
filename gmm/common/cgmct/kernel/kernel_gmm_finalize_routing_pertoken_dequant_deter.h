@@ -356,6 +356,7 @@ public:
             if (outRow % coreNumVec != GetBlockIdx())
                 continue;
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
+            PipeBarrier<PIPE_MTE3>();
         }
     }
 
