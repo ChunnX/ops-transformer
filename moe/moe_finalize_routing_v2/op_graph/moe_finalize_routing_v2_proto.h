@@ -83,6 +83,7 @@ REG_OP(MoeFinalizeRoutingV2)
     .ATTR(zero_expert_range, ListInt, {})
     .ATTR(copy_expert_range, ListInt, {})
     .ATTR(constant_expert_range, ListInt, {})
+    .ATTR(k, Int, 1)
     .OP_END_FACTORY_REG(MoeFinalizeRoutingV2)
 
 } // namespace ge
