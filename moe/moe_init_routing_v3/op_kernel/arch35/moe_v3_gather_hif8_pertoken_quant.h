@@ -44,6 +44,8 @@ private:
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                        int32_t expertIdx, int64_t j);
     __aicore__ inline void ComputeQuant(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
+    __aicore__ inline void InitBasicParams(GM_ADDR sortedExpertIdx, 
+                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
     TPipe *pipe_;
@@ -327,8 +329,9 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::CopyOutPartialXQuant(in
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                            GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::InitBasicParams(GM_ADDR sortedExpertIdx,
+                                                                          const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                                          TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -342,19 +345,19 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM
     rowIdxType_ = tilingData->rowIdxType;
     cols_ = tilingData->cols;
     pipe_ = tPipe;
-
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
-       
+
     // hif8 pertoken core split
-    int64_t actualExpertNum_ = tilingData->actualExpertNum;
+    int64_t actualExpertNum = tilingData->actualExpertNum;
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
-                                        1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+                                         Align(actualExpertNum, sizeof(int32_t)), 1);
+    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+        expertTotalCountGm_);
     int64_t expertTotalNum_ = expertTotalCountGm_.GetValue(0);
     perCoreRow_ = Ceil(expertTotalNum_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalNum_, perCoreRow_);
     int64_t lastCoreIndicesElements = expertTotalNum_ - (needCoreNum_ - 1) * perCoreRow_;
+
     int64_t pertokenPerLoopElements = 0;
     if (blockIdx_ == needCoreNum_ - 1) {
         coreRows_ = lastCoreIndicesElements;
@@ -367,41 +370,49 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM
     rowLoops_ = Ceil(coreRows_, perLoopRows_);
     lastLoopRows_ = coreRows_ - (rowLoops_ - 1) * perLoopRows_;
 
-    // hif8 pertoken cols split
-    colLoops_ = gatherOutTilingData_->colsLoops; 
+    colLoops_ = gatherOutTilingData_->colsLoops;
     lastLoopCols_ = gatherOutTilingData_->lastLoopCols;
-    perLoopCols_ = gatherOutTilingData_->perLoopCols;   
+    perLoopCols_ = gatherOutTilingData_->perLoopCols;
     perLoopColsAlign_ = Align(perLoopCols_, sizeof(T));
     currentLoopRowsAlign_ = Align(perLoopRows_, sizeof(int32_t));
-    
+}
+
+template <typename T>
+__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
+                                                              GM_ADDR expandedX, GM_ADDR expandedScale,
+                                                              const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBasicParams(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + blockIdx_ * perCoreRow_,
                                          Align(coreRows_, sizeof(int32_t)));
     expandedXGm_.SetGlobalBuffer((__gm__ hifloat8_t *)expandedX);
+
     if (rowIdxType_ == SCATTER) {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
-                                            Align(perCoreRow_, sizeof(int32_t)));
+                                          Align(perCoreRow_, sizeof(int32_t)));
     } else {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) +
-                                            blockIdx_ * perCoreRow_, Align(perCoreRow_, sizeof(int32_t)));
+                                          blockIdx_ * perCoreRow_, Align(perCoreRow_, sizeof(int32_t)));
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
-    
+
+    int64_t actualExpertNum = tilingData->actualExpertNum;
     if (colLoops_ > 1) {
         // cols非全载 存储转成float32的额外gm空间
         quantTempGm_.SetGlobalBuffer((__gm__ float *)sortedExpertIdx + Align(totalLength_, sizeof(int32_t)) * 2 +
-                                         Align(actualExpertNum_, sizeof(int32_t)) + Align(1, sizeof(int32_t)) +
-                                         blockIdx_ * cols_, cols_ * sizeof(float));
+                                     Align(actualExpertNum, sizeof(int32_t)) + Align(1, sizeof(int32_t)) +
+                                     blockIdx_ * cols_, cols_ * sizeof(float));
     }
 
     int64_t perLoopColsAlignBytes = AlignBytes(perLoopCols_, sizeof(T));
     perLoopColsAlignBytes = Max(static_cast<int64_t>(perLoopColsAlignBytes * sizeof(float) / sizeof(T)),
                                 static_cast<int64_t>(BLOCK_BYTES + BLOCK_BYTES));
     pipe_->InitBuffer(inputXInQueue_, GATHER_OUT_HIF8_PERTOKEN_QUANT_BUFFER_NUM, perLoopColsAlignBytes);
-    pipe_->InitBuffer(xOutQueue_, 1, AlignBytes(perLoopCols_, sizeof(hifloat8_t))); // percols * 1
+    pipe_->InitBuffer(xOutQueue_, 1, AlignBytes(perLoopCols_, sizeof(hifloat8_t)));
     pipe_->InitBuffer(expandRowIdxInQueue_, GATHER_OUT_HIF8_PERTOKEN_QUANT_BUFFER_NUM,
                       2 * AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);// 32 + 32
+    pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
 }
 
 template <typename T>

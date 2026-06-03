@@ -36,6 +36,7 @@ public:
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset, int64_t curLoopCols);
 
 private:
+    __aicore__ inline void InitBasicParams(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     TPipe *pipe_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> xCopyInQueue_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleCopyInQueue_;
@@ -77,9 +78,9 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
-                                            GM_ADDR expandedX, GM_ADDR expandedScale,
-                                            const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::InitBasicParams(GM_ADDR workspace, 
+                                                               const MoeInitRoutingV3Arch35TilingData *tilingData, 
+                                                               TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -97,8 +98,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM
 
     actualExpertNum_ = tilingData->actualExpertNum;
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
-                                        1);
+                                         Align(actualExpertNum_, sizeof(int32_t)), 1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);
@@ -118,31 +118,38 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM
     }
     indicesLoops_ = Ceil(curCoreIndicesElements_, curCorePerLoopIndicesElements_);
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
+}
 
+template <typename T>
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace,
+                                                    GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale,
+                                                    const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBasicParams(workspace, tilingData, tPipe);
     xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_);
     uint64_t alignScaleCols = Ops::Base::CeilDiv(cols_, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
     xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * alignScaleCols);
     expandedXGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
-                                curCoreIndicesElements_ * cols_);
+                                 curCoreIndicesElements_ * cols_);
     expandedScaleGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScale + blockIdx_ * perCoreIndicesElements_ *
                                      alignScaleCols, curCoreIndicesElements_ * alignScaleCols);
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
-                    AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
+                      AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
     pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(uint8_t)));
     pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / SCALE_FACTOR_WITH_X,
-                      sizeof(uint8_t)));
+                                                                           sizeof(uint8_t)));
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
-                                    Align(curCoreIndicesElements_, sizeof(int32_t)));
+                                       Align(curCoreIndicesElements_, sizeof(int32_t)));
 
     if (rowIdxType_ == SCATTER) {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreIndicesElements_,
-                                        Align(curCoreIndicesElements_, sizeof(int32_t)));
+                                          Align(curCoreIndicesElements_, sizeof(int32_t)));
     } else {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
-                                            blockIdx_ * perCoreIndicesElements_,
-                                        Align(curCoreIndicesElements_, sizeof(int32_t)));
+                                          blockIdx_ * perCoreIndicesElements_,
+                                          Align(curCoreIndicesElements_, sizeof(int32_t)));
     }
 }
 
