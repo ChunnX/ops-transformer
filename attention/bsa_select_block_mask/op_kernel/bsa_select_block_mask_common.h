@@ -36,6 +36,7 @@ static constexpr uint32_t MAX_TILE_NUM_IN_UB = 6144;
 static constexpr uint32_t MAX_TILE_NUM_IN_UB_BY2 = 3072;
 static constexpr uint32_t MAX_TILE_NUM_IN_UB_BY3 = 2048;
 static constexpr uint32_t FLOAT32_SAFE_INT = 16777216;
+static constexpr uint32_t BLOCK_SIZE = 196608;
 
 enum class BSALayout {
     TND = 0,

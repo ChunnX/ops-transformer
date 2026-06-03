@@ -34,6 +34,7 @@ private:
     __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
                                                 int32_t tileId, uint64_t curTileLen);
+    __aicore__ inline void VToSSync();
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -242,7 +243,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::V
     LocalTensor<int16_t> tempTensor = outIndexBuf_.Get<int16_t>();
 
     uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
-    uint64_t curTileLenAlign = ops::CeilAlign(curTileLen, BLOCK_SIZE / sizeof(int16_t));
+    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(BLOCK_SIZE / sizeof(int16_t)));
     LocalTensor<int16_t> temp1 = tempTensor[curTileLenAlign];
 
     ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLen);
@@ -291,7 +292,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         int32_t involvedMaskTemp = static_cast<int32_t>(
             involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
-        uint32_t curTileLenAlign = ops::CeilAlign(curTileLen, REPEAT_SIZE / sizeof(int32_t));
+        uint32_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint32_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
 
@@ -307,6 +308,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
 
         globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
     }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::VToSSync()
+{
+    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIDVToS);
+    WaitFlag<HardEvent::V_S>(eventIDVToS);
 }
 
 template <typename BSAT>
