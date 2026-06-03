@@ -222,17 +222,7 @@ def clean_previous_profiling_result():
 
 def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_world_size: int, test_bs: int):
     """从 profiling 结果中提取性能数据并计算带宽"""
-    execution_times = []
-    
-    for dirpath, _, filenames in os.walk(prof_result_path):
-        for filename in filenames:
-            if filename.startswith("op_summary"):
-                op_summary = pd.read_csv(os.path.join(dirpath, filename))
-                bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
-                
-                if not bandwidth_test_info.empty:
-                    op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
-                    execution_times.extend(op_execute_time_series.tolist())
+    execution_times = _extract_bandwidth_execution_times(prof_result_path)
     
     if not execution_times:
         logger.warning("No performance data found")
@@ -280,6 +270,27 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
         'data_size': data_size_bytes // 2,
         'bs': test_bs
     }
+
+
+def _extract_bandwidth_execution_times(prof_result_path: str) -> List[float]:
+    """从 profiling 结果中提取 BandwidthTest 的执行时间"""
+    execution_times = []
+    
+    for dirpath, _, filenames in os.walk(prof_result_path):
+        for filename in filenames:
+            if not filename.startswith("op_summary"):
+                continue
+            
+            op_summary = pd.read_csv(os.path.join(dirpath, filename))
+            bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
+            
+            if bandwidth_test_info.empty:
+                continue
+            
+            op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
+            execution_times.extend(op_execute_time_series.tolist())
+    
+    return execution_times
 
 # endregion
 
@@ -499,20 +510,7 @@ def run_bandwidth_test_npu(
     queue, rank, x, dstrank_id, hcomm_info, test_max_bs=None, test_mode=None,
     test_world_size=None, is_perf_mode=False, destroy_comm=True
 ):
-    """执行 bandwidth_test 算子
-    
-    Args:
-        queue: 多进程通信队列
-        rank: 当前进程rank
-        x: 输入tensor
-        dstrank_id: 目标rank id
-        hcomm_info: HCCL通信域信息，如果为None则创建新通信域
-        test_max_bs: 最大batch size
-        test_mode: 测试模式
-        test_world_size: world size
-        is_perf_mode: 是否为性能测试模式
-        destroy_comm: 是否在结束时销毁通信域
-    """
+    """执行 bandwidth_test 算子"""
     set_device(rank)
     
     if hcomm_info is None:
@@ -541,19 +539,12 @@ def run_bandwidth_test_npu(
     torch.npu.synchronize()
     logger.debug(f"[DEBUG] device_{rank} 开始调用算子")
 
+    # 根据模式执行
     if graph_type == 0:
         if not is_perf_mode:
             y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**bandwidth_test_kwargs)
         else:
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-            with get_profiling(loop, repeat, warmup, profiling_path) as prof:
-                for i in range(loop):
-                    torch.npu.synchronize()
-                    y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**bandwidth_test_kwargs)
-                    if i == 1:
-                        for _ in range(100):
-                            torch.exp(tensor)
-                    prof.step()
+            y, receive_cnt = _run_bandwidth_test_with_profiling(bandwidth_test_kwargs)
     else:
         model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
         y, receive_cnt = model(**bandwidth_test_kwargs)
@@ -569,12 +560,21 @@ def run_bandwidth_test_npu(
         save_tensor_to_bin(y.to(torch.float32), "y_out_" + str(rank))
         save_tensor_to_bin(receive_cnt, "receive_cnt_" + str(rank))
 
-    queue.put([
-        rank, 
-        [
-            y.cpu(), receive_cnt.cpu()
-        ]
-    ])
+    queue.put([rank, [y.cpu(), receive_cnt.cpu()]])
+
+
+def _run_bandwidth_test_with_profiling(kwargs: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
+    """带性能分析的带宽测试执行"""
+    tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+    with get_profiling(loop, repeat, warmup, profiling_path) as prof:
+        for i in range(loop):
+            torch.npu.synchronize()
+            y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**kwargs)
+            if i == 1:
+                for _ in range(100):
+                    torch.exp(tensor)
+            prof.step()
+    return y, receive_cnt
 
 
 def run_bandwidth_test_npu_bandwidth(queue, rank, x, dstrank_id, test_max_bs, test_mode, test_world_size):
