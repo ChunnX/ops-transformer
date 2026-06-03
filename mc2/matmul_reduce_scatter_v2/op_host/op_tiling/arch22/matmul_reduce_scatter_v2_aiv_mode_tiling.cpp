@@ -46,6 +46,20 @@ constexpr uint64_t TILINGKEY_TRANS_A = 100U;
 constexpr uint64_t TILINGKEY_TRANS_B = 10U;
 constexpr uint64_t TILINGKEY_SMALL_M = 1000U;
 constexpr uint32_t OP_TYPE_REDUCE_SCATTER = 7U;
+constexpr uint32_t COUNT_PARAMS_WITH_BIAS = 4;    // [x1, x2, bias, y]
+constexpr uint32_t COUNT_PARAMS_WITHOUT_BIAS = 3; // [x1, x2, y]
+const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
+    {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},   // bf16 bias→fp32转换在kernel Init中处理
+    {ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
+    {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT, ge::DT_BF16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT, ge::DT_FLOAT16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16}};
+const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
+    {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16}, {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16}, {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16}};
 
 std::map<int, std::vector<std::vector<int>>> g_matmulReduceScatterA2FourRankINT8CodeMap = {
     {59785264, {{-1, 1536, -1, 7168, -1, 1536}}},
@@ -519,6 +533,68 @@ static ge::graphStatus MatmulReduceScatterV2CheckShapeAndSetTiling(const gert::T
     OP_LOGD(K_INNER_DEBUG, "N=%d", info.N);
 
     return ge::GRAPH_SUCCESS;
+}
+
+static inline bool IsArrayEqual(std::vector<uint32_t> &arr1, const std::vector<uint32_t> &arr2, uint32_t size)
+{
+    if (arr1.size() < size || arr2.size() < size) {
+        return false;
+    }
+    for (size_t i = 0; i < size; i++) {
+        if (arr1[i] != arr2[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context,
+                                                                   MatmulReduceScatterV2AivModeInfo &info)
+{
+    // 获取并校验输入张量描述符
+    auto x1TensorDesc = context->GetInputDesc(A_INDEX);
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x1"),
+                    return ge::GRAPH_FAILED);
+    auto x2TensorDesc = context->GetInputDesc(B_INDEX);
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x2"),
+                    return ge::GRAPH_FAILED);
+    auto yDesc = context->GetOutputDesc(C_INDEX);
+    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "y"),
+                    return ge::GRAPH_FAILED);
+
+    // 获取数据类型并校验一致性与范围
+    ge::DataType x1Dtype = x1TensorDesc->GetDataType();
+    ge::DataType x2Dtype = x2TensorDesc->GetDataType();
+    ge::DataType yDtype = yDesc->GetDataType();
+
+    // 校验 bias 数据类型（如果存在）
+    auto biasTensorDesc = context->GetOptionalInputDesc(BIAS_INDEX);
+    if (biasTensorDesc != nullptr) {
+        ge::DataType biasDtype = biasTensorDesc->GetDataType();
+        vector<uint32_t> paramsType = {x1Dtype, x2Dtype, biasDtype, yDtype};
+
+        for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITH_BIAS.size(); kindsId++) {
+            if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITH_BIAS[kindsId], COUNT_PARAMS_WITH_BIAS)) {
+                return ge::GRAPH_SUCCESS;
+            }
+        }
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1,x2,bias,y",
+            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
+             Ops::Base::ToString(biasDtype) + "," + Ops::Base::ToString(yDtype)).c_str(),
+             "unsupported dtype combination");
+        return ge::GRAPH_FAILED;
+    } else {
+        vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
+        for (uint32_t kindsId = 0; kindsId < SUPPORTED_TYPES_WITHOUT_BIAS.size(); kindsId++) {
+            if (IsArrayEqual(paramsType, SUPPORTED_TYPES_WITHOUT_BIAS[kindsId], COUNT_PARAMS_WITHOUT_BIAS)) {
+                return ge::GRAPH_SUCCESS;
+            }
+        }
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1,x2,y",
+            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
+             Ops::Base::ToString(yDtype)).c_str(), "unsupported dtype combination");
+        return ge::GRAPH_FAILED;
+    }
 }
 
 static ge::graphStatus MatmulReduceScatterV2GetPlatformInfoAndSetTiling(const gert::TilingContext *context,
@@ -1047,6 +1123,10 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
                             "MatmulReduceScatterV2 aivMode CheckAttrAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulReduceScatterV2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(),
+                            "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(),
                             "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
