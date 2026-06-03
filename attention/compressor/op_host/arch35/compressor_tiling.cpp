@@ -14,7 +14,6 @@
  * \brief
  */
 
-#include <numeric>
 #include <functional>
 #include <algorithm>
 #include <unordered_map>

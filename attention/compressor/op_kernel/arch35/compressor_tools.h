@@ -32,12 +32,13 @@ class CompressorTools {
 public:
     __aicore__ inline CompressorTools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
+    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
+                                __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
-    __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
+    __aicore__ inline uint64_t GetStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
-    __aicore__ inline uint32_t GetTIdxByBatch(uint32_t bIdx);
+    __aicore__ inline uint64_t GetTIdxByBatch(uint32_t bIdx);
 
 public:
     ToolsParams toolParams_ {};
@@ -84,10 +85,10 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+__aicore__ inline uint64_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
 {
     if (isExistStartPos_) {
-        return (uint32_t)startPosGm_.GetValue(bIdx);
+        return (uint64_t)startPosGm_.GetValue(bIdx);
     } else {
         return 0;
     }
@@ -104,12 +105,12 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqLength(uint32_t bIdx)
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
+__aicore__ inline uint64_t CompressorTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
 {
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        return (uint32_t)(cuSeqlensGm_.GetValue(bIdx));
+        return (uint64_t)(cuSeqlensGm_.GetValue(bIdx));
     } else {
-        return toolParams_.seqSize * bIdx;
+        return (uint64_t)toolParams_.seqSize * bIdx;
     }
 }
 
@@ -121,7 +122,7 @@ struct SliceInfo {
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t bSeqUsed = 0U;
-    uint32_t bStartPos = 0U;
+    uint64_t bStartPos = 0U;
 
     uint32_t headHolderSeqCnt = 0U;
     uint32_t validSeqCnt = 0U;
@@ -229,7 +230,10 @@ __aicore__ inline SliceInfo& CompressorSliceIterator<COMP>::GetSliceByCmp()
     // 计算头部占位行数、有效数据行数、尾部占位行数
     sliceInfo_.headHolderSeqCnt = (sliceInfo_.bStartPos + sliceInfo_.sIdx) % cmpRatio;
 
-    sliceInfo_.validSeqCnt = sliceInfo_.bSeqUsed - sliceInfo_.sIdx;
+    sliceInfo_.validSeqCnt = 0;
+    if (sliceInfo_.bSeqUsed > sliceInfo_.sIdx) {
+        sliceInfo_.validSeqCnt = sliceInfo_.bSeqUsed - sliceInfo_.sIdx;
+    }
     if (sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt > maxDealSeqCnt_) {
         sliceInfo_.validSeqCnt = maxDealSeqCnt_ - sliceInfo_.headHolderSeqCnt;
     }
@@ -644,7 +648,7 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
         do {
             uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
             if (sliceInfo_.bSeqUsed < seqLength) {
-                uint32_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio) - sliceInfo_.bStartPos;
+                uint64_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (uint64_t)cmpRatio) - sliceInfo_.bStartPos;
                 sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
                 uint32_t tcGap = CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx),
                                     static_cast<int32_t>(cmpRatio));
@@ -707,7 +711,7 @@ __aicore__ inline Vec1SliceInfo& CompressorVec1SliceIterator<COMP>::GetSlice()
         if (CeilDivT(sliceInfo_.headHolderSeqCnt + sliceInfo_.validSeqCnt, cmpRatio) > needDealTcSize_) {
             sliceInfo_.validSeqCnt = needDealTcSize_ * cmpRatio - sliceInfo_.headHolderSeqCnt;
     }
-    uint32_t globalTotalSeqCnt = sliceInfo_.bStartPos + sliceInfo_.sIdx + sliceInfo_.validSeqCnt;
+    uint64_t globalTotalSeqCnt = sliceInfo_.bStartPos + sliceInfo_.sIdx + sliceInfo_.validSeqCnt;
     sliceInfo_.tailHolderSeqCnt = Align(globalTotalSeqCnt, cmpRatio) - globalTotalSeqCnt;
 
     // 计算本次可以处理的Tc个数
@@ -759,7 +763,7 @@ struct Vec2SliceInfo{
     uint32_t scIdx = 0U;
     uint32_t scNum = 0U;
     uint32_t remainScCnt = 0U;     // 当前batch剩余sc数量
-    uint32_t bStartPos = 0U;
+    uint64_t bStartPos = 0U;
     uint32_t bSeqUsed = 0U;
     uint32_t bSeqLength = 0U;
     uint32_t dealedScCnt = 0U;     // 全局的dealedScCnt（Reset刷新）

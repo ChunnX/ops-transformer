@@ -79,7 +79,7 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);  // (coff * D, H)
     OPS_LOG_E_IF_NULL(context, wgateShape, return ge::GRAPH_FAILED)
 
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, tokrn_size, 2 * coff * D)
+    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
     OPS_LOG_E_IF_NULL(context, stateCacheShape, return ge::GRAPH_FAILED)
 
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
@@ -124,6 +124,7 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);                 // query: (B, S, N, Hckv) | (T, N, Hckv)
     OPS_LOG_E_IF_NULL(context, cmpKvShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
+    OPS_LOG_E_IF_NULL(context, attr, return ge::GRAPH_FAILED)
     const uint32_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     uint32_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
     const uint32_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
@@ -145,7 +146,7 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
 
 ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OPS_LOG_I(context->GetNodeName(), "Enter Compressor inferDataType impl.");
 
@@ -156,7 +157,7 @@ ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 
 ge::graphStatus InferShapeCompressor(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OPS_LOG_I(context->GetNodeName(), "Enter Compressor infershape impl.");
 

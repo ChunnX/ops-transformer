@@ -268,7 +268,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     uint32_t firstBatchSeqUsed = tools_.GetSeqLength(0);
     for (uint32_t i = 0; i < constInfo.batchSize; i++) {
         uint32_t bSeqUsed = tools_.GetSeqLength(i);
-        uint32_t bStartPos = tools_.GetStartPos(i);
+        uint64_t bStartPos = tools_.GetStartPos(i);
         // 获取m大小
         mSize += bSeqUsed;
         // 获取是否等长
@@ -277,15 +277,15 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
         }
         // 获取m轴最小切分大小
         if (minMBaseSize != constInfo.cmpRatio) {
-            uint32_t startCmpIdx = bStartPos / constInfo.cmpRatio;
-            uint32_t endCmpIdx = (bStartPos + bSeqUsed) / constInfo.cmpRatio;
+            uint32_t startCmpIdx = (uint32_t)(bStartPos / constInfo.cmpRatio);
+            uint32_t endCmpIdx = (uint32_t)((bStartPos + bSeqUsed) / constInfo.cmpRatio);
             if (startCmpIdx == endCmpIdx) {
                 if (bSeqUsed > minMBaseSize) {
                     minMBaseSize = bSeqUsed;
                 }
             } else if (startCmpIdx + 1 == endCmpIdx) {
-                uint32_t startCmpValidSeqCnt = constInfo.cmpRatio - (bStartPos % constInfo.cmpRatio);
-                uint32_t endCmpValidSeqCnt = (bStartPos + bSeqUsed) % constInfo.cmpRatio;
+                uint32_t startCmpValidSeqCnt = constInfo.cmpRatio - (uint32_t)(bStartPos % constInfo.cmpRatio);
+                uint32_t endCmpValidSeqCnt = (uint32_t)((bStartPos + bSeqUsed) % constInfo.cmpRatio);
                 if (startCmpValidSeqCnt > minMBaseSize) {
                     minMBaseSize = startCmpValidSeqCnt;
                 }
@@ -303,15 +303,15 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     uint32_t dBaseBlockNum = constInfo.headDim / constInfo.dBaseSize;
     if (sameSeqUsed && mSize <= (constInfo.mBaseSize * (aiCoreNum / dBaseBlockNum))) {
         if constexpr (COMP::coff == COFF::OVERLAP) {
-            if (constInfo.headDim == 128) {
+            if (constInfo.headDim == 128) {  // headDim=128: dBase=16, dBaseBlockNum=8
                 dBaseBlockNum = 8;
-            } else if (constInfo.headDim == 512) {
+            } else if (constInfo.headDim == 512) {  // headDim=512: dBase=32, dBaseBlockNum=16
                 dBaseBlockNum = 16;
             }
         } else {
-            if (constInfo.headDim == 128) {
+            if (constInfo.headDim == 128) {  // headDim=128: dBase=16, dBaseBlockNum=8
                 dBaseBlockNum = 8;
-            } else if (constInfo.headDim == 512) {
+            } else if (constInfo.headDim == 512) {  // headDim=512: dBase=32, dBaseBlockNum=16
                 dBaseBlockNum = 16;
             }
         }
@@ -347,9 +347,9 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &b
     if (batchInfo.bIdx < constInfo.batchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
-        batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
-        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
+        batchInfo.headHolderSeq = (uint32_t)(batchInfo.bStartPos & (constInfo.cmpRatio - 1));
+        batchInfo.tcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
+        batchInfo.compressedTcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
     }
 }
 
@@ -397,7 +397,7 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
         if (quota < batchInfo.remSeqCnt) {
             // 向下对齐r，
             if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
-                uint32_t delta = (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
+                uint64_t delta = (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
                 curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
@@ -472,14 +472,14 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
 
-    constInfo.mm1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
+    constInfo.mm1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
     uint32_t coff = (uint32_t)COMP::coff;
-    constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
-    constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
+    constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }
 
 template <typename COMP>
@@ -489,15 +489,15 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
     // mm1KvResGm
     mm1KvResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
-    offset += constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
+                             (uint64_t)constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
 
     uint64_t mm1ScoreResStartOffset = offset;
     // mm1ScoreResGm
     mm1ScoreResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
-    offset += constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
+                             (uint64_t)constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
 
     Vec1InputKvGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + mm1KvResStartOffset));
@@ -516,7 +516,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t 
     // vec1Res 
     vec1ResGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + offset));
-    offset +=  constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.vec1ResSize * sizeof(VEC1_OUT_T);
+    offset +=  (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.vec1ResSize * sizeof(VEC1_OUT_T);
     // vec2Input
     vec2InputGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + beforeVecOffset));
