@@ -1532,28 +1532,30 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
     int64_t indexOffset = batchIndexOffset + batchTokenIndex / baseParams_->blockSize;
     int64_t paBlkId = indexGm(indexOffset); // 取cacheIdx
 
-    int64_t pageTokenOffset = paBlkId * baseParams_->blockSize;
-    int64_t tokenOffsetInPage = batchTokenIndex % baseParams_->blockSize;
+    if (paBlkId < baseParams_->blockNum) {
+        int64_t pageTokenOffset = paBlkId * baseParams_->blockSize;
+        int64_t tokenOffsetInPage = batchTokenIndex % baseParams_->blockSize;
 
-    int64_t leftRowsInPage = baseParams_->blockSize - tokenOffsetInPage;
-    if (leftRowsInPage >= rows) {
-        rowsThisStep = rows;
-        spill = false;
-        nextPageId = -1;
-    } else {
-        rowsThisStep = rows - leftRowsInPage;
-        spill = true;
-        nextPageId = indexGm(indexOffset + 1);
+        int64_t leftRowsInPage = baseParams_->blockSize - tokenOffsetInPage;
+        if (leftRowsInPage >= rows) {
+            rowsThisStep = rows;
+            spill = false;
+            nextPageId = -1;
+        } else {
+            rowsThisStep = rows - leftRowsInPage;
+            spill = true;
+            nextPageId = indexGm(indexOffset + 1);
+        }
+
+        // --- Materialize for RMSNorm/CKV ---
+        MaterializeOffsetsWithHeadSize<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
+            pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->headSizeCkv,
+            rmsNormAndScatterCkvParams);
+
+        MaterializeOffsetsWithHeadSize<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
+            pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
+            ropeAndScatterKrParams);
     }
-
-    // --- Materialize for RMSNorm/CKV ---
-    MaterializeOffsetsWithHeadSize<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
-        pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->headSizeCkv,
-        rmsNormAndScatterCkvParams);
-
-    MaterializeOffsetsWithHeadSize<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
-        pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
-        ropeAndScatterKrParams);
 }
 
 template <typename MLAPT>
@@ -1676,29 +1678,31 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
         } else {
             paTokenIndex = cacheIndexGm_(rmsNormAndScatterCkvParams.tokenIndex);
         }
-        ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-            kvCacheGm_, outputLocal,
-            ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->headSizeCkv,
-                               baseParams_->dtileSize});
-        // 刷新量化scale
-        if (isPertile && baseParams_->quantScaleRepoMode == 1U) {
-            // BSND:
-            uint32_t tileNum = baseParams_->headSizeCkv / baseParams_->tileSize;
-            LocalTensor<kvCacheType> quantScaleCkvInt8Tensor =
-                outputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<kvCacheType>();
-            int64_t startOffset = 0;
-            int64_t startColOffset = baseParams_->headSizeCkv;
-            if (baseParams_->ckvkrRepoMode == 1U) {
-                startColOffset += baseParams_->headSizeKr * sizeof(krCacheType);
-            }
-            if constexpr ((MLAPT::cacheMode != CACHE_MODE::PA_NZ)) {
-                startOffset = startColOffset;
-            }
+        if (paTokenIndex < baseParams_->blockNum *  baseParams_->blockSize) {
+            ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
+                kvCacheGm_, outputLocal,
+                ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->headSizeCkv,
+                                baseParams_->dtileSize});
+            // 刷新量化scale
+            if (isPertile && baseParams_->quantScaleRepoMode == 1U) {
+                // BSND:
+                uint32_t tileNum = baseParams_->headSizeCkv / baseParams_->tileSize;
+                LocalTensor<kvCacheType> quantScaleCkvInt8Tensor =
+                    outputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<kvCacheType>();
+                int64_t startOffset = 0;
+                int64_t startColOffset = baseParams_->headSizeCkv;
+                if (baseParams_->ckvkrRepoMode == 1U) {
+                    startColOffset += baseParams_->headSizeKr * sizeof(krCacheType);
+                }
+                if constexpr ((MLAPT::cacheMode != CACHE_MODE::PA_NZ)) {
+                    startOffset = startColOffset;
+                }
 
-            ScatterCacheUnAligned<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-                kvCacheGm_[startOffset], quantScaleCkvInt8Tensor,
-                ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
-                                   static_cast<int64_t>(tileNum * sizeof(float)), baseParams_->dtileSize});
+                ScatterCacheUnAligned<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
+                    kvCacheGm_[startOffset], quantScaleCkvInt8Tensor,
+                    ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
+                                    static_cast<int64_t>(tileNum * sizeof(float)), baseParams_->dtileSize});
+            }
         }
     } else {
         ScatterCacheMultiRows<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
@@ -1777,25 +1781,27 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
         } else {
             paTokenIndex = cacheIndexGm_(ropeAndScatterKrParams.tokenIndex);
         }
-        if (isPertile && baseParams_->ckvkrRepoMode == 1U) {
-            int64_t startOffset;
-            if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ)) {
-                constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(kvCacheType);
-                startOffset = CeilDiv(baseParams_->headSizeCkv, col0) * col0 * baseParams_->blockSize; // 列方向的偏移
+        if (paTokenIndex < baseParams_->blockNum *  baseParams_->blockSize) {
+            if (isPertile && baseParams_->ckvkrRepoMode == 1U) {
+                int64_t startOffset;
+                if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ)) {
+                    constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(kvCacheType);
+                    startOffset = CeilDiv(baseParams_->headSizeCkv, col0) * col0 * baseParams_->blockSize; // 列方向的偏移
+                } else {
+                    startOffset = baseParams_->headSizeCkv;
+                }
+                LocalTensor<kvCacheType> outputKrInt8Tensor = outputKrLocal.template ReinterpretCast<kvCacheType>();
+                ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
+                    kvCacheGm_[startOffset], outputKrInt8Tensor,
+                    ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
+                                    static_cast<int64_t>(baseParams_->dimHeadRope * sizeof(krCacheType)),
+                                    baseParams_->dtileSize});
             } else {
-                startOffset = baseParams_->headSizeCkv;
+                ScatterCache<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
+                    krCacheGm_, outputKrLocal,
+                    ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->dimHeadRope,
+                                    baseParams_->dimHeadRope});
             }
-            LocalTensor<kvCacheType> outputKrInt8Tensor = outputKrLocal.template ReinterpretCast<kvCacheType>();
-            ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-                kvCacheGm_[startOffset], outputKrInt8Tensor,
-                ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
-                                   static_cast<int64_t>(baseParams_->dimHeadRope * sizeof(krCacheType)),
-                                   baseParams_->dtileSize});
-        } else {
-            ScatterCache<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
-                krCacheGm_, outputKrLocal,
-                ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->dimHeadRope,
-                                   baseParams_->dimHeadRope});
         }
     } else {
         ScatterCacheMultiRows<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
