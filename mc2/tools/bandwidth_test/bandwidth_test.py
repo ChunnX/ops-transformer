@@ -565,16 +565,22 @@ def run_bandwidth_test_npu(
 
 def _run_bandwidth_test_with_profiling(kwargs: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
     """带性能分析的带宽测试执行"""
-    tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-    with get_profiling(loop, repeat, warmup, profiling_path) as prof:
+    stress_tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+    
+    def _profiling_iteration(prof):
+        """单个性能分析迭代"""
+        y, receive_cnt = None, None
         for i in range(loop):
             torch.npu.synchronize()
             y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**kwargs)
             if i == 1:
                 for _ in range(100):
-                    torch.exp(tensor)
+                    torch.exp(stress_tensor)
             prof.step()
-    return y, receive_cnt
+        return y, receive_cnt
+    
+    with get_profiling(loop, repeat, warmup, profiling_path) as prof:
+        return _profiling_iteration(prof)
 
 
 def run_bandwidth_test_npu_bandwidth(queue, rank, x, dstrank_id, test_max_bs, test_mode, test_world_size):
