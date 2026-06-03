@@ -20,10 +20,11 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 0U;
-constexpr uint32_t RECV_SRC_META_INTERNAL_INDEX = 1U;
-constexpr uint32_t NUM_RECV_PER_RANK_HP_INDEX = 2U;
-constexpr uint32_t NUM_RECV_PER_EXPERT_HP_INDEX = 3U;
+constexpr uint32_t CONTEXT_INDEX = 0U;
+constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 1U;
+constexpr uint32_t RECV_SRC_META_INTERNAL_INDEX = 2U;
+constexpr uint32_t NUM_RECV_PER_RANK_HP_INDEX = 3U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_HP_INDEX = 4U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -45,8 +46,6 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
     OPS_LOG_D(nodeName, "hidden=%u, topK=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
     OPS_LOG_D(nodeName, "aAlloc=%u, numLocalExperts=%u, aivNum=%u", info.aAlloc, info.numLocalExperts, info.aivNum);
-    OPS_LOG_D(nodeName, "windowBaseAddr=%lu, numRecvPerRankAddr=%lu, numRecvPerExpertAddr=%lu",
-              info.windowBaseAddr, info.numRecvPerRankAddr, info.numRecvPerExpertAddr);
 }
 
 static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *context)
@@ -109,6 +108,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OPS_LOG_D(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
 
     PrintTilingDataInfo(nodeName, info);
+    fprintf(stderr, "[DEBUG-EPILOGUE-TILING] epWorldSize=%u, epRankId=%u, numExperts=%u, aAlloc=%u, hidden=%u\n",
+            info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.aAlloc, info.cfg.hidden);
     return ge::GRAPH_SUCCESS;
 }
 

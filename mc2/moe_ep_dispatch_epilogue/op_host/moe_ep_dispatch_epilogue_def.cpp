@@ -12,49 +12,49 @@ public:
             .AutoContiguous();
         this->Input("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("recv_src_metadata_internal")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("num_recv_tokens_per_rank_host_pinned")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("num_recv_tokens_per_expert_host_pinned")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
         this->Output("recv_x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
         this->Output("recv_topk_idx")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("recv_topk_weights")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Output("recv_src_metadata")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();

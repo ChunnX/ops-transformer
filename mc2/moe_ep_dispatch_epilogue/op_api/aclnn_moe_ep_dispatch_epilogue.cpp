@@ -62,14 +62,15 @@ aclnnStatus MoeEpDispatchEpilogueGetWorkspaceSize(
     aclTensor* numRecvTokensPerExpert,
     uint64_t* workspaceSize, aclOpExecutor** executor) {
     OP_LOGD("MoeEpDispatchEpilogue", "Begin to do MoeEpDispatchEpilogueGetWorkspaceSize");
-    CHECK_RET(CheckNotNull(context, dstBufferSlotIdx, recvSrcMetadataInternal,
+    auto retNotNull = CheckNotNull(context, dstBufferSlotIdx, recvSrcMetadataInternal,
                             numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
                             recvX, recvTopkIdx, recvTopkWeights,
-                            recvSrcMetadata, numRecvTokensPerRank, numRecvTokensPerExpert),
-              ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
-                          cclBufferSize, expertAlignment),
-              ACLNN_ERR_PARAM_INVALID);
+                            recvSrcMetadata, numRecvTokensPerRank, numRecvTokensPerExpert);
+    CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
+
+    auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
+                          cclBufferSize, expertAlignment);
+    CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
 
     return aclnnInnerMoeEpDispatchEpilogueGetWorkspaceSize(
         context, dstBufferSlotIdx, recvSrcMetadataInternal,
@@ -110,7 +111,9 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 aclnnStatus aclnnMoeEpDispatchEpilogue(
     void* workspace, uint64_t workspaceSize,
     aclOpExecutor* executor, aclrtStream stream) {
-    NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnInnerMoeEpDispatchEpilogue(workspace, workspaceSize, executor, stream);
 }
 

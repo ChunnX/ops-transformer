@@ -22,7 +22,8 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchEpilogueTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchEpilogueTilingData);
-
+    printf("enter moe_ep_dispatch_epilogue");
+    return;
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
     KernelDispatchEpilogue op;
