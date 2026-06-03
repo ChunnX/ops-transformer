@@ -539,19 +539,19 @@ private:
     }
 
     __simd_vf__ inline void ComputeSoftmaxGrad(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
-                                               __ubuf__ float *src1Tensor, const uint64_t row, const uint64_t col)
+                                               __ubuf__ float *src1Tensor, __ubuf__ float *sftFrontTensor,
+                                               const uint64_t row, const uint64_t col)
     {
         AscendC::Reg::RegTensor<float> src_reg;
-        AscendC::Reg::RegTensor<float> lse_reg;
-        AscendC::Reg::RegTensor<float> scale_reg;
+        AscendC::Reg::RegTensor<float> sft_front_reg;
+        AscendC::Reg::RegTensor<float> mul_reg;
         AscendC::Reg::MaskReg msk_reg;
         constexpr static uint16_t repeat_size = 256 / sizeof(float);
         uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
         uint32_t ub_offset = 0;
-        Duplicate(scale_reg, softmax_scale_);
 
         for (int32_t i = 0; i < row; i++) {
-            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(lse_reg, src1Tensor + i * 8);
+            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(sft_front_reg, sftFrontTensor + i * 8);
             uint32_t count = col;
             ub_offset = i * col;
 
@@ -559,8 +559,9 @@ private:
                 msk_reg = AscendC::Reg::UpdateMask<float>(count);
 
                 LoadAlign(src_reg, src0Tensor + ub_offset);
-                Mul(src_reg, src_reg, scale_reg, msk_reg);
-                Sub(src_reg, src_reg, lse_reg, msk_reg);
+                Sub(src_reg, src_reg, sft_front_reg, msk_reg);
+                LoadAlign(mul_reg, src1Tensor + ub_offset);
+                Mul(src_reg, src_reg, mul_reg, msk_reg);
                 StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
                 ub_offset += repeat_size;
             }
