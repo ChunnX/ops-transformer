@@ -194,8 +194,8 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                     GK_L1,
                                 )
                                 T.barrier_all()
-                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
-                            T.barrier_all()
+                                T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
+                                T.barrier_all()
                             T.copy(
                                 C_L0C[s1_row, :],
                                 bmm1Res_ws[bz, n2_id, s1_start + s1_row, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
@@ -222,8 +222,8 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                     GKI_L1,
                                 )
                                 T.barrier_all()
-                            T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
-                            T.barrier_all()
+                                T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
+                                T.barrier_all()
                             T.copy(
                                 C2_L0C[s1_row, :],
                                 bmm2Res_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
