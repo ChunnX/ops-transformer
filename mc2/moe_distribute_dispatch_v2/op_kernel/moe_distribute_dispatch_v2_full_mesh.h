@@ -861,7 +861,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
         }
 
-        SyncFunc<AscendC::HardEvent::V_S>();
         // UNQUANT 非3510路径下 tempTensor_ 未填充，直接从 xInTensor 读取
         LocalTensor<int32_t> srcTensorInt32;
         if constexpr (QuantMode > UNQUANT) {
