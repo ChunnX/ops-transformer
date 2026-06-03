@@ -170,12 +170,9 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
-    // 这三组buffer深度为 PRELOAD_N+1(=3)，与 C1 C1 C2 预取流水深度严格对应。
-    // 3 非2的幂，对应的索引保留 % (PRELOAD_N+1) 取模；若改为位掩码需将深度抬到4，
-    // 会额外多占 1/3 的 UB，得不偿失。本PR只替换了高频、位于内层循环、构成scalar bound瓶颈的 % DB。
-    TBuf<> softmaxMaxBuf[PRELOAD_N + 1];
-    TBuf<> softmaxSumBuf[PRELOAD_N + 1];
-    TBuf<> softmaxExpBuf[PRELOAD_N + 1];
+    TBuf<> softmaxMaxBuf[4];
+    TBuf<> softmaxSumBuf[4];
+    TBuf<> softmaxExpBuf[4];
     TBuf<> vselrIndexesBuf[4];
     TBuf<> mm2InBuf;
     /* 用来做Broadcast[S1,1]->[S2,8]的临时UB区域 */
@@ -350,10 +347,10 @@ public:
 
         LocalTensor<uint8_t> attenMaskUb;
 
-        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
-        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
+        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>()[0];
+        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop & 3].template Get<float>()[0];
 
-        auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[0];
+        auto expUb = this->softmaxExpBuf[runInfo.loop & 3].template Get<T>()[0];
         int64_t stage1Offset = runInfo.loop & (DB - 1);
 
         float descaleQK = 1.0;
@@ -515,9 +512,9 @@ public:
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
         }
 
-        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-        LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
+        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>();
+        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop & 3].template Get<float>();
+        LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.loop & 3].template Get<T>();
         LocalTensor<T> pScaleUb;
         LocalTensor<T> queryScaleUb;
         LocalTensor<uint8_t> apiTmpBuffer;
@@ -644,7 +641,7 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
-            LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
+            LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop & 3].template Get<T>();
             LocalTensor<T> pScaleUb;
 
             float deSCalePreVValue = 1.0f;
@@ -652,7 +649,7 @@ public:
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64, 1.0, 1.0);
             } else {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
                     1.0);
@@ -661,7 +658,7 @@ public:
         bmm2ResBuf.SetCrossCore();
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
             }
@@ -770,7 +767,7 @@ public:
                 int64_t vec2ExpBufOffset = mIdx;
                 float deSCalePreVValue = 1.0f;
                 LocalTensor<T> expUb =
-                    softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[vec2ExpBufOffset];
+                    softmaxExpBuf[runInfo.loop & 3].template Get<T>()[vec2ExpBufOffset];
                 if (!runInfo.isLastS2Loop) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb,
                                                                              subMRealsize, constInfo.dBasicBlock, 0.0F,
@@ -778,7 +775,7 @@ public:
                 } else {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
-                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
+                        this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>()[vec2SumBufOffset];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(
                         vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb, sumUb, subMRealsize, constInfo.dBasicBlock, 0.0F,
                         deSCalePreVValue);
@@ -789,7 +786,7 @@ public:
                 if (unlikely(runInfo.isFirstS2Loop)) {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
-                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
+                        this->softmaxSumBuf[runInfo.mloop & 3].template Get<float>()[vec2SumBufOffset];
                     LastDivNew<T, INPUT_T, OUTPUT_T, 0xFF, false>(vec2ResUb, vec2ResUb, sumUb, subMRealsize,
                                                                   constInfo.dBasicBlock, 0.0F);
                 }
@@ -877,7 +874,7 @@ public:
 
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
-                    softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+                    softmaxMaxBuf[runInfo.mloop & 3].template Get<float>()[mStartVec];
                 RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
                                           static_cast<uint32_t>(dSizeAligned64));
             }
@@ -1067,7 +1064,7 @@ public:
                 int64_t vec2ExpBufOffset = mIdx;
                 float deSCalePreVValue = 1.0f;
                 LocalTensor<T> expUb =
-                    softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[vec2ExpBufOffset];
+                    softmaxExpBuf[runInfo.loop & 3].template Get<T>()[vec2ExpBufOffset];
                 if (!runInfo.isLastS2Loop) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResInner, bmm2Ub, vec2ResInner, expUb, expUb, subMRealsize, dTemplateAlign64, 0.0F,
@@ -1075,7 +1072,7 @@ public:
                 } else {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
+                        softmaxSumBuf[runInfo.mloop & 3].template Get<float>()[vec2SumBufOffset];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResInner, bmm2Ub, vec2ResInner, expUb, expUb, sumUb, subMRealsize, dTemplateAlign64, 0.0F,
                         deSCalePreVValue);
@@ -1086,7 +1083,7 @@ public:
                 if (unlikely(runInfo.isFirstS2Loop)) {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
-                        softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
+                        softmaxSumBuf[runInfo.mloop & 3].template Get<float>()[vec2SumBufOffset];
                     LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResInner, vec2ResInner, sumUb,
                                                                               subMRealsize, dTemplateAlign64, 0.0F);
                 }
@@ -1101,14 +1098,17 @@ public:
         tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
         tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
         tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxSumBuf[3], 256); // [64, 1]
 
         tPipe->InitBuffer(softmaxMaxBuf[0], 256); // [64, 1]
         tPipe->InitBuffer(softmaxMaxBuf[1], 256); // [64, 1]
         tPipe->InitBuffer(softmaxMaxBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxMaxBuf[3], 256); // [64, 1]
 
         tPipe->InitBuffer(softmaxExpBuf[0], 256); // [64, 1]
         tPipe->InitBuffer(softmaxExpBuf[1], 256); // [64, 1]
         tPipe->InitBuffer(softmaxExpBuf[2], 256); // [64, 1]
+        tPipe->InitBuffer(softmaxExpBuf[3], 256); // [64, 1]
 
         tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
         tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
