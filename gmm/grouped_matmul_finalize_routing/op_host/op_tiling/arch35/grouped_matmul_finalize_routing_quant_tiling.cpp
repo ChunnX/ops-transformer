@@ -253,7 +253,8 @@ DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8, but actual dtype is %s, %s.",
                     return false);
 
         OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16),
-                    OP_LOGE(context_->GetNodeName(), "In K-C/T-C quant mode, the expected dtype of scale should be \
+                    OP_LOGE(context_->GetNodeName(),
+                            "In K-C/T-C quant mode, the expected dtype of scale should be \
 DT_FLOAT/DT_BF16, but actual dtype is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
                     return false);
@@ -360,9 +361,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape &x
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
 {
     auto sharedInputDesc = context_->GetOptionalInputDesc(SHARE_INPUT_INDEX);
-    sharedInputLen_ = sharedInputDesc != nullptr ?
-                          context_->GetOptionalInputShape(SHARE_INPUT_INDEX)->GetStorageShape()[0] :
-                          sharedInputLen_;
+    sharedInputLen_ = sharedInputDesc != nullptr
+                          ? context_->GetOptionalInputShape(SHARE_INPUT_INDEX)->GetStorageShape()[0]
+                          : sharedInputLen_;
 
     OP_CHECK_IF(
         sharedInputLen_ > outputBs_,
@@ -657,8 +658,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
     if (tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag == 1) {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
-        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu", deterWorkspaceSize_,
-                workspaces[0]);
+        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu",
+                deterWorkspaceSize_, workspaces[0]);
     }
     return ge::GRAPH_SUCCESS;
 }
