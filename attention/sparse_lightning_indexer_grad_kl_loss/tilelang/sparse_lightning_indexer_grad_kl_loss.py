@@ -749,14 +749,26 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight = results[1]
         relu_grad = results[2]
 
-        # KL Loss: compute in Python from bmm1_res and bmm2_res
+        # Debug: compare intermediate results with Python reference
         bmm1_res = bmm1_res_ws
         bmm2_res = bmm2_res_ws
-        _, _, kl_loss = _compute_vector_outputs(
+        ref_dw, ref_rg, ref_loss = _compute_vector_outputs(
             bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
             scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
             input_dtype,
         )
+        tl_dw_fp32 = d_weight.float()
+        tl_rg_fp32 = relu_grad.float()
+        logger.warning(f"[DEBUG] dWeight: max_diff={(tl_dw_fp32 - ref_dw).abs().max().item():.6f}, ref_max={ref_dw.abs().max().item():.6f}")
+        logger.warning(f"[DEBUG] reluGrad: max_diff={(tl_rg_fp32 - ref_rg).abs().max().item():.6f}, ref_max={ref_rg.abs().max().item():.6f}")
+        logger.warning(f"[DEBUG] P_reduced ws range: [{p_reduced_ws.min().item():.6f}, {p_reduced_ws.max().item():.6f}]")
+        logger.warning(f"[DEBUG] ReduceSumY ws range: [{reduce_sum_y_ws.min().item():.6f}, {reduce_sum_y_ws.max().item():.6f}]")
+        logger.warning(f"[DEBUG] SoftmaxI ws range: [{softmax_i_ws.min().item():.6f}, {softmax_i_ws.max().item():.6f}]")
+        logger.warning(f"[DEBUG] bmm1Res ws range: [{bmm1_res_ws.min().item():.6f}, {bmm1_res_ws.max().item():.6f}]")
+        logger.warning(f"[DEBUG] bmm2Res ws range: [{bmm2_res_ws.min().item():.6f}, {bmm2_res_ws.max().item():.6f}]")
+
+        # KL Loss: compute in Python from bmm1_res and bmm2_res
+        kl_loss = ref_loss
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
