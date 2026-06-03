@@ -474,11 +474,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (queryShape.GetDim(DIM_0) != keyShape.GetDim(DIM_0)){
-            OP_LOGE(context_, "SparseFlashAttentionGrad batchsize of query[%ld] and key[%ld] should be equal.",
-            queryShape.GetDim(DIM_0), keyShape.GetDim(DIM_0));
-            return ge::GRAPH_FAILED;            
-        }
         tmpData.ropeEnable = false;
         tmpData.ropeDim = 0;
     }

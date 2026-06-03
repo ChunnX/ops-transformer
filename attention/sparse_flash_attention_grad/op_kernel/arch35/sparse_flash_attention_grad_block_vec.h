@@ -728,7 +728,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bIdx, int6
                                                    runInfo.commonRunInfo.actualS1Size + s1Idx + 1, 0),
                                                constInfo.selectedBlockCount);
     } else {
-        runInfo.actualSelectedBlockCount = 0;
+        runInfo.actualSelectedBlockCount = Min(constInfo.selectedBlockCount, runInfo.commonRunInfo.actualS2Size);
     }
 }
 
