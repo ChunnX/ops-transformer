@@ -113,6 +113,7 @@ protected:
     int64_t actualExpertNum_ = 0;
     int64_t actualExpertIdxNum_ = 0;
     int64_t expertCountElements_ = 0;
+    int64_t expertTokensOutputElements_ = 0;
     int64_t actualExpertTotalNum_ = 0;
     int64_t curIndexStart_;
     int64_t startXRow_;
@@ -189,11 +190,13 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
                                         1);
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        expertTokensOutputElements_ = expertNum_ * EXERPT_TOKENS_KEY_VALUE;
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ?
                                    (actualExpertNum_ + 1) * EXERPT_TOKENS_KEY_VALUE :
-                                   expertNum_ * EXERPT_TOKENS_KEY_VALUE;
+                                   expertTokensOutputElements_;
     } else {
         expertCountElements_ = actualExpertNum_;
+        expertTokensOutputElements_ = expertCountElements_;
     }
 
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);
@@ -460,6 +463,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
     LocalTensor<int64_t> expertTokensOutLocal = expertTokensCopyOutQueue_.AllocTensor<int64_t>();
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        InitGlobalMemory(expertTokensCountOrCumsumGm_, expertTokensOutputElements_, 0);
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+
         int64_t expertOffset = 0;
         Duplicate(expertTokensOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                   static_cast<int32_t>(expertCountElements_ * KEY_VALUE_MODE));
