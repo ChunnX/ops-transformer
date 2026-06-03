@@ -396,6 +396,12 @@ public:
         GetFASectionInfo(sectionIdx);
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
+        const uint32_t n2Size = constInfo.n2Size;
+        const uint32_t gSize = constInfo.gSize;
+        const float scaleValue = constInfo.scaleValue;
+        const uint8_t subBlockIdx = constInfo.subBlockIdx;
+        const bool isKvContinuous = constInfo.isKvContinuous;
+
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
@@ -419,7 +425,7 @@ public:
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo, n2Size, gSize, scaleValue, subBlockIdx, isKvContinuous);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
@@ -655,24 +661,26 @@ public:
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                      uint32_t n2Size, uint32_t gSize, float scaleValue, uint8_t subBlockIdx, bool isKvContinuous)
     {
         RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
+        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo, n2Size, gSize, scaleValue, subBlockIdx, isKvContinuous);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info,
+                                      uint32_t n2Size, uint32_t gSize, float scaleValue, uint8_t subBlockIdx, bool isKvContinuous)
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = bN2Cur / n2Size;
+        info.n2Idx = bN2Cur % n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
+            info.s1Idx = info.gS1Idx / gSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
@@ -682,7 +690,7 @@ public:
         info.actS2Size = actSeqLensKv;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        uint64_t gS1Size = info.actS1Size * gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
@@ -692,7 +700,7 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo.isKvContinuous) {
+        if (isKvContinuous) {
             info.isChangeBatch = false;
         } else {
             // for tensor-list
@@ -721,7 +729,7 @@ public:
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
+        if (subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
