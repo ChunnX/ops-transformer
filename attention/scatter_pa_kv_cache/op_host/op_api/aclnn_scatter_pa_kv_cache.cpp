@@ -330,8 +330,7 @@ static aclnnStatus ProcessNonContiguous(
                                                    keyCacheRef->GetViewOffset());
     CHECK_RET(keyCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
     for (int64_t stride : keyCacheRef->GetViewStrides()){
-        OP_LOGD("The kCache stride is: %d.",
-            stride);
+        std::cout<< "kCache stride is :"<< stride << std::endl;
     }
 
     auto slotMappingContiguous = l0op::Contiguous(slotMapping, uniqueExecutor.get());
@@ -360,8 +359,7 @@ static aclnnStatus ProcessNonContiguous(
         CHECK_RET(valueCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     for (int64_t stride : valueCacheView->GetViewStrides()){
-        OP_LOGD("The vCache stride is: %d.",
-            stride);
+        std::cout<< "vCache stride is :"<< stride << std::endl;
     }
     auto compressLensContiguous = compressLensOptional;
     if (compressLensOptional != nullptr) {
