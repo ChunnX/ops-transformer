@@ -89,7 +89,6 @@ private:
     __aicore__ inline void CrossRankSyncCntPerExpert();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, const ExpertLoopState &state);
-    __aicore__ inline void DispatchTokensIfEnabled(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, const ExpertLoopState &state);
     template <OffsetUpdateMode Mode>
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx);
     template <AddrUpdateMode Mode>
@@ -613,17 +612,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokensIfEnabled(
-    GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, const ExpertLoopState &state)
-{
-    if constexpr (g_coreType == AscendC::AIV) {
-        if (subBlockIdx_ == 1) {
-            DispatchTokens(gmmAddrInfo, expertIdx, state);
-        }
-    }
-}
-
-template <TemplateMegaMoeTypeClass>
 template <OffsetUpdateMode Mode>
 __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx)
 {
@@ -644,8 +632,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
 
         // GMM-only fields (B, C, B2, Y, GMM1/2 outputs, M-aux)
         if constexpr (Mode == OffsetUpdateMode::kGmm) {
-            static constexpr uint64_t B_QUANT_DIVISOR =
-                (QuantMode == E2M1_QUANT || (QuantMode == 4U && isWeight4Bit)) ? FP4_NUM : 1U;
+            static constexpr uint64_t B_QUANT_DIVISOR = isWeight4Bit ? FP4_NUM : 1U;
 
             Get<IDX_B_OFFSET>(state.baseOffset) += (n * k) / B_QUANT_DIVISOR;
             Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
@@ -868,18 +855,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState dispatchState{baseShape, zeroOff, 0};
     ExpertLoopState gmm1State{baseShape, zeroOff, 0};
 
-    // 4.1 先进行一轮Dispatch，之后Dispatch与GMM1交错进行
-    if (UpdateGroupParams<OffsetUpdateMode::kDispatch>(dispatchState, 0)) {
-        UpdateGlobalBuffer<AddrUpdateMode::kDispatch>(gmmAddrInfoForDispatch, dispatchState);
-        DispatchTokensIfEnabled(gmmAddrInfoForDispatch, 0, dispatchState);
+    // A8W4 fast-path: emit Dispatch(expert 0) during V0's w4→w8 startup gap,
+    // so GMM1(expert 0) does not block on its own Dispatch later.
+    // Subsequent iterations prefetch Dispatch(N+1) while GMM1(N) runs.
+    if constexpr (g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1 && UpdateGroupParams<OffsetUpdateMode::kDispatch>(dispatchState, 0)) {
+            UpdateGlobalBuffer<AddrUpdateMode::kDispatch>(gmmAddrInfoForDispatch, dispatchState);
+            DispatchTokens(gmmAddrInfoForDispatch, 0, dispatchState);
+        }
     }
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        // 4.2 Dispatch与GMM1交错进行，提前更新下一轮Dispatch的参数
-        if (expertIdx + 1 < expertPerRank_ &&
-            UpdateGroupParams<OffsetUpdateMode::kDispatch>(dispatchState, expertIdx + 1)) {
-            UpdateGlobalBuffer<AddrUpdateMode::kDispatch>(gmmAddrInfoForDispatch, dispatchState);
-            DispatchTokensIfEnabled(gmmAddrInfoForDispatch, expertIdx + 1, dispatchState);
+        // Prefetch Dispatch for expert N+1 while GMM1(expert N) is running
+        if constexpr (g_coreType == AscendC::AIV) {
+            if (subBlockIdx_ == 1 && expertIdx + 1 < expertPerRank_ &&
+                UpdateGroupParams<OffsetUpdateMode::kDispatch>(dispatchState, expertIdx + 1)) {
+                UpdateGlobalBuffer<AddrUpdateMode::kDispatch>(gmmAddrInfoForDispatch, dispatchState);
+                DispatchTokens(gmmAddrInfoForDispatch, expertIdx + 1, dispatchState);
+            }
         }
 
         if (!UpdateGroupParams<OffsetUpdateMode::kGmm>(gmm1State, expertIdx)) {
