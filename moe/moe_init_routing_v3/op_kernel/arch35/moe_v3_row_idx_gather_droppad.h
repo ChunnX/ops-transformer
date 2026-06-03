@@ -36,6 +36,7 @@ private:
     __aicore__ inline void SyncAll();
     __aicore__ inline void AssistInit();
     __aicore__ inline void CopyScaleZeroOut(int64_t index);
+    __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
     TPipe *pipe_;
@@ -248,12 +249,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::SyncAll()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                         GM_ADDR expandedScale, GM_ADDR workspace,
-                                                         const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                                         TPipe *tPipe)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                                     TPipe *tPipe)
 {
-    int64_t blockNum = GetBlockNum();
     pipe_ = tPipe;
     this->blockIdx_ = GetBlockIdx();
 
@@ -280,6 +278,15 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
     this->perLoopCols_ = this->srcToDstTilingData_->perLoopCols;
     this->lastLoopCols_ = this->srcToDstTilingData_->lastLoopCols;
     this->colLoops_ = this->srcToDstTilingData_->colLoops;
+}
+
+template <typename T>
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+                                                          GM_ADDR expandedScale, GM_ADDR workspace,
+                                                          const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                          TPipe *tPipe)
+{
+    InitBasicParams(tilingData, tPipe);
 
     int64_t length = Align(this->totalLength_, sizeof(int32_t));
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, length);
