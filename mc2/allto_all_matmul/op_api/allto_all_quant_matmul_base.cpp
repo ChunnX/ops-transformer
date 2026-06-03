@@ -80,8 +80,9 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
         GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-            	"The current scenario is not pertoken dynamic quantization, input x1ScaleOptional should not be null.");
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                    "The current scenario is not pertoken dynamic quantization,"
+                    "input x1ScaleOptional should not be null.");
             return false;
         }
     }

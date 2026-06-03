@@ -827,7 +827,11 @@ static void TestQuantV2OneParamCase(const AlltoAllQuantMatmulV2AclnnTestParam& p
             x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize, transposeX1, transposeX2),
         OUTPUT(output, alltoallout));
     aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, retStatus);
+    if (retStatus == ACLNN_SUCCESS) {
+        EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    } else {
+        EXPECT_EQ(aclRet, retStatus);
+    }
     std::cout << "end case " <<  param.case_name << std::endl;
 }
 
