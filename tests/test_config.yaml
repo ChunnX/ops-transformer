@@ -994,10 +994,6 @@ posembedding:
     exclude:
       - posembedding/apply_rotary_pos_emb/docs
       - posembedding/apply_rotary_pos_emb/README.md
-    ut_cov_exclude:
-      - posembedding/apply_rotary_pos_emb
-    test:
-        examples: False
     options:
       - apply_rotary_pos_emb
 
