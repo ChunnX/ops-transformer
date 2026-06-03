@@ -236,11 +236,12 @@ public:
         }
         l1_offset_ = v_sub_core_idx_ * half_s1_process_align_ * C0_SIZE;
 
-        CopyInLSE(lse_tensor_, lse_gm_[lse_gm_offset_], half_s1_process_real_);
-        DataCopy(sft_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
-
-        SET_FLAG(MTE2, V, EVENT_ID0);
-        WAIT_FLAG(MTE2, V, EVENT_ID0);
+        if (half_s1_process_real_ > 0) {
+            CopyInLSE(lse_tensor_, lse_gm_[lse_gm_offset_], half_s1_process_real_);
+            DataCopy(sft_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+        }
     }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,

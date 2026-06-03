@@ -151,6 +151,8 @@ public:
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
                 cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                SET_FLAG(MTE1, MTE2, EVENT_ID0);
+                WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
