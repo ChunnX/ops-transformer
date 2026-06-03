@@ -237,8 +237,8 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::SkipInvalidBatch(BatchInf
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
-        batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
-        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio;
+        batchInfo.tcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
+        batchInfo.compressedTcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
     }
 }
 
@@ -255,11 +255,11 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.mCurGroupIdx = constInfo.curGroupIdx;
 
     uint32_t coff = (uint32_t)COMP::coff;
-    constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
-    constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
+    constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }
 
 template <typename COMP>
@@ -269,15 +269,15 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitWorkspace(__gm__ uint
     // mm1KvResGm
     mm1KvResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
-    offset += constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
+                             (uint64_t)constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
 
     uint64_t mm1ScoreResStartOffset = offset;
     // mm1ScoreResGm
     mm1ScoreResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
-                             constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
-    offset += constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
+                             (uint64_t)constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
 
     Vec1InputKvGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + mm1KvResStartOffset));
@@ -296,7 +296,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitWorkspace(__gm__ uint
     // vec1Res 
     vec1ResGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + offset));
-    offset +=  constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.vec1ResSize * sizeof(VEC1_OUT_T);
+    offset +=  (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.vec1ResSize * sizeof(VEC1_OUT_T);
     // vec2Input
     vec2InputGm.SetGlobalBuffer(
         (__gm__ VEC1_OUT_T *)(workspace + beforeVecOffset));
@@ -372,18 +372,13 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcCubeParams(RunInfo &i
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcV1Params(Vec1RunInfo &vec1Info)
 {
-    vec1Info.bStart = 0;
-    vec1Info.sStart = 0;
-    vec1Info.resetResFlag = false;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
-    vec1Info.v1v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
     for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
         uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
         if (bSeqCnt == 0) {
             continue;
         }
         uint64_t bStartPos = tools_.GetStartPos(bIdx);
-        vec1Info.dealTcNum += (bStartPos + bSeqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
         vec1Info.dealScSize += (bStartPos + bSeqCnt) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
     }
 }
@@ -412,28 +407,12 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::UpdateVec2Info(
     Vec2RunInfo &vec2Info, uint32_t curBasicBlockIdx, const Vec1RunInfo &info)
 {
-    // nSize轮起始先重置v2Info信息
     if (curBasicBlockIdx % constInfo.nSize == 0) {
-        vec2Info.v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
-        vec2Info.bStart = info.bStart;
-        vec2Info.sStart = info.sStart;
-        // 将sStart转成bCompressedId
-        uint32_t startPos = tools_.GetStartPos(info.bStart);
-        if (tools_.isExistSeqUsed_) {
-            uint32_t seqUsed = tools_.GetSeqUsed(info.bStart);
-            if (vec2Info.sStart >= seqUsed) {
-                vec2Info.bStart++;
-                vec2Info.sStart = 0;
-            }
-        }
-        vec2Info.bCompressedId = (startPos + vec2Info.sStart) / constInfo.cmpRatio - startPos / constInfo.cmpRatio;
-
         vec2Info.dealScSize = 0;
     } else if ((curBasicBlockIdx + 1) % constInfo.nSize == 0) {
         vec2Loop++;
     }
     vec2Info.dealScSize += info.dealScSize;
-    vec2Info.compressedId += info.dealScSize;
 }
 
 template <typename COMP>

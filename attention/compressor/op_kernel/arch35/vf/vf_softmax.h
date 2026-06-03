@@ -1546,16 +1546,16 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
     }
 }
 
-/*
+/**
  * @ingroup ProcessVec1Vf
  * @brief compute max = reducemax, exp(x-max)/sum(exp(x-max))
  * @param [out] dstTensor, output LocalTensor
  * @param [in] srcTensor, input LocalTensor
  * @param [in] RowSize, input rows
- * @param [in] vScBaseSize, input colums, should be 256 bytes aligned, the value is originN aligned to 64
- * @param [in] vScRealSize, input origin colums, support range: 0 < originN <= 128
- * @param [in] scale, scale value
+ * @param [in] ReduceSize, reduce维度大小
+ * @param [in] vScRealSize, input origin columns, support range: 0 < originN <= 128
  * @param [in] minValue, minimum value
+ * @param [in] dDealSize, d轴切分大小
  */
 
 template <typename T>
@@ -1563,8 +1563,8 @@ __aicore__ inline void SoftmaxDnVF(const LocalTensor<T>& dstTensor, const LocalT
                                    const uint32_t RowSize, const uint32_t ReduceSize, const uint32_t vScRealSize,
                                    const T minValue, const uint32_t dDealSize)
 {
-    __ubuf__ T *inputAddr = (__ubuf__ T*) dstTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *inputAddr = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *outputAddr = (__ubuf__ T*) dstTensor.GetPhyAddr();
     if (dDealSize == 8) {
         SoftmaxDndBase8<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);

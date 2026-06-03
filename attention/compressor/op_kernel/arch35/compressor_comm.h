@@ -118,7 +118,7 @@ struct CmpBlockInfo {
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t bSeqUsed = 0U;
-    uint32_t bStartPos = 0U;
+    uint64_t bStartPos = 0U;
     bool needReset = false;
     bool isFirst = true;
 
@@ -143,7 +143,7 @@ struct BatchInfo {
     uint32_t seqCnt = 0;
     uint32_t seqUsedCnt = 0;
     uint32_t headHolderSeq = 0;
-    uint32_t bStartPos = 0;
+    uint64_t bStartPos = 0;
     uint32_t bIdx = 0;
     uint32_t sIdx = 0;
 };
@@ -203,16 +203,16 @@ struct ConstInfo {
 
     // workSpace
     uint32_t dbWorkspaceRatio = 1;
-    uint32_t mm1KvResSize = 0;
-    uint32_t mm1ScoreResSize = 0;
+    uint64_t mm1KvResSize = 0;
+    uint64_t mm1ScoreResSize = 0;
     uint32_t vec1TailCacheSize = 0;
-    uint32_t vec1ResSize = 0;
-    uint32_t mm1ResSize = 0; // 所有cube输出kv/score结果的总大小
+    uint64_t vec1ResSize = 0;
+    uint64_t mm1ResSize = 0; // 所有cube输出kv/score结果的总大小
 
     uint32_t aiCoreIdx = 0;
     uint32_t nSize = 0;
 
-    uint32_t dbSize = 0;
+    uint64_t dbSize = 0;
 };
 
 struct RunInfo {
@@ -261,16 +261,8 @@ struct Vec1RunInfo {
 };
 
 struct Vec2RunInfo {
-    // uint32_t bStart = 0;
-    uint32_t v2DbIdx = 0; // v2 doubleBuffer索引
+    uint32_t v2DbIdx = 0;
     uint32_t sStart = 0;
-    uint32_t bEnd = 0;
-    uint32_t sEnd = 0;
-    // v2分核信息 sc是左闭右开
-    uint32_t scStart = 0;
-    uint32_t scEnd = 0;
-
-    // 增加字段
     uint32_t bStart = 0;
     uint32_t compressedId = 0;
     uint32_t bCompressedId = 0;
@@ -297,7 +289,7 @@ struct BlockInfo {
 
     uint32_t isFirst = true;
     uint32_t bSeqUsed = 0U;
-    uint32_t bStartPos = 0U;
+    uint64_t bStartPos = 0U;
     uint32_t headHolderSeqCnt = 0U;
     uint32_t validSeqCnt = 0U;
     uint32_t tailHolderSeqCnt = 0U;
@@ -377,12 +369,16 @@ __aicore__ inline constexpr T RepeatElementNum()
 }
 // BLOCK和REPEAT的FP32元素数
 inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
-inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_t);    // 16
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
 inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK; // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
+
+inline constexpr uint32_t NZ_FRACTAL_DIM = 16;
+inline constexpr uint32_t WEIGHT_MATRIX_NUM = 2;
+inline constexpr uint32_t STATE_INTERLEAVE_FACTOR = 2;
+inline constexpr float SOFTMAX_MIN_VALUE = -2e38f;
 
 template <typename T>
 __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
@@ -405,41 +401,5 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
     nd2nzPara.dstNzMatrixStride = 0;
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
 }
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
-                                         uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
-                                         uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
 } // namespace Compressor
 #endif

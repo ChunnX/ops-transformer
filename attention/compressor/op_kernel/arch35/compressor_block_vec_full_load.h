@@ -37,7 +37,7 @@ class CompressorBlockVectorFullLoad {
 public:
     static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
     static constexpr float FLOAT_ZERO = 0;
-    static constexpr float SOFTMAX_MIN_NUM = -2e38;
+    static constexpr float SOFTMAX_MIN_NUM = SOFTMAX_MIN_VALUE;
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -480,6 +480,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::AddMultiDataToUb(
     uint32_t srcSingleRowCount, uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset)
 {
     uint32_t cnt = dealRowCount * dealColCount;
+    if (cnt == 0) {
+        return;
+    }
     uint32_t groupSize = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(O));
     uint32_t loopTimes = CeilDivT(repeatTimes, groupSize);
     uint64_t srcGmOffset = 0;
@@ -677,11 +680,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::WriteToCacheState(co
             // copyRowCount *= coff_;
             if (idInBlockTable != 0) { // 32
                 uint64_t stateOffset =
-                    idInBlockTable * constInfo_.stateCacheStrideDim0 + remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                    idInBlockTable * constInfo_.stateCacheStrideDim0 + remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                     stateIdx * coff_ * constInfo_.headDim;
                 uint64_t ubOffset = copyFinishRowCnt * coff_ * dBaseSize;
                 DataCopyWithOutputQue(state[stateOffset], input[ubOffset], copyRowCount, dDealSize, coff_ * dBaseSize,
-                                      coff_ * constInfo_.headDim * 2);
+                                      coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
             }
 
             copyFinishRowCnt += copyRowCount;
@@ -699,11 +702,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::WriteToCacheState(co
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim;
             uint64_t ubOffset = copyFinishRowCnt * coff_ * dBaseSize;
             DataCopyWithOutputQue(state[stateOffset], input[ubOffset], copyRowCount,
-                                  dDealSize, coff_ * dBaseSize, coff_ * constInfo_.headDim * 2);
+                                  dDealSize, coff_ * dBaseSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
 
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;
@@ -732,11 +735,11 @@ CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &ou
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
-                                 dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
+                                 dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR, coff_ * dDealSize);
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;
         }
@@ -752,11 +755,11 @@ CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &ou
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
-                                 dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
+                                 dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR, coff_ * dDealSize);
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;
         }
@@ -789,19 +792,19 @@ CompressorBlockVectorFullLoad<COMP>::SaveState(const LocalTensor<T> &srcLocal, c
                                                const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
                                                uint32_t dDealSize, uint32_t dBaseSize, uint32_t stateIdx)
 {
-    uint32_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
+    uint64_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dBaseSize;
 
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
-        uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
+        uint64_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, (uint64_t)cmpRatio_);
         uint32_t writeSeqStartIdx = compressSeqIdx > (coff_ - 1) * cmpRatio_ ?
                                     compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
-        srcBaseOffset += (max(startSeqIdx, writeSeqStartIdx) - startSeqIdx) * coff_ * dBaseSize;
-        startSeqIdx = max(startSeqIdx, writeSeqStartIdx);
+        srcBaseOffset += (max(startSeqIdx, (uint64_t)writeSeqStartIdx) - startSeqIdx) * coff_ * dBaseSize;
+        startSeqIdx = max(startSeqIdx, (uint64_t)writeSeqStartIdx);
     }
 
     if constexpr (COMP::coff == COFF::OVERLAP) {
@@ -829,7 +832,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
     // 填充右边
     if (sliceInfo.headHolderSeqCnt > 0) {
         // 整个batch的第一块
-        uint32_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, cmpRatio_);
+        uint64_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_);
         uint32_t endSeqIdx = sliceInfo.bStartPos;
         uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
         if constexpr (COMP::coff == Compressor::COFF::OVERLAP) {
@@ -852,9 +855,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
             uint32_t startSeqIdx =
                 sliceInfo.bStartPos < cmpRatio_ ?
                     0 :
-                    Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, cmpRatio_) - cmpRatio_;
+                    Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
             uint32_t endSeqIdx =
-                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, cmpRatio_) -
+                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) -
                         cmpRatio_,
                     sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
@@ -899,10 +902,10 @@ CompressorBlockVectorFullLoad<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLo
                                                      const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
                                                      uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint32_t curSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt;
-    uint32_t totalSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.bSeqUsed;
+    uint64_t curSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt;
+    uint64_t totalSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.bSeqUsed;
     if (!loopInfo.isCoreRowLast || !loopInfo.isCoreLoopLast || !sliceInfo.isLast || totalSeqLen < cmpRatio_ ||
-        curSeqLen > Trunc(totalSeqLen, cmpRatio_) - cmpRatio_) {
+        curSeqLen > Trunc(totalSeqLen, (uint64_t)cmpRatio_) - cmpRatio_) {
         return;
     }
     uint32_t srcSingleRowElemNum = dDealSize * coff_;
