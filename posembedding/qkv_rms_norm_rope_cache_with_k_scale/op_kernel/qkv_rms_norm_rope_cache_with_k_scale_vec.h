@@ -427,10 +427,11 @@ private:
     __aicore__ inline void ScatterVCache(const TileParam &tile, const AivSlice &slice)
     {
         DataCopyExtParams copyParams;
-        copyParams.blockCount = 1U;
+        copyParams.blockCount = tile.vHeadSize;
         copyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
         copyParams.srcStride = 0U;
-        copyParams.dstStride = 0U;
+        copyParams.dstStride =
+            (tilingData_->cacheStrideHead - tilingData_->cacheStrideToken) * sizeof(fp8_e4m3fn_t);
         copyParams.rsv = 0U;
 
         const LocalTensor<fp8_e4m3fn_t> vOut =
@@ -441,13 +442,10 @@ private:
             const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
             const uint32_t blockId = slot / tilingData_->blockSize;
             const uint32_t blockOffset = slot % tilingData_->blockSize;
-            for (uint32_t headIdx = 0U; headIdx < tile.vHeadSize; ++headIdx) {
-                const uint32_t vHead = tile.vHeadOffset + headIdx;
-                const uint32_t ubOffset = (tokenIdx * tile.vHeadSize + headIdx) * tilingData_->headDim;
-                const uint32_t gmOffset = blockId * tilingData_->cacheStrideBlock +
-                    vHead * tilingData_->cacheStrideHead + blockOffset * tilingData_->cacheStrideToken;
-                DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
-            }
+            const uint32_t ubOffset = tokenIdx * tile.vHeadSize * tilingData_->headDim;
+            const uint32_t gmOffset = blockId * tilingData_->cacheStrideBlock +
+                tile.vHeadOffset * tilingData_->cacheStrideHead + blockOffset * tilingData_->cacheStrideToken;
+            DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
         }
     }
 
@@ -480,19 +478,36 @@ private:
 
     __aicore__ inline void ScatterQkOutputs(const TileParam &tile, const AivSlice &slice)
     {
-        DataCopyExtParams qkCopyParams;
-        qkCopyParams.blockCount = 1U;
-        qkCopyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
-        qkCopyParams.srcStride = 0U;
-        qkCopyParams.dstStride = 0U;
-        qkCopyParams.rsv = 0U;
+        DataCopyExtParams qCopyParams;
+        qCopyParams.blockCount = tilingData_->numQHeads;
+        qCopyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
+        qCopyParams.srcStride = 0U;
+        qCopyParams.dstStride = 0U;
+        qCopyParams.rsv = 0U;
 
-        DataCopyExtParams scaleCopyParams;
-        scaleCopyParams.blockCount = 1U;
-        scaleCopyParams.blockLen = sizeof(float);
-        scaleCopyParams.srcStride = 0U;
-        scaleCopyParams.dstStride = 0U;
-        scaleCopyParams.rsv = 0U;
+        DataCopyExtParams kCopyParams;
+        kCopyParams.blockCount = tilingData_->numKHeads;
+        kCopyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
+        kCopyParams.srcStride = 0U;
+        kCopyParams.dstStride =
+            (tilingData_->cacheStrideHead - tilingData_->cacheStrideToken) * sizeof(fp8_e4m3fn_t);
+        kCopyParams.rsv = 0U;
+
+        DataCopyExtParams qScaleCopyParams;
+        qScaleCopyParams.blockCount = tilingData_->numQHeads;
+        qScaleCopyParams.blockLen = sizeof(float);
+        qScaleCopyParams.srcStride =
+            (QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) * sizeof(float);
+        qScaleCopyParams.dstStride = 0U;
+        qScaleCopyParams.rsv = 0U;
+
+        DataCopyExtParams kScaleCopyParams;
+        kScaleCopyParams.blockCount = tilingData_->numKHeads;
+        kScaleCopyParams.blockLen = sizeof(float);
+        kScaleCopyParams.srcStride =
+            (QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) * sizeof(float);
+        kScaleCopyParams.dstStride = (tilingData_->blockSize - 1U) * sizeof(float);
+        kScaleCopyParams.rsv = 0U;
 
         const LocalTensor<float> qkAfterCube =
             outputDbPoolUb_[activeBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
@@ -502,31 +517,26 @@ private:
             slotMappingDbPoolUb_[activeBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
         const uint32_t qLocalRows = slice.tokenSize * tilingData_->numQHeads;
         for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
+            const uint32_t qRowIdx = tokenIdx * tilingData_->numQHeads;
+            const uint32_t qUbOffset = qRowIdx * tilingData_->headDim;
+            const uint32_t qGmOffset =
+                (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads * tilingData_->headDim;
+            const uint32_t qScaleOffset = (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads;
+            DataCopyPad(qOutGm_[qGmOffset], qkFp8[qUbOffset], qCopyParams);
+            DataCopyPad(qScaleGm_[qScaleOffset],
+                qkScale[qRowIdx * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS], qScaleCopyParams);
+
             const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
             const uint32_t blockId = slot / tilingData_->blockSize;
             const uint32_t blockOffset = slot % tilingData_->blockSize;
-            for (uint32_t qHead = 0U; qHead < tilingData_->numQHeads; ++qHead) {
-                const uint32_t rowIdx = tokenIdx * tilingData_->numQHeads + qHead;
-                const uint32_t ubOffset = rowIdx * tilingData_->headDim;
-                const uint32_t qGmOffset =
-                    (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads * tilingData_->headDim +
-                    qHead * tilingData_->headDim;
-                const uint32_t qScaleOffset = (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads + qHead;
-                DataCopyPad(qOutGm_[qGmOffset], qkFp8[ubOffset], qkCopyParams);
-                DataCopyPad(qScaleGm_[qScaleOffset],
-                    qkScale[rowIdx * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS], scaleCopyParams);
-            }
-            for (uint32_t kHead = 0U; kHead < tilingData_->numKHeads; ++kHead) {
-                const uint32_t rowIdx = qLocalRows + tokenIdx * tilingData_->numKHeads + kHead;
-                const uint32_t ubOffset = rowIdx * tilingData_->headDim;
-                const uint32_t kCacheOffset = blockId * tilingData_->cacheStrideBlock +
-                    kHead * tilingData_->cacheStrideHead + blockOffset * tilingData_->cacheStrideToken;
-                const uint32_t kScaleOffset = blockId * tilingData_->numKHeads * tilingData_->blockSize +
-                    kHead * tilingData_->blockSize + blockOffset;
-                DataCopyPad(kCacheOutGm_[kCacheOffset], qkFp8[ubOffset], qkCopyParams);
-                DataCopyPad(kScaleCacheOutGm_[kScaleOffset],
-                    qkScale[rowIdx * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS], scaleCopyParams);
-            }
+            const uint32_t kRowIdx = qLocalRows + tokenIdx * tilingData_->numKHeads;
+            const uint32_t kUbOffset = kRowIdx * tilingData_->headDim;
+            const uint32_t kCacheOffset =
+                blockId * tilingData_->cacheStrideBlock + blockOffset * tilingData_->cacheStrideToken;
+            const uint32_t kScaleOffset = blockId * tilingData_->numKHeads * tilingData_->blockSize + blockOffset;
+            DataCopyPad(kCacheOutGm_[kCacheOffset], qkFp8[kUbOffset], kCopyParams);
+            DataCopyPad(kScaleCacheOutGm_[kScaleOffset],
+                qkScale[kRowIdx * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS], kScaleCopyParams);
         }
     }
 
