@@ -902,39 +902,11 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     return ge::GRAPH_SUCCESS;
 }
 
-static void SetOutputShapeRanges(gert::InferShapeRangeContext *context, gert::StorageShape *expanded_x,
-                                 gert::StorageShape *expanded_row_idx, gert::StorageShape *count,
-                                 gert::StorageShape *expanded_scale)
+static void SetExpandedScaleShapeRanges(gert::InferShapeRangeContext *context, int64_t quantMode)
 {
-    if (expanded_x->GetMin() != nullptr && expanded_x->GetMax() != nullptr) {
-        expanded_x->GetMin()->SetDimNum(DIM_TWO);
-        expanded_x->GetMax()->SetDimNum(DIM_TWO);
-        for (size_t i = 0; i < DIM_TWO; i++) {
-            expanded_x->GetMin()->SetDim(i, 0);
-            expanded_x->GetMax()->SetDim(i, -1);
-        }
-    }
-
-    if (expanded_row_idx->GetMin() != nullptr && expanded_row_idx->GetMax() != nullptr) {
-        expanded_row_idx->GetMin()->SetDimNum(DIM_ONE);
-        expanded_row_idx->GetMax()->SetDimNum(DIM_ONE);
-        expanded_row_idx->GetMin()->SetDim(0, 0);
-        expanded_row_idx->GetMax()->SetDim(0, -1);
-    }
-
-    if (count->GetMin() != nullptr && count->GetMax() != nullptr) {
-        count->GetMin()->SetDimNum(DIM_ONE);
-        count->GetMax()->SetDimNum(DIM_ONE);
-        count->GetMin()->SetDim(0, 0);
-        count->GetMax()->SetDim(0, -1);
-    }
+    auto expanded_scale = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE);
 
     if (expanded_scale->GetMin() != nullptr && expanded_scale->GetMax() != nullptr) {
-        const auto *attrsPtr = context->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context, attrsPtr);
-        const int64_t *quantModePtr = attrsPtr->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
-        OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
-        int64_t quantMode = *quantModePtr;
 
         size_t dimNum = DIM_ONE;
         if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
@@ -956,10 +928,13 @@ static void SetOutputShapeRanges(gert::InferShapeRangeContext *context, gert::St
     }
 }
 
-static void LogShapeRangeInfo(gert::InferShapeRangeContext *context, gert::StorageShape *expanded_x,
-                              gert::StorageShape *expanded_row_idx, gert::StorageShape *count,
-                              gert::StorageShape *expanded_scale, const char *phase)
+static void LogShapeRangeInfo(gert::InferShapeRangeContext *context, const char *phase)
 {
+    auto expanded_x = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X);
+    auto expanded_row_idx = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_ROW_IDX);
+    auto count = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPERT_TOKEN_CUMSUM_OR_COUNT);
+    auto expanded_scale = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE);
+
     OP_LOGD(context, "%s InferShapeRange, expanded_x->GetMin() = %s", phase,
             Ops::Base::ToString(*(expanded_x->GetMin())).c_str());
     OP_LOGD(context, "%s InferShapeRange, expanded_x->GetMax() = %s", phase,
@@ -991,11 +966,39 @@ static ge::graphStatus InferShapeRange4MoeInitRoutingV3(gert::InferShapeRangeCon
     auto expanded_scale = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE);
     OP_CHECK_NULL_WITH_CONTEXT(context, expanded_scale);
 
-    LogShapeRangeInfo(context, expanded_x, expanded_row_idx, count, expanded_scale, "Before");
+    LogShapeRangeInfo(context, "Before");
     
-    SetOutputShapeRanges(context, expanded_x, expanded_row_idx, count, expanded_scale);
+    if (expanded_x->GetMin() != nullptr && expanded_x->GetMax() != nullptr) {
+        expanded_x->GetMin()->SetDimNum(DIM_TWO);
+        expanded_x->GetMax()->SetDimNum(DIM_TWO);
+        for (size_t i = 0; i < DIM_TWO; i++) {
+            expanded_x->GetMin()->SetDim(i, 0);
+            expanded_x->GetMax()->SetDim(i, -1);
+        }
+    }
 
-    LogShapeRangeInfo(context, expanded_x, expanded_row_idx, count, expanded_scale, "After");
+    if (expanded_row_idx->GetMin() != nullptr && expanded_row_idx->GetMax() != nullptr) {
+        expanded_row_idx->GetMin()->SetDimNum(DIM_ONE);
+        expanded_row_idx->GetMax()->SetDimNum(DIM_ONE);
+        expanded_row_idx->GetMin()->SetDim(0, 0);
+        expanded_row_idx->GetMax()->SetDim(0, -1);
+    }
+
+    if (count->GetMin() != nullptr && count->GetMax() != nullptr) {
+        count->GetMin()->SetDimNum(DIM_ONE);
+        count->GetMax()->SetDimNum(DIM_ONE);
+        count->GetMin()->SetDim(0, 0);
+        count->GetMax()->SetDim(0, -1);
+    }
+
+    const auto *attrsPtr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrsPtr);
+    const int64_t *quantModePtr = attrsPtr->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
+    int64_t quantMode = *quantModePtr;
+    SetExpandedScaleShapeRanges(context, quantMode);
+
+    LogShapeRangeInfo(context, "After");
 
     OP_LOGD(context, "End to do MoeInitRoutingV3InferRange.");
     return ge::GRAPH_SUCCESS;
