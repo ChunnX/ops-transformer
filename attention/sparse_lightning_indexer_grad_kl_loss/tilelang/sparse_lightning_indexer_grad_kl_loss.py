@@ -122,15 +122,20 @@ def check_param_valid(
 
 
 # ==============================================================================
-# Kernel 1: Cube1 - Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
-# Following AscendC arch22: batch all query heads into one gemm call.
-# Matmul1: query(N1, DQuery) @ gatherKey(K, DQuery)^T -> bmm1Res(N1, K), M=N1
-# Matmul2: queryIndex(Nidx1, DQueryIndex) @ gatherKeyIndex(K, DQueryIndex)^T -> bmm2Res(Nidx1, K), M=Nidx1
+# Single Kernel: CV-separated architecture
+# C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
+# V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
+# C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
+# V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
-@tilelang.jit(out_idx=[-2, -1], workspace_idx=[], pass_configs=pass_configs)
-def tilelang_cube1_bsnd(
+@tilelang.jit(
+    out_idx=[-2, -3, -4],
+    workspace_idx=[7, 8, 9, 10, 11, 15],
+    pass_configs=pass_configs,
+)
+def tilelang_grad_kl_loss_single_kernel(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-    input_dtype, calc_dtype
+    input_dtype, calc_dtype, scale_value
 ):
     s1_block = BLOCK_M
     n_block = BLOCK_N
@@ -140,6 +145,8 @@ def tilelang_cube1_bsnd(
     n_num = K // n_block
     d_num_query = DQuery // k_block
     d_num_query_index = DQueryIndex // k_block
+    vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
+    g_num = Nidx1 // vector_baseg
 
     @T.prim_func
     def main(
@@ -147,8 +154,18 @@ def tilelang_cube1_bsnd(
         GatherKey: T.Tensor((B, S1, K, DQuery), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        Weights: T.Tensor((B, S1, Nidx1), input_dtype),
+        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
+        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
         bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),
         bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),
+        PReduced: T.Tensor((B, S1, K), calc_dtype),
+        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
+        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
+        dWeight: T.Tensor((B, S1, Nidx1), input_dtype),
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
+        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // s1_tile_num
@@ -156,11 +173,12 @@ def tilelang_cube1_bsnd(
             s1_start = m * s1_block
             s1_end = T.min(s1_start + s1_block, S1)
 
+            # ============================================================
+            # C scope 1: Matmul1 + Matmul2
+            # ============================================================
             with T.Scope("C"):
                 T.barrier_all()
 
-                # --- Matmul1: query(N1, DQuery) @ gatherKey(K, DQuery)^T -> bmm1Res(N1, K) ---
-                # gemm: A(N1, k_block) @ B(n_block, k_block)^T -> C(N1, n_block)
                 Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
                 GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
@@ -187,8 +205,6 @@ def tilelang_cube1_bsnd(
                         )
                         T.barrier_all()
 
-                # --- Matmul2: queryIndex(Nidx1, DQueryIndex) @ gatherKeyIndex(K, DQueryIndex)^T -> bmm2Res(Nidx1, K) ---
-                # gemm: A(Nidx1, k_block) @ B(n_block, k_block)^T -> C(Nidx1, n_block)
                 QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
                 GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
@@ -218,51 +234,283 @@ def tilelang_cube1_bsnd(
 
                 T.set_cross_flag("FIX", 1)
 
+            # ============================================================
+            # V scope 1: Compute softmaxI, P_reduced, dWeight, reluGrad
+            # ============================================================
+            # All vector ops on FP32 buffers. No range() - use T.serial().
+            # P_reduced, reduceSumY, softmaxI stored in GM workspace.
             with T.Scope("V"):
                 T.wait_cross_flag(1)
 
-    return main
+                bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
+                bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+
+                p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                rsy_reduce_ub = T.alloc_ub(n_block, calc_dtype)
+
+                diff_ub = T.alloc_ub(n_block, calc_dtype)
+                p_reduced_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                dw_accum_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                rg_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
+                dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+
+                sm_max_ub = T.alloc_ub(G, calc_dtype)
+                sm_sum_ub = T.alloc_ub(G, calc_dtype)
 
 
-# ==============================================================================
-# Kernel 2: Cube2 - Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
-# Matmul4: reluGrad(Nidx1, K) @ gatherKeyIndex(K, DQueryIndex)^T -> dQueryIndex(Nidx1, DQueryIndex)
-# M=Nidx1, N=DQueryIndex, K_axis=K
-# ==============================================================================
-@tilelang.jit(out_idx=[-1], workspace_idx=[], pass_configs=pass_configs)
-def tilelang_cube2_bsnd(
-    B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-    input_dtype, calc_dtype
-):
-    s1_block = BLOCK_M
-    n_block = BLOCK_N
-    k_block = BLOCK_K
-    s1_tile_num = ceil_div(S1, s1_block)
-    block_num = B * s1_tile_num
-    n_num = K // n_block
-    d_num_query_index = DQueryIndex // k_block
+                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_2d_ub = T.alloc_ub((1, n_block), calc_dtype)
+                rsy_max_ub = T.alloc_ub(1, calc_dtype)
+                rsy_sum_ub = T.alloc_ub(1, calc_dtype)
+                rsy_chunk_max_ub = T.alloc_ub(1, calc_dtype)
+                rsy_chunk_sum_ub = T.alloc_ub(1, calc_dtype)
+                max_pair_ub = T.alloc_ub((1, 2), calc_dtype)
 
-    @T.prim_func
-    def main(
-        ReluGrad: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-    ):
-        with T.Kernel(block_num, is_npu=True) as (cid, vid):
-            bz = cid // s1_tile_num
-            m = cid % s1_tile_num
-            s1_start = m * s1_block
-            s1_end = T.min(s1_start + s1_block, S1)
+                for s1_id in T.serial(s1_start, s1_end):
+                    T.barrier_all()
+                    T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
+                    T.barrier_all()
+                    T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
+                    T.barrier_all()
 
+                    # --- Pass 1: compute P_reduced and reduceSumY per K chunk ---
+                    # Write results directly to GM workspace
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            bmm1Res[bz, s1_id, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
+                            bmm1_ub,
+                        )
+                        T.barrier_all()
+
+                        # P[g, k] = exp(bmm1[g,k] * scale - sm_max[g]) / sm_sum[g]
+                        # P_reduced[k] = (1/G) * sum_g P[g,k]
+                        T.tile.fill(p_reduced_tmp_ub, 0)
+                        T.barrier_all()
+
+                        for g_id in T.serial(G):
+                            T.barrier_all()
+                            T.tile.mul(bmm1_ub[g_id, :], bmm1_ub[g_id, :], scale_value)
+                            T.barrier_all()
+                            T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
+                            T.barrier_all()
+                            T.tile.exp(bmm1_ub[g_id, :], bmm1_ub[g_id, :])
+                            T.barrier_all()
+                            T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
+                            T.barrier_all()
+                            T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
+                            T.barrier_all()
+
+                        T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                        T.barrier_all()
+
+                        # Write P_reduced chunk to GM
+                        T.copy(
+                            p_reduced_tmp_ub,
+                            PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                        )
+                        T.barrier_all()
+
+                        # reduceSumY: sum_g(reluRes[g,k] * weight[g])
+                        T.copy(
+                            bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
+                            bmm2_ub,
+                        )
+                        T.barrier_all()
+
+                        T.tile.fill(rsy_reduce_ub, 0)
+                        T.barrier_all()
+
+                        for g_id in T.serial(g_num):
+                            T.barrier_all()
+                            T.copy(
+                                Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
+                                weight_half_ub,
+                            )
+                            T.barrier_all()
+                            T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                            T.barrier_all()
+                            T.tile.fill(rsy_tmp_ub, 0)
+                            T.barrier_all()
+                            for i in T.serial(vector_baseg):
+                                T.barrier_all()
+                                T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
+                                T.barrier_all()
+                            T.barrier_all()
+                            for i in T.serial(vector_baseg):
+                                T.barrier_all()
+                                T.tile.add(rsy_reduce_ub, rsy_reduce_ub, rsy_tmp_ub[i, :])
+                                T.barrier_all()
+
+                        T.barrier_all()
+                        # Write reduceSumY chunk to GM
+                        T.copy(
+                            rsy_reduce_ub,
+                            ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                        )
+                        T.barrier_all()
+
+                    # --- Global softmax on reduceSumY -> softmaxI ---
+                    # Process per K chunk: find global max, then exp/sub/sum
+                    # Step 1: find global max of reduceSumY across all K chunks
+                    T.tile.fill(rsy_max_ub, -1e30)
+                    T.barrier_all()
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            rsy_chunk_ub,
+                        )
+                        T.barrier_all()
+                        # Copy 1D chunk to 2D buffer for reduce_max
+                        T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
+                        T.barrier_all()
+                        T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 0)
+                        T.barrier_all()
+                        # Update global max: max(old_max, chunk_max)
+                        T.copy(rsy_max_ub, max_pair_ub[0, 0:1])
+                        T.barrier_all()
+                        T.copy(rsy_chunk_max_ub, max_pair_ub[0, 1:2])
+                        T.barrier_all()
+                        T.reduce_max(max_pair_ub, rsy_max_ub, 1)
+                        T.barrier_all()
+
+                    # Step 2: exp(reduceSumY - max) and accumulate sum, write to SoftmaxI GM
+                    T.tile.fill(rsy_sum_ub, 0)
+                    T.barrier_all()
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            rsy_chunk_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
+                        T.barrier_all()
+                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                        T.barrier_all()
+                        # Write exp result to SoftmaxI GM (will divide by sum later)
+                        T.copy(
+                            rsy_chunk_ub,
+                            SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                        )
+                        T.barrier_all()
+                        # Accumulate sum: copy to 2D and reduce_sum
+                        T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
+                        T.barrier_all()
+                        T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 0)
+                        T.barrier_all()
+                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+                        T.barrier_all()
+
+                    # Step 3: divide SoftmaxI by sum (in-place on GM via UB)
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            rsy_chunk_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                        T.barrier_all()
+                        T.copy(
+                            rsy_chunk_ub,
+                            SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                        )
+                        T.barrier_all()
+
+                    # --- Pass 2: compute dWeight and reluGrad ---
+                    for g_id in T.serial(g_num):
+                        T.barrier_all()
+                        T.copy(
+                            Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
+                            weight_half_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                        T.barrier_all()
+
+                        T.tile.fill(dw_accum_ub, 0)
+                        T.barrier_all()
+
+                        for n_idx in T.serial(n_num):
+                            T.barrier_all()
+                            T.copy(
+                                bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
+                                bmm2_ub,
+                            )
+                            T.barrier_all()
+
+                            # Load softmaxI and P_reduced chunks from GM
+                            T.copy(
+                                SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                                softmax_i_chunk_ub,
+                            )
+                            T.barrier_all()
+                            T.copy(
+                                PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                                p_reduced_chunk_ub,
+                            )
+                            T.barrier_all()
+
+                            # diff[k] = softmaxI[k] - P_reduced[k]
+                            T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_chunk_ub)
+                            T.barrier_all()
+
+                            # dw_chunk[g, k] = diff[k] * reluRes[g, k]
+                            # rg_ub[g, k] = weight[g] * diff[k] * reluRes[g, k]
+                            for i in T.serial(vector_baseg):
+                                T.barrier_all()
+                                g_row = g_id * vector_baseg + i
+                                T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
+                                T.barrier_all()
+                                T.tile.mul(rg_ub[i, :], dw_chunk_ub[i, :], weight_ub[i])
+                                T.barrier_all()
+
+                            # dWeight accumulation
+                            T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                            T.barrier_all()
+                            T.tile.add(dw_accum_ub, dw_accum_ub, dw_reduce_ub)
+                            T.barrier_all()
+
+                            # Write reluGrad chunk to GM (cast FP32->FP16)
+                            T.tile.cast(rg_half_ub, rg_ub, "CAST_ROUND", vector_baseg * n_block)
+                            T.barrier_all()
+                            for i in T.serial(vector_baseg):
+                                T.barrier_all()
+                                g_row = g_id * vector_baseg + i
+                                T.copy(
+                                    rg_half_ub[i, :],
+                                    reluGradRes[bz, s1_id, g_row, n_idx * n_block:(n_idx + 1) * n_block],
+                                )
+                                T.barrier_all()
+
+                        # Write dWeight for this g_id group (cast FP32->FP16)
+                        T.tile.cast(dw_half_ub, dw_accum_ub, "CAST_ROUND", vector_baseg)
+                        T.barrier_all()
+                        T.copy(
+                            dw_half_ub,
+                            dWeight[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
+                        )
+                        T.barrier_all()
+
+                T.set_cross_flag("V", 2)
+
+            # ============================================================
+            # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
+            # ============================================================
             with T.Scope("C"):
-                T.barrier_all()
+                T.wait_cross_flag(2)
 
-                # Matmul4: reluGrad(Nidx1, K) @ gatherKeyIndex(K, DQueryIndex)^T
-                # gemm: A(Nidx1, n_block) @ B(n_block, k_block)^T -> C(Nidx1, k_block)
-                # K_axis split by n_block, N_axis split by k_block
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-                GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                GKI4_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
@@ -270,16 +518,16 @@ def tilelang_cube2_bsnd(
                         for n_idx in T.serial(n_num):
                             T.barrier_all()
                             T.copy(
-                                ReluGrad[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
+                                reluGradRes[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 RG_L1,
                             )
                             T.barrier_all()
                             T.copy(
                                 GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
-                                GKI_L1,
+                                GKI4_L1,
                             )
                             T.barrier_all()
-                            T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
+                            T.gemm_v0(RG_L1, GKI4_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                             T.barrier_all()
                         T.copy(
                             DQ_L0C,
@@ -287,10 +535,17 @@ def tilelang_cube2_bsnd(
                         )
                         T.barrier_all()
 
-            # Cast dQueryIndex_ws FP32 -> FP16
+                T.set_cross_flag("FIX", 3)
+
+            # ============================================================
+            # V scope 2: Cast dQueryIndex FP32 -> FP16
+            # ============================================================
             with T.Scope("V"):
+                T.wait_cross_flag(3)
+
                 dq_fp32_ub = T.alloc_ub(Nidx1 * k_block, calc_dtype)
                 dq_fp16_ub = T.alloc_ub(Nidx1 * k_block, input_dtype)
+
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.barrier_all()
@@ -317,97 +572,53 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     device = key.device
     dtype = key.dtype
 
-    # sparse_indices: (B, S1, Nidx2, K), Nidx2=1
-    sparse_idx_3d = sparse_indices[:, :, 0, :]  # (B, S1, K)
+    sparse_idx_3d = sparse_indices[:, :, 0, :]
     sparse_idx_3d = sparse_idx_3d.clamp(min=0)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
-    # Gather key: (B, S2, N2, DQuery) -> (B, S1, K, DQuery)
-    # For each (b, s1, k), gather key[b, sparse_indices[b,s1,k], :, :]
-    gather_key = key[batch_idx, sparse_idx_3d, 0, :]  # (B, S1, K, DQuery)
-
-    # Gather keyIndex: (B, S2, Nidx2, DQueryIndex) -> (B, S1, K, DQueryIndex)
-    gather_key_index = key_index[batch_idx, sparse_idx_3d, 0, :]  # (B, S1, K, DQueryIndex)
+    gather_key = key[batch_idx, sparse_idx_3d, 0, :]
+    gather_key_index = key_index[batch_idx, sparse_idx_3d, 0, :]
 
     return gather_key.contiguous(), gather_key_index.contiguous()
 
 
 # ==============================================================================
-# Python-layer vector computation (arch22 reference)
+# Python-layer vector computation (arch22 reference) - kept as fallback
 # ==============================================================================
 def _compute_vector_outputs(
     bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
     scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
     input_dtype,
 ):
-    """
-    Compute softmaxI, P_reduced, dWeight, reluGrad in Python (arch22 logic).
+    bmm1 = bmm1_res * scale_value
 
-    bmm1_res: (B, S1, N1, K) float32 - query @ gatherKey^T
-    bmm2_res: (B, S1, Nidx1, K) float32 - ReLU(queryIndex @ gatherKeyIndex^T)
-    weights: (B, S1, Nidx1) float16
-    softmax_max: (B, N2, S1, G) float32
-    softmax_sum: (B, N2, S1, G) float32
-    scale_value: float
+    sm_max = softmax_max.squeeze(1)
+    sm_sum = softmax_sum.squeeze(1)
 
-    Returns:
-        d_weights: (B, S1, Nidx1) float32
-        relu_grad: (B, S1, Nidx1, K) float16
-        kl_loss: float32 scalar
-    """
-    # P = softmax(bmm1Res * scale) per (b, s1, g)
-    # bmm1_res: (B, S1, N1, K) where N1 = N2 * G = G (since N2=1)
-    # Reshape to (B, S1, G, K) for per-group softmax
-    bmm1 = bmm1_res * scale_value  # (B, S1, N1, K)
+    P = torch.exp(bmm1 - sm_max.unsqueeze(-1)) / sm_sum.unsqueeze(-1)
 
-    # softmax_max/sum: (B, N2, S1, G) -> (B, S1, G) since N2=1
-    sm_max = softmax_max.squeeze(1)  # (B, S1, G)
-    sm_sum = softmax_sum.squeeze(1)  # (B, S1, G)
+    P_reduced = P.mean(dim=2)
 
-    # P[b, s1, g, k] = exp(bmm1[b,s1,g,k] - sm_max[b,s1,g]) / sm_sum[b,s1,g]
-    # bmm1 shape: (B, S1, G, K), sm_max shape: (B, S1, G) -> unsqueeze to (B, S1, G, 1)
-    P = torch.exp(bmm1 - sm_max.unsqueeze(-1)) / sm_sum.unsqueeze(-1)  # (B, S1, G, K)
+    relu_res = bmm2_res
 
-    # P_reduced[k] = (1/G) * sum_g P[g, k]
-    P_reduced = P.mean(dim=2)  # (B, S1, K)
+    w = weights.float().unsqueeze(-1)
 
-    # softmaxI = softmax(sum_g(ReLU(bmm2Res[g,k]) * weight[g]))
-    # bmm2_res already has ReLU applied (enable_relu=True in kernel)
-    # bmm2_res: (B, S1, Nidx1, K) - this is reluRes
-    relu_res = bmm2_res  # (B, S1, Nidx1, K)
+    weighted_relu = relu_res * w
 
-    # weight: (B, S1, Nidx1) -> unsqueeze to (B, S1, Nidx1, 1)
-    w = weights.float().unsqueeze(-1)  # (B, S1, Nidx1, 1)
+    reduce_sum_y = weighted_relu.sum(dim=2)
 
-    # weighted_relu = reluRes * weight: (B, S1, Nidx1, K)
-    weighted_relu = relu_res * w  # (B, S1, Nidx1, K)
+    rsy_max = reduce_sum_y.max(dim=-1, keepdim=True).values
+    rsy_exp = torch.exp(reduce_sum_y - rsy_max)
+    rsy_sum = rsy_exp.sum(dim=-1, keepdim=True)
+    softmax_i = rsy_exp / rsy_sum
 
-    # reduceSumY[k] = sum_g(weighted_relu[g, k]): sum over Nidx1 (g) dimension
-    reduce_sum_y = weighted_relu.sum(dim=2)  # (B, S1, K)
+    diff = softmax_i - P_reduced
+    d_weights = (diff.unsqueeze(2) * relu_res).sum(dim=-1)
 
-    # softmaxI = softmax(reduceSumY) per (b, s1)
-    # Standard softmax: exp(x - max) / sum(exp(x - max))
-    rsy_max = reduce_sum_y.max(dim=-1, keepdim=True).values  # (B, S1, 1)
-    rsy_exp = torch.exp(reduce_sum_y - rsy_max)  # (B, S1, K)
-    rsy_sum = rsy_exp.sum(dim=-1, keepdim=True)  # (B, S1, 1)
-    softmax_i = rsy_exp / rsy_sum  # (B, S1, K)
-
-    # dWeight[g] = sum_k((softmaxI[k] - P_reduced[k]) * reluRes[g, k])
-    diff = softmax_i - P_reduced  # (B, S1, K)
-    # relu_res: (B, S1, Nidx1, K), diff: (B, S1, K) -> unsqueeze diff
-    d_weights = (diff.unsqueeze(2) * relu_res).sum(dim=-1)  # (B, S1, Nidx1)
-
-    # reluGrad[g, k] = weight[g] * (softmaxI[k] - P_reduced[k]) * I(reluRes[g,k] > 0)
-    # Since reluRes = ReLU(bmm2Res), reluRes >= 0 always. I(reluRes > 0) = I(reluRes > 0)
-    relu_mask = (relu_res > 0).float()  # (B, S1, Nidx1, K)
-    relu_grad = w * diff.unsqueeze(2) * relu_mask  # (B, S1, Nidx1, K)
+    relu_mask = (relu_res > 0).float()
+    relu_grad = w * diff.unsqueeze(2) * relu_mask
     relu_grad_half = relu_grad.to(input_dtype)
 
-    # KL Loss = sum over all elements of (softmaxI * log(softmaxI / P_reduced))
-    # This is computed per (b, s1) as sum_k(softmaxI[k] * (log(softmaxI[k]) - log(P_reduced[k])))
-    # Use log_softmax for numerical stability
-    # Note: P_reduced is already a probability distribution, softmaxI is too
-    # KL = sum_k(softmaxI[k] * log(softmaxI[k] / P_reduced[k]))
     eps = 1e-10
     kl_loss = (softmax_i * (torch.log(softmax_i + eps) - torch.log(P_reduced + eps))).sum()
 
@@ -417,25 +628,18 @@ def _compute_vector_outputs(
 # ==============================================================================
 # ScatterAdd: compute dKeyIndex from reluGrad and queryIndex
 # ==============================================================================
-def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx2, K, DQueryIndex, device, dtype):
-    """
-    scatterAdd = reluGrad^T @ queryIndex per (b, s1)
-    Then scatter into dKeyIndex using sparseIndices.
-    """
-    relu_grad_fp32 = relu_grad.float()  # (B, S1, Nidx1, K)
-    query_index_fp32 = query_index.float()  # (B, S1, Nidx1, DQueryIndex)
+def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
+    relu_grad_fp32 = relu_grad.float()
+    query_index_fp32 = query_index.float()
 
-    # scatterAdd[b, s1] = reluGrad[b,s1]^T @ queryIndex[b,s1]
-    # relu_grad: (B, S1, Nidx1, K) -> transpose last two -> (B, S1, K, Nidx1)
-    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)  # (B, S1, K, Nidx1)
+    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
     scatter_add = torch.bmm(
         relu_grad_t.reshape(B * S1, K, Nidx1),
         query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
     ).reshape(B, S1, K, DQueryIndex)
 
-    # Scatter into dKeyIndex using sparseIndices
     d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
-    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)  # (B, S1, K)
+    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
 
     for b in range(B):
         for s in range(S1):
@@ -509,67 +713,64 @@ def sparse_lightning_indexer_grad_kl_loss(
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
 
-        # Step 1: Gather preprocessing
         gather_key, gather_key_index = _preprocess_gather(
             key, key_index, sparse_indices,
             B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
         )
 
-        # Step 2: Cube1 kernel - Matmul1 + Matmul2
-        func_cube1 = tilelang_cube1_bsnd(
+        func = tilelang_grad_kl_loss_single_kernel(
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-            input_dtype_str, calc_dtype_str,
+            input_dtype_str, calc_dtype_str, scale_value,
         )
 
-        bmm1_res_out = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
-        bmm2_res_out = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
+        bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
+        bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
+        p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+        reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+        softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
+        d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
+        d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=query.device)
+        relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
 
         torch.npu.synchronize()
-        bmm1_res, bmm2_res = func_cube1(
+        results = func(
             query, gather_key, query_index, gather_key_index,
-            bmm1_res_out, bmm2_res_out,
+            weights, softmax_max, softmax_sum,
+            bmm1_res_ws, bmm2_res_ws,
+            p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
+            d_query_index_out, d_weight_out, relu_grad_out,
+            d_query_index_ws,
         )
         torch.npu.synchronize()
 
-        # Step 3: Python-layer vector computation
-        d_weights, relu_grad, kl_loss = _compute_vector_outputs(
+        d_query_index = results[0]
+        d_weight = results[1]
+        relu_grad = results[2]
+
+        # KL Loss: compute in Python from bmm1_res and bmm2_res
+        bmm1_res = bmm1_res_ws
+        bmm2_res = bmm2_res_ws
+        _, _, kl_loss = _compute_vector_outputs(
             bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
             scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
             input_dtype,
         )
 
-        # Step 4: Cube2 kernel - Matmul4 (dQueryIndex)
-        func_cube2 = tilelang_cube2_bsnd(
-            B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-            input_dtype_str, calc_dtype_str,
-        )
-
-        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-        d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
-
-        torch.npu.synchronize()
-        d_query_index = func_cube2(
-            relu_grad, gather_key_index,
-            d_query_index_ws, d_query_index_out,
-        )
-        torch.npu.synchronize()
-
-        # Step 5: ScatterAdd (dKeyIndex)
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
-            B, S1, S2_pad, Nidx2, K, DQueryIndex,
+            B, S1, S2_pad, Nidx1, Nidx2, K, DQueryIndex,
             query.device, input_dtype,
         )
 
-        # Cast dWeights to original dtype
         if weights_orig_dtype == torch.float32:
-            d_weights = d_weights.float()
+            d_weight = d_weight.float()
         else:
-            d_weights = d_weights.to(input_dtype)
+            d_weight = d_weight.to(input_dtype)
 
         loss_tensor = kl_loss.reshape(1).to(torch.float32).npu()
 
-        return d_query_index, d_key_index, d_weights, loss_tensor
+        return d_query_index, d_key_index, d_weight, loss_tensor
 
     raise ValueError(f"Unsupported layout_query={layout_query} with sparse_mode={sparse_mode}")
 
