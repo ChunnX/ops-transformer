@@ -24,6 +24,6 @@ const aclTensor* MoeFinalizeRoutingV2(
     const aclTensor* x2, const aclTensor* bias, const aclTensor* scales, const aclTensor* expert_idx,
     const aclTensor* x, const aclTensor* alpha1, const aclTensor* alpha2, const aclTensor* v,
     int64_t drop_pad_mode, const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange,
-    const aclIntArray* constantExpertRange, const aclTensor* out, aclOpExecutor *executor);
+    const aclIntArray* constantExpertRange, int64_t k, const aclTensor* out, aclOpExecutor *executor);
 }
 #endif // OP_API_INC_LEVEL0_MOE_FINALIZE_ROUTING_V2_H_

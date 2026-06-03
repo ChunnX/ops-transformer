@@ -29,6 +29,7 @@ static constexpr size_t INDEX_OUT = 0;
 static constexpr size_t SHAPE_SIZE = 2;
 static constexpr size_t INPUT_NUM = 7;
 static constexpr size_t ATTR_DROP_PAD_MODE = 0;
+static constexpr size_t ATTR_K = 4;
 static constexpr int64_t VALUE_MODE_0 = 0;
 static constexpr int64_t VALUE_MODE_1 = 1;
 static constexpr int64_t VALUE_MODE_2 = 2;
@@ -150,6 +151,16 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
     const gert::Shape* expandedSrcToDstRowInputShape = context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX);
     const gert::Shape* scalesInputShape = context->GetOptionalInputShape(INDEX_IN_SCALES);
     int64_t valueDim0 = expandedSrcToDstRowInputShape->GetDim(0);
+
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
+    OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
+    const int64_t k = *kPtr;
+    if (k > 0) {
+        valueDim0 = valueDim0 / k;
+    }
+
     if (scalesInputShape != nullptr) {
         valueDim0 = scalesInputShape->GetDim(0);
     }
