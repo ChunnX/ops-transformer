@@ -768,7 +768,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
             ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
             VToSSync();
-            reduceSumValue += static_cast<uint32_t>(tileHistFp32.GetValue(0));
+            reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
         }
     }
 
