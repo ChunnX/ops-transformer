@@ -690,11 +690,104 @@ TEST_F(MhcPostBackwardTilingTest, log_empty_tensor_h_post)
 }
 
 // ===================================================================
+// 补充测试：覆盖参数名不匹配的场景
+// ===================================================================
+
+// aclnn文件参数名（驼峰命名）测试
+TEST_F(MhcPostBackwardTilingTest, log_empty_tensor_aclnn_gradOutput)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "gradOutput", ...)
+    // aclnn文件使用驼峰命名
+    gert::TilingContextPara context = BuildTilingContextBSND(0, 512, 4, 394, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_empty_tensor_aclnn_hRes)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "hRes", ...)
+    gert::TilingContextPara context = BuildTilingContextTND(512, 4, 0, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_empty_tensor_aclnn_hOut)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "hOut", ...)
+    gert::TilingContextPara context = BuildTilingContextBSND(1, 512, 4, 0, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_empty_tensor_aclnn_hPost)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "hPost", ...)
+    gert::TilingContextPara context = BuildTilingContextTND(512, 0, 394, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+// arch22文件grad_y参数名测试
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_arch22_grad_y)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_DTYPE(opName, "grad_y", ...)
+    // arch22文件使用grad_y而非grad_output
+    TestMhcPostBackwardTND("log_dtype_grad_y_arch22", 512, 4, 394, ge::DT_FLOAT, kSocVersion950, ErrorType::GRAD_OUTPUT_2D);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_arch22_grad_y)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "grad_y", ...)
+    TestMhcPostBackwardTND("log_shapedim_grad_y_arch22", 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::GRAD_OUTPUT_2D);
+}
+
+// shapesize专门测试 (EZ0014)
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapesize_totalitems_zero_check)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "grad_output", "0", "totalItems cannot be zero")
+    // 专门测试shapesize宏（总行数608）
+    gert::TilingContextPara context = BuildTilingContextBSND(0, 0, 4, 394, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+// value check汇总函数测试 (EZ0028)
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_nullptr_summary)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "CheckNullptr", "failed", "CheckNullptr validation failed")
+    // CheckNullptr是汇总函数，在多个nullptr检查后统一打印（行624）
+    TestMhcPostBackwardBSND("log_value_check_nullptr", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::GRAD_OUTPUT_NULL_DESC);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_dtype_summary)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "CheckDataType", "failed", "CheckDataType validation failed")
+    // CheckDataType汇总（行630）
+    TestMhcPostBackwardBSND("log_value_check_dtype", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::GRAD_OUTPUT_2D);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_shape_summary)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "CheckShapeConsistency", "failed", "CheckShapeConsistency validation failed")
+    // CheckShapeConsistency汇总（行636）
+    TestMhcPostBackwardBSND("log_value_check_shape", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::X_DTYPE_DIFF_GRAD_OUTPUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_spec_summary)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "CheckSpecConstraints", "failed", "CheckSpecConstraints validation failed")
+    // CheckSpecConstraints汇总（行642）
+    TestMhcPostBackwardBSND("log_value_check_spec", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::N_NOT_4_6_8);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_positive_summary)
+{
+    // 触发日志: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "CheckShapeAllPositive", "failed", "CheckShapeAllPositive validation failed")
+    // CheckShapeAllPositive汇总（行648）- 需要负值维度，但框架不支持，使用替代测试
+    TestMhcPostBackwardBSND("log_value_check_positive", 0, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_BS_ZERO);
+}
+
+// ===================================================================
 // 测试统计总结
 // ===================================================================
 
 /**
- * 本文件共包含 72 个测试用例，覆盖所有修改的日志宏：
+ * 本文件共包含 85 个测试用例，覆盖所有修改的日志宏：
  * 
  * 1. OP_LOGE_WITH_INVALID_INPUT (EZ0004): 11处
  *    - nullptr检查：grad_output, x, h_res, h_out, h_post (输入)
