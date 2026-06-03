@@ -36,13 +36,13 @@ tensor_list npu_moe_ep_combine(const at::Tensor &context, const at::Tensor &x,
 
     int64_t num_tokens = dst_buffer_slot_idx.size(0);
     int64_t hidden = x.size(1);
+    int64_t top_k = dst_buffer_slot_idx.size(1);
 
     at::Tensor combined_x;
     at::Tensor combined_topk_weights;
 
     combined_x = at::empty({num_tokens, hidden}, x.options());
     if (topk_weights.has_value()) {
-        int64_t top_k = dst_buffer_slot_idx.size(1);
         combined_topk_weights = at::empty({num_tokens, top_k}, x.options().dtype(at::kFloat));
     } else {
         combined_topk_weights = at::Tensor();

@@ -44,9 +44,9 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x,
     int64_t hidden = x_size[1];
     int64_t top_k = 8;
     if (topk_idx.has_value()) {
-        top_k = topk_idx.size(1);
+        top_k = topk_idx.value().size(1);
     } else if (cached_handle_dst_buffer_slot_idx.has_value()) {
-        top_k = cached_handle_dst_buffer_slot_idx.size(1);
+        top_k = cached_handle_dst_buffer_slot_idx.value().size(1);
     }
     int64_t num_local_experts = num_experts / ep_world_size;
     int64_t upper_a = ep_world_size * num_max_tokens_per_rank;

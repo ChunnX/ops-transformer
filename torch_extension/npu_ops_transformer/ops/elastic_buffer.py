@@ -15,6 +15,7 @@ from typing import Optional, Union, Tuple
 from .update_context_by_hccl_channel import update_context_by_hccl_channel
 from .moe_ep_dispatch import npu_moe_ep_dispatch, npu_moe_ep_dispatch_epilogue
 from .moe_ep_combine import npu_moe_ep_combine
+
 _op = torch.ops.npu_ops_transformer
 
 
@@ -62,7 +63,7 @@ class MoEElasticBuffer:
         update_context_by_hccl_channel(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
 
         per_slot_bytes = ((hidden * 2 + 511) // 512) * 512
-        win_need = self.ep_world_size * num_max_tokens_per_rank * per_slot_bytes
+        win_need = int(self.ep_world_size) * num_max_tokens_per_rank * per_slot_bytes
         self._check_hccl_buffsize(win_need)
 
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -109,11 +110,11 @@ class MoEElasticBuffer:
 
         if cached:
             actual_a = handle.recv_src_metadata.shape[0]
-        elif do_cpu_sync:
-            if self._host_pinned_counter is None:
-                from mc2.common.op_kernel.host_pinned_counter import HostPinnedCounter
-                self._host_pinned_counter = HostPinnedCounter()
-            actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
+        # elif do_cpu_sync:
+        #     if self._host_pinned_counter is None:
+        #         from mc2.common.op_kernel.host_pinned_counter import HostPinnedCounter
+        #         self._host_pinned_counter = HostPinnedCounter()
+        #     actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
         else:
             actual_a = self.ep_world_size * nm
 
@@ -181,7 +182,7 @@ class MoEElasticBuffer:
         max_out_dtype_size = 2  # sizeof(bf16)?
         mb_conversion = 1024 * 1024
         per_token_bytes = inline_align(hidden * max_out_dtype_size, win_addr_align)
-        minimum_buffer_size = 2 * ep_world_size * num_max_tokens_per_rank * per_token_bytes
+        minimum_buffer_size = 2 * world_size * num_max_tokens_per_rank * per_token_bytes
         ## hccl按照2*bufferSize大小开设
         ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
 
