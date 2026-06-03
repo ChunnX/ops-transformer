@@ -8,9 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file bandwidth_test_tiling_key.h
- * \brief Bandwidth test tiling key definitions
+ * \brief
  */
  
 #ifndef BANDWIDTH_TEST_TILING_KEY_H
