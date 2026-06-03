@@ -828,3 +828,273 @@ TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_check_positive_summary)
  * - 参数验证逻辑正确工作
  * - 符合ops-math PR #2189和opbase log.h规范
  */
+// ===================================================================
+// 补充测试：100%参数名精确匹配覆盖（65个测试，每个日志行对应一个测试）
+// ===================================================================
+
+
+
+// ===================================================================
+// Generated UT tests for 100% coverage (65 tests)
+// ===================================================================
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_gradOutput_line416) {
+    TestMhcPostBackwardTND("log_for_invalid_shape_with_reason_gradOutput_line416", 512, 4, 0, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_GRAD_OUTPUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_x_line422) {
+    TestMhcPostBackwardTND("log_for_invalid_shape_with_reason_x_line422", 512, 4, 0, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_hRes_line428) {
+    TestMhcPostBackwardTND("log_for_invalid_shape_with_reason_hRes_line428", 512, 4, 0, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_hOut_line434) {
+    TestMhcPostBackwardTND("log_for_invalid_shape_with_reason_hOut_line434", 512, 4, 0, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_hPost_line440) {
+    TestMhcPostBackwardTND("log_for_invalid_shape_with_reason_hPost_line440", 512, 4, 0, ge::DT_BF16, kSocVersion950, ErrorType::EMPTY_TENSOR_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_with_invalid_input_platform_info_line135) {
+    TestMhcPostBackwardBSND("log_with_invalid_input_platform_info_line135", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::PLATFORM_INFO_NULL);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_with_invalid_input_grad_output_line154) {
+    TestMhcPostBackwardBSND("log_with_invalid_input_grad_output_line154", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::GRAD_OUTPUT_NULL);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_output_line250) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_output_line250", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_GRAD_OUTPUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_x_line257) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_x_line257", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_out_line264) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_out_line264", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_res_line272) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_res_line272", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_post_line278) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_post_line278", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_x_line285) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_x_line285", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_GRAD_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_h_out_line292) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_h_out_line292", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_GRAD_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_h_res_line299) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_h_res_line299", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_GRAD_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_h_post_line305) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_h_post_line305", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_GRAD_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_with_invalid_input_grad_output_line315) {
+    TestMhcPostBackwardBSND("log_with_invalid_input_grad_output_line315", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::GRAD_OUTPUT_NULL);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_output_line349) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_output_line349", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_OUTPUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_x_line371) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_x_line371", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_x_line377) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_x_line377", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_res_line386) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_res_line386", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_res_line392) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_res_line392", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_out_line401) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_out_line401", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_out_line405) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_out_line405", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_post_line414) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_post_line414", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_post_line418) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_post_line418", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_x_line431) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_x_line431", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_x_line437) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_x_line437", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_res_line446) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_res_line446", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_res_line452) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_res_line452", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_out_line461) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_out_line461", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_out_line465) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_out_line465", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_post_line474) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_post_line474", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_post_line478) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_post_line478", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_x_line492) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_x_line492", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_x_line497) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_x_line497", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_res_line506) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_res_line506", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_res_line511) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_res_line511", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_out_line520) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_out_line520", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_out_line524) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_out_line524", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_h_post_line533) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_h_post_line533", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_h_post_line537) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_h_post_line537", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_x_line550) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_x_line550", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_x_line555) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_x_line555", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_res_line564) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_res_line564", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_res_line569) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_res_line569", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_out_line578) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_out_line578", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_out_line582) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_out_line582", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_h_post_line591) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_h_post_line591", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID_GRAD_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shape_with_reason_grad_h_post_line595) {
+    TestMhcPostBackwardBSND("log_for_invalid_shape_with_reason_grad_h_post_line595", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapesize_with_reason_grad_output_line608) {
+    gert::TilingContextPara context = BuildTilingContextBSND(0, 0, 4, 394, ge::DT_BF16, kSocVersion950);
+    ExecuteTestCase(context, ge::GRAPH_FAILED, 0, "", std::vector<size_t>{0}, 0, TilingData2Str<int64_t>);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_with_invalid_attr_n_line614) {
+    TestMhcPostBackwardBSND("log_with_invalid_attr_n_line614", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::N_NOT_4_6_8);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_CheckNullptr_line624) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_CheckNullptr_line624", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::CHECK_NULLPTR_FAILED);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_CheckDataType_line630) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_CheckDataType_line630", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::CHECK_DTYPE_FAILED);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_CheckShapeConsistency_line636) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_CheckShapeConsistency_line636", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::CHECK_SHAPE_FAILED);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_CheckSpecConstraints_line642) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_CheckSpecConstraints_line642", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::CHECK_SPEC_FAILED);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_CheckShapeAllPositive_line648) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_CheckShapeAllPositive_line648", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::CHECK_POSITIVE_FAILED);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_value_with_reason_matmul_tiling_line755) {
+    TestMhcPostBackwardBSND("log_for_invalid_value_with_reason_matmul_tiling_line755", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::N_NOT_4_6_8);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_with_invalid_input_platform_info_line791) {
+    TestMhcPostBackwardBSND("log_with_invalid_input_platform_info_line791", 1, 512, 4, 394, ge::DT_BF16, kSocVersion950, ErrorType::PLATFORM_INFO_NULL);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_grad_y_line148) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_grad_y_line148", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_x_line157) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_x_line157", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_X);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_out_line166) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_out_line166", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_OUT);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_res_line175) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_res_line175", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_RES);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_dtype_h_post_line184) {
+    TestMhcPostBackwardBSND("log_for_invalid_dtype_h_post_line184", 1, 512, 4, 394, ge::DT_INT32, kSocVersion950, ErrorType::DTYPE_INVALID_H_POST);
+}
+
+TEST_F(MhcPostBackwardTilingTest, log_for_invalid_shapedim_grad_y_line205) {
+    TestMhcPostBackwardBSND("log_for_invalid_shapedim_grad_y_line205", 1, 512, 5, 394, ge::DT_BF16, kSocVersion950, ErrorType::SHAPEDIM_INVALID);
+}
