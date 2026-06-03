@@ -124,19 +124,19 @@ class MoEElasticBuffer:
         else:
             actual_a = ep_world_size * nm
 
-        recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)	 
-        recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)	 
-        recv_topk_weights = torch.empty((actual_a, self.num_topk), dtype=torch.float32, device=x.device)	 
-        recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)	 
-        num_recv_per_rank = torch.empty((ep_world_size,), dtype=torch.int32, device=x.device)	 
+        recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)
+        recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
+        recv_topk_weights = torch.empty((actual_a, self.num_topk), dtype=torch.float32, device=x.device)
+        recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
+        num_recv_per_rank = torch.empty((ep_world_size,), dtype=torch.int32, device=x.device)
         num_recv_per_expert = torch.empty((ne // ep_world_size,), dtype=torch.int64, device=x.device)
 
         recv_x, recv_topk_idx, recv_topk_weights, recv_src_meta, num_recv_per_rank, num_recv_per_expert = \
             _op.npu_moe_ep_dispatch_epilogue(
                 self.context, dst_slot, recv_src_meta_internal, num_recv_per_rank_hp, num_recv_per_expert_hp,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size.value, expert_alignment=ea,
-                recv_x=recv_x, recv_topk_idx=recv_topk_idx, recv_topk_weights=recv_topk_weights, 
-                recv_src_metadata=recv_src_meta,  num_recv_tokens_per_rank=num_recv_per_rank, 
+                recv_x=recv_x, recv_topk_idx=recv_topk_idx, recv_topk_weights=recv_topk_weights,
+                recv_src_metadata=recv_src_meta, num_recv_tokens_per_rank=num_recv_per_rank,
                 num_recv_tokens_per_expert=num_recv_per_expert
             )
 
