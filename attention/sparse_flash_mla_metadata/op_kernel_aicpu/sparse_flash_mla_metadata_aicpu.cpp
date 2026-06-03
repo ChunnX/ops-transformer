@@ -87,13 +87,12 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool SparseFlashMlaMetadataCpuKernel::ParamsCheck() 
 {
-    return CheckTensorData();
-}
-
-bool SparseFlashMlaMetadataCpuKernel::CheckTensorData()
-{
-    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("Output metadata tensor data is nullptr");
+    // 校验输出 metadata 是否为空
+    if (metadata_ == nullptr) {
+        KERNEL_LOG_ERROR("Output metadata is nullptr");
+        return false;
+    } else if (metadata_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("Output metadata data is nullptr");
         return false;
     }
     return true;

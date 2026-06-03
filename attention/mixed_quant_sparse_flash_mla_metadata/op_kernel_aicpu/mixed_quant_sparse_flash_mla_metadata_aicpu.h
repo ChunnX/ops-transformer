@@ -241,7 +241,6 @@ private:
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
     bool ParamsCheck();
-    bool CheckTensorData();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);

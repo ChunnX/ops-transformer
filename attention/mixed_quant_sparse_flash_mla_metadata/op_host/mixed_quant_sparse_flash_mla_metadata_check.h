@@ -171,9 +171,27 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (aicCoreNum > optiling::AIC_CORE_MAX_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIC num is %u., but got %u", optiling::AIC_CORE_MAX_NUM,
+            aicCoreNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (aivCoreNum == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (aivCoreNum > optiling::AIV_CORE_MAX_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIV num is %u., but got %u", optiling::AIV_CORE_MAX_NUM,
+            aivCoreNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验切g模板核数
+    if(numHeadsQ == 128) {
+        if (aicCoreNum == 1 || aivCoreNum == 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, but got %u and %u",
+                aicCoreNum, aivCoreNum);
+            return false;
+        }
     }
     return ACLNN_SUCCESS;
 }
