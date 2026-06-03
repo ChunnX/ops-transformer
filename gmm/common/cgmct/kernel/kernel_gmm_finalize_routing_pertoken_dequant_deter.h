@@ -62,11 +62,11 @@ constexpr uint32_t DETER_WEIGHT_TILE_CAPACITY = 512U;
 } // namespace
 
 struct DeterSyncConfig {
-    uint64_t curM = 0;
-    uint64_t curGroupM = 0;
-    uint64_t lowBoundM = 0;
-    uint64_t windowSize = 0;
-    uint64_t windowStartM = 0;
+    uint64_t curM = 0UL;
+    uint64_t curGroupM = 0UL;
+    uint64_t lowBoundM = 0UL;
+    uint64_t windowSize = 0UL;
+    uint64_t windowStartM = 0UL;
 };
 
 using namespace AscendC;
