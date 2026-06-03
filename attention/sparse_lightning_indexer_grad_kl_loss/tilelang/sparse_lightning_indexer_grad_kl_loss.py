@@ -177,8 +177,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 C_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
 
                 # Matmul1: query @ gatherKey^T -> bmm1Res_ws
-                # Process s1 rows one at a time to avoid 3D/2D copy mismatch
-                for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
                     for g_idx in T.serial(G):
                         n1_idx = n2_id * G + g_idx
                         for n_idx in T.serial(n_num):
@@ -207,7 +206,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 C2_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
 
                 # Matmul2: queryIndex @ gatherKeyIndex^T -> bmm2Res_ws
-                for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
                     for gidx_idx in T.serial(Nidx1):
                         for n_idx in T.serial(n_num):
                             T.barrier_all()
@@ -258,7 +257,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 T.copy(ScaleValue[0:1], scale_ub)
 
                 for g_group in T.serial(g_group_num):
-                    for s1_row in range(block_m):
+                    for s1_row in T.serial(block_m):
                         T.barrier_all()
 
                         n1_group_start = g_group * vector_baseg
@@ -270,12 +269,10 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                         T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", vector_baseg)
                         T.barrier_all()
 
-                        for g_local in range(vector_baseg):
+                        for g_local in T.serial(vector_baseg):
                             gidx_idx = g_group * vector_baseg + g_local
                             g_idx = gidx_idx
 
-
-                            # Load softmaxMax/Sum once per (s1_row, g_idx)
                             T.copy(
                                 SoftmaxMax[bz, n2_id, s1_start + s1_row, g_idx],
                                 sm_max_ub,
@@ -290,13 +287,11 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             for n_idx in T.serial(n_num):
                                 T.barrier_all()
 
-                                # --- Restore P from bmm1Res ---
                                 T.copy(
                                     bmm1Res_ws[bz, n2_id, s1_start + s1_row, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
                                     bmm1_row_ub,
                                 )
                                 T.barrier_all()
-                                # P = exp(bmm1Res - softmaxMax) / softmaxSum
                                 T.tile.sub(p_row_ub, bmm1_row_ub, sm_max_ub[0])
                                 T.barrier_all()
                                 T.tile.exp(p_row_ub, p_row_ub)
@@ -304,8 +299,6 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.tile.div(p_row_ub, p_row_ub, sm_sum_ub[0])
                                 T.barrier_all()
 
-                                # softmaxI = bmm2Res * scale (simplified; full softmax needs reduce which is complex in TileLang)
-                                # TODO: Implement proper online softmax with 2D buffer reduce
                                 T.copy(
                                     bmm2Res_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
                                     bmm2_row_ub,
@@ -314,11 +307,9 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.tile.mul(softmax_i_row_ub, bmm2_row_ub, scale_ub[0])
                                 T.barrier_all()
 
-                                # dI = softmaxI - P
                                 T.tile.sub(di_row_ub, softmax_i_row_ub, p_row_ub)
                                 T.barrier_all()
 
-                                # --- dWeights: dI * bmm2Res * scale, write directly to dWeights_ws ---
                                 T.tile.mul(di_row_ub, di_row_ub, softmax_i_row_ub)
                                 T.barrier_all()
                                 T.copy(
@@ -327,17 +318,9 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 )
                                 T.barrier_all()
 
-                                # --- KL Loss: skip in kernel, compute in Python layer ---
-                                # T.tile.atomic_add requires same size for dst and src,
-                                # but Loss is (1,) and di_row_ub is (block_n,).
-                                # TODO: Implement KL Loss in Python layer after kernel outputs are verified
-
-                                # ReLU mask: bmm2Res > 0 (use original bmm2Res, not scaled)
                                 T.tile.compare(mask_ub, bmm2_row_ub, 0.0, "GT")
                                 T.barrier_all()
 
-                                # reluGrad = dI * mask * weight
-                                # Note: di_row_ub was overwritten above, recompute
                                 T.tile.sub(di_row_ub, softmax_i_row_ub, p_row_ub)
                                 T.barrier_all()
                                 T.tile.select(relu_grad_row_ub, mask_ub, di_row_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
@@ -365,8 +348,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 SA_L0C = T.alloc_L0C((block_n, block_k), calc_dtype)
 
                 # Matmul3: reluGrad^T @ queryIndex -> scatterAdd_ws
-                # Process s1 rows one at a time
-                for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
                     for n_idx in T.serial(n_num):
                         for d_idx in T.serial(d_num_query_index):
                             for gidx_idx in T.serial(Nidx1):
@@ -393,7 +375,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 DQ_L0C = T.alloc_L0C((block_m, block_k), calc_dtype)
 
                 # Matmul4: reluGrad @ gatherKeyIndex -> dQueryIndex_ws
-                for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
                     for gidx_idx in T.serial(Nidx1):
                         for d_idx in T.serial(d_num_query_index):
                             for n_idx in T.serial(n_num):
@@ -410,11 +392,11 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.barrier_all()
                                 T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                                 T.barrier_all()
-                            T.copy(
-                                DQ_L0C[s1_row, :],
-                                dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
-                            )
-                            T.barrier_all()
+                        T.copy(
+                            DQ_L0C[s1_row, :],
+                            dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
+                        )
+                        T.barrier_all()
 
                 T.set_cross_flag("FIX", 3)
 
@@ -425,9 +407,9 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 # Cast dQueryIndex_ws FP32 -> FP16
                 dq_fp32_ub = T.alloc_ub(block_k, calc_dtype)
                 dq_fp16_ub = T.alloc_ub(block_k, input_dtype)
-                for gidx_idx in T.serial(Nidx1):
-                    for d_idx in T.serial(d_num_query_index):
-                        for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
+                    for gidx_idx in T.serial(Nidx1):
+                        for d_idx in T.serial(d_num_query_index):
                             T.barrier_all()
                             T.copy(
                                 dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
@@ -445,8 +427,8 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 # Cast dWeights_ws FP32 -> FP16 (same shape, no reduce needed)
                 dw_fp32_ub = T.alloc_ub(block_n, calc_dtype)
                 dw_fp16_ub = T.alloc_ub(block_n, input_dtype)
-                for gidx_idx in T.serial(Nidx1):
-                    for s1_row in range(block_m):
+                for s1_row in T.serial(block_m):
+                    for gidx_idx in T.serial(Nidx1):
                         for n_idx in T.serial(n_num):
                             T.barrier_all()
                             T.copy(
