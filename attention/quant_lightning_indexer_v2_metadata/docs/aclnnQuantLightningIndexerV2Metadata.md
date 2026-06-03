@@ -1,4 +1,4 @@
-# aclnnQuantLightingIndexerV2Metadata
+# aclnnQuantLightningIndexerV2Metadata
 
 ## 产品支持情况
 
@@ -21,7 +21,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnQuantLightingIndexerV2Metadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnQuantLightningIndexerV2Metadata"执行计算
 
 ``` cpp
 aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
@@ -34,8 +34,7 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     int64_t            numHeadsK,
     int64_t            headDim,
     int64_t            topk,
-    int64_t            qQuantMode,
-    int64_t            kQuantMode,
+    int64_t            quantMode,
     int64_t            batchSize,
     int64_t            maxSeqlenQ,
     int64_t            maxSeqlenK,
@@ -43,7 +42,7 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     char              *layoutKOptional,
     int64_t            maskMode,
     int64_t            cmpRatio,
-    const aclTensor   *metaData,
+    const aclTensor   *metadata,
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
@@ -56,7 +55,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     aclrtStream        stream)
 ```
 
-## aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize
+## aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
@@ -154,7 +153,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>headDim</td>
       <td>输入</td>
-      <td>表示token数。</td>
+      <td>注意力头的维度。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -172,20 +171,10 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>qQuantMode</td>
+      <td>quantMode</td>
       <td>输入</td>
-      <td>表示query的量化模式</td>
-      <td>2: per-token-head</br> 3: group-scaling</td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>kQuantMode</td>
-      <td>输入</td>
-      <td>表示key的量化模式</td>
-      <td>2: per-token-head</br> 3: group-scaling</td>
+      <td>表示量化模式</td>
+      <td>1: qk: fp8(e4m3) per-token-head; scale: fp32</br>2: qk: int8 per-token-head; scale: fp16 w: fp16</br>3: qk: mxfp8</br>4: qk: hif8 per-tensor; scale: fp32</br>5: qk: mxfp4</br> 6: qk: hif4</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -205,7 +194,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -215,7 +204,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>maxSeqlenK</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -262,7 +251,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>metaData</td>
+      <td>metadata</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>-</td>
@@ -298,7 +287,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## aclnnQuantLightingIndexerV2Metadata
+## aclnnQuantLightningIndexerV2Metadata
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -322,7 +311,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
         <tr>
             <td>workspaceSize</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize获取</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
             <td>executor</td>
@@ -342,7 +331,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnQuantLightingIndexerV2Metadata默认确定性实现
+  - aclnnQuantLightningIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息
@@ -411,7 +400,7 @@ constexpr uint32_t QLD_V2_WORKSPACE_NUM_INDEX = 4;
 constexpr uint32_t QLD_V2_M_START_INDEX = 5;
 constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 
-struct QliV2MetaData {
+struct QliV2Metadata {
     uint32_t faData[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
     uint32_t fdData[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
 };
@@ -457,8 +446,7 @@ struct ArgContext {
     int64_t numHeadsK { 0 };
     int64_t headDim { 0 };
     int64_t topk { 0 };
-    int64_t qQuantMode { 2 };
-    int64_t kQuantMode { 2 };
+    int64_t quantMode { 2 };
     // optional input
     Tensor cuSeqlensQOptional {};
     Tensor cuSeqlensKOptional {};
@@ -473,7 +461,7 @@ struct ArgContext {
     int64_t maskMode { 0 };
     int64_t cmpRatio { 0 };
     // output
-    Tensor metaData {};
+    Tensor metadata {};
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) 
@@ -542,7 +530,7 @@ void DestroyTensor(Tensor &tensor)
 
 void DestroyArgs(ArgContext &context)
 {
-    DestroyTensor(context.metaData);
+    DestroyTensor(context.metadata);
     DestroyTensor(context.cuSeqlensQOptional);
     DestroyTensor(context.cuSeqlensKOptional);
     DestroyTensor(context.sequsedQOptional);
@@ -569,9 +557,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsK = 1;
     context.headDim = 128;
     context.topk = 0;
-    context.qQuantMode = 2; // 2: per-token-head / 3: group-scaling
-    context.kQuantMode = 2; // 2: per-token-head / 3: group-scaling
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
+    context.quantMode = 2;
+    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
     context.maskMode = 0;                   // 0: no mask, 3: causal
@@ -585,6 +572,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
         context.batchSize = batchSize;
         context.maxSeqlenK = 1024;
         context.maxSeqlenQ = 1024;
+        argsGuard.Dismiss();
         return ACL_SUCCESS;
     }
 
@@ -634,10 +622,10 @@ int main() {
     ret = aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
         context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
         context.sequsedKOptional.data, context.cmpResidualKOptional.data,
-        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.qQuantMode, context.kQuantMode,
+        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.quantMode,
         context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
         context.layoutKOptional, context.maskMode, context.cmpRatio,
-        context.metaData.data, &workspaceSize, &executor);
+        context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
@@ -661,8 +649,8 @@ int main() {
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
 
     // 5. 打印输出
-    QliV2MetaData result {};
-    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    QliV2Metadata result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
     for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
