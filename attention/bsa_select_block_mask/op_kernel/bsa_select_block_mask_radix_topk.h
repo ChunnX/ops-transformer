@@ -30,6 +30,10 @@ public:
 
 private:
     __aicore__ inline void NegateAttnScore();
+    __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
+    __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
+    __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
+                                                int32_t tileId, uint64_t curTileLen);
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -46,6 +50,8 @@ private:
 
     TBuf<TPosition::VECIN> xBufPing_;
     TBuf<TPosition::VECIN> xBufPong_;
+    TBuf<TPosition::VECOUT> outValueBuf_;
+    TBuf<TPosition::VECOUT> outIndexBuf_;
     TBuf<TPosition::VECOUT> maskLocalBuf_;
     TBuf<TPosition::VECOUT> globalHistBuf_;
     TBuf<TPosition::VECCALC> tileHistAndTopKBuf_;
@@ -135,6 +141,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(xBufPing_, tileLen_ * sizeof(float));
     pipe->InitBuffer(xBufPong_, tileLen_ * sizeof(float));
+    pipe->InitBuffer(outValueBuf_, tileLen_ * sizeof(float));
+    pipe->InitBuffer(outIndexBuf_, tileLen_ * sizeof(float));
     pipe->InitBuffer(tileHistAndTopKBuf_, MAX_TILE_NUM_IN_UB * sizeof(int32_t));
 
     uint32_t cmpMaskSize = tileLen_ * sizeof(uint8_t) / BYTE_SIZE;
@@ -221,6 +229,83 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
 
         DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(IN_T)), 0, 0));
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
+{
+    LocalTensor<IN_T> xLocalB16 = xBuf.Get<IN_T>();
+    LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();
+
+    LocalTensor<int16_t> signMaskTensor = outValueBuf_.Get<int16_t>();
+    LocalTensor<int16_t> tempTensor = outIndexBuf_.Get<int16_t>();
+
+    uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
+    uint64_t curTileLenAlign = ops::CeilAlign(curTileLen, BLOCK_SIZE / sizeof(int16_t));
+    LocalTensor<int16_t> temp1 = tempTensor[curTileLenAlign];
+
+    ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLen);
+    Duplicate<int16_t>(signMaskTensor, XOR_OP_VALUE_16, curTileLen);
+    Or(tempTensor, tempTensor, signMaskTensor, calcLen);
+
+    And(temp1, xLocalInt16, tempTensor, calcLen);
+    Or(xLocalInt16, xLocalInt16, tempTensor, calcLen);
+    Not(temp1, temp1, calcLen);
+    And(xLocalInt16, xLocalInt16, temp1, calcLen);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
+{
+    LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
+    uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
+    LocalTensor<int32_t> maskTensor = outValueBuf_.Get<int32_t>();
+
+    Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLen);
+    And(xLocalInt16[tileLen_], xLocalInt16[tileLen_],
+        maskTensor.ReinterpretCast<int16_t>(), calcLen);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
+    TBuf<TPosition::VECIN>& xBuf, int32_t roundId, int32_t tileId, uint64_t curTileLen)
+{
+    LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
+    LocalTensor<int32_t> xLocalInt32 = xLocalInt16.ReinterpretCast<int32_t>();
+    LocalTensor<float> xLocalFp32 = xLocalInt16.ReinterpretCast<float>();
+
+    Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
+    Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
+
+    LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
+    LocalTensor<uint8_t> cmpMaskTensor = outIndexBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    LocalTensor<int32_t> globalHist = globalHistBuf_.Get<int32_t>();
+
+    const int32_t tileHistBinStride = MAX_TILE_NUM_IN_UB_BY3;
+    const int32_t tileHistBinOffset = MAX_TILE_NUM_IN_UB_BY3;
+
+    int32_t cumSumOne = 0;
+    for (int16_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+        int32_t involvedMaskTemp = static_cast<int32_t>(
+            involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
+
+        uint32_t curTileLenAlign = ops::CeilAlign(curTileLen, REPEAT_SIZE / sizeof(int32_t));
+        Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
+                                   AscendC::CMPMODE::EQ, curTileLenAlign);
+
+        uint64_t rsvdCnt = 0;
+        GatherMask(tempHalf, tempHalf, cmpMaskTensor.ReinterpretCast<uint16_t>(),
+                   true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
+        VToSSync();
+
+        cumSumOne += rsvdCnt;
+
+        tileHist[binMask * tileHistBinStride - tileHistBinOffset]
+            .SetValue(tileId, cumSumOne);
+
+        globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
     }
 }
 
