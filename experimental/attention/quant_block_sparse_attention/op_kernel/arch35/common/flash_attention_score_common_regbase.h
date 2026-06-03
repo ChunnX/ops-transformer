@@ -84,7 +84,6 @@ struct CubeCoordInfo {
     uint32_t s2Coord;
 };
 
-static constexpr uint32_t FA_BYTE_BLOCK = 32;
 
 __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;

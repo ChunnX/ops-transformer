@@ -644,27 +644,6 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    __gm__ int64_t *actualSeqQlenAddr)
-{
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
-        if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx] - actualSeqQlenAddr[runParam.boIdx - 1] == 0) {
-            return true;
-        }
-    } else {
-        if (!constInfo.isActualLenDimsNull) {
-            if (constInfo.actualSeqLenSize == 1) {
-                return actualSeqQlenAddr[0] == 0;
-            } else {
-                return actualSeqQlenAddr[runParam.boIdx] == 0;
-            }
-        }
-    }
-    return false;
-}
-
-TEMPLATE_INTF
 __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {
     sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
@@ -796,50 +775,6 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer>& runParam,
-    const ConstInfo<isInfer, hasRope> &constInfo, uint32_t sInnerLoopIdx, RunInfo<isInfer> &runInfo)
-{
-    if constexpr (enableKVPrefix) {
-        const bool inPrefixLoop = sInnerLoopIdx < constInfo.prefixLoopCount;
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            if (inPrefixLoop) {
-                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
-                runInfo.valueOffset = 0;
-                runInfo.keyOffset = 0;
-            } else {
-                runInfo.prefixOffset = 0;
-                runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseN2Dv;
-                runInfo.keyOffset = runInfo.valueOffset;
-            }
-        } else {
-            if (inPrefixLoop) {
-                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-                runInfo.valueOffset = 0;
-                runInfo.keyOffset = 0;
-            } else {
-                runInfo.prefixOffset = 0;
-                runInfo.valueOffset = runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
-                runInfo.keyOffset = runInfo.valueOffset;
-            }
-        }
-    } else {
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
-            runInfo.keyOffset = runInfo.valueOffset;
-            if constexpr (hasRope) {
-                runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseN2DR;
-            }
-        } else {
-            runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-            runInfo.keyOffset = runInfo.valueOffset;
-            if constexpr (hasRope) {
-                runInfo.kRopeOffset = runParam.kRopeNBGOffset + sInnerLoopIdx * constInfo.s2BaseDR;
-            }
-        }
-    }
-}
-
-TEMPLATE_INTF
 __aicore__ inline void InitTaskParamByRun(const RunParamStr<isInfer>& runParam, RunInfo<isInfer> &runInfo)
 {
     runInfo.keyOffset = runParam.keyOffset;
@@ -858,21 +793,6 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr<isInfer>& runParam, 
         runInfo.nextTokensOfMlaPerBatch = runParam.nextTokensOfMlaPerBatch;
         runInfo.preTokensOfMlaPerBatch = runParam.preTokensOfMlaPerBatch;
         runInfo.actualSeqLengthOfMlaPerBatch = runParam.actualSeqLengthOfMlaPerBatch;
-    }
-}
-
-TEMPLATE_INTF
-__aicore__ inline void IterateAllPreProcess(RunInfo<isInfer>& runInfo, const ConstInfo<isInfer, hasRope> &constInfo,
-    GlobalTensor<INPUT_T>& keyValueGm, GlobalTensor<INPUT_T>& tempKeyValueGm)
-{
-    if constexpr (isInfer) {
-        if (constInfo.isKvContinuous != 0) {
-            return;
-        }
-        ListTensorDesc keyValueListTensorDesc((__gm__ void*)keyValueGm.GetPhyAddr());
-        __gm__ uint8_t* tempKeyValueGmPtr =
-            (__gm__ uint8_t*)keyValueListTensorDesc.GetDataPtr<__gm__ uint8_t>(runInfo.boIdx);
-        tempKeyValueGm.SetGlobalBuffer((__gm__ INPUT_T*)tempKeyValueGmPtr);
     }
 }
 
