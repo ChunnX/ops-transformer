@@ -336,7 +336,7 @@ private:
         if constexpr (!std::is_same_v<stateType, float>) {
             Cast(stateUb_, stateInUb, RoundMode::CAST_NONE, dealRowCount * dstRowStride);
         } else {
-            stateUb_ = stateInUb;
+            DataCopy(stateUb_, stateInUb, dealRowCount * dstRowStride);
         }
         inputQueue1_.FreeTensor(stateInUb);
     }
@@ -362,7 +362,7 @@ private:
         if constexpr (!std::is_same_v<stateType, float>) {
             Cast(stateOutLocal, outStateFp32Ub, AscendC::RoundMode::CAST_RINT, alignDK_ * curSingleV);
         } else {
-            stateOutLocal = outStateFp32Ub;
+            DataCopy(stateOutLocal, outStateFp32Ub, alignDK_ * curSingleV);
         }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         stateOutQueue_.DeQue<stateType>();
