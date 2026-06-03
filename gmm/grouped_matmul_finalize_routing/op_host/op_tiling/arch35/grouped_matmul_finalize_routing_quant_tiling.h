@@ -98,7 +98,7 @@ protected:
     // 5、计算Workspace 大小
     ge::graphStatus GetWorkspaceSize() override;
     void Reset() override;
-    void DeterministicTilingProcess();
+    ge::graphStatus DeterministicTilingProcess();
 
 private:
     bool AnalyzeAttrs() override;
