@@ -68,19 +68,32 @@ BLOCK_SIZE = 128
 # common_file_save_path="/home/z00939187/atk_save_data/mlapo/case168"
 
 
-def _mla_kv_cache_dim0_nc_view(t: torch.Tensor):
-    """第 0 轴（blockNum）stride 为非 1：在 2*b 长度的 buffer 上按 ::2 取逻辑 b 块。
+MLA_KV_CACHE_NC_DIM0_STRIDE = 2
 
-    ACL 构造 tensor 时需要 storage_shape=[2*b, ...]（见 PyACLNN get_storage_shape）。
+
+def _mla_kv_cache_dim0_nc_view(t: torch.Tensor):
+    """把首轴（blockNum）做成非连续：dim0 的 stride = N × hiddenSize（连续应为 1×）。
+
+    参考 FIA 非连续 KV 构造范式：先开一块 N 倍大的扁平 buffer，再用 as_strided
+    把首轴步长设为 N×hidden，使逻辑相邻的两个 block 在物理上间隔 N 倍。
+    返回 (非连续 view, 底层 buffer 的真实 storage 形状)。直接把该 view 交给默认
+    convert_input_data，由框架读取其原生 stride/storage，无需重写 get_storage_shape。
     """
     if t.ndim < 1 or t.shape[0] == 0:
         return t, None
+    N = MLA_KV_CACHE_NC_DIM0_STRIDE
     b0 = t.shape[0]
-    expanded = torch.empty((2 * b0,) + t.shape[1:], dtype=t.dtype, device=t.device)
-    expanded[::2].copy_(t)
-    expanded[1::2].zero_()
-    view = expanded[::2]
-    return view, expanded.shape
+    rest = tuple(t.shape[1:])
+    hidden = 1
+    for s in rest:
+        hidden *= int(s)
+
+    # N 倍大的扁平 buffer（连续）
+    buf = torch.zeros((N * b0,) + rest, dtype=t.dtype, device=t.device)
+    # 首轴步长设为 N×hidden，其余轴沿用连续 stride —— 等价于 buf[::N]，但显式表达
+    view = buf.as_strided(size=t.shape, stride=(N * hidden,) + tuple(buf.stride()[1:]))
+    view.copy_(t)  # 仅填充逻辑 block，间隔的空洞保持为 0
+    return view, buf.shape
 
 
 def round_up(val: int, align: int) -> int:
@@ -883,34 +896,44 @@ class aclnnMlaPreprocessApi(AclnnBaseApi):
 
 @register("function_pyaclnn_mla_preprocess_kv_cache_nc_dim0")
 class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
-    """仅 PyACLNN 路径：将 kvCache / kvCacheRope 首轴变为非连续视图，覆盖支持情况。
+    """仅 PyACLNN 路径：将 kvCache / kvCacheRope 首轴(dim0/block 维)变为非连续视图。
 
-    适用于 cacheMode 0/1（ND cache）。cacheMode 2/3 走 NZ 且父类会 reshape+转 NZ，不构造本非连续场景。
+    适用于 cacheMode 0/1（ND cache）。cacheMode 2/3 走 NZ，父类会 reshape+转 NZ，不构造本场景。
+
+    实现（参考 FIA 非连续 KV 范式）：直接把 kvCache/kvCacheRope 替换为首轴非连续的
+    torch tensor（as_strided，dim0 stride = N×hidden），然后交给默认的
+    super().init_by_input_data 处理——由框架读取该 tensor 的原生 stride/storage 构造
+    aclTensor。不重写 get_storage_shape、不手动 aclCreateTensor。
     """
 
     def __init__(self, task_result: TaskResult, backend):
         super().__init__(task_result, backend)
-        self._mla_kv_nc_backup = None
 
     def init_by_input_data(self, input_data: InputDataset):
         cm = int(input_data.kwargs["cacheMode"])
         if cm in (0, 1):
-            self._mla_kv_nc_backup = copy.deepcopy(input_data)
             for name in ("kvCache", "kvCacheRope"):
                 t = input_data.kwargs[name]
-                view, _ = _mla_kv_cache_dim0_nc_view(t)
+                view, buf_shape = _mla_kv_cache_dim0_nc_view(t)
                 input_data.kwargs[name] = view
-        else:
-            self._mla_kv_nc_backup = None
+                msg = (
+                    f"[nc_dim0] {name}: view_shape={tuple(view.shape)}, "
+                    f"view_strides={tuple(view.stride())}, storage_shape={tuple(buf_shape)}, "
+                    f"is_contiguous={view.is_contiguous()}"
+                )
+                logging.info(msg)
+                print(msg, flush=True)  # 强制刷到 stdout，避免远端 logger 路由导致看不到
+                if view.shape[0] > 1:
+                    addr0 = view[0].data_ptr()
+                    addr1 = view[1].data_ptr()
+                    diff_msg = (
+                        f"[nc_dim0] {name}: block0_addr={addr0}, block1_addr={addr1}, "
+                        f"addr_diff={addr1 - addr0} bytes (连续应为 "
+                        f"{view[0].numel() * view.element_size()})"
+                    )
+                    logging.info(diff_msg)
+                    print(diff_msg, flush=True)
         return super().init_by_input_data(input_data)
-
-    def get_storage_shape(self, input_data: InputDataset, index=None, name=None):
-        if self._mla_kv_nc_backup is None or name is None:
-            return None
-        if name in ("kvCache", "kvCacheRope"):
-            o = self._mla_kv_nc_backup.kwargs[name]
-            return (o.shape[0] * 2,) + tuple(o.shape[1:])
-        return None
 
 
 MIN_ERR = 1e-7

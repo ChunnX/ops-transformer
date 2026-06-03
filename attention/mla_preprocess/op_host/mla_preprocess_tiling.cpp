@@ -98,18 +98,30 @@ inline uint64_t GetDefaultStride0(const gert::Shape &shape)
 
 inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inputIndex, const gert::Shape &shape)
 {
+    const uint64_t defaultStride0 = GetDefaultStride0(shape);
 
-    auto *stride = context->GetInputStride(inputIndex);
-
-    if (!context->InputIsView(inputIndex)) {
-        return GetDefaultStride0(shape);
+    // 不再用 InputIsView 校验，直接按「连续判据」处理：拿到首轴 stride 后与连续布局应有的
+    // stride（GetDefaultStride0）比较——一致即视为连续，否则按真实 stride 跳。
+    auto *stride = context->GetRequiredInputStride(inputIndex);
+    if (stride == nullptr) {
+        stride = context->GetInputStride(inputIndex);
     }
 
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
-        return GetDefaultStride0(shape);
+        OP_LOGD(context->GetNodeName(),
+                "GetInputStride0 irIdx=%lu: no stride desc, treat as contiguous, stride0=%lu.",
+                inputIndex, defaultStride0);
+        return defaultStride0;
     }
 
-    return static_cast<uint64_t>(stride->GetStride(DIM_0));
+    const uint64_t actualStride0 = static_cast<uint64_t>(stride->GetStride(DIM_0));
+    // IsContiguous: 首轴 stride 等于连续布局应有值即连续。
+    const bool isContiguous = (actualStride0 == defaultStride0);
+    OP_LOGD(context->GetNodeName(),
+            "GetInputStride0 irIdx=%lu: actualStride0=%lu, defaultStride0=%lu, isContiguous=%d.",
+            inputIndex, actualStride0, defaultStride0, static_cast<int>(isContiguous));
+
+    return isContiguous ? defaultStride0 : actualStride0;
 }
 
 template <typename T = uint64_t> inline T Max(const T a, const T b)
