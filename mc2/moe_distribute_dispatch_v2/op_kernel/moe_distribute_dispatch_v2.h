@@ -1095,9 +1095,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
     uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    // SetExpertTokenNums使用二维ReduceSum，GatherMask输出按[expert][rank]紧凑存放，不需要按行padding。
+    uint32_t setExpertTokenNumsRankAlign = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    // SetExpertTokenNums使用二维ReduceSum，输入按[expert][rankAlign]存放，rankAlign补零。
     uint64_t setExpertTokenNumsStatusSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) *
-        epWorldSize_ * sizeof(float);
+        setExpertTokenNumsRankAlign * sizeof(float);
     setExpertTokenNumsStatusSpace = Ceil(setExpertTokenNumsStatusSpace, UB_ALIGN) * UB_ALIGN;
     uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsStatusSpace) ?
@@ -1569,23 +1570,29 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
+    uint32_t epWorldSizeAlign = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
     expertCountTensor_ = gatherMaskOutBuf_.Get<float>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<float>(expertCountTensor_, 0.0f, localExpertNum * epWorldSizeAlign);
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
     DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    // tiling校验可确保总Moe专家数上限，单次DataCopyPad的blockCount不会超过4095
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(localStatusSectionNum), sizeof(float),
+    DataCopyExtParams countCopyParams{static_cast<uint16_t>(epWorldSize_), sizeof(float),
         STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor_,
-        windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET], countCopyParams, countCopyPadParams);
+    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+        uint32_t srcOffset = STATUS_BLOCK_COUNT_FIELD_OFFSET + localExpertIdx * epWorldSize_ * FLAG_OFFSET;
+        uint32_t dstOffset = localExpertIdx * epWorldSizeAlign;
+        DataCopyPad<float, PaddingMode::Compact>(expertCountTensor_[dstOffset],
+            windowInstatusFp32Tensor_[srcOffset], countCopyParams, countCopyPadParams);
+    }
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     expertTokenNumTensor_ = statusBuf_.Get<float>();
     if ((expertTokenNumsType_ == 0) && (epWorldSize_ >= UB_ALIGN / sizeof(float))) {
         expertTokenNumTensor_ = tokenNumBuf_.Get<float>();
     }
-    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
+    uint32_t expertCountShape[] = {localExpertNum, epWorldSizeAlign};
     ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
-        expertTokenNumTensor_, expertCountTensor_, expertCountShape, false);
+        expertTokenNumTensor_, expertCountTensor_, expertCountShape, true);
 
     expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
