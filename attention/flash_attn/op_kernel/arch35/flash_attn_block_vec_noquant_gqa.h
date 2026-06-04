@@ -1241,6 +1241,7 @@ public:
 
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            PipeBarrier<PIPE_V>();
             return;
         }
 
@@ -1249,6 +1250,7 @@ public:
                 attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            PipeBarrier<PIPE_V>();
         }
 
         if (!IsSkipMaskForPre) {
