@@ -52,12 +52,15 @@ def run_case(params: dict,
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
     if "lse" in primary_out and "lse" in golden_out:
-        dev_lse = primary_out["lse"].cpu() if not isinstance(primary_out["lse"], torch.Tensor) or primary_out["lse"].is_cuda else primary_out["lse"]
-        cpu_lse = golden_out["lse"]
+        dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
-            print(f"  [compare] LSE check")
-            lse_result = check_result("LSE", cpu_lse.float(), dev_lse.float(),
-                                      except_label="CPU_lse", comp_label=f"{primary.name}_lse")
+            dev_lse = dev_lse.cpu().float()
+            cpu_lse = golden_out["lse"]
+            if isinstance(cpu_lse, torch.Tensor):
+                cpu_lse = cpu_lse.float()
+                print(f"  [compare] LSE check")
+                lse_result = check_result("LSE", cpu_lse, dev_lse,
+                                          except_label="CPU_lse", comp_label=f"{primary.name}_lse")
 
     # 5. 额外对比
     for comp in comparators:
