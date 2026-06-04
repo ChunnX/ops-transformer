@@ -1,61 +1,54 @@
-# stem_indexer算子测试框架
+# StemIndexer算子pytest测试框架
+
 ## 功能说明
-基于pytest测试框架，实现stem_indexer算子的功能验证：
-- **CPU侧**：复现算子功能用以生成golden数据
-- **NPU侧**：通过torch_npu进行算子直调获取实际数据
-- **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
-## 当前实现范围
-### 参数限制
+基于pytest测试框架，实现StemIndexer算子的功能验证：
 
-- **数据格式**:
-  - **query_layout**：BSND、TND
-  - **key_layout**: PA_BSND
+- CPU侧：按StemIndexer设计方案实现golden。
+- NPU侧：通过`torch_npu`直调`torch.ops.custom.npu_stem_indexer`获取实际结果。
+- 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
 
-### 环境配置
+## 用例来源
 
-#### 前置要求
-1、 确认torch_npu为最新版本  
-2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
+白盒用例方案：
 
-#### custom包调用
-支持custom包调用
+```text
+test_stem_indexer_paramset.py
+```
+
+case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。当前pytest single直接读取该参数表。
+
+## 当前覆盖点
+
+- q/kv尾块。
+- `initial_blocks=4`与`window_size=4`在不同`s2Valid`下的完全重叠、部分交集、无交集、短序列裁剪。
+- causal与non-causal路径。
+- TPD `alpha`无衰减、普通衰减、强衰减。
+- medium/large档位边界：`kv_len=16384`与`kv_len=16385`。
+- S2方向`baseN=256`整块和尾块。
+- M方向`baseM=96`整块和尾块。
+- GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8。
+- 多batch变长、prefill/decode混合、单token decode。
+- OAM `vbias`影响选块、`scoreScale=1/64`路径。
+- 参数非法负例。
 
 ## 文件结构
-#### pytest文件结构说明
-- test_run_sh                                  # 执行脚本
-- stem_indexer_golden.py            # cpu侧算子golden实现
-- result_compare_method.py                     # cpu golden与npu输出精度对比
-- pytest.ini                                   # 创建测试标记
 
-单用例测试：
-- test_stem_indexer_single.py       # pytest测试单用例运行主程序 
-- test_stem_indexer_paramset.py     # 单用例入参配置
-
-批量测试：
-- test_stem_indexer_batch.py        # 用例批量测试主程序并生成excel文件保存结果
-- ./batch/stem_indexer_pt_loadprocess.py    # 读取pt文件并调用算子获取npu输出
-- ./batch/stem_indexer_pt_save.py           # 读取excel表格批量生成用例pt文件
-- ./batch/replace_path.py                              # test_stem_indexer_batch.py占位符替换
- 
+```text
+test_run.sh                         # 执行脚本
+test_stem_indexer_paramset.py        # single用例参数表
+stem_indexer_golden.py               # CPU侧golden实现
+result_compare_method.py             # sparse输出比较
+test_stem_indexer_single.py          # single主执行入口
+pytest.ini                           # pytest标记
+```
 
 ## 使用方法
-在pytest文件夹路径下执行：
 
-### 运行测试用例
-#### 单用例调测
-1、手动配置test_stem_indexer_paramset.py的参数
+在当前pytest目录执行：
 
-2、执行指令：
-``` bash
+```bash
 bash test_run.sh single
 ```
-#### 用例的批量生成与测试
-1、excel路径下存放用例excel表格
 
-2、test_run.sh中设置读取的用例excel表格路径和pt文件存放路径
-
-3、执行指令：
-``` bash
-bash test_run.sh batch
-```
+当前只保留`single`模式，完整白盒用例集都由该入口执行。
