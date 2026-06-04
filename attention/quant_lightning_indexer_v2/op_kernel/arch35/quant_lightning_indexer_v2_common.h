@@ -12,8 +12,8 @@
  * \file quant_lightning_indexer_v2_common.h
  * \brief
  */
-#ifndef quant_lightning_indexer_v2_COMMON_H
-#define quant_lightning_indexer_v2_COMMON_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+#define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
 namespace QLICommon {
 
