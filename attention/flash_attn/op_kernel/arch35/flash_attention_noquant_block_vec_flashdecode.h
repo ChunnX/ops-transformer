@@ -53,14 +53,18 @@ private:
     // =================================常量区=================================
     static constexpr int64_t BYTE_BLOCK = 32UL;
     static constexpr int64_t REPEAT_BLOCK_BYTE = 256U;
-    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 8;
-    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 9;
-    static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
-    static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 11;
+    // Static Tensor adaptation: do not use flagId [11-14]. AscendC::SyncAll() uses these
+    // internally on AIV cores. Reusing them in the FD local pipeline can leave stale flag
+    // state between FA/FD and between batched pytest cases, which shows up as FD/LSE
+    // precision failures only in batch runs.
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 0;
+    static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 1;
+    static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 3;
+    static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 5;
     static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 2;
     static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 4;
-    static constexpr uint64_t SYNC_SINK_BUF1_FLAG = 12;
-    static constexpr uint64_t SYNC_SINK_BUF2_FLAG = 13;
+    static constexpr uint64_t SYNC_SINK_BUF1_FLAG = 6;
+    static constexpr uint64_t SYNC_SINK_BUF2_FLAG = 7;
 
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
