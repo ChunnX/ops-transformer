@@ -62,15 +62,14 @@ if __name__ == "__main__":
     # ── 性能测试分支 ├─
     if args.perf_mode:
         from pathlib import Path
-        from utils.perf_runner import build_perf_script, run_msprof
+        from utils.perf_runner import run_all_perf
         from utils.perf_parser import parse_op_summary, compute_stats, _case_key
 
         cases_list = [normalize_params(all_cases[name]) for name in run_cases]
         out = Path(args.perf_output)
 
-        script = build_perf_script(cases_list, args.perf_runs, args.perf_cold_thr,
-                                    case_names=run_cases)
-        csv_path = run_msprof(script, out)
+        csv_path = run_all_perf(cases_list, args.perf_runs, args.perf_cold_thr,
+                                out, case_names=run_cases)
 
         if csv_path is None or not csv_path.exists():
             print("[ERROR] msprof 采集失败")
