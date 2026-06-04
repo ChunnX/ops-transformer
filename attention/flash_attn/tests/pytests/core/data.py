@@ -121,6 +121,7 @@ class InputSpec:
                dtype=None,
                method: str = "randn",
                when: Callable = None,
+               layout_override: str = None,  # 覆盖全局 layout，如 k/v 用 layout_kv
                **kwargs) -> "InputSpec":
         """添加一个张量定义。
 
@@ -131,17 +132,19 @@ class InputSpec:
             dtype:  torch.dtype，默认从 params["Dtype"] 推断
             method: "randn" | "uniform" | "fixed" | "zeros" | "custom"
             when:   fn(params) → bool，条件生成（None = 总是生成）
+            layout_override: 覆盖全局 layout，如 k/v 应该用 layout_kv
         """
         self._items.append(dict(
             name=name, shape=shape, layout=layout or {},
-            dtype=dtype, method=method, when=when, kwargs=kwargs,
+            dtype=dtype, method=method, when=when,
+            layout_override=layout_override, kwargs=kwargs,
         ))
         return self
 
     # ── 生成入口 ──
 
     def generate(self, params: dict, device,
-                 layout: str = "BNSD", seed: int = 42
+                 layout: str = "BNSD", layout_kv: str = None, seed: int = 42
                  ) -> Dict[str, torch.Tensor]:
         """在指定 device 上生成所有张量。"""
         rng = torch.Generator(device=device)
@@ -150,7 +153,13 @@ class InputSpec:
         for it in self._items:
             if it["when"] and not it["when"](params):
                 continue
-            shape = self._resolve(it, params, layout)
+            # layout_override: 字符串 → 从 params 取值; None → 用全局 layout
+            lo = it.get("layout_override")
+            if lo:
+                eff_layout = params.get(lo, layout)
+            else:
+                eff_layout = layout
+            shape = self._resolve(it, params, eff_layout)
             if not shape:
                 continue
             dt = it["dtype"] or _infer_dtype(params.get("Dtype", "fp16"))
@@ -185,6 +194,8 @@ class InputSpec:
             elif token == "B+1":
                 cu = params.get("cu_seqlens_q")
                 dims.append(len(cu) if cu else params.get("B", 1) + 1)
+            elif token == "num_blocks":
+                dims.append(params.get("num_blocks", 1))
             else:
                 dims.append(int(token))
         return tuple(dims)
@@ -216,19 +227,33 @@ def _generate(method, shape, dtype, device, rng, **kw):
 
 flash_attn_inputs = (
     InputSpec("flash_attn")
+    # q — 始终按 layout_q
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "q_range" in p)
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             when=lambda p: "q_range" not in p)
-    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
+    # k/v — 按 layout_kv（PA 时 shape 不同）
+    .tensor("k", layout={
+            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
+            "PA_BBND": "num_blocks,block_size,N2,D", "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ":   "num_blocks,N2,block_size,D"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "k_range" in p)
-    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
-            when=lambda p: "k_range" not in p)
-    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
+            when=lambda p: "k_range" in p, layout_override="layout_kv")
+    .tensor("k", layout={
+            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
+            "PA_BBND": "num_blocks,block_size,N2,D", "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ":   "num_blocks,N2,block_size,D"},
+            when=lambda p: "k_range" not in p, layout_override="layout_kv")
+    .tensor("v", layout={
+            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
+            "PA_BBND": "num_blocks,block_size,N2,_V", "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ":   "num_blocks,N2,block_size,_V"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "v_range" in p)
-    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
-            when=lambda p: "v_range" not in p)
+            when=lambda p: "v_range" in p, layout_override="layout_kv")
+    .tensor("v", layout={
+            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
+            "PA_BBND": "num_blocks,block_size,N2,_V", "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ":   "num_blocks,N2,block_size,_V"},
+            when=lambda p: "v_range" not in p, layout_override="layout_kv")
 )

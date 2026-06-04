@@ -81,6 +81,7 @@ def normalize_params(raw: dict) -> dict:
                 block_idx += 1
         c["block_table"] = block_table
         c["actual_b"] = b_val
+        c["num_blocks"] = block_idx  # PA 时 K/V 需要的总 page 数
     return c
 
 

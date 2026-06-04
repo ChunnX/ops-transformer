@@ -19,8 +19,9 @@ def run_case(params: dict,
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
 
-    # 1. 生成数据（Q/K/V 由 InputSpec，block_table 从 normalized params）
-    inputs = spec.generate(params, device=primary.device, layout=layout)
+    # 1. 生成数据（Q 按 layout_q，K/V 按 layout_kv）
+    inputs = spec.generate(params, device=primary.device, layout=layout,
+                           layout_kv=params.get("layout_kv", layout))
     if str(params.get("layout_kv", "")).startswith("PA_"):
         inputs["block_table"] = params["block_table"].to(primary.device)
     elif "block_table" in params and params["block_table"] is not None:
