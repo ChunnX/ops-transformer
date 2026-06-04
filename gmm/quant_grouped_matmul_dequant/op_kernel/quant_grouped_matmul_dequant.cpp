@@ -49,8 +49,8 @@ struct OptQuantMatmulDequantTilingData {
 }  // namespace AscendC
 
 #define QuantMatmulDequantTilingData OptQuantMatmulDequantTilingData
-#include "../../quant_grouped_matmul_dequant/op_kernel/quant_grouped_matmul_dequant.h"
-#include "../../quant_grouped_matmul_dequant/op_kernel/quant_grouped_matmul_dequant_staged_run.h"
+#include "quant_grouped_matmul_dequant.h"
+#include "quant_grouped_matmul_dequant_staged_run.h"
 #undef QuantMatmulDequantTilingData
 
 namespace AscendC {

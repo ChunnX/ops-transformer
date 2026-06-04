@@ -24,7 +24,7 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "quant_grouped_matmul_dequant_tiling.h"
-#include "../../quant_grouped_matmul_dequant/op_kernel/quant_grouped_matmul_dequant_config.h"
+#include "../op_kernel/quant_grouped_matmul_dequant_config.h"
 
 bool AddWorkspace(gert::TilingContext* context, const size_t workspace) {
   size_t* workspace_size = context->GetWorkspaceSizes(1);
