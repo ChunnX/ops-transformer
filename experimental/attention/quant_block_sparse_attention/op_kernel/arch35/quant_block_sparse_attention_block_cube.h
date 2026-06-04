@@ -18,11 +18,20 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_CUBE_H_
 #define QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_CUBE_H_
 #include "common/util_regbase.h"
-#include "common/offset_calculator.h"
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+#include "common/memcopy/gm_layout.h"
+#include "common/memcopy/parser.h"
+#include "common/memcopy/offset_calculator_v2.h"
+#include "common/memcopy/fa_gm_tensor.h"
+
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-
 #include "common/infer_flash_attention_comm.h"
 #include "common/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
