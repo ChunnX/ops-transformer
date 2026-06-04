@@ -376,8 +376,9 @@ private:
             return;
         }
         const uint32_t tokenPrefix = slice.tokenOffset - tile.tokenOffset;
-        const uint32_t qTileRows = tile.tokenSize * tilingData_->numQHeads;
-        const uint32_t kTileRows = tile.tokenSize * tilingData_->numKHeads;
+        const uint32_t cubeTokenSize = MakeCubeTokenSize(tile);
+        const uint32_t qTileRows = cubeTokenSize * tilingData_->numQHeads;
+        const uint32_t kTileRows = cubeTokenSize * tilingData_->numKHeads;
         const uint32_t qSliceRows = slice.tokenSize * tilingData_->numQHeads;
         const uint32_t kSliceRows = slice.tokenSize * tilingData_->numKHeads;
         const uint32_t qSliceRowOffset = tokenPrefix * tilingData_->numQHeads;
@@ -467,7 +468,7 @@ private:
             return;
         }
 
-        QuantQkToFp8(slice);
+        QuantQkToFp8(tile, slice);
         SetVToMte3QkOutReady(activeBufferId_);
         WaitVToMte3QkOutReady(activeBufferId_);
         ScatterQkOutputs(tile, slice);
@@ -489,7 +490,12 @@ private:
             (tokenIdx * tilingData_->numKHeads + kHeadIdx) * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
     }
 
-    __aicore__ inline void QuantQkToFp8(const AivSlice &slice)
+    __aicore__ inline uint32_t QkLocalKBaseRow(const TileParam &tile) const
+    {
+        return MakeCubeHalfTokenSize(tile) * tilingData_->numQHeads;
+    }
+
+    __aicore__ inline void QuantQkToFp8(const TileParam &tile, const AivSlice &slice)
     {
         const LocalTensor<float> qkAfterCube =
             outputDbPoolUb_[activeBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
@@ -497,7 +503,7 @@ private:
         const LocalTensor<float> qkScale = qkScaleStagingUb_;
         const uint32_t qRows = slice.tokenSize * tilingData_->numQHeads;
         const uint32_t kRows = slice.tokenSize * tilingData_->numKHeads;
-        const uint32_t kRowOffset = qRows * tilingData_->headDim;
+        const uint32_t kRowOffset = QkLocalKBaseRow(tile) * tilingData_->headDim;
         AscendC::VF_CALL<QkDynamicQuantD128Vf>(
             (__ubuf__ float *)qkAfterCube.GetPhyAddr(),
             (__ubuf__ fp8_e4m3fn_t *)qkFp8.GetPhyAddr(),
@@ -547,7 +553,7 @@ private:
         const LocalTensor<float> qkScale = qkScaleStagingUb_;
         const LocalTensor<int32_t> slotMapping =
             slotMappingDbPoolUb_[activeBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
-        const uint32_t qLocalRows = slice.tokenSize * tilingData_->numQHeads;
+        const uint32_t kLocalBaseRow = QkLocalKBaseRow(tile);
         for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
             const uint32_t qRowIdx = tokenIdx * tilingData_->numQHeads;
             const uint32_t qUbOffset = qRowIdx * tilingData_->headDim;
@@ -560,7 +566,7 @@ private:
             const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
             const uint32_t blockId = slot / tilingData_->blockSize;
             const uint32_t blockOffset = slot % tilingData_->blockSize;
-            const uint32_t kRowIdx = qLocalRows + tokenIdx * tilingData_->numKHeads;
+            const uint32_t kRowIdx = kLocalBaseRow + tokenIdx * tilingData_->numKHeads;
             const uint32_t kUbOffset = kRowIdx * tilingData_->headDim;
             const uint32_t kCacheOffset =
                 blockId * tilingData_->kCacheStrideBlock + blockOffset * tilingData_->kCacheStrideToken;

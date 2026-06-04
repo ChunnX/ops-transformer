@@ -215,6 +215,16 @@ __aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
     return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
 }
 
+__aicore__ inline uint32_t MakeCubeTokenSize(const TileParam &tile)
+{
+    return AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
+}
+
+__aicore__ inline uint32_t MakeCubeHalfTokenSize(const TileParam &tile)
+{
+    return MakeCubeTokenSize(tile) / QKV_RRC_MIX_AIV_PER_AIC;
+}
+
 template <typename T>
 __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
     const DataCopy2DParams &params2d)

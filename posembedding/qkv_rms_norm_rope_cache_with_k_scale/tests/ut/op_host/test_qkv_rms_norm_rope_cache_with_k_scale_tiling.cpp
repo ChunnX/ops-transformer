@@ -206,15 +206,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
         uint32_t rowTileAligned;
     };
     const Case cases[] = {
-        {16, 2, 14, 252, 256},
-        {16, 4, 12, 240, 240},
-        {16, 8, 10, 240, 240},
-        {32, 2, 6, 204, 208},
-        {32, 4, 6, 216, 224},
-        {32, 8, 6, 240, 240},
-        {64, 2, 2, 132, 144},
-        {64, 4, 2, 136, 144},
-        {64, 8, 2, 144, 144},
+        {16, 2, 6, 108, 112},
+        {16, 4, 6, 120, 128},
+        {16, 8, 4, 96, 96},
+        {32, 2, 2, 68, 80},
+        {32, 4, 2, 72, 80},
+        {32, 8, 2, 80, 80},
     };
 
     for (const auto &item : cases) {
@@ -233,18 +230,18 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
     }
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedL0cRowsCanReduceTokenTile)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedL0aRowsCanReduceTokenTile)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 14, 4, 4);
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
-    EXPECT_EQ(tiling.tokenTile, 12U);
-    EXPECT_EQ(tiling.tokenTilePerAiv, 6U);
-    EXPECT_EQ(tiling.rowTile, 216U);
-    EXPECT_EQ(tiling.rowTileAligned, 224U);
+    EXPECT_EQ(tiling.tokenTile, 6U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 3U);
+    EXPECT_EQ(tiling.rowTile, 108U);
+    EXPECT_EQ(tiling.rowTileAligned, 112U);
     EXPECT_LE(AlignUp(tiling.tokenTile * input.numQHeads, 16) +
             AlignUp(tiling.tokenTile * input.numKHeads, 16),
-        kL0cMaxRows);
+        kL0aMaxRows);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
@@ -260,6 +257,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidHeadNums);
 
     input = BuildInput(128, 128, 8, 8);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
+
+    input = BuildInput(128, 64, 2, 2);
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
 }
 
@@ -373,7 +373,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 {
     ContractTiling tiling;
-    auto input = BuildInput(13, 32, 4, 4);
+    auto input = BuildInput(13, 16, 2, 2);
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     ASSERT_EQ(tiling.tokenTile, 6U);
     ASSERT_EQ(CalcTileNum(input.totalTokens, tiling.tokenTile), 3U);
@@ -399,7 +399,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
 {
     ContractTiling tiling;
-    auto input = BuildInput(11, 32, 4, 4);
+    auto input = BuildInput(11, 16, 2, 2);
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     ASSERT_EQ(tiling.tokenTile, 6U);
 
@@ -435,7 +435,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
 {
     ContractTiling tiling;
-    auto input = BuildInput(6, 32, 4, 4);
+    auto input = BuildInput(6, 16, 2, 2);
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     ASSERT_EQ(tiling.tokenTile, 6U);
 
@@ -503,7 +503,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRange)
 {
     ContractTiling tiling;
-    auto input = BuildInput(40, 32, 4, 4);
+    auto input = BuildInput(40, 16, 2, 2);
     input.aicNum = 3;
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     ASSERT_EQ(tiling.tokenTile, 6U);

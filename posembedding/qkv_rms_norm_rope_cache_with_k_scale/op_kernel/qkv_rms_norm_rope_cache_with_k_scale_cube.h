@@ -16,6 +16,7 @@
 namespace QkvRmsNormRopeCacheWithKScale {
 
 constexpr FixpipeConfig QKV_RRC_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+constexpr uint8_t QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
 class D128FastCube {
 public:
@@ -59,8 +60,9 @@ public:
         const uint32_t dataBufferId = MakeDataBufferId(tile.bufferId);
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[dataBufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(dataBufferId);
-        const uint32_t qRows = tile.tokenSize * tilingData_->numQHeads;
-        const uint32_t kRows = tile.tokenSize * tilingData_->numKHeads;
+        const uint32_t cubeTokenSize = MakeCubeTokenSize(tile);
+        const uint32_t qRows = cubeTokenSize * tilingData_->numQHeads;
+        const uint32_t kRows = cubeTokenSize * tilingData_->numKHeads;
         const uint32_t qL0cOffset = 0U;
         const uint32_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, dataBufferId, qL0cOffset, kL0cOffset);
@@ -268,11 +270,9 @@ private:
             return;
         }
 
-        for (uint32_t mStart = 0U; mStart < segmentRows; mStart += AIC_M_L0_TILE) {
-            const uint32_t mSize = MinU32(AIC_M_L0_TILE, segmentRows - mStart);
-            FixpipeSegmentToAivUb(tile, mStart, mSize, segmentRows, isQSegment, bufferId,
-                l0cBaseOffset + mStart * QKV_RRC_HEAD_DIM_D128, qkAfterCubeUb);
-        }
+        const uint32_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * tilingData_->numQHeads;
+        const uint32_t dstBaseRow = isQSegment ? 0U : qRowsPerAiv;
+        FixpipeSegmentToAivUb(segmentRows, dstBaseRow, bufferId, l0cBaseOffset, qkAfterCubeUb);
     }
 
     __aicore__ inline void LoadAToL0(uint32_t segmentRows, uint32_t mStart, uint32_t mSize, uint32_t bufferId,
@@ -314,68 +314,24 @@ private:
             l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS + l0aOffset], rotationL0b, params);
     }
 
-    __aicore__ inline uint32_t GetAiv0TokenSize(const TileParam &tile) const
-    {
-        return CeilDiv(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
-    }
-
-    __aicore__ inline void FixpipeSegmentToAivUb(const TileParam &tile, uint32_t mStart, uint32_t mSize,
-        uint32_t segmentRows, bool isQSegment, uint32_t bufferId, uint32_t l0cBaseOffset,
-        LocalTensor<float> &qkAfterCubeUb)
-    {
-        const uint32_t aiv0TokenSize = GetAiv0TokenSize(tile);
-        const uint32_t aiv1TokenSize = tile.tokenSize - aiv0TokenSize;
-        const uint32_t qAiv0Rows = aiv0TokenSize * tilingData_->numQHeads;
-        const uint32_t qAiv1Rows = aiv1TokenSize * tilingData_->numQHeads;
-        const uint32_t segmentAiv0Rows =
-            aiv0TokenSize * (isQSegment ? tilingData_->numQHeads : tilingData_->numKHeads);
-        const uint32_t segmentAiv1Rows =
-            aiv1TokenSize * (isQSegment ? tilingData_->numQHeads : tilingData_->numKHeads);
-        const uint32_t aiv0DstBase = isQSegment ? 0U : qAiv0Rows;
-        const uint32_t aiv1DstBase = isQSegment ? 0U : qAiv1Rows;
-        FixpipeRowRangeToAivUb(mStart, mSize, 0U, segmentAiv0Rows, aiv0DstBase,
-            0U, bufferId, l0cBaseOffset, qkAfterCubeUb);
-        FixpipeRowRangeToAivUb(mStart, mSize, segmentAiv0Rows, segmentRows,
-            aiv1DstBase, 1U, bufferId, l0cBaseOffset, qkAfterCubeUb);
-        (void)segmentAiv1Rows;
-    }
-
-    __aicore__ inline void FixpipeRowRangeToAivUb(uint32_t chunkRowStart, uint32_t chunkRowSize,
-        uint32_t dstRowStart, uint32_t dstRowEnd, uint32_t segmentDstBase, uint32_t subBlockId, uint32_t bufferId,
+    __aicore__ inline void FixpipeSegmentToAivUb(uint32_t segmentRows, uint32_t dstBaseRow, uint32_t bufferId,
         uint32_t l0cBaseOffset, LocalTensor<float> &qkAfterCubeUb)
-    {
-        const uint32_t rowBegin = MaxU32(chunkRowStart, dstRowStart);
-        const uint32_t rowEnd = MinU32(chunkRowStart + chunkRowSize, dstRowEnd);
-        if (rowBegin >= rowEnd) {
-            return;
-        }
-
-        const uint32_t srcLocalRow = rowBegin - chunkRowStart;
-        const uint32_t dstLocalRow = segmentDstBase + rowBegin - dstRowStart;
-        FixpipeRowsToUb(srcLocalRow, dstLocalRow, rowEnd - rowBegin, chunkRowSize, subBlockId, bufferId,
-            l0cBaseOffset, qkAfterCubeUb);
-    }
-
-    __aicore__ inline void FixpipeRowsToUb(uint32_t srcLocalRow, uint32_t dstLocalRow, uint32_t rowCount,
-        uint32_t sourceMSize, uint32_t subBlockId, uint32_t bufferId, uint32_t l0cBaseOffset,
-        LocalTensor<float> &qkAfterCubeUb)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = QKV_RRC_HEAD_DIM_D128;
-        fixpipeParams.mSize = AlignUp(rowCount, 2U);
-        fixpipeParams.srcStride = AlignUp(sourceMSize, QKV_RRC_NZ_C0);
+        fixpipeParams.mSize = AlignUp(segmentRows, QKV_RRC_MIX_AIV_PER_AIC);
+        fixpipeParams.srcStride = AlignUp(fixpipeParams.mSize, QKV_RRC_NZ_C0);
         fixpipeParams.dstStride = QKV_RRC_HEAD_DIM_D128;
-        fixpipeParams.dualDstCtl = 0U;
-        fixpipeParams.subBlockId = static_cast<bool>(subBlockId);
+        fixpipeParams.dualDstCtl = QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M;
+        fixpipeParams.subBlockId = false;
         fixpipeParams.unitFlag = 0b11;
         fixpipeParams.params.ndNum = 1U;
         fixpipeParams.params.srcNdStride = 0U;
         fixpipeParams.params.dstNdStride = 0U;
 
         Fixpipe<float, float, QKV_RRC_FIXPIPE_ROW_MAJOR_UB>(
-            qkAfterCubeUb[dstLocalRow * QKV_RRC_HEAD_DIM_D128],
-            l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + l0cBaseOffset + srcLocalRow * QKV_RRC_NZ_C0],
-            fixpipeParams);
+            qkAfterCubeUb[dstBaseRow * QKV_RRC_HEAD_DIM_D128],
+            l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + l0cBaseOffset], fixpipeParams);
     }
 
     __aicore__ inline void BindLocalTensors()

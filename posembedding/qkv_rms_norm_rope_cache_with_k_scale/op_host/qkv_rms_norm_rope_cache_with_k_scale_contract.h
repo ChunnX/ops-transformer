@@ -18,6 +18,7 @@ namespace qkv_rms_norm_rope_cache_with_k_scale {
 
 constexpr uint32_t kHeadDimFast = 128;
 constexpr uint32_t kMaxTokenTile = 16;
+constexpr uint32_t kL0aMaxRows = 128;
 constexpr uint32_t kL0cMaxRows = 256;
 constexpr uint32_t kUbInputRowsPerAiv = 160;
 constexpr uint32_t kUbOutputRowsPerAiv = 128;

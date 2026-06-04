@@ -213,7 +213,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         const uint32_t tokenTile = 2 * tokenTilePerAiv;
         const uint32_t rowTile = tokenTile * hqk;
         const uint32_t rowTileAligned = AlignUp(rowTile, 16);
-        if (rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
+        if (CalcQkL0cRows(tokenTile, input.numQHeads, input.numKHeads) <= kL0aMaxRows &&
+            rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
             CalcQkL0cRows(tokenTile, input.numQHeads, input.numKHeads) <= kL0cMaxRows) {
             break;
         }

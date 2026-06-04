@@ -123,11 +123,11 @@ entering Cube compute; Cube then loads A and resident rotation into L0 in
 up-to-128-row M chunks and issues BF16 x BF16 -> FP32 MMAD into L0C.
 
 T08 adds AIC Fixpipe distribution from L0C to the shared output DB pool in AIV
-UB. Cube derives the AIV0/AIV1 split from the actual per-tile token split,
-emits the intersecting row ranges with single-target Fixpipe and `subBlockId`
-0/1, then releases L0C for reuse. Basic block owns the CrossCore sequencing:
-after Cube compute AIC sends `C_READY`, and the AIV side waits it before Q/K
-postprocess and `C_CONSUMED`.
+UB. Cube pads odd token tiles to an even Cube token count, emits one split-M
+Fixpipe per Q/K segment with `dualDstCtl = 1`, and lets the two AIV UBs receive
+the lower/upper M halves. Basic block owns the CrossCore sequencing: after Cube
+compute AIC sends `C_READY`, and the AIV side waits it before Q/K postprocess
+and `C_CONSUMED`.
 
 T09 adds the V branch early postprocess without moving CrossCore sync into Vec.
 The AIV basic-block path now preprocesses Q/K/V, notifies `A_READY`, runs V
