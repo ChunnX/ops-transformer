@@ -301,7 +301,8 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int
 
 // 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
 static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                        const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output)
+                         const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output,
+                         bool isMxQuantMode = false)
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
@@ -309,7 +310,7 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
                 op::ToString(x1->GetStorageFormat()).GetString());
         return false;
     }
-    if (IsPrivateFormat(x2->GetStorageFormat())) {
+    if (IsPrivateFormat(x2->GetStorageFormat()) && !(isMxQuantMode && IsFormatNZ(x2))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAlltoAll, x2 format %s does not support private format.",
                 op::ToString(x2->GetStorageFormat()).GetString());
         return false;
@@ -342,22 +343,22 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 
 // 兼容性处理，非ND格式转换为ND格式
 static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                          const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output,
-                          bool isMxQuantMode = false)
+                           const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output,
+                           bool isMxQuantMode = false)
 {
+    // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
         x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
         CHECK_RET(x1 != nullptr, false);
     }
-    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
-        if (isMxQuantMode && x2->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
-            OP_LOGI("x2 format is FRACTAL_NZ in MX quant mode, skip ReFormat.");
-        } else {
-            OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
-            x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
-            CHECK_RET(x2 != nullptr, false);
-        }
+    if (IsFormatNZ(x2) && isMxQuantMode) {
+        OP_LOGI("QuantMatmulAlltoAll, x2 format is FRACTAL_NZ in MX quant mode, skip ReFormat.");
+        const_cast<aclTensor *>(x2)->SetOriginalShape(x2->GetViewShape());
+    } else if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
+        x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
+        CHECK_RET(x2 != nullptr, false);
     }
     if (biasOptional != nullptr) {
         if (biasOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -401,8 +402,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckDtypesValid(x1, x2, x1QuantMode, x2QuantMode, x1Scale, x2Scale, biasOptional, output),
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckFormat(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_INVALID);
     bool isMxQuantMode = (x1QuantMode == 6 && x2QuantMode == 6);
+    CHECK_RET(CheckFormat(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode), ACLNN_ERR_PARAM_INVALID);
     // 检查alltoAllAxes是否为空或者[-1,-2]
     CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
@@ -446,6 +447,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
+    bool isX2Nz = IsFormatNZ(x2);
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
@@ -457,12 +459,27 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         if (notContiguous) {
             transposeX2 = true;
             // 把非连续x2转成连续
-            transX2 = TransX2Tensor(x2);
+            if (isX2Nz) {
+                transX2 = TransX2TensorNZ(x2);
+            } else {
+                transX2 = TransX2Tensor(x2);
+            }
             CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
             OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
                     "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
                     x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
                     transX2->GetViewShape().GetDim(1));
+        }
+        // NZ格式预处理：校验NZ存储shape并设置originalShape
+        if (isX2Nz) {
+            op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
+            if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            const_cast<aclTensor *>(transX2)->SetOriginalShape(transX2->GetViewShape());
+            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, original shape set.");
         }
     } else {
         // 对于 A2 和 A3，非连续则报错

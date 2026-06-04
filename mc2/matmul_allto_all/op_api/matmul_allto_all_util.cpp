@@ -20,6 +20,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "opdev/format_utils.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 
@@ -282,5 +283,93 @@ aclTensor *TransX2Tensor(const aclTensor *x2)
     aclFormat format = aclFormat::ACL_FORMAT_ND;
     return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
                            storageShapeDimNum, x2->GetTensor()->GetAddr());
+}
+
+bool IsFormatNZ(const aclTensor *tensor)
+{
+    auto primaryFormat = ge::GetPrimaryFormat(tensor->GetStorageFormat());
+    return primaryFormat == op::Format::FORMAT_FRACTAL_NZ;
+}
+
+inline int64_t CeilDiv(int64_t a, int64_t b)
+{
+    return (a + b - 1) / b;
+}
+
+inline int64_t SelectNzK0Value(op::DataType dataType)
+{
+    if (dataType == op::DataType::DT_FLOAT4_E2M1) {
+        return NZ_K0_VALUE_INT4_TRANS;
+    }
+    return NZ_K0_VALUE_INT8_TRANS;
+}
+
+op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2)
+{
+    auto viewShape = x2->GetViewShape();
+    size_t viewDimNum = viewShape.GetDimNum();
+    int64_t k = transposeX2 ? viewShape.GetDim(viewDimNum - 1) : viewShape.GetDim(viewDimNum - 2);
+    int64_t n = transposeX2 ? viewShape.GetDim(viewDimNum - 2) : viewShape.GetDim(viewDimNum - 1);
+
+    int64_t nzK0Value = SelectNzK0Value(x2->GetDataType());
+    int64_t k1 = transposeX2 ? CeilDiv(k, nzK0Value) : CeilDiv(k, NZ_K0_VALUE_BMM_BLOCK_NUM);
+    int64_t n1 = transposeX2 ? CeilDiv(n, NZ_K0_VALUE_BMM_BLOCK_NUM) : CeilDiv(n, nzK0Value);
+
+    op::Shape weightNzShape;
+    if (transposeX2) {
+        weightNzShape.AppendDim(k1);
+        weightNzShape.AppendDim(n1);
+    } else {
+        weightNzShape.AppendDim(n1);
+        weightNzShape.AppendDim(k1);
+    }
+    weightNzShape.AppendDim(NZ_STORAGE_PENULTIMATE_DIM);
+    weightNzShape.AppendDim(nzK0Value);
+    return weightNzShape;
+}
+
+bool CheckWeightNzStorageShape(const op::Shape &expectedShape, const op::Shape &actualShape)
+{
+    if (expectedShape.GetDimNum() != actualShape.GetDimNum()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "QuantMatmulAlltoAll, x2 NZ storage shape dimension mismatch: expected %zu, actual %zu.",
+                expectedShape.GetDimNum(), actualShape.GetDimNum());
+        return false;
+    }
+    for (size_t i = 0; i < expectedShape.GetDimNum(); i++) {
+        if (expectedShape.GetDim(i) != actualShape.GetDim(i)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "QuantMatmulAlltoAll, x2 NZ storage shape mismatch at dim %zu: expected %ld, actual %ld.",
+                    i, expectedShape.GetDim(i), actualShape.GetDim(i));
+            return false;
+        }
+    }
+    return true;
+}
+
+aclTensor *TransX2TensorNZ(const aclTensor *x2)
+{
+    uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDimNum);
+    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+        storageDim[i] = x2->GetStorageShape().GetDim(i);
+    }
+    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim(viewShapeDimNum);
+    viewDim[0] = x2->GetViewShape().GetDim(1);
+    viewDim[1] = x2->GetViewShape().GetDim(0);
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    aclGetDataType(x2, &dataType);
+    std::vector<int64_t> stride(viewShapeDimNum);
+    stride[0] = viewDim[1];
+    stride[1] = 1;
+    auto offset = x2->GetViewOffset();
+    aclFormat format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
+    auto newTensor = aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format,
+                                      storageDim.data(), storageShapeDimNum, x2->GetTensor()->GetAddr());
+    if (newTensor != nullptr) {
+        newTensor->SetOriginalFormat(op::Format::FORMAT_ND);
+    }
+    return newTensor;
 }
 } // namespace matmul_allto_all_check

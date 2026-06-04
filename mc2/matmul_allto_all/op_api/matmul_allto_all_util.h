@@ -33,6 +33,12 @@ constexpr char KC_SCENE[] = "KC quantization(x1QuantMode=3, x2QuantMode=2)";
 constexpr char KCDYN_SCENE[] = "KCDYN quantization(x1QuantMode=7, x2QuantMode=2)";
 constexpr char MX_SCENE[] = "MX quantization(x1QuantMode=6, x2QuantMode=6)";
 
+// NZ格式相关常量
+constexpr int64_t NZ_K0_VALUE_INT8_TRANS = 32;
+constexpr int64_t NZ_K0_VALUE_INT4_TRANS = 64;
+constexpr int64_t NZ_K0_VALUE_BMM_BLOCK_NUM = 16;
+constexpr int64_t NZ_STORAGE_PENULTIMATE_DIM = 16;
+
 // 通信域相关枚举值
 enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
@@ -103,6 +109,18 @@ bool IsAll2AllOut(const aclTensor *alltoAllOut);
 
 // 处理支持转置的tensor物理排布不连续问题
 aclTensor *TransX2Tensor(const aclTensor *x2);
+
+// 检查tensor是否为NZ格式（FRACTAL_NZ主格式）
+bool IsFormatNZ(const aclTensor *tensor);
+
+// 根据x2的view shape和transpose标志计算期望的NZ存储shape
+op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2);
+
+// 校验x2的NZ存储shape是否匹配期望shape
+bool CheckWeightNzStorageShape(const op::Shape &expectedShape, const op::Shape &actualShape);
+
+// 处理NZ格式的x2 tensor转置：交换view维度，保留NZ格式
+aclTensor *TransX2TensorNZ(const aclTensor *x2);
 } // namespace matmul_allto_all_check
 
 #endif //CHECKER_H
