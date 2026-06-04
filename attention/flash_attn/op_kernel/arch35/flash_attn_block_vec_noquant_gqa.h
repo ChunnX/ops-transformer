@@ -112,8 +112,9 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
-    // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
+    // 与 FA_MTE3_TO_V_0/1 错开，避免 ClearOutput 与 vec1/vec2 流水争用同一 MTE3_V id
+    static constexpr uint32_t initOutputEventId = 6U;
+    // 静态 event ID 常量（避开 6/7 为跨核 mode4；initOutput 已占用 MTE3_V-6）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
     static constexpr uint32_t FA_V_TO_MTE3_0     = 0U;
@@ -125,7 +126,7 @@ public:
     // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
-    // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
+    // attenMask ping/pong 的 MTE2→V（0/1，与 vec2=2、sink=4 错开）
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
 
@@ -288,12 +289,22 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
+            // initOutput 的 MTE3_V event 双 subblock 共享；仅 subBlock0 做 Set/Wait，避免并行 Wait 死锁
+            if (constInfo.subBlockIdx == 0) {
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                InitOutputSingleCore();
+                if (constInfo.isSoftmaxLseEnable) {
+                    InitLseOutputSingleCore();
+                }
+            }
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
+            PipeBarrier<PIPE_ALL>();
             // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
             // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
             // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
@@ -368,7 +379,10 @@ public:
         auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)][0];
         int64_t stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         float descaleQK = 1.0;
 
@@ -387,8 +401,11 @@ public:
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
         //-------------------------Data copy to l1-------------------------
         LocalTensor<INPUT_T> mm2AL1Tensor = l1PTensor;
 
@@ -408,7 +425,10 @@ public:
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
         // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
         // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
@@ -452,8 +472,11 @@ public:
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> &lseUb = this->lseBuf;
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser->GetTBase(runInfo.bIdx);
@@ -473,8 +496,11 @@ public:
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfo, qActSeqLens);
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void Vec1SinkCompute(RunInfoX &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
@@ -493,8 +519,11 @@ public:
     __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
-        CopySinkIn(runInfo);
-        WaitFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
+        if (constInfo.subBlockIdx == 0) {
+            CopySinkIn(runInfo);
+            WaitFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
+        }
+        PipeBarrier<PIPE_ALL>();
         SinkSubExpAddGSFusedVF<float, INPUT_T>(this->sinkBuf, sumUb, maxUb, runInfo.actVecMSize);
     }
 
@@ -522,12 +551,14 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
-            // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
-            PipeBarrier<PIPE_ALL>();
             attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-            PipeBarrier<PIPE_MTE2>();
-            PipeBarrier<PIPE_V>();
+            // 仅 subBlock0 搬 mask（对应原 attenMaskInQue.AllocTensor 的 TQue 串行语义）
+            if (constInfo.subBlockIdx == 0) {
+                AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
+                PipeBarrier<PIPE_MTE2>();
+                PipeBarrier<PIPE_V>();
+            }
+            PipeBarrier<PIPE_ALL>();
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -542,7 +573,10 @@ public:
         int64_t stage1Offset = 0;
         stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
@@ -615,17 +649,20 @@ public:
             }
         }
         if constexpr (hasAtten) {
-            // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
+            // 替代 attenMaskInQue.FreeTensor：双 subblock 均完成 V 读 mask 后再进入后续流水
             PipeBarrier<PIPE_V>();
             PipeBarrier<PIPE_ALL>();
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
-        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 MTE3 才能读 stage1OutBuf
+        // 对应原版 stage1OutQue EnQue/DeQue：仅 subBlock0 做 V/MTE3 event 握手
         PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<INPUT_T> mm2AL1Tensor;
         mm2AL1Tensor = l1PTensor;
 
@@ -637,7 +674,10 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
 
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
         // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
@@ -664,7 +704,10 @@ public:
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
         LocalTensor<T> mmRes = bmm2UbTensor;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
@@ -691,7 +734,10 @@ public:
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -707,8 +753,11 @@ public:
 
         RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
@@ -720,7 +769,10 @@ public:
         uint32_t subMBase = 8192 / constInfo.dBasicBlock;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
         constexpr uint32_t mte2ToV    = FA_MTE2_TO_V_ID;
@@ -818,8 +870,11 @@ public:
                 }
                 CopyOutAttentionOut(runInfo, vec2ResUb, mIdx, subMRealsize);
             } else if (vec2LoopLimit > 1) {
-                SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-                WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                if (constInfo.subBlockIdx == 0) {
+                    SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                    WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                }
+                PipeBarrier<PIPE_ALL>();
                 if constexpr (useDn) {
                     DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
                              vec2ResUb,
@@ -833,7 +888,10 @@ public:
                 }
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -956,19 +1014,31 @@ public:
     {
         // Copy sum to gm
         FaVectorApi::BroadcastMaxSum(this->sumBrdcstBuf, sumUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
         DataCopy(softmaxFDSumGm[gmOffset], this->sumBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        }
+        PipeBarrier<PIPE_ALL>();
 
         // Copy max to gm
         FaVectorApi::BroadcastMaxSum(this->maxBrdcstBuf, maxUb, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
         DataCopy(softmaxFDMaxGm[gmOffset], this->maxBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
@@ -990,8 +1060,11 @@ public:
         if constexpr (splitD) {
             dSizeAligned64 = constInfo.dBasicBlock;
         }
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        }
+        PipeBarrier<PIPE_ALL>();
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
 
@@ -1033,7 +1106,10 @@ public:
         uint32_t subMBase = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
         constexpr uint32_t mte2ToV = FA_MTE2_TO_V_ID;
@@ -1114,7 +1190,10 @@ public:
                 CopyOutAttentionOut(runInfo, vec2ResInner, mIdx, subMRealsize);
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (constInfo.subBlockIdx == 0) {
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void SoftmaxInitBuffer(uint32_t off_sm)
@@ -1183,6 +1262,18 @@ public:
         }
     }
 
+    // 进入 FD 前：仅用 PipeBarrier 排干 FA 流水（禁止 subBlock 不对称 WaitFlag，否则会与 SyncAll 互锁）
+    __aicore__ inline void DrainFaPipeEventsForFd()
+    {
+        if constexpr (hasAtten) {
+            if (constInfo.subBlockIdx == 0) {
+                PipeBarrier<PIPE_MTE2>();
+                PipeBarrier<PIPE_V>();
+            }
+        }
+        PipeBarrier<PIPE_ALL>();
+    }
+
     __aicore__ inline void AllocEventID()
     {
         mte3ToVId[0] = FA_MTE3_TO_V_0;
@@ -1191,18 +1282,25 @@ public:
         vToMte3Id[1] = FA_V_TO_MTE3_1;
         stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
         stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        // 双 subblock 共享同一组 event id，SetFlag 仅由 subBlock0 执行一次，避免重复置位
+        if (constInfo.subBlockIdx != 0) {
+            return;
+        }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
+        if (constInfo.subBlockIdx != 0) {
+            return;
+        }
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
