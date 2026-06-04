@@ -374,11 +374,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::Process()
     } else {
         GatherAndWriteChunked();
     }
-
-    // ======= Phase D: Pad zeros for droppad (tail core only) =======
-    if (dropPadMode_ == DROP_PAD_MODE) {
-        PadZerosForDropPad();
-    }
 }
 
 // ========================== FilterAndCountChunked ==========================
@@ -1133,7 +1128,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
                     DataCopyPad(expandedScaleGm_[newPos], quantTempLocal, quantScaleCopyOutParams);
                 }
-            }
             }
         } else {
             // === Serial fallback for colsLoops_ > 1 ===
