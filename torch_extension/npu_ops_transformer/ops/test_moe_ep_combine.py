@@ -19,7 +19,8 @@ def run_test_combine_shape(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -65,7 +66,8 @@ def run_test_combine_no_weights(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -108,7 +110,8 @@ def run_test_combine_roundtrip(rank):
     hidden = 1024
     top_k = 1
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
