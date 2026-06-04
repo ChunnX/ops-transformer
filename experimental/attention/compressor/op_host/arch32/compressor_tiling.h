@@ -203,7 +203,7 @@ enum class LayoutType {
 enum class TemplateId:uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
-    PERF = 2
+    FULL_LOAD = 2
 };
 
 CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
