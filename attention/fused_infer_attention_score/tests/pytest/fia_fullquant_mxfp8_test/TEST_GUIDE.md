@@ -101,6 +101,12 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
     "sparse_mode": [3],
     "q_scale_layout": ["TND"],
     "p_scale": [1.0],
+    ## 以下为可选参数，不指定则使用默认值
+    "data_range_q": [1.0],     # Q 数据范围，默认 1.0
+    "data_range_k": [1.0],     # K 数据范围，默认 1.0
+    "data_range_v": [1.0],     # V 数据范围，默认 1.0
+    "use_fp64_golden": [False], # 是否启用 FP64 CV 三方比对
+    "use_fp64_compare": [True], # CV模式下 FP64做golden
 },
 ```
 
@@ -120,6 +126,8 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 | `sparse_mode` | 3 | 稀疏模式 |
 | `q_scale_layout` | `"AUTO"` / `"TND"` / `"N2TGD"` | Q scale 布局 |
 | `p_scale` | 1.0 | P scale 因子 |
+| `use_fp64_golden` | True / False (默认 False) | 是否启用 FP64 CV 三方比对 |
+| `use_fp64_compare` | True / False (默认 True) | FP64做golden(True) 还是 FP32做golden(False) |
 
 ### q_scale_layout 选择
 
@@ -131,20 +139,62 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 
 ---
 
-## 5. 文件结构
+## 5. 精度比对模式
+
+### 5.1 简单模式（默认）
+
+```
+golden(FP32)  ──→  check_result()  ←── NPU输出
+```
+
+使用绝对阈值 (MERE/MARE/ULP) 判定，适合快速迭代验证。
+
+### 5.2 CV 三方比对模式（use_fp64_golden=True）
+
+```
+golden_fp64   ──→┐
+golden_fp32   ──→┤ compute_cv_report()  ←── NPU输出
+benchmark      ──→┘
+```
+
+将 NPU 误差按 benchmark→golden 误差做归一化：
+
+```
+rate = NPU_err / max(benchmark_err, 2⁻⁸)
+```
+
+判定标准：
+| 指标 | 阈值 |
+|------|------|
+| MARE_rate (最大相对误差率) | < 5.0 |
+| MERE_rate (平均相对误差率) | < 1.5 |
+| RMSE_rate | < 1.5 |
+| Small_err_rate (小值域错误率) | < 2.0 |
+| Fallback | max_abs < 2⁻⁷ → 直接 Pass |
+
+启用方式：在 `fia_fullquant_mxfp8_paramset.py` 的用例中添加：
+```python
+"use_fp64_golden": [True],
+```
+
+---
+
+## 6. 文件结构
 
 ```
 fia_fullquant_mxfp8_test/
 ├── pytest.ini                       # pytest 配置（自定义标记）
 ├── fia_fullquant_mxfp8_paramset.py  # 参数定义（唯一入口）
-├── fia_fullquant_mxfp8_golden.py    # CPU golden + NPU 调用
-├── result_compare_method.py         # 精度对比
+├── fia_fullquant_mxfp8_golden.py    # CPU golden (FP32/FP64) + NPU 调用
+├── precision_compare_v2.py          # 昇腾精度标准 2.0 比对脚本
+├── result_compare_method.py         # 旧版精度对比（保留兼容）
+├── TEST_GUIDE.md                    # 本文件
 └── test_fia_fullquant_mxfp8.py      # pytest 测试入口
 ```
 
 ---
 
-## 6. 常见问题
+## 7. 常见问题
 
 | 报错 | 原因 | 解决 |
 |------|------|------|
