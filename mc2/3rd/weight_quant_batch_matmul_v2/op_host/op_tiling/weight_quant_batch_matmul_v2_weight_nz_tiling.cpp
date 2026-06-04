@@ -341,8 +341,7 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasDtype(const gert::CompileTi
 
         OP_TILING_CHECK(
             (inputParams_.biasDtype != inputParams_.aDtype),
-            OP_LOGE(
-                inputParams_.opName, "bias[%s] dtype should same as x[%s]",
+            OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "bias",
                 ge::TypeUtils::DataTypeToAscendString(inputParams_.biasDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString()),
             return false);
@@ -361,25 +360,22 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeDtype()
     auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
     OP_TILING_CHECK(
         (inputParams_.aDtype != ge::DT_FLOAT16),
-        OP_LOGE(
-            inputParams_.opName, "x only support DT_FLOAT16 dtype, get actual dtype[%s]",
-            ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString()),
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "x",
+            ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString(), "DT_FLOAT16"),
         return false);
 
     inputParams_.cDtype = context_->GetOutputDesc(0)->GetDataType();
     OP_TILING_CHECK(
         (inputParams_.bDtype != ge::DT_INT8),
-        OP_LOGE(
-            inputParams_.opName, "weight only support DT_INT8 dtype, get actual dtype[%s]",
-            ge::TypeUtils::DataTypeToAscendString(inputParams_.bDtype).GetString()),
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "weight",
+            ge::TypeUtils::DataTypeToAscendString(inputParams_.bDtype).GetString(), "DT_INT8"),
         return false);
 
     OP_TILING_CHECK(
         (inputParams_.cDtype != inputParams_.aDtype),
-        OP_LOGE(
-            inputParams_.opName,
-            "y dtype should same as x or be DT_INT8 if quant param is provided, get actual dtype[%s]",
-            ge::TypeUtils::DataTypeToAscendString(inputParams_.cDtype).GetString()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "y",
+            ge::TypeUtils::DataTypeToAscendString(inputParams_.cDtype).GetString(),
+            "should be same as x or DT_INT8 if quant param is provided"),
         return false);
     return AnalyzeBiasDtype(biasDesc) && AnalyzeAntiQuantDtype(antiQuantScaleDtype, antiQuantOffsetDesc);
 }
@@ -389,8 +385,7 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantDtype(
 {
     OP_TILING_CHECK(
         antiQuantScaleDtype != inputParams_.aDtype,
-        OP_LOGE(
-            inputParams_.opName, "antiquant_scale[%s] dtype should same as x[%s]",
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "antiquant_scale",
             ge::TypeUtils::DataTypeToAscendString(antiQuantScaleDtype).GetString(),
             ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString()),
         return false);
@@ -398,8 +393,7 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantDtype(
         auto antiQuantOffsetDtype = antiQuantOffsetDesc->GetDataType();
         OP_TILING_CHECK(
             antiQuantOffsetDtype != inputParams_.aDtype,
-            OP_LOGE(
-                inputParams_.opName, "antiquant_offset[%s] dtype should same as x[%s]",
+            OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "antiquant_offset",
                 ge::TypeUtils::DataTypeToAscendString(antiQuantOffsetDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString()),
             return false);
@@ -436,9 +430,9 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageSh
     size_t antiQuantScaleShapeSize = static_cast<size_t>(antiQuantScaleShape->GetStorageShape().GetShapeSize());
     OP_TILING_CHECK(
         antiQuantScaleShapeSize == 0,
-        OP_LOGE(
-            inputParams_.opName, "antiquant_scale %s cannot be empty tensor",
-            Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str()),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "antiquant_scale",
+            Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+            "antiquant_scale cannot be empty tensor"),
         return false);
 
     if (antiQuantScaleShapeSize == 1) {
@@ -448,9 +442,9 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::SetAntiQuantType(const gert::StorageSh
     } else {
         OP_TILING_CHECK(
             antiQuantScaleShapeSize != inputParams_.nSize,
-            OP_LOGE(
-                inputParams_.opName, "antiquant_scale %s shape size should same as N[%lu]",
-                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(), inputParams_.nSize),
+            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "antiquant_scale",
+                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+                (std::string("size should be ") + std::to_string(inputParams_.nSize)).c_str()),
             return false);
         inputParams_.antiQuantType = Mc2QuantType::PER_CHANNEL;
     }
@@ -471,33 +465,29 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageSh
             inputParams_.biasWithBatch = false;
             OP_TILING_CHECK(
                 biasShapeSize != inputParams_.nSize && biasShapeSize != 0,
-                OP_LOGE(
-                    inputParams_.opName,
-                    "when bias without batch, bias shape size[%ld] is not equal nSize[%lu] or zero",
-                    biasShape->GetStorageShape().GetShapeSize(), inputParams_.nSize),
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "bias",
+                    Ops::Base::ToString(biasShape->GetStorageShape()).c_str(),
+                    (std::string("size should be ") + std::to_string(inputParams_.nSize) + " or zero").c_str()),
                 return false);
             OP_TILING_CHECK(
                 biasShape->GetStorageShape().GetDimNum() > 1 && biasShape->GetStorageShape().GetDim(0) != 1,
-                OP_LOGE(
-                    inputParams_.opName, "when bias without batch, bias shape only support [1, n] or [n,], input is %s",
-                    Ops::Base::ToString(biasShape->GetStorageShape()).c_str()),
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "bias",
+                    Ops::Base::ToString(biasShape->GetStorageShape()).c_str(), "[1, n] or [n,]"),
                 return false);
         } else {
             inputParams_.biasWithBatch = true;
             auto outDims = outShape->GetStorageShape().GetDimNum();
             OP_TILING_CHECK(
                 biasDims != outDims,
-                OP_LOGE(
-                    inputParams_.opName,
-                    "when bias with batch, bias shape dim number [%lu] should equal out shape dim numder [%lu]",
-                    biasDims, outDims),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "bias",
+                    (std::to_string(biasDims) + "D").c_str(),
+                    (std::string("bias shape dim number should equal out shape dim number ") + std::to_string(outDims)).c_str()),
                 return false);
             OP_TILING_CHECK(
                 static_cast<uint64_t>(biasShape->GetStorageShape().GetDim(biasDims - 1)) != inputParams_.nSize ||
                     biasShape->GetStorageShape().GetDim(biasDims - NO_BATCH_SHAPE_DIM) != 1,
-                OP_LOGE(
-                    inputParams_.opName, "when bias with batch, bias latest two dims only support [1, n], input is %s",
-                    Ops::Base::ToString(biasShape->GetStorageShape()).c_str()),
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "bias",
+                    Ops::Base::ToString(biasShape->GetStorageShape()).c_str(), "[1, n]"),
                 return false);
 
             uint64_t biasWithBatch3 =
@@ -519,7 +509,8 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageSh
             bool biasBatchValid = biasWithBatch3 == inputParams_.batchY3 && biasWithBatch2 == inputParams_.batchY2 &&
                                   biasWithBatch1 == inputParams_.batchY1 && biasWithBatch0 == inputParams_.batchY0;
             if (!biasBatchValid) {
-                OP_LOGE("[Mc2WeightQuantBatchMatmulV2]", "Batch of Bias  must be equal to Out !");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias batch", "",
+                    "Batch of Bias must be equal to Out");
                 return false;
             }
         }
@@ -549,10 +540,8 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
     auto outStorageShape = outShape->GetStorageShape();
     OP_TILING_CHECK(
         xShape->GetStorageShape().GetShapeSize() == 0 || weightShape->GetStorageShape().GetShapeSize() == 0,
-        OP_LOGE(
-            inputParams_.opName, "not support empty tensor, x %s, weight %s",
-            Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
-            Ops::Base::ToString(weightShape->GetStorageShape()).c_str()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x/weight", "empty",
+            "not support empty tensor"),
         return false);
     auto xDims = xStorageShape.GetDimNum();
     auto weightDims = weightStorageShape.GetDimNum();
@@ -560,9 +549,9 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
 
     OP_TILING_CHECK(
         (xDims < MM_SHAPE_LEN_ND_MIN || xDims > MM_SHAPE_LEN_ND_MAX),
-        OP_LOGE(
-            inputParams_.opName, "left matrix X dim support >=2 and <=6, now is %s",
-            Ops::Base::ToString(xShape->GetStorageShape()).c_str()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x",
+            (std::to_string(xDims) + "D").c_str(),
+            "left matrix X dim support >=2 and <=6"),
         return false);
     inputParams_.mSize = static_cast<uint64_t>(
         inputParams_.transA ? xShape->GetStorageShape().GetDim(xDims - 1) :
@@ -603,7 +592,8 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
     bool batch0Invalid = inputParams_.batchX0 != inputParams_.batchWeight0 && inputParams_.batchX0 != 1 &&
                          inputParams_.batchWeight0 != 1;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE("[Mc2WeightQuantBatchMatmulV2]", "x and weight batch broadcast failed!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "batch dims", "",
+            "x and weight batch broadcast failed");
         return false;
     }
     return true;
@@ -619,29 +609,27 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeAntiQuantShape(
         expectShape.AppendDim(static_cast<int64_t>(inputParams_.nSize));
         OP_TILING_CHECK(
             expectShape != antiQuantScaleShape->GetStorageShape(),
-            OP_LOGE(
-                inputParams_.opName, "Antiquant shape expect %s, but is %s", Ops::Base::ToString(expectShape).c_str(),
-                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str()),
+            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "antiquant_scale",
+                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+                Ops::Base::ToString(expectShape).c_str()),
             return false);
     } else {
         OP_TILING_CHECK(
             antiQuantScaleShape->GetStorageShape().GetDimNum() > VALID_INPUT_DIM_NUM ||
                 (antiQuantScaleShape->GetStorageShape().GetDimNum() == VALID_INPUT_DIM_NUM &&
                  antiQuantScaleShape->GetStorageShape().GetDim(1) != 1),
-            OP_LOGE(
-                inputParams_.opName,
-                "per-channel antiquant_scale shape only support [n, 1] or [n,], actual input shape is %s",
-                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str()),
+            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opName, "antiquant_scale",
+                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(), "[n, 1] or [n,]"),
             return false);
     }
 
     if (Mc2CheckOptionalInputByShape(antiQuantOffsetShape)) {
         OP_TILING_CHECK(
             antiQuantScaleShape->GetStorageShape() != antiQuantOffsetShape->GetStorageShape(),
-            OP_LOGE(
-                inputParams_.opName, "antiquant_scale %s and antiquant_offset %s should have same shape",
-                Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
-                Ops::Base::ToString(antiQuantOffsetShape->GetStorageShape()).c_str()),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opName, "antiquant_scale/offset",
+                (Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()) + ", " +
+                 Ops::Base::ToString(antiQuantOffsetShape->GetStorageShape())).c_str(),
+                "should have same shape"),
             return false);
         inputParams_.hasAntiQuantOffset = true;
     }
@@ -660,12 +648,16 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
     // OP_LOG_FULL
     OPS_LOG_D(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     OP_TILING_CHECK(
-        CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "invalid context"),
+        CheckContext() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context", "",
+            "invalid context"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         !AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
-        OP_LOGE(inputParams_.opName, "fail to analyze context info"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context info", "",
+            "fail to analyze context info"),
+        return ge::GRAPH_FAILED);
 
     bool maxDimCheck = inputParams_.kSize > MAX_SHAPE_DIM || inputParams_.nSize > MAX_SHAPE_DIM;
     // A矩阵转置场景，m需要小于65535
@@ -674,9 +666,10 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
     }
     OP_TILING_CHECK(
         maxDimCheck,
-        OP_LOGE(
-            inputParams_.opName, "only support MKN in range [1, %lu], get actual value[%lu, %lu, %lu]", MAX_SHAPE_DIM,
-            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "MKN",
+            (std::to_string(inputParams_.mSize) + ", " + std::to_string(inputParams_.kSize) + ", " +
+             std::to_string(inputParams_.nSize)).c_str(),
+            (std::string("only support MKN in range [1, ") + std::to_string(MAX_SHAPE_DIM) + "]").c_str()),
         return ge::GRAPH_FAILED);
 
     OP_LOGD(
@@ -835,7 +828,7 @@ void Mc2WeightQuantBatchMatmulV2WeightNz::InitCompileInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "platformInfoPtr is null");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo");
         return;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -962,13 +955,15 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::GetMmTilingInput(Mc2MmTilingInput& mmT
     if (aFormat == ge::FORMAT_ND || aFormat == ge::FORMAT_FRACTAL_NZ) {
         mmTilingInput.aPosition = matmul_tiling::TPosition::GM;
     } else {
-        OP_LOGE(inputParams_.opName, "The format of input a is unsupported.");
+        OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "a",
+            Ops::Base::ToString(aFormat).c_str(), "ND or FRACTAL_NZ");
         return false;
     }
     if (bFormat == ge::FORMAT_ND || bFormat == ge::FORMAT_FRACTAL_NZ) {
         mmTilingInput.aPosition = matmul_tiling::TPosition::GM;
     } else {
-        OP_LOGE(inputParams_.opName, "The format of input b is unsupported.");
+        OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "b",
+            Ops::Base::ToString(bFormat).c_str(), "ND or FRACTAL_NZ");
         return false;
     }
     mmTilingInput.bPosition = matmul_tiling::TPosition::GM;

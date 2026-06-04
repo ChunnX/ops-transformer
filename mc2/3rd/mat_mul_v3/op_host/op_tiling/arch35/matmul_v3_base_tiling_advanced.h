@@ -41,14 +41,16 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override
     {
         if (context_ == nullptr) {
-            OP_LOGE("Mc2MatMulV3", "context_ is nullptr");
+            OP_LOGE_WITH_INVALID_INPUT("Mc2MatMulV3", "context");
             return ge::GRAPH_FAILED;
         }
         auto isValidDimValue = [](int64_t dim) -> bool {
             return (dim > 0) && (dim <= INT32_MAX);
         };
         if (!isValidDimValue(args_.mValue) || !isValidDimValue(args_.kValue) || !isValidDimValue(args_.nValue)) {
-            OP_LOGE(args_.opName, "illegal value: m[%lu], k[%lu], n[%lu]", args_.mValue, args_.kValue, args_.nValue);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "m, k and n",
+                (std::to_string(args_.mValue) + ", " + std::to_string(args_.kValue) + " and " + std::to_string(args_.nValue)).c_str(),
+                "M, K, N values should be positive and not exceed INT32_MAX.");
             return ge::GRAPH_FAILED;
         }
         if (compileInfo_.aicNum == 0UL) {
@@ -138,7 +140,7 @@ protected:
         if (tiling.workspaceSize.size() > 0) {
             size_t *workspaces = context_->GetWorkspaceSizes(1); // set workapce
             OP_TILING_CHECK(workspaces == nullptr,
-                OP_LOGE(context_->GetNodeName(), "workspace is nullptr."), return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
             workspaces[0] = tiling.workspaceSize[0];
         }
         return ge::GRAPH_SUCCESS;

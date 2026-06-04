@@ -191,7 +191,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr),
-                    OP_LOGE(opName_, "rawTilingDataPtr is nullptr."),
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
         sizeof(MatmulReduceScatterV2TilingData), rawTilingDataPtr->GetCapacity());

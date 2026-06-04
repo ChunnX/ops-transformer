@@ -412,16 +412,14 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu \
-                still exceeds 256MB.",
-        sizeOfSingleM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
+            std::to_string(sizeOfSingleM).c_str(), "exceeds 256MB even after splitting into (1, k)"),
         return ge::GRAPH_FAILED);
 
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 63 parts (rounded up), the size %lu \
-                still exceeds 256MB.",
-        sizeOfSplitM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
+            std::to_string(sizeOfSplitM).c_str(), "exceeds 256MB even after splitting M into 63 parts"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -469,7 +467,7 @@ bool AllGatherMatmulTilingBase::SetCommAlgo()
 {
     args_.commAlg = mc2tiling::Mc2GetCommAlgo(rankSize_, args_.orgMValue, group_, context_);
     if (args_.commAlg == mc2tiling::COMM_ALG_DEFAULT) {
-        OP_LOGE(opName_, "CommAlgo %u is not supported.", args_.commAlg);
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "commAlg", std::to_string(args_.commAlg).c_str(), "valid algorithm");
         return false;
     }
     return true;

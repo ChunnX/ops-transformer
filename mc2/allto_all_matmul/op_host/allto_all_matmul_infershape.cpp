@@ -86,14 +86,14 @@ static ge::graphStatus CheckAllToAllAxesShapeForAlltoAllMatmul(const gert::Infer
     const auto attrs = context->GetAttrs();
     const auto alltoAllAxesPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_ALLTO_ALL_AXES);
     if (alltoAllAxesPtr != nullptr) {
-        OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO), OP_LOGE_FOR_INVALID_VALUE(INNER_DEBUG,
+        OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO), OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(),
                   "alltoAllAxes", std::to_string(alltoAllAxesPtr->GetSize()).c_str(), "2"),
                   return ge::GRAPH_FAILED);
         const auto alltoAllAxes = static_cast<const int64_t*>(alltoAllAxesPtr->GetData());
         const std::string axesVal =
             "[" + std::to_string(alltoAllAxes[0]) + ", " + std::to_string(alltoAllAxes[1]) + "]";
         OPS_CHECK((alltoAllAxes[0] != NUM_MINUS_TWO || alltoAllAxes[1] != NUM_MINUS_ONE),
-                  OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "alltoAllAxes", axesVal.c_str(),
+                  OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "alltoAllAxes", axesVal.c_str(),
                   "alltoAllAxes should be [-2, -1]"),
                   return ge::GRAPH_FAILED);
     }
@@ -115,9 +115,9 @@ static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeCo
               "axis k cannot exceed " + std::to_string(AXIS_K_UPPER_LIMIT)),
               return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2 / shape.rankNum) {
-        OP_LOGE(context->GetNodeName(),
-                "In allto_all_matmul, x1.k must be the same to x2.k / rankSize, "
-                "but actual get x1.k: %ld, x2.k: %ld, rankSize: %ld", shape.k1, shape.k2, shape.rankNum);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x1 and x2",
+            (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
+            "x1.k must be equal to x2.k / rankSize");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -173,9 +173,9 @@ static ge::graphStatus CheckRankDimForAlltoAllMatmul(gert::InferShapeContext* co
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "rank"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(std::find(SUPPORT_RANK_NUM.begin(), SUPPORT_RANK_NUM.end(), *rankDim) == SUPPORT_RANK_NUM.end(),
-                    OP_LOGE(INNER_DEBUG,
-                            "Rank number should be in %s, but the actual value is %ld.",
-                            VectorToString(SUPPORT_RANK_NUM).c_str(), *rankDim),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rank",
+                        std::to_string(*rankDim).c_str(),
+                        "should be in " + VectorToString(SUPPORT_RANK_NUM)),
                     return ge::GRAPH_FAILED);
     shape.rankNum = *rankDim;
     return ge::GRAPH_SUCCESS;
@@ -285,9 +285,9 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext* c
     OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0)
                && !(*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM)
                && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
-               OP_LOGE(INNER_DEBUG,
-                       "The x1 or x2 quant mode is invalid, x1QuantMode is: %ld, x2QuantMode is: %ld",
-                       *x1QuantMode, *x2QuantMode),
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "x1QuantMode and x2QuantMode",
+                   (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
+                   "unsupported quant mode combination"),
                return ge::GRAPH_FAILED);
 
     // 初始默认值

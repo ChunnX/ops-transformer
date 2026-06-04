@@ -141,7 +141,7 @@ static bool InferAllZeroShape(const gert::InferShapeContext* context)
 
 static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     MatmulShapeInfo shape;
     OPS_CHECK(
         InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS,
@@ -160,7 +160,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_y);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_norm);
     OPS_CHECK(
-        InferAllZeroShape(context), OP_LOGE(kInnerDebug, "MatmulAllReduceAddRmsNorm does not support k = 0."),
+        InferAllZeroShape(context), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kInnerDebug, "x1", "k=0", "MatmulAllReduceAddRmsNorm does not support k = 0"),
         return ge::GRAPH_FAILED);
     const size_t dim_num = res_shape->GetDimNum();
     OPS_CHECK(
@@ -179,7 +179,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
 
 static ge::graphStatus InferDtypeForMC2AddRmsNorm(gert::InferDataTypeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     const ge::DataType out_type = context->GetInputDataType(static_cast<size_t>(MC2AddRmsNormInputIdx::K_RESIDUAL));
     OP_LOGI(context->GetNodeName(), "Start to infer dtype, output dtype is %u.", out_type);
     ge::graphStatus ret = context->SetOutputDataType(static_cast<size_t>(MC2AddRmsNormOutputIdx::K_Y), out_type);

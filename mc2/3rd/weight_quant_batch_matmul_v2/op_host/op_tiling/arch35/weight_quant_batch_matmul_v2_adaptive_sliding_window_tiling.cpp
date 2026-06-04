@@ -134,8 +134,9 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingASW::GetSizeWithDataType(uint64_t shap
         // 2: 判断是否是偶数
         OP_TILING_CHECK(
             shapeSize % 2 != 0,
-            OP_LOGE(
-                opName_, "To get size of matrix/array, the number of elements must be even when dtype is FLOAT4/INT4."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "shapeSize",
+                std::to_string(shapeSize).c_str(),
+                "the number of elements must be even when dtype is FLOAT4/INT4"),
             return 0);
         // 1/2: 这几种数据类型的dsize=1/2
         return shapeSize / 2;
