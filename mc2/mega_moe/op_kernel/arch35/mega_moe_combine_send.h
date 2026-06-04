@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_combine_send.h
- * \brief
+ * \brief GMM2 输出 tile 经由 peer memory scatter 到各远端 rank 的 combine 实现。
  */
 
 #ifndef MEGA_MOE_COMBINE_SEND_H
@@ -21,6 +21,10 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+
+// 将 GMM2 输出 tile 按行 scatter 到各目标 rank/expert。
+// 遍历每个远端 EP rank，计算当前 tile 行区间 [stTile, edTile) 与该 rank 的 token 区间
+// [stRankInExpert, edRankInExpert) 的交集，将有交集的行从本地 UB 拷贝到远端 peer memory。
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx, uint32_t rankId,
@@ -33,7 +37,7 @@ __aicore__ inline void CombineTokens(
     int32_t tileOffset = 0;
     GlobalTensor<int32_t> tokenPerExpertWin, preSumBeforeRankWorkSpace;
     tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
-    preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
+    preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workSpaceInfo.ptrSumBeforeRank);
     for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->epWorldSize; dstEpIdx++) {
         int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
             static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
@@ -62,7 +66,7 @@ __aicore__ inline void CombineTokens(
         }
 
         AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
-        uint64_t gmRemoteOffset = params.peermemInfo.ptrD - params.peermemInfo.ptrBase;
+        uint64_t gmRemoteOffset = params.peermemInfo.ptrCombineOutput - params.peermemInfo.ptrBase;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
 
