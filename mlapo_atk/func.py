@@ -122,20 +122,21 @@ def _mla_kv_cache_dim0_nc_view_nz(t_nd: torch.Tensor):
     """把 ND cache（[BLOCK_NUM, BLOCK_SIZE, 1, X]）转成「FRACTAL_NZ + 首轴(blockNum)非连续」的
     npu 张量，等价于父类 npu_cast_to_nz 再叠加 dim0 N× 非连续。
 
-    流程：reshape→transdata_nd2nz→format_cast(29) 得到连续 NZ 张量 [BLOCK_NUM, C1, 128, 16]；
-    再开 N×BLOCK_NUM 的 NZ buffer，as_strided 首轴步长为 N×hidden，copy_ 填入（空洞保持 0）。
+    流程：reshape→transdata_nd2nz 得到 NZ 排布的数据 [BLOCK_NUM, C1, 128, 16]；
+    再开 N×BLOCK_NUM 的连续 buffer，as_strided 首轴步长为 N×hidden，copy_ 填入（空洞保持 0）。
+    NZ 格式由 create_acl_tensor 的 format 参数(FRACTAL_NZ)声明，不做 npu_format_cast——
+    kernel 不读输入 cache（只有 dim0 stride 对 tiling 有意义），且 format_cast 会改变物理
+    storage/stride，叠加 as_strided 易让 descriptor 与真实 buffer 不一致而越界。
     返回 (非连续 NZ view, 底层 buffer)。buffer 需被持有以防回收。
     """
     N = MLA_KV_CACHE_NC_DIM0_STRIDE
     nz = transdata_nd2nz(t_nd.reshape((BLOCK_NUM, BLOCK_SIZE, -1))).contiguous().npu()
-    nz = torch_npu.npu_format_cast(nz, 29)  # FRACTAL_NZ, 连续 [BLOCK_NUM, ...]
     b0 = nz.shape[0]
     rest = tuple(nz.shape[1:])
     hidden = 1
     for s in rest:
         hidden *= int(s)
     buf = torch.zeros((N * b0,) + rest, dtype=nz.dtype, device=nz.device)
-    buf = torch_npu.npu_format_cast(buf, 29)
     view = buf.as_strided(size=nz.shape, stride=(N * hidden,) + tuple(buf.stride()[1:]))
     view.copy_(nz)  # 仅填充逻辑 block，间隔空洞保持 0
     return view, buf
@@ -1021,16 +1022,10 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
                 continue
             od = self.task_result.output_info_list[out_idx]
             out_dtype = getattr(torch, str(od.dtype).replace("torch.", ""))
+            # ND/NZ 都用「连续 2× buffer + 首轴跨步 view」；NZ 仅靠 out_fmt 声明 FRACTAL_NZ，
+            # 不做 npu_format_cast（与父类 convert_output_data 的 NZ output 路径一致，
+            # format_cast 会改物理 stride 叠加 as_strided 造成 descriptor 越界 → MTE 报错）。
             view, buf = _mla_kv_cache_dim0_nc_empty(od.shape, out_dtype, device="npu")
-            if is_nz:
-                buf = torch_npu.npu_format_cast(buf, 29)
-                hidden = 1
-                for s in tuple(int(x) for x in od.shape)[1:]:
-                    hidden *= s
-                view = buf.as_strided(
-                    size=tuple(int(x) for x in od.shape),
-                    stride=(MLA_KV_CACHE_NC_DIM0_STRIDE * hidden,) + tuple(buf.stride()[1:]),
-                )
             acl_struct = self.torch_tensor_to_acl(view, out_fmt)
             self._nc_out_keepalive.append((view, buf, acl_struct))
             output_packages[out_idx] = acl_struct
