@@ -1,20 +1,10 @@
-#  Copyright (c) 2026 Huawei Technologies Co., Ltd.
-#  This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-#  CANN Open Software License Agreement Version 2.0 (the "License").
-#  Please refer to the License for details. You may not use this file except in compliance with the License.
-#  THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-#  INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-#  See LICENSE in the root of the software repository for the full text of the License.
-#
-
-# !
-#  \file bandwidth_test.py
-#  \brief
-
 import os
+script_dir = os.path.dirname(os.path.abspath(__file__))
+cache_dir = os.path.join(script_dir, "torch_extensions_cache")
+os.makedirs(cache_dir, exist_ok=True)
+os.environ['TORCH_EXTENSIONS_DIR'] = cache_dir
 import sys
 import socket
-import logging
 import torch
 import torch_npu
 import torch.distributed as dist
@@ -29,20 +19,13 @@ from typing import List, Tuple, Dict, Any
 
 import npu_ops_transformer
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
-
 # region 配置参数
 
 # region 测试模式配置
-is_precision_test = True
-is_bandwidth_test = False
+is_precision_test = False
+is_bandwidth_test = True
 is_single_test = True
-graph_type = 0  # 0为单算子，1为静态图模式，2为动态图模式（暂不支持），3为aclgraph
+graph_type = 3
 is_full_core = 1
 core_num = 16 if not is_full_core else 32
 aic_core_num = core_num
@@ -62,21 +45,20 @@ server_num = 1
 is_cloud = 0
 
 if not is_cloud:
-    server_index = 0 if server_num > 1 else 0
-    master_ip = '127.0.0.1'
+    server_index = 0 if server_num > 1 else 0                        # 多机每个脚本保持一致并递增index值
+    master_ip = '71.20.45.123' if server_num > 1 else '127.0.0.1'    # 如果通信不通，查看一下master_ip是否设对
 else:
     server_index = int(os.environ.get("VC_TASK_INDEX"))
     host_url_list = os.environ.get("VC_WORKER_HOSTS").split(",")
     master_ip = socket.gethostbyname(host_url_list[0])
 
-rank_per_dev = 2
+rank_per_dev = 8
 world_size = server_num * rank_per_dev
 server_ranks = slice(server_index * rank_per_dev, server_index * rank_per_dev + rank_per_dev)
 ranks_list = list(range(world_size))
 # endregion
 
-
-def cal_hccl_buffsize(test_bs, h, ep_world_size):
+def cal_hccl_buffsize(bs, h, ep_world_size):
     MAX_OUT_DTYPE_SIZE = 2
     WIN_ADDR_ALIGN = 512
     UB_ALIGN = 32
@@ -85,15 +67,15 @@ def cal_hccl_buffsize(test_bs, h, ep_world_size):
 
     token_actual_len = ((h * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) // UB_ALIGN) * UB_ALIGN + SCALE_EXPAND_IDX_BUFFER
     token_need_size_dispatch = ((token_actual_len + WIN_ADDR_ALIGN - 1) // WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN
-    actual_size = (test_bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
+    actual_size = (bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
 
     hccl_buffsize = ceil(actual_size / 1024 / 1024) + 5 # 留出 5MB 空间余量
     return str(hccl_buffsize)
 
 if is_single_test:
-    bs = 2
-    data_size = 8192
-    max_bs = 2
+    bs = 1
+    data_size = 1024
+    max_bs = 1
     test_configs = [{'bs': bs, 'data_size': data_size, 'max_bs': max_bs},]
 
     # 计算 HCCL_BUFFSIZE 大小
@@ -116,8 +98,11 @@ else:
         {'bs': 256, 'data_size': 16384, 'max_bs': 256},      # 8MB
         {'bs': 512, 'data_size': 16384, 'max_bs': 512},      # 16MB
         {'bs': 1024, 'data_size': 16384, 'max_bs': 1024},    # 32MB
+        {'bs': 2048, 'data_size': 16384, 'max_bs': 2048},    # 64MB
+        {'bs': 4096, 'data_size': 16384, 'max_bs': 4096},    # 128MB
+        {'bs': 8192, 'data_size': 8192, 'max_bs': 8192},    # 128MB
     ]
-    os.environ['HCCL_BUFFSIZE'] = cal_hccl_buffsize(1024, 16384, world_size)
+    os.environ['HCCL_BUFFSIZE'] = cal_hccl_buffsize(8192, 8192, world_size)
 # endregion
 
 # region 数据类型配置
@@ -127,21 +112,19 @@ input_dtype = torch.bfloat16 if x_dtype == "bf16" else torch.float16
 # endregion
 
 # region 算子模式配置
-if is_precision_test:
-    mode = 0
-else:
-    mode = 1
+mode = 0
 # endregion
 
-comm_alg = "mte"
+comm_alg = "urma"
 
 # region 其他配置
 is_save_tensor_to_bin = False
 is_check_setting = True
 # endregion
 
-# region 工具函数
+# endregion
 
+# region 工具函数
 
 def save_tensor_to_bin(tensor, bin_name):
     if not os.path.exists("data"):
@@ -150,22 +133,22 @@ def save_tensor_to_bin(tensor, bin_name):
 
 
 def print_setting():
-    logger.info(f"{server_num=}")
-    logger.info(f"{rank_per_dev=}")
-    logger.info(f"{world_size=}")
-    logger.info(f"{mode=}")
-    logger.info(f"{comm_alg=}")
-    logger.info(f"{graph_type=}")
-    logger.info(f"{aiv_num=}")
-    logger.info(f"{is_precision_test=}")
-    logger.info(f"{is_bandwidth_test=}")
-    logger.info(f"{test_configs=}")
+    print(f"{server_num=}")
+    print(f"{rank_per_dev=}")
+    print(f"{world_size=}")
+    print(f"{mode=}")
+    print(f"{comm_alg=}")
+    print(f"{graph_type=}")
+    print(f"{aiv_num=}")
+    print(f"{is_precision_test=}")
+    print(f"{is_bandwidth_test=}")
+    print(f"{test_configs=}")
 
 
 def check_setting():
     def error_log_and_exit(log_info, exit_code=1):
-        logger.error(log_info)
-        raise RuntimeError(f"ERROR: {log_info}")
+        print(f"ERROR: {log_info}")
+        exit(exit_code)
     
     for i, cfg in enumerate(test_configs):
         if cfg['bs'] < 1:
@@ -181,22 +164,21 @@ def check_setting():
     if server_num * rank_per_dev != world_size:
         error_log_and_exit("server_num * rank_per_dev 必须等于 world_size")
 
-    if graph_type not in [0, 1, 3]:
-        error_log_and_exit("当前不支持动态图模式, graph_type 合法值为 0, 1, 3")
+    if graph_type == 2:
+        error_log_and_exit("当前不支持动态图模式, graph_type 合法值仅有 0 和 1")
 
 # endregion
 
 # region 性能采集函数
 
+def get_profiling(loop, repeat, warmup, path):
+    active = loop // repeat - warmup
 
-def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
-    active = num_loop // num_repeat - num_warmup
-
-    experimental_config = torch_npu.profiler._ExperimentalConfig(  # noqa: SLF001
+    experimental_config = torch_npu.profiler._ExperimentalConfig(
         export_type=torch_npu.profiler.ExportType.Text,
         aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
-        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
-        l2_cache=False,
+        profiler_level=torch_npu.profiler.ProfilerLevel.Level1, 
+        l2_cache=False, 
         data_simplification=False
     )
     prof = torch_npu.profiler.profile(
@@ -204,8 +186,8 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
             torch_npu.profiler.ProfilerActivity.CPU,
             torch_npu.profiler.ProfilerActivity.NPU
         ],
-        schedule=torch_npu.profiler.schedule(wait=0, warmup=num_warmup, active=active, repeat=num_repeat, skip_first=0),
-        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiling_output_path),
+        schedule=torch_npu.profiler.schedule(wait=0, warmup=warmup, active=active, repeat=repeat, skip_first=0),
+        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(path),
         profile_memory=True,
         with_stack=False,
         with_flops=False,
@@ -220,15 +202,36 @@ def clean_previous_profiling_result():
     os.system(f'rm -rf {profiling_result}*')
 
 
-def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_world_size: int, test_bs: int):
+def get_bandwidth_performance(profiling_path: str, data_size_bytes: int, world_size: int, test_bs: int):
     """从 profiling 结果中提取性能数据并计算带宽"""
-    execution_times = _extract_bandwidth_execution_times(prof_result_path)
+    execution_times = []
+    
+    for dirpath, _, filenames in os.walk(profiling_path):
+        for filename in filenames:
+            if filename.startswith("op_summary"):
+                op_summary = pd.read_csv(os.path.join(dirpath, filename))
+                bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
+                
+                if not bandwidth_test_info.empty:
+                    op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
+                    execution_times.extend(op_execute_time_series.tolist())
     
     if not execution_times:
-        logger.warning("No performance data found")
+        print("[WARN] No performance data found")
         return None
-    
+
     execution_times_us = np.array(execution_times)
+
+    if len(execution_times_us) > 100:
+        mean_val = np.mean(execution_times_us)
+        std_val = np.std(execution_times_us)
+        # 保留 mean ± 3*std 范围内的数据
+        mask = np.abs(execution_times_us - mean_val) <= 3 * std_val
+        filtered_count = np.sum(~mask)
+        if filtered_count > 0:
+            print(f"[FILTER] 过滤掉 {filtered_count} 个异常值（超过3倍标准差）")
+            execution_times_us = execution_times_us[mask]
+            
     mean_time_us = np.mean(execution_times_us)
     min_time_us = np.min(execution_times_us)
     max_time_us = np.max(execution_times_us)
@@ -236,90 +239,80 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     mean_time_s = mean_time_us / 1e6
     min_time_s = min_time_us / 1e6
     
-    single_rank_data_bytes = test_bs * data_size_bytes * ((num_world_size-1) / num_world_size)
-    total_data_bytes = single_rank_data_bytes * num_world_size
-    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 / (num_world_size-1)
-    max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / (num_world_size-1)
+    single_rank_data_bytes = test_bs * data_size_bytes *((world_size-1)/world_size)
+    total_data_bytes = single_rank_data_bytes * world_size
+    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 /(world_size-1)
+    min_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9/(world_size-1)
     single_rank_data_kb = single_rank_data_bytes / 1024
     
-    logger.info("=" * 60)
-    logger.info("Bandwidth Test Performance Results")
-    logger.info("=" * 60)
-    logger.info(f"Single rank data: {single_rank_data_kb:.4f} KB")
-    logger.info(f"Total data per iteration: {total_data_bytes / 1e6:.2f} MB")
-    logger.info(f"World size: {num_world_size}")
-    logger.info(f"BS per rank: {test_bs}")
-    logger.info(f"Data size (H): {data_size_bytes // 2}")
-    logger.info("-" * 60)
-    logger.info(f"Mean execution time: {mean_time_us:.2f} us")
-    logger.info(f"Min execution time:  {min_time_us:.2f} us")
-    logger.info(f"Max execution time:  {max_time_us:.2f} us")
-    logger.info("-" * 60)
-    logger.info(f"Mean bandwidth: {mean_bandwidth_gbps:.2f} GB/s")
-    logger.info(f"Max bandwidth:  {max_bandwidth_gbps:.2f} GB/s")
-    logger.info("=" * 60)
+    print("\n" + "=" * 60)
+    print("Bandwidth Test Performance Results")
+    print("=" * 60)
+    print(f"Single rank data: {single_rank_data_kb:.4f} KB")
+    print(f"Total data per iteration: {total_data_bytes / 1e6:.2f} MB")
+    print(f"World size: {world_size}")
+    print(f"BS per rank: {test_bs}")
+    print(f"Data size (H): {data_size_bytes // 2}")
+    print("-" * 60)
+    print(f"Mean execution time: {mean_time_us:.2f} us")
+    print(f"Min execution time:  {min_time_us:.2f} us")
+    print(f"Max execution time:  {max_time_us:.2f} us")
+    print("-" * 60)
+    print(f"Mean bandwidth: {mean_bandwidth_gbps:.2f} GB/s")
+    print(f"Max bandwidth:  {min_bandwidth_gbps:.2f} GB/s")
+    print("=" * 60)
     
     return {
         'mean_time_us': mean_time_us,
         'min_time_us': min_time_us,
         'max_time_us': max_time_us,
         'mean_bandwidth_gbps': mean_bandwidth_gbps,
-        'max_bandwidth_gbps': max_bandwidth_gbps,
+        'min_bandwidth_gbps': min_bandwidth_gbps,
         'total_data_bytes': total_data_bytes,
         'single_rank_data_kb': single_rank_data_kb,
         'data_size': data_size_bytes // 2,
         'bs': test_bs
     }
 
-
-def _extract_bandwidth_execution_times(prof_result_path: str) -> List[float]:
-    """从 profiling 结果中提取 BandwidthTest 的执行时间"""
-    execution_times = []
-    
-    for dirpath, _, filenames in os.walk(prof_result_path):
-        for filename in filenames:
-            if not filename.startswith("op_summary"):
-                continue
-            
-            op_summary = pd.read_csv(os.path.join(dirpath, filename))
-            bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
-            
-            if bandwidth_test_info.empty:
-                continue
-            
-            op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
-            execution_times.extend(op_execute_time_series.tolist())
-    
-    return execution_times
-
 # endregion
 
 # region 图模式相关
 
-
 def compile_model(model):
     if graph_type == 0:
-        raise RuntimeError('单算子模式下不应调用compile_model函数')
+        print('单算子模式下不应调用compile_model函数')
+        exit(1)
 
-    logger.info(f"------------------graph_type: {graph_type}------------------")
+    print(f"------------------graph_type: {graph_type}------------------")
     import torchair
-    from torchair.configs.compiler_config import CompilerConfig
-    
-    compiler_config = CompilerConfig()
-    npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
 
-    if graph_type == 3:
-        logger.info('graph_type=3, 测试场景: aclgraph入图模式')
+    from torchair.configs.compiler_config import CompilerConfig
+    if is_full_core:
+        compiler_config = None
+    else:
+        compiler_config = CompilerConfig()
+        compiler_config.ge_config.aicore_num = f"{aic_core_num}|{aiv_core_num}"
+        print(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
+    
+    if graph_type == 1:  
+        print('graph_type=1, 测试场景: 传统入图模式，静态shape+在线编译场景')
+        npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
+        compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+
+    elif graph_type == 3:
+        print('is_aclgraph=1, 测试场景: aclgraph入图模式')
+        os.makedirs("./static_kernel", exist_ok=True)
+        compiler_config = CompilerConfig()
+        print(f"启用aclnn静态内核（aclgraph），当前只支持全核")
         compiler_config.mode = "reduce-overhead"
-        compiled_model = torch.compile(model, backend=npu_backend)
-    elif graph_type == 1:
-        logger.info('graph_type=1, 测试场景: 传统入图模式，静态shape+在线编译场景')
-        if is_full_core:
-            compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
-        else:
-            compiler_config.ge_config.aicore_num = f"{aic_core_num}|{aiv_core_num}"
-            logger.info(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
-            compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+        # 开启静态Kernel编译
+        compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+        compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./static_kernel"
+    
+        npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
+        compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+    else:
+        raise ValueError(f"不支持的 graph_type: {graph_type}")
 
     return compiled_model
 
@@ -328,16 +321,16 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, dstrank_id, group, p_world_size, p_max_bs, p_mode, p_comm_alg, p_aiv_num):
+    def forward(self, x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
         output = npu_ops_transformer.ops.npu_bandwidth_test(
             x=x,
             dstrank_id=dstrank_id,
             group=group,
-            world_size=p_world_size,
-            max_bs=p_max_bs,
-            mode=p_mode,
-            comm_alg=p_comm_alg,
-            aiv_num=p_aiv_num
+            world_size=world_size,
+            max_bs=max_bs,
+            mode=mode,
+            comm_alg=comm_alg,
+            aiv_num=aiv_num
         )
         return output
 
@@ -345,46 +338,41 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 
 # region 通信初始化
 
-
 def set_device(rank):
     torch_npu.npu.set_device(rank % rank_per_dev)
-    logger.info(f"current device set: {torch_npu.npu.current_device()}")
+    print(f"current device set: {torch_npu.npu.current_device()}")
 
 
 def init_hccl_comm(rank, world_size_local):
-    logger.info(f'[INFO] device_{rank} 创建HCCL通信链路')
-    dist.init_process_group(
-        backend="hccl", rank=rank, world_size=world_size_local,
-        init_method=f'tcp://{master_ip}:50001'
-    )
-    logger.info(f"device_{rank} init_process_group success")
+    print(f'[INFO] device_{rank} 创建HCCL通信链路')
+    dist.init_process_group(backend="hccl", rank=rank, world_size=world_size_local, init_method=f'tcp://{master_ip}:50001')
+    print(f"device_{rank} init_process_group success")
     
-    logger.info(f"device {rank} 初始化通信域")
+    print(f"device {rank} 初始化通信域")
     comm_group = dist.new_group(backend="hccl", ranks=ranks_list)
     
-    logger.debug(f"[DEBUG] device_{rank} 等待所有进程初始化完成...")
+    print(f"[DEBUG] device_{rank} 等待所有进程初始化完成...")
     dist.barrier()
-    logger.debug(f"[DEBUG] device_{rank} barrier完成")
+    print(f"[DEBUG] device_{rank} barrier完成")
     
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} NPU同步完成")
+    print(f"[DEBUG] device_{rank} NPU同步完成")
     
-    hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)  # noqa: SLF001
-    logger.debug(f"[DEBUG] device_{rank} HCCL通信域名称: {hcomm_info}, 长度: {len(hcomm_info) if hcomm_info else 0}")
+    hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    print(f"[DEBUG] device_{rank} HCCL通信域名称: {hcomm_info}, 长度: {len(hcomm_info) if hcomm_info else 0}")
     
     if not hcomm_info or len(hcomm_info) == 0:
         raise RuntimeError(f"device_{rank} HCCL通信域获取失败")
     
     dist.barrier()
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} 通信域完全就绪")
+    print(f"[DEBUG] device_{rank} 通信域完全就绪")
     
     return hcomm_info, comm_group
 
 # endregion
 
 # region 输入生成
-
 
 def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """生成测试输入数据"""
@@ -406,11 +394,7 @@ def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tenso
 
 # region Golden 生成
 
-
-def gen_golden_data(
-    rank: int, x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
-    test_max_bs: int, test_data_size: int
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def gen_golden_data(rank: int, x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor], test_max_bs: int, test_data_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """生成 golden 参考数据"""
     y = x_per_rank[0].new_zeros([test_max_bs * world_size, test_data_size])
     receive_cnt = torch.zeros([world_size], dtype=torch.int32)
@@ -438,11 +422,7 @@ def gen_golden_data(
 
 # region 精度对比
 
-
-def compare_result(
-    npu_output, golden_output, name: str, rtol: float = 1e-3, atol: float = 1e-3,
-    verbose: bool = True
-) -> bool:
+def compare_result(npu_output, golden_output, name: str, rtol: float = 1e-3, atol: float = 1e-3, verbose: bool = True) -> bool:
     """对比 NPU 输出与 Golden 输出"""
     if isinstance(npu_output, (list, tuple)):
         all_pass = True
@@ -451,19 +431,19 @@ def compare_result(
                 all_pass = False
         return all_pass
     
-    logger.info(f"{'='*60}")
-    logger.info(f"对比 {name}")
-    logger.info(f"NPU shape: {npu_output.shape}, Golden shape: {golden_output.shape}")
-    logger.info(f"{'='*60}")
+    print(f"\n{'='*60}")
+    print(f"对比 {name}")
+    print(f"NPU shape: {npu_output.shape}, Golden shape: {golden_output.shape}")
+    print(f"{'='*60}")
     
     if verbose:
-        logger.info(f"NPU 输出:")
-        logger.info(npu_output)
-        logger.info(f"Golden 输出:")
-        logger.info(golden_output)
+        print(f"\nNPU 输出:")
+        print(npu_output)
+        print(f"\nGolden 输出:")
+        print(golden_output)
     
     if torch.equal(npu_output, golden_output):
-        logger.info(f"[PASS] {name} 精度对比通过 (完全一致)")
+        print(f"\n[PASS] {name} 精度对比通过 (完全一致)")
         return True
     
     diff = torch.abs(npu_output - golden_output)
@@ -475,33 +455,37 @@ def compare_result(
         max_rel_diff = rel_diff.max().item()
         
         if verbose:
-            logger.info(f"差异:")
-            logger.info(diff)
-            logger.info(f"相对差异:")
-            logger.info(rel_diff)
+            print(f"\n差异:")
+            print(diff)
+            print(f"\n相对差异:")
+            print(rel_diff)
         
         if max_rel_diff > rtol and max_diff > atol:
-            logger.error(f"[ERROR] {name} 精度不满足要求:")
-            logger.error(f"  最大相对误差: {max_rel_diff}")
-            logger.error(f"  容忍范围: rtol={rtol}, atol={atol}")
+            print(f"\n[ERROR] {name} 精度不满足要求:")
+            print(f"  最大绝对误差: {max_diff}")
+            print(f"  平均绝对误差: {mean_diff}")
+            print(f"  最大相对误差: {max_rel_diff}")
+            print(f"  容忍范围: rtol={rtol}, atol={atol}")
             return False
         else:
-            logger.info(f"[PASS] {name} 精度对比通过 (误差在容忍范围内)")
-            logger.info(f"  最大绝对误差: {max_diff}, 最大相对误差: {max_rel_diff:.2e}")
+            print(f"\n[PASS] {name} 精度对比通过 (误差在容忍范围内)")
+            print(f"  最大绝对误差: {max_diff}, 最大相对误差: {max_rel_diff:.2e}")
     else:
         mean_diff = diff.float().mean().item()
         
         if verbose:
-            logger.info(f"差异:")
-            logger.info(diff)
+            print(f"\n差异:")
+            print(diff)
         
         if max_diff > atol:
-            logger.error(f"[ERROR] {name} 精度不满足要求:")
-            logger.error(f"  容忍范围: atol={atol}")
+            print(f"\n[ERROR] {name} 精度不满足要求:")
+            print(f"  最大绝对误差: {max_diff}")
+            print(f"  平均绝对误差: {mean_diff}")
+            print(f"  容忍范围: atol={atol}")
             return False
         else:
-            logger.info(f"[PASS] {name} 精度对比通过 (误差在容忍范围内)")
-            logger.info(f"  最大绝对误差: {max_diff}")
+            print(f"\n[PASS] {name} 精度对比通过 (误差在容忍范围内)")
+            print(f"  最大绝对误差: {max_diff}")
     
     return True
 
@@ -509,12 +493,21 @@ def compare_result(
 
 # region NPU 执行
 
-
-def run_bandwidth_test_npu(
-    queue, rank, x, dstrank_id, hcomm_info, test_max_bs=None, test_mode=None,
-    test_world_size=None, is_perf_mode=False, destroy_comm=True
-):
-    """执行 bandwidth_test 算子"""
+def run_bandwidth_test_npu(queue, rank, x, dstrank_id, hcomm_info, test_max_bs=None, test_mode=None, test_world_size=None, is_perf_mode=False, destroy_comm=True):
+    """执行 bandwidth_test 算子
+    
+    Args:
+        queue: 多进程通信队列
+        rank: 当前进程rank
+        x: 输入tensor
+        dstrank_id: 目标rank id
+        hcomm_info: HCCL通信域信息，如果为None则创建新通信域
+        test_max_bs: 最大batch size
+        test_mode: 测试模式
+        test_world_size: world size
+        is_perf_mode: 是否为性能测试模式
+        destroy_comm: 是否在结束时销毁通信域
+    """
     set_device(rank)
     
     if hcomm_info is None:
@@ -524,10 +517,14 @@ def run_bandwidth_test_npu(
         save_tensor_to_bin(x.to(torch.float32), "x_in_" + str(rank))
         save_tensor_to_bin(dstrank_id.to(torch.int32), "dstrank_id_" + str(rank))
     
-    logger.info(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
+    print(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
     
     x_npu = x.to(input_dtype).npu()
     dstrank_id_npu = dstrank_id.to(torch.int32).npu()
+    
+    print(f"[DEBUG] device_{rank} x shape: {x_npu.shape}, dtype: {x_npu.dtype}, device: {x_npu.device}")
+    print(f"[DEBUG] device_{rank} dstrank_id shape: {dstrank_id_npu.shape}, dtype: {dstrank_id_npu.dtype}, device: {dstrank_id_npu.device}")
+    print(f"[DEBUG] device_{rank} group: {hcomm_info}, world_size: {test_world_size}, max_bs: {test_max_bs}, mode: {test_mode}")
     
     bandwidth_test_kwargs = {
         'x': x_npu,
@@ -541,14 +538,21 @@ def run_bandwidth_test_npu(
     }
 
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} 开始调用算子")
+    print(f"[DEBUG] device_{rank} 开始调用算子")
 
-    # 根据模式执行
     if graph_type == 0:
         if not is_perf_mode:
             y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**bandwidth_test_kwargs)
         else:
-            y, receive_cnt = _run_bandwidth_test_with_profiling(bandwidth_test_kwargs)
+            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+            with get_profiling(loop, repeat, warmup, profiling_path) as prof:
+                for i in range(loop):
+                    torch.npu.synchronize()
+                    y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**bandwidth_test_kwargs)
+                    if i == 1:
+                        for _ in range(100):
+                            torch.exp(tensor)
+                    prof.step()
     else:
         model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
         y, receive_cnt = model(**bandwidth_test_kwargs)
@@ -557,42 +561,25 @@ def run_bandwidth_test_npu(
     
     if destroy_comm:
         dist.destroy_process_group()
+        print(f'rank {rank} destroyed process group')
     
-    logger.info(f'rank {rank} npu finished! \n')
+    print(f'rank {rank} npu finished! \n')
     
     if is_save_tensor_to_bin:
         save_tensor_to_bin(y.to(torch.float32), "y_out_" + str(rank))
         save_tensor_to_bin(receive_cnt, "receive_cnt_" + str(rank))
 
-    queue.put([rank, [y.cpu(), receive_cnt.cpu()]])
-
-
-def _run_bandwidth_test_with_profiling(kwargs: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
-    """带性能分析的带宽测试执行"""
-    stress_tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-    
-    def _profiling_iteration(prof):
-        """单个性能分析迭代"""
-        y, receive_cnt = None, None
-        for i in range(loop):
-            torch.npu.synchronize()
-            y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**kwargs)
-            if i == 1:
-                for _ in range(100):
-                    torch.exp(stress_tensor)
-            prof.step()
-        return y, receive_cnt
-    
-    with get_profiling(loop, repeat, warmup, profiling_path) as prof:
-        return _profiling_iteration(prof)
+    queue.put([
+        rank, 
+        [
+            y.cpu(), receive_cnt.cpu()
+        ]
+    ])
 
 
 def run_bandwidth_test_npu_bandwidth(queue, rank, x, dstrank_id, test_max_bs, test_mode, test_world_size):
     """专门用于带宽测试的执行函数"""
-    run_bandwidth_test_npu(
-        queue, rank, x, dstrank_id, None, test_max_bs, test_mode, test_world_size,
-        is_perf_mode=True, destroy_comm=True
-    )
+    run_bandwidth_test_npu(queue, rank, x, dstrank_id, None, test_max_bs, test_mode, test_world_size, is_perf_mode=True, destroy_comm=True)
 
 
 def run_bandwidth_test_npu_multi_config(queue, rank, configs):
@@ -611,30 +598,39 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     
     _, _, _, _, test_world_size, _ = configs[0]
     
-    logger.info(f'[INFO] device_{rank} 创建通信域（多配置共享）')
+    print(f'[INFO] device_{rank} 创建通信域（多配置共享）')
     hcomm_info, _ = init_hccl_comm(rank, test_world_size)
     
     results = []
     
-    for _, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
+    for i, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
-        logger.info(f"{'='*60}")
-        logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},"
-        f"max_bs={test_max_bs}")
-        logger.info(f"{'='*60}")
+        print(f"\n{'='*60}")
+        print(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size}, max_bs={test_max_bs}")
+        print(f"{'='*60}")
         
-        logger.info(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
+        if is_save_tensor_to_bin:
+            save_tensor_to_bin(x.to(torch.float32), f"x_in_{rank}_config{config_index}")
+            save_tensor_to_bin(dstrank_id.to(torch.int32), f"dstrank_id_{rank}_config{config_index}")
+        
+        print(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
         
         x_npu = x.to(input_dtype).npu()
         dstrank_id_npu = dstrank_id.to(torch.int32).npu()
         
         bandwidth_test_kwargs = {
-            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
-            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num,
+            'x': x_npu,
+            'dstrank_id': dstrank_id_npu,
+            'group': hcomm_info,
+            'world_size': test_world_size,
+            'max_bs': test_max_bs,
+            'mode': mode,
+            'comm_alg': comm_alg,
+            'aiv_num': aiv_num,
         }
 
         torch.npu.synchronize()
-        logger.debug(f"[DEBUG] device_{rank} 开始调用算子")
+        print(f"[DEBUG] device_{rank} 开始调用算子")
 
         config_profiling_path = f'{profiling_path}_config_{config_index}'
         
@@ -654,6 +650,10 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         
         torch.npu.synchronize()
         
+        if is_save_tensor_to_bin:
+            save_tensor_to_bin(y.to(torch.float32), f"y_out_{rank}_config{config_index}")
+            save_tensor_to_bin(receive_cnt, f"receive_cnt_{rank}_config{config_index}")
+        
         results.append({
             'config_index': config_index,
             'y': y.cpu(),
@@ -662,9 +662,10 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
             'test_data_size': test_data_size,
         })
         
-        logger.info(f'[INFO] device_{rank} Config [{config_index}] 完成')
+        print(f'[INFO] device_{rank} Config [{config_index}] 完成')
     
     dist.destroy_process_group()
+    print(f'[INFO] rank {rank} 销毁通信域，多配置测试完成\n')
     
     queue.put([rank, results])
 
@@ -672,15 +673,11 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 
 # region 主测试函数
 
-
-def run_precision_test(
-    x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
-    test_max_bs: int, test_data_size: int
-) -> bool:
+def run_precision_test(x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor], test_max_bs: int, test_data_size: int) -> bool:
     """运行精度测试"""
-    logger.info("=" * 60)
-    logger.info("Precision Test")
-    logger.info("=" * 60)
+    print("\n" + "=" * 60)
+    print("Precision Test")
+    print("=" * 60)
     
     manager = Manager()
     result_queue = manager.Queue()
@@ -689,8 +686,7 @@ def run_precision_test(
     for rank in range(world_size):
         p = Process(
             target=run_bandwidth_test_npu,
-            args=(result_queue, rank, x_per_rank[rank], dstrank_id_per_rank[rank],
-                  None, test_max_bs, mode, world_size, False, True)
+            args=(result_queue, rank, x_per_rank[rank], dstrank_id_per_rank[rank], None, test_max_bs, mode, world_size, False, True)
         )
         p.start()
         processes.append(p)
@@ -700,24 +696,25 @@ def run_precision_test(
     
     npu_outputs = {}
 
-    if result_queue.qsize() == world_size:
+    if result_queue.qsize()==world_size:
         while not result_queue.empty():
             rank, output = result_queue.get()
             if output is not None:
                 npu_outputs[rank] = output
             else:
-                logger.error(f"[ERROR] Rank {rank} 执行失败")
+                print(f"[ERROR] Rank {rank} 执行失败")
                 return False
     else:
-        logger.error("Get result_queue Failed")
-  
-    logger.info("-" * 60)
-    logger.info("Precision Verification:")
-    logger.info("-" * 60)
+        print("Get result_queue Failed")
+
+    
+    print("\n" + "-" * 60)
+    print("Precision Verification:")
+    print("-" * 60)
     
     all_pass = True
     for rank in range(world_size):
-        logger.info(f"[Rank {rank}] 开始精度对比...")
+        print(f"\n[Rank {rank}] 开始精度对比...")
         
         golden_y, golden_receive_cnt = gen_golden_data(
             rank, x_per_rank, dstrank_id_per_rank, test_max_bs, test_data_size
@@ -734,14 +731,11 @@ def run_precision_test(
     return all_pass
 
 
-def run_bandwidth_test(
-    x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
-    test_max_bs: int, test_data_size: int
-) -> Dict[str, Any]:
+def run_bandwidth_test(x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor], test_max_bs: int, test_data_size: int) -> Dict[str, Any]:
     """运行带宽测试"""
-    logger.info("=" * 60)
-    logger.info("Bandwidth Test")
-    logger.info("=" * 60)
+    print("\n" + "=" * 60)
+    print("Bandwidth Test")
+    print("=" * 60)
     
     clean_previous_profiling_result()
     
@@ -766,7 +760,7 @@ def run_bandwidth_test(
         if output is not None:
             npu_outputs[rank] = output
         else:
-            logger.error(f"[ERROR] Rank {rank} 带宽测试执行失败")
+            print(f"[ERROR] Rank {rank} 带宽测试执行失败")
             return None
     
     data_size_bytes = test_data_size
@@ -778,6 +772,12 @@ def run_bandwidth_test(
 def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     """运行多配置带宽测试（共享通信域）"""
     all_results = []
+    
+    print("\n" + "=" * 80)
+    print("Multi-Config Bandwidth Test (Shared Communication Domain)")
+    print("=" * 80)
+    print(f"Total test configurations: {len(test_configs)}")
+    print("-" * 80)
     
     clean_previous_profiling_result()
     
@@ -795,8 +795,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     processes = []
     for rank in range(world_size):
         rank_configs = [
-            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3],
-            world_size, all_inputs[i][4])
+            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], world_size, all_inputs[i][4])
             for i in range(len(all_inputs))
         ]
         p = Process(
@@ -815,7 +814,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
         if results is not None:
             npu_all_results[rank] = results
         else:
-            logger.error(f"[ERROR] Rank {rank} 多配置测试执行失败")
+            print(f"[ERROR] Rank {rank} 多配置测试执行失败")
             return []
     
     for i, cfg in enumerate(test_configs):
@@ -839,47 +838,68 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
 
 def print_summary_table(results: List[Dict[str, Any]]):
     """打印汇总结果表格"""
-    logger.info("=" * 90)
-    logger.info("Bandwidth Test Summary - All Configurations")
-    logger.info("=" * 90)
+    print("\n" + "=" * 90)
+    print("Bandwidth Test Summary - All Configurations")
+    print("=" * 90)
     
     if not results:
-        logger.warning("[WARN] No valid test results")
+        print("[WARN] No valid test results")
         return
     
-    header = (f"{'No.':<5} {'BS':<5} {'H':<10} {'Total Data(KB)':<16} "
-              f"{'Mean BW(GB/s)':<16} {'Max BW(GB/s)':<16} {'Mean Time(us)':<14}")
-    logger.info(header)
-    logger.info("-" * 90)
+    header = f"{'No.':<5} {'BS':<5} {'H':<10} {'Total Data(KB)':<16} {'Mean BW(GB/s)':<16} {'Max BW(GB/s)':<16} {'Mean Time(us)':<14}"
+    print(header)
+    print("-" * 90)
     
     max_bandwidth = 0
     max_bw_config = None
     
     for r in results:
         cfg = r['config']
-        row = (f"{r['config_index']:<5} {cfg['bs']:<5} {cfg['data_size']:<10} "
-               f"{r['single_rank_data_kb']:<16.4f} {r['mean_bandwidth_gbps']:<16.2f} "
-               f"{r['max_bandwidth_gbps']:<16.2f} {r['mean_time_us']:<14.2f}")
-        logger.info(row)
+        row = f"{r['config_index']:<5} {cfg['bs']:<5} {cfg['data_size']:<10} {r['single_rank_data_kb']:<16.4f} {r['mean_bandwidth_gbps']:<16.2f} {r['min_bandwidth_gbps']:<16.2f} {r['mean_time_us']:<14.2f}"
+        print(row)
         
-        if r['max_bandwidth_gbps'] > max_bandwidth:
-            max_bandwidth = r['max_bandwidth_gbps']
+        if r['min_bandwidth_gbps'] > max_bandwidth:
+            max_bandwidth = r['min_bandwidth_gbps']
             max_bw_config = r
     
-    logger.info("-" * 90)
+    print("-" * 90)
     
     if max_bw_config:
-        logger.info(f"{'*'*90}")
-        logger.info(f"Maximum Bandwidth: {max_bw_config['max_bandwidth_gbps']:.2f} GB/s")
-        logger.info(f"  H: {max_bw_config['config']['data_size']}")
-        logger.info(f"  Total Data: {max_bw_config['single_rank_data_kb']:.4f} KB")
-        logger.info(f"  Mean Time: {max_bw_config['mean_time_us']:.2f} us")
-        logger.info(f"{'*'*90}")
+        print(f"\n{'*'*90}")
+        print(f"Maximum Bandwidth: {max_bw_config['min_bandwidth_gbps']:.2f} GB/s")
+        print(f"  H: {max_bw_config['config']['data_size']}")
+        print(f"  Total Data: {max_bw_config['single_rank_data_kb']:.4f} KB")
+        print(f"  Mean Time: {max_bw_config['mean_time_us']:.2f} us")
+        print(f"{'*'*90}")
+    
+    print("\n" + "=" * 70)
+    print("Bandwidth Trend by H")
+    print("=" * 70)
+    
+    print(f"\n{'H':<12} {'Mean BW(GB/s)':<18} {'Max BW(GB/s)':<18} {'Trend'}")
+    print("-" * 70)
+    
+    sorted_results = sorted(results, key=lambda x: x['config']['data_size'])
+    prev_bw = None
+    for r in sorted_results:
+        cfg = r['config']
+        trend = ""
+        if prev_bw is not None:
+            diff = r['min_bandwidth_gbps'] - prev_bw
+            if diff > 0:
+                trend = f"↑ +{diff:.2f}"
+            elif diff < 0:
+                trend = f"↓ {diff:.2f}"
+            else:
+                trend = "→ 0.00"
+        prev_bw = r['min_bandwidth_gbps']
+        print(f"{cfg['data_size']:<12} {r['mean_bandwidth_gbps']:<18.2f} {r['min_bandwidth_gbps']:<18.2f} {trend}")
+    
+    print("=" * 70)
 
 # endregion
 
 # region Main
-
 
 def main():
     print_setting()
@@ -889,11 +909,11 @@ def main():
     if is_bandwidth_test and len(test_configs) > 1:
         all_results = run_multi_config_bandwidth_test()
         
-        logger.info("=" * 60)
-        logger.info("Test Summary")
-        logger.info("=" * 60)
-        logger.info(f"Total configurations tested: {len(all_results)}/{len(test_configs)}")
-        logger.info("=" * 60)
+        print("\n" + "=" * 60)
+        print("Test Summary")
+        print("=" * 60)
+        print(f"Total configurations tested: {len(all_results)}/{len(test_configs)}")
+        print("=" * 60)
     else:
         x_per_rank, dstrank_id_per_rank = generate_inputs(bs, data_size)
         
@@ -906,25 +926,26 @@ def main():
         if is_bandwidth_test:
             bandwidth_result = run_bandwidth_test(x_per_rank, dstrank_id_per_rank, max_bs, data_size)
         
-        logger.info("=" * 60)
-        logger.info("Test Summary")
-        logger.info("=" * 60)
+        print("\n" + "=" * 60)
+        print("Test Summary")
+        print("=" * 60)
         
         if is_precision_test:
-            logger.info(f"Precision Test: {'PASS' if precision_pass else 'FAIL'}")
+            print(f"Precision Test: {'PASS' if precision_pass else 'FAIL'}")
         
         if is_bandwidth_test:
             if bandwidth_result:
-                logger.info(f"Bandwidth Test: Completed")
-                logger.info(f"  Mean Bandwidth: {bandwidth_result['mean_bandwidth_gbps']:.2f} GB/s")
-                logger.info(f"  Max Bandwidth:  {bandwidth_result['max_bandwidth_gbps']:.2f} GB/s")
+                print(f"Bandwidth Test: Completed")
+                print(f"  Mean Bandwidth: {bandwidth_result['mean_bandwidth_gbps']:.2f} GB/s")
+                print(f"  Min Bandwidth:  {bandwidth_result['min_bandwidth_gbps']:.2f} GB/s")
             else:
-                logger.error(f"Bandwidth Test: FAILED")
+                print(f"Bandwidth Test: FAILED")
         
-        logger.info("=" * 60)
+        print("=" * 60)
         
         if is_precision_test and not precision_pass:
             exit(1)
+
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
