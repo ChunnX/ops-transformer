@@ -83,11 +83,11 @@ inline __aicore__ void MC2MXQuantMatmul<MMTilingType, MMType>::End()
 #endif
 // 使用MatMulASWKernel算子作为计算节点的计算实现
 #ifndef DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT
-#define DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationType)                                             \
+#define DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationType, X2NZ)                                        \
     using ComputationType = MC2KernelTemplate::MC2MXQuantMatmul<                                                       \
         DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams,                                                             \
         AscendC::MatMulASWKernel<DTYPE_X1, DTYPE_X2, AscendC::fp8_e8m0_t, float, DTYPE_Y, CubeFormat::ND,              \
-                                 CubeFormat::ND, CubeFormat::ND, false, X2TRANSPOSE>>
+                                 (X2NZ) ? CubeFormat::NZ : CubeFormat::ND, CubeFormat::ND, false, X2TRANSPOSE>>
 #endif
 }; // namespace MC2KernelTemplate
 #endif

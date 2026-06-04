@@ -35,6 +35,7 @@ struct MatmulAlltoAllTilingInfo {
     uint32_t biasLen;     // bias地址大小
     uint32_t aicCoreNum;  // 核数
     uint64_t hcclDataType; // hccl通信枚举值
+    uint32_t isX2Nz;      // x2是否为NZ格式
 };
 
 struct MatmulAlltoAllTilingData {

@@ -342,18 +342,22 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 
 // 兼容性处理，非ND格式转换为ND格式
 static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                          const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output)
+                          const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output,
+                          bool isMxQuantMode = false)
 {
-    // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
         x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
         CHECK_RET(x1 != nullptr, false);
     }
     if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
-        x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
-        CHECK_RET(x2 != nullptr, false);
+        if (isMxQuantMode && x2->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
+            OP_LOGI("x2 format is FRACTAL_NZ in MX quant mode, skip ReFormat.");
+        } else {
+            OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
+            x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
+            CHECK_RET(x2 != nullptr, false);
+        }
     }
     if (biasOptional != nullptr) {
         if (biasOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -397,10 +401,9 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckDtypesValid(x1, x2, x1QuantMode, x2QuantMode, x1Scale, x2Scale, biasOptional, output),
               ACLNN_ERR_PARAM_INVALID);
-    // 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_INVALID);
-    // 兼容性处理非ND格式
-    CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_INVALID);
+    bool isMxQuantMode = (x1QuantMode == 6 && x2QuantMode == 6);
+    CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode), ACLNN_ERR_PARAM_INVALID);
     // 检查alltoAllAxes是否为空或者[-1,-2]
     CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
     // 检查transposeX1是否合法, 目前不能为true

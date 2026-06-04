@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant_matmul_allto_all_arch35.h
- * \brief
+ * \brief MX量化MatmulAlltoAll算子arch35实现，支持x2右矩阵NZ格式输入
  */
 
 #ifndef MX_QUANT_MATMUL_ALLTO_ALL_ARCH35_H
