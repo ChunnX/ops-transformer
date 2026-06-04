@@ -48,7 +48,7 @@ constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-// GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
+// GroupMatmulSwigluQuant — generic path (A8W8 / A4W4), GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
@@ -229,7 +229,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法 + Combine
+// GroupMatmul2 — generic path (A8W8 / A4W4), GMM2 + Combine
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -408,7 +408,8 @@ __aicore__ inline void GroupMatmul2(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// A8W4 路径的共享骨架：对外仍保留两个独立入口，内部只在这里收敛公共流程。
+// Shared skeleton for the A8W4 path. Two public entry points delegate to a single
+// common template with policy-based branching.
 namespace Detail {
 struct Gmm1A8W4Policy {
     static constexpr bool IS_GMM1 = true;
@@ -539,17 +540,17 @@ __aicore__ inline void RunA8W4AivPostProcess(SwigluQuantOp& swigluQuantOp, Sched
             auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
             int64_t ubOffsetFirst = 0;
             int64_t ubOffsetSecond = ubOffsetFirst + MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-            auto l0cOutUbFirst =
+            auto tensorBlockUbFirst =
                 Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
-            auto l0cOutUbSecond =
+            auto tensorBlockUbSecond =
                 Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
             auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-            AscendC::Te::Copy(copyGM2UB, l0cOutUbFirst, tensorBlockGmFirst);
-            AscendC::Te::Copy(copyGM2UB, l0cOutUbSecond, tensorBlockGmSecond);
+            AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+            AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
-                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), 0, 0};
+            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
+                                                                         Get<N_VALUE>(actualShape), 0, 0};
             Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                 mLoc * outputN + nLoc,
                 mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
@@ -564,20 +565,20 @@ __aicore__ inline void RunA8W4AivPostProcess(SwigluQuantOp& swigluQuantOp, Sched
             auto tensorBlockGm = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
-            int64_t ubOffsetFirst = 0;
-            auto l0cOutUbFirst =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
-            LocalTensor<ElementC> l0cOutUbGMM2First =
-                LocalTensor<ElementC>(TPosition::VECIN, ubOffsetFirst, L1_TILE_M * L1_TILE_N);
+            int64_t ubOffset = 0;
+            auto tensorBlockUb =
+                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutL0cUB);
+            LocalTensor<ElementC> l0cOutUbGMM2 =
+                LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
             auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-            AscendC::Te::Copy(copyGM2UB, l0cOutUbFirst, tensorBlockGm);
+            AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2First, actualShape, params);
+                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
@@ -592,8 +593,7 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, uint32_t groupIdx, uint16_t* pingpongIdx, int32_t rankId)
 {
-    static_assert(std::is_same_v<ElementA, __fp8e4m3> || std::is_same_v<ElementA, __fp8e5m2>,
-        "Activation must be fp8");
+    static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
     (void)pingpongIdx;
     (void)groupIdx;
@@ -603,7 +603,7 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = 0;
     uint32_t k = 0;
-    // GMM1/GMM2 的 problemShape 语义不同，这里先统一映射到公共的 matmul 视角。
+    // GMM1 and GMM2 interpret problemShape differently; normalize to matmul m/n/k.
     if constexpr (Policy::IS_GMM1) {
         n = Get<N_VALUE>(problemShape);
         k = Get<K_VALUE>(problemShape);
@@ -672,7 +672,7 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
-    // 空专家/空 tile 直接退出，避免后续对象构造带来额外跨核同步副作用。
+    // Bail out on empty experts before constructing objects with cross-core side effects.
     if (startLoopIdx >= tileNum) {
         startBlockIdx = (startBlockIdx + tileNum) % blockNum;
         return;
@@ -684,7 +684,7 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
     };
 
     if constexpr (g_coreType == AscendC::AIC) {
-        // AIC 只负责真正的 BlockMmad 计算，并在首轮进入前等待上游阶段完成。
+        // AIC: BlockMmad compute; waits for upstream stage on first tile.
         BlockMmad blockMmad{};
         typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{m, outputN, k, 0};
@@ -694,12 +694,12 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
             scaleK, startLoopIdx, tileNum, blockNum);
     } else {
         if (subBlockIdx == 0) {
-            // AIV sub-block 0 只负责 B 的 prologue，给 AIC 的 matmul 铺好 L1 数据。
+            // AIV sub-block 0: B prologue, prefetch weight into L1.
             BlockPrologue blockPrologue;
             RunA8W4AivPrologue<Policy>(
                 blockPrologue, scheduler, gmB, k, n, outputN, l1Params.kL1, startLoopIdx, tileNum, blockNum);
         } else {
-            // AIV sub-block 1 负责 copyout 后处理：GMM1 做 SwiGLU Quant，GMM2 做 combine。
+            // AIV sub-block 1: GM→UB copyout; GMM1 runs SwiGLU Quant, GMM2 runs combine.
             RunA8W4AivPostProcess<Policy, ElementC, MakeLayoutC>(
                 swigluQuantOp, scheduler, l0cOutGm, params, n, outputN, groupIdx, rankId, startLoopIdx, tileNum,
                 blockNum);
@@ -716,16 +716,16 @@ __aicore__ inline void GroupMatmulA8W4Common(const Params& params,
     uint32_t& startBlockIdx, uint32_t groupIdx, uint16_t* pingpongIdx, int32_t rankId)
 {
     static_assert(!Policy::IS_GMM1, "GMM1 A8W4 requires swigluQuantOp");
-    // GMM2 没有 SwiGLU Quant 后处理，对外保持无该参数的直观调用形式。
+    // GMM2 has no SwiGLU Quant; keep the public API free of that parameter.
     int32_t unusedEpilogue = 0;
     GroupMatmulA8W4Common<Policy, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>(
         unusedEpilogue, params, problemShape, gmmAddrInfo, startBlockIdx, groupIdx, pingpongIdx, rankId);
 }
 } // namespace Detail
 
-// A8W4 对外入口集中放在一起，阅读顺序与执行阶段一致。
+// A8W4 public entry points — kept together for readability.
 
-// GroupMatmulSwigluQuantA8W4 - AntiQuantWeight + GMM1 + SwiGLU + Quant
+// GroupMatmulSwigluQuantA8W4 — A8W4 prologue (W4→W8) + GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& swigluQuantOp,
@@ -733,12 +733,12 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
     (void)vecSetSyncCom;
-    // GMM1 A8W4 只保留 SwiGLU Quant 后处理差异，主体执行骨架委托给公共 helper。
+    // GMM1 differs only in the SwiGLU Quant step; core loop is shared.
     Detail::GroupMatmulA8W4Common<Detail::Gmm1A8W4Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(swigluQuantOp, params, problemShape, gmmAddrInfo, startBlockIdx, 0, nullptr, 0);
 }
 
-// GroupMatmul2A8W4 - AntiQuant Weight + GMM2矩阵乘法 + Combine
+// GroupMatmul2A8W4 — A8W4 prologue (W4→W8) + GMM2 + Combine
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2A8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -746,7 +746,7 @@ __aicore__ inline void GroupMatmul2A8W4(
     uint16_t& pingpongIdx, int32_t rankId)
 {
     (void)vecSetSyncCom2;
-    // GMM2 A8W4 只保留 combine 相关参数，公共 helper 内部走无 epilogue 重载。
+    // GMM2 differs only in combine parameters; the no-epilogue overload is used internally.
     Detail::GroupMatmulA8W4Common<Detail::Gmm2A8W4Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, groupIdx, &pingpongIdx, rankId);
 }
