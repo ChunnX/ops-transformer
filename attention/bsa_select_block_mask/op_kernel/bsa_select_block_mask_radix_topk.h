@@ -184,6 +184,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 {
+    pipe->Reset();
     pipe->InitBuffer(xBufPing_, tileLen_ * sizeof(float));
     pipe->InitBuffer(xBufPong_, tileLen_ * sizeof(float));
     pipe->InitBuffer(outValueBuf_, tileLen_ * sizeof(float));
@@ -232,12 +233,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::AllocEventID()
 {
-    eventIDMTE2ToVForX_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    eventIDMTE2ToVForX_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 {
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 }
 
 template <typename BSAT>
@@ -319,9 +321,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
 
                 // Signal next tile ready
-                if (tileId < static_cast<int32_t>(tileNum_) - 1) {
-                    SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
-                }
+                SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
                 pingPongFlag = !pingPongFlag;  // Switch double buffering
             }
@@ -336,6 +336,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                            DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
             }
         }
+
+        WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
         // f. CopyOutHistToWs<false>
         CopyOutHistToWs<false>(numValue_, GetBlockIdx() * numValue_);
@@ -879,9 +881,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
             static_cast<int32_t>(dataNum) : safeSumTileNum;
         for (int32_t segOff = 0; segOff < static_cast<int32_t>(dataNum); segOff += segSize) {
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
-            ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
-            VToSSync();
-            reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
+            // TODO: 下面三行放开会卡住
+            // ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
+            // VToSSync();
+            // reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
         }
     }
 
