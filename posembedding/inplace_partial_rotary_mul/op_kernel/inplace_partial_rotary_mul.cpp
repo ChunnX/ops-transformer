@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul.cpp
+ * \file inplace_partial_rotary_mul_aba.cpp
  * \brief
  */
 #include "kernel_operator.h"

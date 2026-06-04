@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul.h
+ * \file inplace_partial_rotary_mul_aba.h
  * \brief
  */
 #ifndef INPLACE_PARITAL_ROTARY_MUL_H
