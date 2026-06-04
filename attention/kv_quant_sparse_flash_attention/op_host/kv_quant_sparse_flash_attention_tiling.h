@@ -314,7 +314,7 @@ private:
     bool IsBalanceSplitCore();
 
     void SplitBalanced();
-    void CalcInnerSize(uint32_t s2Size);
+    void CalcInnerSize(uint32_t qsfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);
 
@@ -380,14 +380,14 @@ private:
     void Init();
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
         const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
         const std::string &name) const;
     template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name, const std::string subName) const;
     template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
     ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
+        const std::vector<size_t> &qsfaExpectDimNumList, const std::string &name) const;
     ge::graphStatus CheckDimNumInLayoutSupport(const QSFALayout &layout,
         const gert::StorageShape *shape, const std::string &name) const;
     void LogErrorLayoutSupport(const std::vector<QSFALayout> &expectLayoutList,
