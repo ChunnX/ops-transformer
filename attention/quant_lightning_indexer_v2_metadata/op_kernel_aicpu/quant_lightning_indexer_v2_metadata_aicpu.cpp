@@ -63,12 +63,73 @@ bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
 {
+    // 校验输出 metadata 是否为空
     if (metadata_ == nullptr) {
         KERNEL_LOG_ERROR("Output metadata is nullptr");
         return false;
     } else if (metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("Output metadata data is nullptr");
         return false;
+    }
+    int32_t batchSize = GetQueryBatchSize();
+    // 校验 cu_seqlens_q 元素非负
+    if (layoutQ_ == "TND") {
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+            for (int i = 0; i < batchSize + 1; i++) {
+                if (cuSeqlensQPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
+                        i, cuSeqlensQPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
+    if (layoutK_ == "TND") {
+        // 校验 cu_seqlens_k 元素非负
+        if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
+            const int32_t *cuSeqlensKPtr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
+            for (int i = 0; i < batchSize + 1; i++) {
+                if (cuSeqlensKPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k should be >= 0, but got cu_seqlens_k[%d] = %d",
+                        i, cuSeqlensKPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
+    // 校验 seqused_q 元素非负
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        const int32_t *sequsedQPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            if (sequsedQPtr[i] < 0) {
+                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d",
+                    i, sequsedQPtr[i]);
+                return false;
+            }
+        }
+    }
+    // 校验 seqused_k 元素非负
+    if (sequsedK_ != nullptr && sequsedK_->GetData() != nullptr) {
+        const int32_t *sequsedKPtr = static_cast<const int32_t*>(sequsedK_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            if (sequsedKPtr[i] < 0) {
+                KERNEL_LOG_ERROR("The elements in seqused_k should be >= 0, but got seqused_k[%d] = %d",
+                    i, sequsedKPtr[i]);
+                return false;
+            }
+        }
+    }
+    // 校验 cmp_residual_k 元素非负
+    if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
+        const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            if (cmpResidualKPtr[i] < 0) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
+                    i, cmpResidualKPtr[i]);
+                return false;
+            }
+        }
     }
     return true;
 }

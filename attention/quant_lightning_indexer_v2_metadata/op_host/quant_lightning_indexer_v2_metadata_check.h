@@ -124,9 +124,11 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
         "cmp_ratio should be between [%ld, %ld], but got %ld",
         QLI_CMP_RATIO_LOWER_BOUND, QLI_CMP_RATIO_UPPER_BOUND, cmpRatio);
     // layout_q 校验
+    CHECK_COND((layoutQOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
     CHECK_COND((strcmp(layoutQOptional, "TND") == 0) || (strcmp(layoutQOptional, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
         "layout_q must be TND or BSND, but got %s", layoutQOptional);
     // layout_k 校验
+    CHECK_COND((layoutKOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
     CHECK_COND((strcmp(layoutKOptional, "TND") == 0) || (strcmp(layoutKOptional, "BSND") == 0) || \
         (strcmp(layoutKOptional, "PA_BBND") == 0),
         ACLNN_ERR_PARAM_INVALID, "layout_k must be TND/BSND/PA_BBND, but got %s", layoutKOptional);
@@ -238,17 +240,19 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         }
     }
     // 校验batch
-    int64_t querybatch = GetQueryBatchSizeQliV2(batchSize, cuSeqlensQOptional, sequsedQOptional, layoutQOptional);
-    int64_t keyBatch = GetKeyBatchSizeQliV2(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional);
-    CHECK_COND(querybatch == keyBatch, ACLNN_ERR_PARAM_INVALID,
+    int64_t queryBatchSize = GetQueryBatchSizeQliV2(batchSize, cuSeqlensQOptional, sequsedQOptional, layoutQOptional);
+    int64_t keyBatchSize = GetKeyBatchSizeQliV2(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional);
+    CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
         "The batch_size obtained from query should be the same as that obtained from key, but got %ld and %ld",
-        querybatch, keyBatch);
+        queryBatchSize, keyBatchSize);
     // 校验 cmp_residual_k 元素数
-    auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
-    CHECK_COND(cmpResidualKBatch == querybatch, ACLNN_ERR_PARAM_INVALID,
-        "The batch_size of cmp_residual_k should match the valid batch size, but got %ld and %ld",
-        cmpResidualKBatch, querybatch);
-    return ACLNN_SUCCESS;
+    if (IsTensorExistQliV2(cmpResidualKOptional)) {
+        auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
+        CHECK_COND(cmpResidualKBatch == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
+            "The batch_size of cmp_residual_k should match the valid batch size, but got %ld and %ld",
+            cmpResidualKBatch, queryBatchSize);
+        return ACLNN_SUCCESS;
+    }
 }
 
 aclnnStatus ParamsCheckQliV2(
