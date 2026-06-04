@@ -53,6 +53,7 @@ public:
                                                     GlobalTensor<int32_t> ldIndexGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                               GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
+                                              GlobalTensor<int32_t> indiceLenGm,
                                               GlobalTensor<int32_t> blockTableGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -67,6 +68,7 @@ protected:
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
     GlobalTensor<int32_t> indiceOutGm;
+    GlobalTensor<int32_t> indiceLenGm;
     GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
@@ -133,6 +135,9 @@ private:
     TBuf<TPosition::VECCALC> outInvalidBuf_;
     LocalTensor<int32_t> outInvalidLocal_;
 
+    TBuf<TPosition::VECCALC> indiceLenBuf_;
+    LocalTensor<int32_t> indiceLenLocal_;
+
     LocalTensor<uint32_t> ldIndexLocal_;
 
     int32_t blockId_ = -1;
@@ -188,6 +193,11 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     //刷-1
     pipe->InitBuffer(outInvalidBuf_, MAX_TOPK_COUNT * sizeof(int32_t));
     outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
+
+    // indice_len
+    pipe->InitBuffer(indiceLenBuf_, mBaseSize_ * sizeof(int32_t));
+    indiceLenLocal_ = indiceLenBuf_.Get<int32_t>();
+
     Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_);
 }
 
@@ -224,12 +234,14 @@ template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                                            GlobalTensor<float> kScaleGm,
                                                            GlobalTensor<int32_t> indiceOutGm,
+                                                           GlobalTensor<int32_t> indiceLenGm,
                                                            GlobalTensor<int32_t> blockTableGm)
 {
     this->weightsGm = weightsGm;
     this->qScaleGm = qScaleGm;
     this->kScaleGm = kScaleGm;
     this->indiceOutGm = indiceOutGm;
+    this->indiceLenGm = indiceLenGm;
     this->blockTableGm = blockTableGm;
 }
 
@@ -526,6 +538,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                 AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 
                                         0, (uint32_t)s1PosOriginalValidS2Len);
                 PipeBarrier<PIPE_V>();
+                indiceLenLocal_.SetValue(s1Pos, s1PosOriginalValidS2Len);
             }
             
             // 循环内只做 DataCopyPad
@@ -545,7 +558,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
         }
 
         // 计算动态 topkCount（同一个 S1 位置下相同）
-        // buffer 按 MAX_TOPK_COUNT 分配，clamp 兜底防止越界
         uint32_t dynamicTopkCount = CalcDynamicTopkCount(curAivS1Idx + s1Pos, kb_offset, num_prompt_k);
         int32_t topkSelectNum = Min(dynamicTopkCount, (uint32_t)MAX_TOPK_COUNT);
 
@@ -571,6 +583,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
 
         // 短路：参与 TopK 的有效数据不足 topkSelectNum，直接输出连续索引
         if (groupValidS2Len - actualInit < topkSelectNum) {
+            indiceLenLocal_.SetValue(s1Pos, totalOutput);
             uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
             for (uint32_t j = 0; j < groupSize; j++) {
                 int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
@@ -626,6 +639,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
             continue;
         }
 
+        // 正常 TopK 流程
+        indiceLenLocal_.SetValue(s1Pos, totalOutput);
+
         // 内层循环：遍历同一 S1 位置下的 G 个行
         uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
         for (uint32_t j = 0; j < groupSize; j++) {
@@ -679,6 +695,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                 // ===== 非第一个基本块：合并上一轮TopK结果 + 当前基本块score =====
                 copyInParams.blockLen = topkSelectNum * sizeof(int32_t); // byte
                 AscendC::DataCopyPadExtParams<uint16_t> padParams{true, 0, 0, 0};
+                // 可删？
                 AscendC::DataCopyPad(topkSharedTmpLocal_, indicesOutLocal_.ReinterpretCast<int32_t>(), copyInParams, padParams);
                 PipeBarrier<PIPE_V>();
 
@@ -713,17 +730,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
 
                 topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, mergedInputAlign, 0, 1);
 
-                PipeBarrier<PIPE_V>();
-                for (uint32_t k = 0; k < (uint32_t)topkSelectNum; k++) {
-                    uint32_t idx = indicesOutLocal_.GetValue(k);
-                    uint32_t globalIdx;
-                    if (idx < (uint32_t)topkSelectNum) {
-                        globalIdx = topkSharedTmpLocal_.GetValue(idx);
-                    } else {
-                        globalIdx = s2BlockStart + (idx - (uint32_t)topkSelectNum);
-                    }
-                    indicesOutLocal_.SetValue(k, globalIdx);
-                }
             }
 
             // ========== 索引重组和GM搬出（仅最后一个基本块）==========
@@ -760,19 +766,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                 if (actualWindow > 0) {
                     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
-                    AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
-                                             (int32_t)zero, actualWindow);
-                    PipeBarrier<PIPE_V>();
-
                     int32_t windowBase = groupValidS2Len;
-                    Duplicate(mrgValueLocal_.ReinterpretCast<int32_t>(),
-                              (int32_t)windowBase, actualWindow);
-                    PipeBarrier<PIPE_V>();
-
-                    Add(indicesOutLocal_.ReinterpretCast<int32_t>(),
-                        indicesOutLocal_.ReinterpretCast<int32_t>(),
-                        mrgValueLocal_.ReinterpretCast<int32_t>(),
-                        (uint32_t)actualWindow);
+                    AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                                             (int32_t)windowBase, actualWindow);
                     PipeBarrier<PIPE_V>();
 
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -787,6 +783,16 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
 
                 cumulativeOutputOffset += totalOutput;
             }
+        }
+
+        // 批量写出 indice_len 到 GM
+        if (numS1Positions > 0) {
+            AscendC::DataCopyParams indiceLenCopyParams;
+            indiceLenCopyParams.blockCount = 1;
+            indiceLenCopyParams.srcStride = 0;
+            indiceLenCopyParams.dstStride = 0;
+            indiceLenCopyParams.blockLen = (uint16_t)(numS1Positions * sizeof(int32_t));
+            AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset], indiceLenLocal_, indiceLenCopyParams);
         }
     }
 }

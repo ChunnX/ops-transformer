@@ -101,6 +101,7 @@ protected:
     uint64_t keyScaleCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    uint64_t indiceLenCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -111,6 +112,7 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
+    GlobalTensor<int32_t> indiceLenGm;
     GlobalTensor<int32_t> blockTableGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
@@ -450,11 +452,12 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+        indiceLenGm.SetGlobalBuffer((__gm__ int32_t *)indiceLen);
         weightsGm.SetGlobalBuffer((__gm__ float *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, indiceLenGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
     } else {
         matmulService.InitParams(constInfo);
@@ -580,6 +583,9 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         // B,S1,N2,k/T,N2,k
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
+        // B,S1,N2/T,N2
+        indiceLenCoreOffset =
+            actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
@@ -596,6 +602,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    runInfo.indiceLenOffset = indiceLenCoreOffset;
 }
 
 template <typename SIT>
