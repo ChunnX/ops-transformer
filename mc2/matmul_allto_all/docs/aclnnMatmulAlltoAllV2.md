@@ -129,7 +129,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>指定当前通信类型。</td>
     <td>支持输入空字符串""、"ai_cpu"或"ccu"。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识左矩阵是否转置过。</td>
     <td>暂不支持配置为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识右矩阵是否转置过。</td>
     <td>配置为True时右矩阵Shape为(H2, H1)。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
-    <td>UINT64</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
-    <td>aclOpExecutor*</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
