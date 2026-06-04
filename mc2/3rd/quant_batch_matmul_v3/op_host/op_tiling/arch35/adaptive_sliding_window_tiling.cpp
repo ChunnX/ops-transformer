@@ -350,7 +350,7 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
         OP_TILING_CHECK(adaptiveWin_.baseM == 0UL || adaptiveWin_.baseN == 0UL || adaptiveWin_.baseK == 0UL,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input",
                         std::to_string(adaptiveWin_.baseM).c_str(),
-                        "BaseM, baseN and baseK should be greater than 0."),
+                        "The value of baseM, baseN and baseK must be greater than 0"),
                         return false);
     }
     return true;

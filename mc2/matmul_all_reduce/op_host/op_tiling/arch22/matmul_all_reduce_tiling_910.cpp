@@ -162,17 +162,17 @@ ge::graphStatus MatmulAllReduceTiling910::CheckAxisSize()
     const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(
         m > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         k > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(), "The value of k of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
         n > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "The value of n of x2 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
 
     return CheckEmptyTensor();
@@ -185,21 +185,21 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputDtype()
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x2",
                         (std::to_string(x2DimNum) + "D").c_str(),
-                        "Expect x2 dim to be 2"),
+                        "The shape dim of x2 must be 2"),
                     return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     //  x1 为fp16 或者bf16
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
                         std::to_string(static_cast<int32_t>(x1Type)).c_str(),
-                        "should be fp16 or bf16"),
+                        "The value of x1 dtype must be fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(x1Type != x2Type,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
                         std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-                        "should be same as x1"),
+                        "The value of x2 dtype must be the same as that of x1"),
                     return ge::GRAPH_FAILED);
     // x1,bias数据类型相同
     if (mmrCtxInfo_.bias_shape != nullptr) {
@@ -207,7 +207,7 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputDtype()
         OP_TILING_CHECK(x1Type != biasType,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "bias",
                             std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                            "should be same as x1"),
+                            "The value of bias dtype must be the same as that of x1"),
                         return ge::GRAPH_FAILED);
     }
     OP_LOGD(opName_, "Check Input Dtype Success.");
@@ -235,14 +235,14 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputShape()
         auto x3DimNum = mmrCtxInfo_.x3_shape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(outputDimNum != x3DimNum,
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x3",
-                            (std::to_string(x3DimNum) + "D").c_str(), "should be same as output"),
+                            (std::to_string(x3DimNum) + "D").c_str(), "The shape dim of x3 must be the same as that of output"),
                         return ge::GRAPH_FAILED);
         for (size_t i = 0U; i < outputDimNum; i++) {
             OP_TILING_CHECK(mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i) !=
                                 mmrCtxInfo_.x3_shape->GetStorageShape().GetDim(i),
                             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x3",
                                 Ops::Base::ToString(mmrCtxInfo_.x3_shape->GetStorageShape()).c_str(),
-                                "should be same as output"),
+                                "The shape of x3 must be the same as that of output"),
                             return ge::GRAPH_FAILED);
         }
     }
