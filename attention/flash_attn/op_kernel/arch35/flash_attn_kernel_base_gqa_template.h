@@ -92,6 +92,10 @@ public:
     static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
     static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
     static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 静态分配的"全核 barrier" event ID，用于替代 SyncAll()
+    // SyncAll 内部会随机分配 event ID，可能与上述静态 ID 冲突，所以改用 CrossCoreSetFlag/WaitFlag 模式 0 + 显式 ID
+    static constexpr uint32_t CC_SYNC_FD_BEFORE = 11U;  // FlashDecode 进入前的 AIV barrier
+    static constexpr uint32_t CC_SYNC_FD_AFTER  = 12U;  // FlashDecode 退出后的 AIV barrier
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -812,17 +816,22 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
+        // 此函数仅 AIV 进入：在进入 FD 前，必须等 AIV 侧 FA 路径上残留的 stage1OutBuf MTE3→V flag 排干，
+        // 否则 FD 重用同一段 UB 时会与 FA 的剩余 flag 冲突。
+        // 注意：FA AllocEventID 中预置了 FA_MTE3_TO_V_0 的 SetFlag，必须在此对称地 Wait 掉。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
                 AscendC::PipeBarrier<PIPE_MTE3>();
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
-        SyncAll();
+        // 静态Tensor编程：不使用 SyncAll（其会随机分配 event ID，与我们的静态 ID 冲突），
+        // 使用 CrossCoreSetFlag/WaitFlag 模式 0 + 显式分配的 event ID 做全核 barrier
+        CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_FD_BEFORE);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(CC_SYNC_FD_BEFORE);
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
+        CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_FD_AFTER);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(CC_SYNC_FD_AFTER);
         vecFdBlock.FreeEventID();
     }
 

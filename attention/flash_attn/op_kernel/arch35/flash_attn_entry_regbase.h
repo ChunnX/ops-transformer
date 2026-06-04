@@ -107,8 +107,10 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
+    // 静态Tensor编程：必须显式调用 InitSocState 初始化全局状态寄存器（替代 TPipe 构造时的隐式初始化）
+    // 不使用 SyncAll：避免其内部随机申请 event ID 与我们静态分配的 ID 冲突，
+    // 跨核同步统一由 Process() 内的 CrossCoreBufferInit / FlashAttention 的 CrossCoreSetFlag/WaitFlag 完成
     InitSocState();
-    AscendC::SyncAll();
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData);

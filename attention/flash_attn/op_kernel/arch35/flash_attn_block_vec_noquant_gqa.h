@@ -129,6 +129,9 @@ public:
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    // 静态分配的"全核 barrier" event ID，用于替代 SyncAll()
+    // SyncAll 内部会随机分配 event ID，可能与上面的静态 ID 冲突，所以改用 CrossCoreSetFlag/WaitFlag 模式 0 + 显式 ID
+    static constexpr uint32_t CC_SYNC_CLEAR_OUTPUT = 10U;   // ClearOutput 屏障
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -289,7 +292,11 @@ public:
                 InitLseOutputSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
+            // 静态Tensor编程：不使用 SyncAll（其会随机分配 event ID，与我们的静态 ID 冲突），
+            // 使用 CrossCoreSetFlag/WaitFlag 模式 0 + 显式分配的 event ID 做全核 barrier。
+            // PIPE_MTE3 与 InitOutput 中 DataCopy 所在流水一致，保证 DMA 完成后才发送 flag。
+            CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_CLEAR_OUTPUT);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(CC_SYNC_CLEAR_OUTPUT);
         }
     }
 
