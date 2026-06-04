@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file stem_indexer_tiling.h
@@ -25,239 +25,192 @@
 #include "tiling/tiling_api.h"
 
 namespace optiling {
-// ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
-};
+constexpr uint32_t QFLAT_INDEX = 0;
+constexpr uint32_t KFLAT_INDEX = 1;
+constexpr uint32_t VBIAS_INDEX = 2;
+constexpr uint32_t Q_SEQ_LENS_INDEX = 3;
+constexpr uint32_t KV_SEQ_LENS_INDEX = 4;
+constexpr uint32_t NUM_PROMPT_TOKENS_INDEX = 5;
+constexpr uint32_t METADATA_INDEX = 6;
+constexpr uint32_t SPARSE_INDICES_INDEX = 0;
+constexpr uint32_t SPARSE_SEQ_LEN_INDEX = 1;
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BSND = 2
-};
+constexpr uint32_t ATTR_CAUSAL_INDEX = 0;
+constexpr uint32_t ATTR_STEM_BLOCK_SIZE_INDEX = 1;
+constexpr uint32_t ATTR_STEM_STRIDE_INDEX = 2;
+constexpr uint32_t ATTR_ALPHA_INDEX = 3;
+constexpr uint32_t ATTR_INITIAL_BLOCKS_INDEX = 4;
+constexpr uint32_t ATTR_WINDOW_SIZE_INDEX = 5;
+constexpr uint32_t ATTR_K_BLOCK_NUM_RATE_MEDIUM_INDEX = 6;
+constexpr uint32_t ATTR_K_BLOCK_NUM_BIAS_MEDIUM_INDEX = 7;
+constexpr uint32_t ATTR_K_BLOCK_NUM_RATE_LARGE_INDEX = 8;
+constexpr uint32_t ATTR_K_BLOCK_NUM_BIAS_LARGE_INDEX = 9;
 
-// ------------------算子原型索引常量定义----------------
-// Inputs Index
-constexpr uint32_t QUERY_INDEX = 0;
-constexpr uint32_t KEY_INDEX = 1;
-constexpr uint32_t WEIGTHS_INDEX = 2;
-constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX = 3;
-constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
-constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
-constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
-constexpr uint32_t BLOCK_TABLE_INDEX = 7;
-constexpr uint32_t METADATA_INDEX = 8;
-constexpr uint32_t stem_indexer = 0;
-// Attributes Index
-constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
-constexpr uint32_t ATTR_KEY_QUANT_MODE_INDEX = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
-constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 5;
-constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 6;
-constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 7;
-constexpr uint32_t ATTR_CMP_RATIO_INDEX = 8;
-constexpr uint32_t ATTR_RETURN_VALUES_INDEX = 9;
-constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 10;
-constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 11;
-// Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_IDX_THREE = 3;
-// Dim Num
-constexpr uint32_t DIM_NUM_TWO = 2;
+constexpr uint32_t DIM_NUM_ONE = 1;
 constexpr uint32_t DIM_NUM_THREE = 3;
 constexpr uint32_t DIM_NUM_FOUR = 4;
-// 入参限制常量
+
+constexpr uint32_t STEM_BLOCK_SIZE_LIMIT = 128;
+constexpr uint32_t STEM_STRIDE_LIMIT = 16;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t SPARSE_LIMIT = 2048;
-constexpr uint32_t G_SIZE_LIMIT = 64;
-constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
-constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
-constexpr uint32_t SPARSE_MODE_LOWER = 3;
-constexpr uint32_t METADATA_LIMIT = 1024;
+constexpr uint32_t FLATTEN_DIM_LIMIT = STEM_STRIDE_LIMIT * HEAD_DIM_LIMIT;
+constexpr uint32_t INITIAL_BLOCKS_LIMIT = 4;
+constexpr uint32_t WINDOW_SIZE_LIMIT = 4;
+constexpr uint32_t METADATA_LIMIT = 2048;
+constexpr uint32_t Q_HEAD_NUM_32 = 32;
+constexpr uint32_t Q_HEAD_NUM_64 = 64;
+constexpr uint32_t KV_HEAD_NUM_2 = 2;
+constexpr uint32_t KV_HEAD_NUM_4 = 4;
+constexpr uint32_t KV_HEAD_NUM_8 = 8;
+constexpr uint32_t STEM_M_BASE_SIZE = 96;
+constexpr uint32_t STEM_N_BASE_SIZE = 256;
+constexpr float ALPHA_MIN = 0.0f;
+constexpr float ATTR_FLOAT_EPS = 0.000001f;
+constexpr float K_BLOCK_NUM_RATE_MEDIUM_LIMIT = 0.2f;
+constexpr float K_BLOCK_NUM_RATE_LARGE_LIMIT = 0.1f;
 
-// -----------算子TilingData定义---------------
-BEGIN_TILING_DATA_DEF(QLITilingData)
+BEGIN_TILING_DATA_DEF(StemIndexerTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
-TILING_DATA_FIELD_DEF(uint32_t, n2Size)
+TILING_DATA_FIELD_DEF(uint32_t, qHeadNum)
+TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
-TILING_DATA_FIELD_DEF(uint32_t, s1Size)
-TILING_DATA_FIELD_DEF(uint32_t, s2Size)
-TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
+TILING_DATA_FIELD_DEF(uint32_t, maxQb)
+TILING_DATA_FIELD_DEF(uint32_t, maxKb)
+TILING_DATA_FIELD_DEF(uint32_t, flattenDim)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
-TILING_DATA_FIELD_DEF(uint32_t, blockSize)
-TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
-TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
-TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
-TILING_DATA_FIELD_DEF(uint32_t, returnValues)
-TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
-TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
+TILING_DATA_FIELD_DEF(uint32_t, causal)
+TILING_DATA_FIELD_DEF(uint32_t, stemBlockSize)
+TILING_DATA_FIELD_DEF(uint32_t, stemStride)
+TILING_DATA_FIELD_DEF(uint32_t, initialBlocks)
+TILING_DATA_FIELD_DEF(uint32_t, windowSize)
+TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
+TILING_DATA_FIELD_DEF(uint32_t, nBaseSize)
+TILING_DATA_FIELD_DEF(float, scoreScale)
+TILING_DATA_FIELD_DEF(float, alpha)
+TILING_DATA_FIELD_DEF(float, kBlockNumRateMedium)
+TILING_DATA_FIELD_DEF(uint32_t, kBlockNumBiasMedium)
+TILING_DATA_FIELD_DEF(float, kBlockNumRateLarge)
+TILING_DATA_FIELD_DEF(uint32_t, kBlockNumBiasLarge)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
+REGISTER_TILING_DATA_CLASS(StemIndexer, StemIndexerTilingData)
 
-// -----------算子CompileInfo定义-------------------
-struct QLICompileInfo {};
+struct StemIndexerCompileInfo {};
 
-// -----------算子Tiling入参结构体定义---------------
-struct QLIParaInfo {
-    TilingRequiredParaInfo query = {nullptr, nullptr};
-    TilingRequiredParaInfo key = {nullptr, nullptr};
-    TilingRequiredParaInfo weights = {nullptr, nullptr};
-    TilingRequiredParaInfo query_dequant_scale = {nullptr, nullptr};
-    TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
-    TilingOptionalParaInfo blockTable = {nullptr, nullptr};
-    TilingOptionalParaInfo metadata = {nullptr, nullptr};
-    TilingRequiredParaInfo attenOut = {nullptr, nullptr};
+struct StemIndexerParaInfo {
+    TilingRequiredParaInfo qflat = {nullptr, nullptr};
+    TilingRequiredParaInfo kflat = {nullptr, nullptr};
+    TilingRequiredParaInfo vbias = {nullptr, nullptr};
+    TilingRequiredParaInfo qSeqLens = {nullptr, nullptr};
+    TilingRequiredParaInfo kvSeqLens = {nullptr, nullptr};
+    TilingRequiredParaInfo numPromptTokens = {nullptr, nullptr};
+    TilingRequiredParaInfo metadata = {nullptr, nullptr};
+    TilingRequiredParaInfo sparseIndicesOut = {nullptr, nullptr};
+    TilingRequiredParaInfo sparseSeqLenOut = {nullptr, nullptr};
 
-    const int64_t *queryQuantMode = nullptr;
-    const int64_t *keyQuantMode = nullptr;
-    const char *layOutQuery = nullptr;
-    const char *layOutKey = nullptr;
-    const int64_t *blockSize = nullptr;
-    const int64_t *sparseMode = nullptr;
-    const int64_t *sparseCount = nullptr;
-    const int64_t *preTokens = nullptr;
-    const int64_t *nextTokens = nullptr;
-    const int64_t *cmpRatio = nullptr;
-    const int32_t *batchSupperFlag = nullptr;
-    const bool *returnValues = nullptr;
-    const int64_t *keyStride0 = nullptr;
-    const int64_t *keyDequantScaleStride0 = nullptr;
+    const bool *causal = nullptr;
+    const int64_t *stemBlockSize = nullptr;
+    const int64_t *stemStride = nullptr;
+    const float *alpha = nullptr;
+    const int64_t *initialBlocks = nullptr;
+    const int64_t *windowSize = nullptr;
+    const float *kBlockNumRateMedium = nullptr;
+    const int64_t *kBlockNumBiasMedium = nullptr;
+    const float *kBlockNumRateLarge = nullptr;
+    const int64_t *kBlockNumBiasLarge = nullptr;
 };
 
-// -----------算子Tiling入参信息类---------------
-class QLITilingInfo {
+class StemIndexerTilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    QLIParaInfo opParamInfo;
-    // Base Param
+    StemIndexerParaInfo opParamInfo;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
-    uint32_t n1Size = 0;
-    uint32_t n2Size = 0;
-    uint32_t s1Size = 0;
-    int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
+    uint32_t qHeadNum = 0;
+    uint32_t kvHeadNum = 0;
     uint32_t gSize = 0;
-    // PageAttention
-    bool pageAttentionFlag = false;
-    int32_t blockSize = 0;
-    uint32_t maxBlockNumPerBatch = 0;
-    // Mask
-    int32_t sparseMode = 0;
-    // Others Flag
-    uint32_t sparseCount = 0;
-    int64_t preTokens = 0;
-    int64_t nextTokens = 0;
-    uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;
-    bool returnValues = false;
-    uint32_t keyStride0 = 0;
-    uint32_t keyDequantScaleStride0 = 0;
-    // DType
-    ge::DataType inputQType = ge::DT_FLOAT16;
-    ge::DataType inputKType = ge::DT_FLOAT16;
+    uint32_t maxQb = 0;
+    uint32_t maxKb = 0;
+    uint32_t flattenDim = 0;
+    bool causal = true;
+    uint32_t stemBlockSize = STEM_BLOCK_SIZE_LIMIT;
+    uint32_t stemStride = STEM_STRIDE_LIMIT;
+    float alpha = 1.0f;
+    uint32_t initialBlocks = INITIAL_BLOCKS_LIMIT;
+    uint32_t windowSize = WINDOW_SIZE_LIMIT;
+    float kBlockNumRateMedium = K_BLOCK_NUM_RATE_MEDIUM_LIMIT;
+    uint32_t kBlockNumBiasMedium = 30;
+    float kBlockNumRateLarge = K_BLOCK_NUM_RATE_LARGE_LIMIT;
+    uint32_t kBlockNumBiasLarge = 30;
+    float scoreScale = 1.0f / 64.0f;
+    ge::DataType inputQType = ge::DT_BF16;
+    ge::DataType inputKType = ge::DT_BF16;
     ge::DataType outputType = ge::DT_INT32;
-    // Layout
-    DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::PA_BSND;
 };
 
-// -----------算子Tiling入参信息解析及Check类---------------
-class QLIInfoParser {
+class StemIndexerInfoParser {
 public:
-    explicit QLIInfoParser(gert::TilingContext *context) : context_(context) {}
-    ~QLIInfoParser() = default;
+    explicit StemIndexerInfoParser(gert::TilingContext *context) : context_(context) {}
+    ~StemIndexerInfoParser() = default;
 
-    ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                        const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
-    void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
-    ge::graphStatus GetAttrParaInfo();
-    ge::graphStatus CheckAttrParaInfo();
-    ge::graphStatus GetOpParaInfo();
-    ge::graphStatus ValidateInputShapesMatch();
-    ge::graphStatus CheckScaleShape();
+    ge::graphStatus GetAndCheckAttrParaInfo();
+    ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus GetAndCheckInOutDataType();
-    ge::graphStatus GetBatchSize();
-    ge::graphStatus GetHeadDim();
-    ge::graphStatus GetS1Size();
-    ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
-    ge::graphStatus GetAndCheckBlockSize();
-    ge::graphStatus GetS2SizeForPageAttention();
-    ge::graphStatus GetS2SizeForBatchContinuous();
-    ge::graphStatus GetS2Size();
-    ge::graphStatus GetQueryKeyAndOutLayout();
-    ge::graphStatus GetN1Size();
-    ge::graphStatus GetAndCheckN2Size();
-    ge::graphStatus GetGSize();
-    ge::graphStatus GetAttenMaskInfo();
-    ge::graphStatus GetActualSeqInfo();
-    void GenerateInfo(QLITilingInfo &QLIInfo);
-    ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
+    ge::graphStatus GetBaseShapeInfo();
+    ge::graphStatus ValidateInputShapesMatch();
+    ge::graphStatus ParseAndCheck(StemIndexerTilingInfo &stemInfo);
+    void GenerateInfo(StemIndexerTilingInfo &stemInfo);
 
-public:
-    gert::TilingContext *context_ = nullptr;
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
-    QLIParaInfo opParamInfo_;
-
-    // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
-    uint32_t headDim_ = 0;
-    bool batchSupperFlag_ = false;
-    // Layout
-    DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::PA_BSND;
-    // PageAttention
-    uint32_t maxBlockNumPerBatch_ = 0;
-    int32_t blockSize_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
-    ge::DataType inputQType_ = ge::DT_FLOAT16;
-    ge::DataType inputKType_ = ge::DT_FLOAT16;
-    ge::DataType weightsType_ = ge::DT_FLOAT16;
-    ge::DataType inputQueryScaleType_ = ge::DT_FLOAT16;
-    ge::DataType inputKeyScaleType_ = ge::DT_FLOAT16;
-    ge::DataType blockTableType_ = ge::DT_FLOAT16;
-    ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
-    ge::DataType outputType_ = ge::DT_FLOAT16;
-};
-
-// ---------------算子Tiling类---------------
-class QuantLightningIndexerTiling {
-public:
-    explicit QuantLightningIndexerTiling(gert::TilingContext *context) : context_(context) {};
-    ge::graphStatus DoTiling(QLITilingInfo *tilingInfo);
+private:
+    bool IsFloatEqual(float lhs, float rhs) const;
+    bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
+    bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
 
 private:
     gert::TilingContext *context_ = nullptr;
-    QLITilingData tilingData_;
+    const char *opName_ = nullptr;
+    fe::PlatFormInfos *platformInfo_ = nullptr;
+    StemIndexerParaInfo opParamInfo_;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    uint32_t bSize_ = 0;
+    uint32_t qHeadNum_ = 0;
+    uint32_t kvHeadNum_ = 0;
+    uint32_t gSize_ = 0;
+    uint32_t maxQb_ = 0;
+    uint32_t maxKb_ = 0;
+    uint32_t flattenDim_ = 0;
+    ge::DataType inputQType_ = ge::DT_BF16;
+    ge::DataType inputKType_ = ge::DT_BF16;
+    ge::DataType vbiasType_ = ge::DT_FLOAT;
+    ge::DataType outputType_ = ge::DT_INT32;
+    ge::DataType seqLenType_ = ge::DT_INT32;
+    ge::DataType metadataType_ = ge::DT_INT32;
 };
 
-}  // namespace optiling
-#endif  // stem_INDEXER_TILING_H
+class StemIndexerTiling {
+public:
+    explicit StemIndexerTiling(gert::TilingContext *context) : context_(context) {}
+    ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
+
+private:
+    gert::TilingContext *context_ = nullptr;
+    StemIndexerTilingData tilingData_;
+};
+} // namespace optiling
+
+#endif // STEM_INDEXER_TILING_H
