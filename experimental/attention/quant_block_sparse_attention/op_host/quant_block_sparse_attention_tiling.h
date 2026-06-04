@@ -273,6 +273,7 @@ private:
     void FillInitOutputParams();
     void CalcTilingKey();
     void CalcWorkspaceSize();
+    void PrintAllTilingData();
 
     gert::TilingContext *context_ = nullptr;
     QuantBlockSparseAttentionTilingInfo *tilingInfo_ = nullptr;
