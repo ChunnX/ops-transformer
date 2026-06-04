@@ -461,7 +461,8 @@ template <typename NSAT>
 __aicore__ inline void NsaSelectAttentionInfer<NSAT>::InitAllZeroOutput(uint32_t bIdx, uint32_t n2Idx)
 {
     uint64_t copySize = static_cast<uint64_t>(gSize) * headDimV;
-    matmul::InitOutput<OUT_T>(attentionOutGm[(static_cast<uint64_t>(bIdx) * kvHeadNum + n2Idx) * copySize], copySize, 0);
+    matmul::InitOutput<OUT_T>(
+        attentionOutGm[(static_cast<uint64_t>(bIdx) * kvHeadNum + n2Idx) * copySize], copySize, 0);
 }
 
 template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::GetActualSeqLen()
@@ -481,9 +482,11 @@ template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::G
     for (uint64_t topkIdx = 0; topkIdx < selectedBlockCount; topkIdx++) {
         uint64_t baseOffset = 0;
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            baseOffset = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + s1Idx * kvHeadNum * selectedBlockCount;
+            baseOffset = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                         static_cast<uint64_t>(s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            baseOffset = static_cast<uint64_t>(bIdx) * qSeqSize * kvHeadNum * selectedBlockCount + static_cast<uint64_t>(s1Idx) * kvHeadNum * selectedBlockCount;
+            baseOffset = static_cast<uint64_t>(bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                         static_cast<uint64_t>(s1Idx) * kvHeadNum * selectedBlockCount;
         }
         int32_t topKIndices = topKGm.GetValue(baseOffset + topkIdx);
         if (topKIndices > -1) {
@@ -1101,7 +1104,7 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::CopyInMm1BToL1ForPA(
         mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
         mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
-        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
@@ -1174,9 +1177,11 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::ComputeMm1(uint32_t loop) 
             for (uint64_t i = 0; i < info.bIdx; ++i) {
                 curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
             }
-            topKBaseOffsetmm1 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm1 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            topKBaseOffsetmm1 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount + static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm1 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         }
         int64_t blockTableBaseOffset = static_cast<int64_t>(info.bIdx) * maxBlockNumPerBatch;
         int64_t curSeqIdx = info.s2BatchOffset + nCopyIdx * nCopyRowCount;
@@ -1432,9 +1437,11 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::ComputeMm2(uint32_t loop) 
             for (uint64_t i = 0; i < info.bIdx; ++i) {
                 curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
             }
-            topKBaseOffsetmm2 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm2 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            topKBaseOffsetmm2 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount + static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm2 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         }
         int64_t blockTableBaseOffset = static_cast<int64_t>(static_cast<uint64_t>(info.bIdx) * maxBlockNumPerBatch);
         int64_t curSeqIdx = info.s2BatchOffset + kCopyIdx * kCopyRowCount;

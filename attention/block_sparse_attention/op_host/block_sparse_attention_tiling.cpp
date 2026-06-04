@@ -913,7 +913,8 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
 
 void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
 {
-    selectIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
+    selectIdxSize_ =
+        static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
     selectNumIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
     workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
@@ -1014,7 +1015,7 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_queryLayout(static_cast<uint32_t>(qInputLayout_));
     tilingData_->set_maxQSeqlen(maxQSeqlen_);
     tilingData_->set_maxKvSeqlen(maxKvSeqlen_);
-    
+
     // BNSD/BSND格式下当actualSeqLengths为nullptr时，使用maxQSeqlen和maxKvSeqlen作为统一值
     tilingData_->set_useUniformQSeqlen(useUniformQSeqlen_ ? 1 : 0);
     tilingData_->set_useUniformKvSeqlen(useUniformKvSeqlen_ ? 1 : 0);

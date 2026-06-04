@@ -126,7 +126,7 @@ public:
     __aicore__ inline void InitQuant(__gm__ uint8_t* deq_scale1, __gm__ uint8_t* scale1, __gm__ uint8_t* deq_scale2,
                                      __gm__ uint8_t* scale2, __gm__ uint8_t* offset2);
     __aicore__ inline void InitMsd(__gm__ uint8_t* key_antiquant_scale, __gm__ uint8_t* key_antiquant_offset, __gm__ uint8_t* value_antiquant_scale, __gm__ uint8_t* value_antiquant_offset);
-   
+
     // define datatype
     using mmInputType = typename PromptFlashAttentionTypeTraits<T, M>::mmInputType;
     using mmBiasType = typename PromptFlashAttentionTypeTraits<T, M>::mmBiasType;
@@ -448,7 +448,7 @@ __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::Init(__gm__
         actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLengthsKV, tilingData->promptAttentionBaseParams.batchSize);
         isActualLenDimsKVNull = false;
     }
-    
+
     isActualLenDimsNull = true;
     if (!tilingData->promptAttentionBaseParams.isActualSeqLengthsNull) {
         actualSeqLengthsGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLengths, tilingData->promptAttentionBaseParams.batchSize);
@@ -564,11 +564,11 @@ __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::InitQuant(_
 }
 
 template<typename T, typename U, CubeFormat FORMAT, typename O,  OptimizationMode M>
-__aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::InitMsd(__gm__ uint8_t* key_antiquant_scale, __gm__ uint8_t* key_antiquant_offset, 
+__aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::InitMsd(__gm__ uint8_t* key_antiquant_scale, __gm__ uint8_t* key_antiquant_offset,
                                                                              __gm__ uint8_t* value_antiquant_scale, __gm__ uint8_t* value_antiquant_offset){
     return;
 }
-   
+
 
 template<typename T, typename U, CubeFormat FORMAT, typename O,  OptimizationMode M>
 __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::InitOutputSingleCore()
@@ -1202,7 +1202,7 @@ __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::LoopSOuterO
                                (uint64_t)tilingData->promptAttentionBaseParams.maskQsSize;
     }
     attenMaskCoreOffset = (uint64_t)sOuterOffset * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize + attenMaskBatchOffset;
-   
+
     uint64_t head_stride_q = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
                              tilingData->promptAttentionBaseParams.seqSize;
     uint64_t head_stride_kv = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
@@ -1211,7 +1211,8 @@ __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::LoopSOuterO
 
     CalPseShiftOffset(sIdx);
 
-    tensorACoreOffset = seqListOffsetSize + batchNOffset * head_stride_q + static_cast<uint64_t>(sOuterOffset) * seq_stride;
+    tensorACoreOffset =
+        seqListOffsetSize + batchNOffset * head_stride_q + static_cast<uint64_t>(sOuterOffset) * seq_stride;
 
     uint64_t seqInnerOffsetSize =
         tilingData->promptAttentionBaseParams.seqSize == tilingData->promptAttentionBaseParams.seqInnerSize ?

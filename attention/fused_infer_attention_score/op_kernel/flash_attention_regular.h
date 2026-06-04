@@ -308,8 +308,7 @@ namespace SplitFuse {
                         }
                     }
                 }
-            }
-            else {
+            } else {
                 for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
                     uint32_t curBatchTmp = 0;
                     uint32_t preTotalTaskNumTmp = 0;
@@ -426,8 +425,7 @@ namespace SplitFuse {
                     gOFD,
                     gO,
                     gActualQseqlen,
-                    true
-                );
+                    true);
 #endif
             }
         }
@@ -930,8 +928,7 @@ namespace SplitFuse {
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
-                            blockMmadPV(
-                            gP[gmOffsetP],
+                            blockMmadPV(gP[gmOffsetP],
                             gV[gmOffsetV],
                             gOTmp[gmOffsetOTmp],
                             gBlockTable[blockBOffset],
@@ -947,8 +944,7 @@ namespace SplitFuse {
                             blockStackNum,
                             softmaxReady);
                         } else {
-                            blockMmadPV(
-                            gP[gmOffsetP],
+                            blockMmadPV(gP[gmOffsetP],
                             gV[gmOffsetV],
                             gOTmp[gmOffsetOTmp],
                             gBlockTable,

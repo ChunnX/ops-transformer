@@ -106,7 +106,8 @@ protected:
 
     __aicore__ inline void CopyKvCache(uint32_t tileIdx)
     {
-        pageBlockUnitOffset = static_cast<uint64_t>(tilingData->pageBlockSize) * tilingData->headNum * tilingData->headDim;
+        pageBlockUnitOffset =
+            static_cast<uint64_t>(tilingData->pageBlockSize) * tilingData->headNum * tilingData->headDim;
         AscendC::LocalTensor<T> kvCacheLocal = inQueue.AllocTensor<T>();
         uint32_t curTokenIdx = seqLenStartidx + tileIdx * this->tilingData->tokenNumPerTile;
         uint64_t curBlockPageIdx = curTokenIdx / tilingData->pageBlockSize;
