@@ -93,15 +93,7 @@ template <typename CubeBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d paBlockStride=%u combineDim=%u\n",
-            this->aicIdx, actualCoreNums, this->constInfo.paBlockStride, this->constInfo.combineDim);
-    }
     if (this->aicIdx >= actualCoreNums) {
-        if (this->aicIdx == 0) {
-            printf("[BSA_DEBUG] exit ProcessMainLoop by inactive core aicIdx=%d coreNum=%d\n",
-                this->aicIdx, actualCoreNums);
-        }
         return;
     }
     // 确定核内切分起点
@@ -223,10 +215,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMa
 template <typename CubeBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::Process()
 {
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter Process aicIdx=%d needInit=%d\n", this->aicIdx,
-            static_cast<int32_t>(this->sharedParams.needInit));
-    }
     // SyncAll Cube和Vector都需要调用
     if (this->sharedParams.needInit) {
         SyncAll<false>();
