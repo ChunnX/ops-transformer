@@ -20,37 +20,38 @@ class CPUBackend(Backend):
     def is_available(self) -> bool:
         return True
 
-    def compute(self, inputs: Dict[str, torch.Tensor],
-                params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        from backends.cpu_impl import tforward
-        from utils.data import trans_bnsd_to_layout
+def compute(self, inputs: Dict[str, torch.Tensor],
+            params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    from backends.cpu_impl import tforward
 
-        layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
-        layout_kv = params.get("layout_kv", layout_q)
+    layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
+    layout_kv = params.get("layout_kv", layout_q)
 
-        # 转回 BNSD：NPU 格式 → CPU golden 需要的 BNSD
-        q_bnsd = _to_bnsd(inputs["q"], layout_q, params)
-        k_bnsd = _to_bnsd(inputs["k"], layout_kv, params)
-        v_bnsd = _to_bnsd(inputs["v"], layout_kv, params)
+    q_cpu = _to_tforward(inputs["q"], layout_q, params)
+    k_cpu = _to_tforward(inputs["k"], layout_kv, params)
+    v_cpu = _to_tforward(inputs["v"], layout_kv, params)
 
-        tforward_kwargs = dict(params)
-        tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
+    tforward_kwargs = dict(params)
+    tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
 
-        out_cpu, x_max, x_sum = tforward(q_bnsd, k_bnsd, v_bnsd, **tforward_kwargs)
-        lse = torch.log(x_sum) + x_max
-        return {"out": out_cpu, "lse": lse}
+    out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
+    lse = torch.log(x_sum) + x_max
+    return {"out": out_cpu, "lse": lse}
 
 
-def _to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
-    """将任意 layout 的 tensor 转回 tforward 期望的格式。"""
+def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
+    """转换为 tforward 期望的格式。"""
     if layout == "TND":
-        # InputSpec 生成 (total_s, N, D) → tforward 期望 (1, N, total_s, D)
         return t.unsqueeze(0).permute(0, 2, 1, 3).contiguous().clone().float()
     if layout == "BSND":
         return t.permute(0, 2, 1, 3).contiguous().clone().float()
     if layout.startswith("PA_"):
-        return _pa_to_bnsd(t, layout, params)
-    # BNSD or passthrough
+        bnsd = _pa_to_bnsd(t, layout, params)
+        if params.get("layout_q", "") == "TND":
+            # TND+PA: BNSD(B,N,S,D) → TND(1,N,B*S,D)
+            B, N2, S2, D = bnsd.shape
+            return bnsd.reshape(1, N2, B * S2, D).clone().float()
+        return bnsd.float()
     return t.clone().float()
 
 
