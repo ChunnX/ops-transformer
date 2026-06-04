@@ -2335,9 +2335,9 @@ private:
                               SPLIT_RMSNRORM_SIZE_TWO);
             SET_FLAG(MTE2, V, EVENT_ID0);
             uint64_t cacheSlot = static_cast<uint64_t>(slotValue);
-            uint64_t cacheStart = GetCacheOffset(cacheSlot, SPLIT_SIZE_ONE, kv_cache_stride0_);//576,blocksize*576or512
-            uint64_t cacheStart1 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_ONE, kv_cache_stride0_);//512,
-            uint64_t cacheStart2 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_TWO, kv_cache_rope_stride0_);//64
+            uint64_t cacheStart = GetCacheOffset(cacheSlot, SPLIT_SIZE_ONE, kv_cache_stride0_);
+            uint64_t cacheStart1 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_ONE, kv_cache_stride0_);
+            uint64_t cacheStart2 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_TWO, kv_cache_rope_stride0_);
             SET_FLAG(S, MTE3, EVENT_ID0);
             /* RmsNorm start */
             WAIT_FLAG(MTE2, V, EVENT_ID0);

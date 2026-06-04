@@ -3077,7 +3077,6 @@ MLAOperation<InDtype, CACHE_MODE, weightFormat1, weightFormat2, weightFormat3, q
     FftsCrossCoreSync<PIPE_MTE3, 0>(MM2);
     WaitFlagDev(MM2);
     AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(AIC_MM2_START);
-    
     if (row_work_ != 0) {
         AscendC::LocalTensor<InDtype> input_tensor = buf.GetBuffer<BufferType::ASCEND_UB, InDtype>(0);
         AscendC::LocalTensor<InDtype> gamma_tensor = buf.GetBuffer<BufferType::ASCEND_UB, InDtype>(mm1_out_size_ * 2);
