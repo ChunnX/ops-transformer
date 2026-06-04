@@ -150,10 +150,7 @@ __aicore__ constexpr bool ContainOptionalInput(
 
 __aicore__ constexpr bool IsDn(
     bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
-    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool enableKVPrefix, bool isInfer, bool isHiFp8) {
-    if (enableKVPrefix) {
-        return false;
-    }
+    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool isInfer, bool isHiFp8) {
     if (!isInfer && isHiFp8) {
         return false;
     }

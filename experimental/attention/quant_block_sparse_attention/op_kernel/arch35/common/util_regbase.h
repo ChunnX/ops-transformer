@@ -387,7 +387,6 @@ struct RunInfo<false> {
     uint32_t s1OuterSize;  \
     uint32_t bandIndex;  \
     uint32_t compressMode : 4;  \
-    uint32_t implMode : 4;  \
     uint32_t layoutType : 4;  \
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \

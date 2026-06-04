@@ -47,7 +47,7 @@ using namespace AscendC;
         op.Process();                                                                                    \
     } while (0)
 
-template <uint32_t QKV_DTYPE, uint32_t LAYOUT_Q, uint32_t KV_LAYOUT_T, uint32_t COMPRESS_MODE,
+template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t COMPRESS_MODE,
           bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attention(
     __gm__ uint8_t *query,
@@ -87,17 +87,14 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr LayOutTypeEnum bsaLayout = (LAYOUT_Q == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::None;
+    constexpr LayOutTypeEnum bsaLayout = (LAYOUT_T == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::None;
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = (KV_LAYOUT_T == BSA_KV_LAYOUT_PA_ND);
 
-    // block 模板参数顺序对齐 CUBE_BLOCK_TRAITS：
-    // INPUT_T, T(计算 float), OUTPUT_T(BF16), implMode, layout, s1Tpl, s2Tpl, dTpl, dVTpl,
-    // pseMode, hasAtten, hasDrop, hasRope, isInfer, isPa, enableKVPrefix, enableS1OutSplit
-    // TODO: 待实现 - host tiling 当前产出 QuantBlockSparseAttentionTilingData，kernel 侧 InitBaseAPI 取
-    //       FlashAttentionScoreSimplifiedTilingData，host/kernel tiling 结构对齐留作后续。
-    BSA_OP_IMPL(QKV_DTYPE, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
-        S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
-        DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
-        false, false);
+    // TODO: 是否新增模板参数
+    constexpr bool isInfer = true;
+    constexpr bool HAS_ATTENTION = true;
+    BSA_OP_IMPL(QKV_DTYPE, float, bfloat16_t, bsaLayout,
+        S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
+        HAS_ATTENTION, isInfer, bsaIsPa);
 }
