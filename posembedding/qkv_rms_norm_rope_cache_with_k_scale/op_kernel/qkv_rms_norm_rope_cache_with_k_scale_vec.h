@@ -108,7 +108,6 @@ private:
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE = 2U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE3_A_L1_READY = 4U;
-    static constexpr uint32_t EVT_MTE3_TO_PIPE_V_A_L1_DONE = 4U;
 
     static_assert(QK_PREPROCESS_BF16_NZ_ELEMENTS >=
             (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * QK_PREPROCESS_UB_NZ_ROW_STRIDE * QKV_RRC_NZ_C0,
@@ -125,8 +124,6 @@ private:
         "QkvRmsNormRopeCacheWithKScale AIV MTE3->V QK output events exceed event id range.");
     static_assert(EVT_PIPE_V_TO_MTE3_A_L1_READY <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIV V->MTE3 AL1 ready event exceeds event id range.");
-    static_assert(EVT_MTE3_TO_PIPE_V_A_L1_DONE <= INTRA_EVENT_ID_MAX,
-        "QkvRmsNormRopeCacheWithKScale AIV MTE3->V AL1 done event exceeds event id range.");
 
     __aicore__ inline void WaitVToMte2InputBufferReusable(uint32_t bufferId)
     {
@@ -236,14 +233,6 @@ private:
 #endif
     }
 
-    __aicore__ inline void SetAndWaitMte3ToVAl1StageDone()
-    {
-#ifndef __CCE_KT_TEST__
-        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_A_L1_DONE));
-        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_A_L1_DONE));
-#endif
-    }
-
     __aicore__ inline void SetAndWaitVToMte3Al1StageReady()
     {
 #ifndef __CCE_KT_TEST__
@@ -278,7 +267,6 @@ private:
         BuildRopeBf16NzUb(slice);
         SetAndWaitVToMte3Al1StageReady();
         CopyRopeBf16NzUbToL1Nz(tile, slice);
-        SetAndWaitMte3ToVAl1StageDone();
     }
 
     __aicore__ inline void CopyPreprocessInputs(const AivSlice &slice)

@@ -91,7 +91,7 @@ pair and are statically checked to stay in `0..5`.
 | `V -> MTE2` | input UB reuse | `0/1` |
 | `MTE3 -> V` | v-out DB pool reuse | `0/1` |
 | `MTE3 -> V` | output DB pool Q/K reuse | `2/3` |
-| `V -> MTE3` / `MTE3 -> V` | AIV-private AL1 staging pipe boundary | `4` |
+| `V -> MTE3` | AIV-private AL1 staging pipe boundary | `4` |
 | `MTE2 -> MTE1` | resident AIC rotation L1 ready | `5` |
 | `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
 
@@ -100,18 +100,18 @@ Init currently sets only reusable reverse events (`V_MTE2`, `MTE3_V`,
 AIC `MMAD -> FIX` / `FIX -> MMAD` local event is allocated in this path: the
 Cube/Fixpipe calls use `unitFlag`, and L0C/output reuse is gated by the
 CrossCore `C_CONSUMED` credit sequence. T06 uses event id `4` inside
-`D128FastVec::ComputeTile` for the current AL1 staging pipe handoff only. It is
-not initialized in lifecycle hooks and is not per-AL1-buffer synchronization.
+`D128FastVec::ComputeTile` only for the V-produced staging data to MTE3 handoff.
+It is not initialized in lifecycle hooks and is not per-AL1-buffer
+synchronization.
 
 T06 wires the AIV preprocess boundary and the initial numeric Q/K path. Each
 AIV derives local tensor views inside `ComputeTile`, waits for input UB reuse,
 loads QKV/gamma/slot-mapping/cos-sin through the 2D copy helper, publishes and
 consumes the `MTE2 -> V` input-ready event, runs the D=128 VF for
 RMSNorm + half-RoPE into a BF16 ND staging area, converts that ND staging into
-the logical AL1 NZ buffer, waits for the private MTE3 completion event,
-and returns to basic block. Basic block then issues `A_READY`. On the AIC
-side, basic block waits `A_READY` before entering Cube compute that touches
-the logical AL1 buffer.
+the logical AL1 NZ buffer, and returns to basic block. Basic block then issues
+`A_READY` through `PIPE_MTE3`, which orders the MTE3 AL1 write before the AIC
+side waits `A_READY` through `PIPE_MTE1` and enters Cube compute.
 
 T07 adds the AIC resident-rotation and Cube matmul slice. The AIC branch calls
 `PrepareRotationBeforeLoop()` after lifecycle init and before the tile loop,
