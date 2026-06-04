@@ -144,7 +144,7 @@ def _serialize_params(c: Dict) -> str:
     s = {}
     for k, v in c.items():
         if hasattr(v, 'shape'):
-            if v.numel() < 100000:
+            if k == "block_table" or v.numel() < 100000:
                 s[k] = v.tolist()
             else:
                 s[k] = f"<tensor {tuple(v.shape)}>"
