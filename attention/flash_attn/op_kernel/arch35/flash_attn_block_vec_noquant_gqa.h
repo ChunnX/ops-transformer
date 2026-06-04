@@ -125,6 +125,9 @@ public:
     // stage1 双缓冲的 MTE3→V 反向同步（确保 UB→L1 DataCopy 完成后才能复用 buffer）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
+    // attenMask ping/pong 的 V→MTE2 反向同步（替代 TQue AllocTensor/FreeTensor 内部同步）
+    static constexpr uint32_t FA_ATTEN_MASK_V_TO_MTE2_0 = 3U;
+    static constexpr uint32_t FA_ATTEN_MASK_V_TO_MTE2_1 = 5U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -183,6 +186,7 @@ public:
     uint32_t mte3ToVId[2]; // 静态分配: {0,1} — Vec2 stage2OutBuf 的 MTE3→V
     uint32_t vToMte3Id[2]; // 静态分配: {0,1} — Vec1 stage1 的 V→MTE3 正向
     uint32_t stage1MTE3toV[2]; // stage1 双缓冲的 MTE3→V 反向同步
+    uint32_t attenMaskVToMte2[2]; // attenMask ping/pong 的 V→MTE2 反向同步
     LocalTensor<float> softmaxMaxBuf[PRELOAD_N + 1];
     LocalTensor<float> softmaxSumBuf[PRELOAD_N + 1];
     LocalTensor<T> softmaxExpBuf[PRELOAD_N + 1];
@@ -606,6 +610,10 @@ public:
                         descaleQK, negativeFloatScalar, 0.0F);
                 }
             }
+        }
+        if constexpr (hasAtten) {
+            // 替代原版 attenMaskInQue.FreeTensor：通知 MTE2 侧 attenMask 已被 V 读完，可再次写入
+            SetFlag<HardEvent::V_MTE2>(attenMaskVToMte2[runInfo.loop & (DB - 1)]);
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
@@ -1181,6 +1189,12 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        if constexpr (hasAtten) {
+            attenMaskVToMte2[0] = FA_ATTEN_MASK_V_TO_MTE2_0;
+            attenMaskVToMte2[1] = FA_ATTEN_MASK_V_TO_MTE2_1;
+            SetFlag<HardEvent::V_MTE2>(attenMaskVToMte2[0]);
+            SetFlag<HardEvent::V_MTE2>(attenMaskVToMte2[1]);
+        }
     }
 
     __aicore__ inline void FreeEventID()
@@ -1189,11 +1203,20 @@ public:
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        if constexpr (hasAtten) {
+            WaitFlag<HardEvent::V_MTE2>(attenMaskVToMte2[0]);
+            WaitFlag<HardEvent::V_MTE2>(attenMaskVToMte2[1]);
+        }
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            RunInfoX &runInfo)
     {
+        const uint32_t bufIdx = runInfo.loop & (DB - 1);
+        if constexpr (hasAtten) {
+            // 替代原版 attenMaskInQue.AllocTensor：等上一次 V 读完后再允许 MTE2/V 写入
+            WaitFlag<HardEvent::V_MTE2>(attenMaskVToMte2[bufIdx]);
+        }
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         maskInfo.gs1dealNum = mDealSize;
@@ -1231,9 +1254,17 @@ public:
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[1 - runInfo.loop & (DB - 1)];
+            const uint32_t preBufIdx = 1 - bufIdx;
+            if constexpr (hasAtten) {
+                WaitFlag<HardEvent::V_MTE2>(attenMaskVToMte2[preBufIdx]);
+            }
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
+            if constexpr (hasAtten) {
+                // pre 缓冲仅作临时合并，用完立即释放供后续 loop 复用
+                SetFlag<HardEvent::V_MTE2>(attenMaskVToMte2[preBufIdx]);
+            }
         }
     }
 
