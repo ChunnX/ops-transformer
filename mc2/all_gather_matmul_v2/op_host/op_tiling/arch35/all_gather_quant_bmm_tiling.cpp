@@ -87,7 +87,8 @@ bool AllGatherQuantBmmTiling::IsCapable()
         OP_LOGI(opName_, "Start with allgather quantbmm tiling.");
         return true;
     }
-    OP_LOGE(opName_, "Skip allgather quantbmm tiling as dtype not support.");
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2 dtype",
+        Ops::Base::ToString(args_.geAType).c_str(), "fp8 dtype not supported");
     return false;
 }
 
@@ -304,10 +305,9 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
         return ge::GRAPH_SUCCESS;
     } else {
         quantMmMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
-        OP_LOGE(opName_,
-            "Quantmode must be pertensor or mxfp or perblock, actually x1ScaleDtype is %s and x2ScaleDtype is %s",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scaleInv1/scaleInv2 dtype",
             Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
-            Ops::Base::ToString(scaleInv2Desc->GetDataType()).c_str());
+            "must be pertensor or mxfp or perblock");
     }
 
     return ge::GRAPH_FAILED;
@@ -336,7 +336,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
         OP_TILING_CHECK(CheckPerBlockScaleInput() == ge::GRAPH_FAILED,
             OP_LOGE(opName_, "Check perblock scale input failed."), return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(opName_, "Quant mode should be pertensor or mxfp or perblock!");
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "quantMmMode", std::to_string(static_cast<int>(quantMmMode_)).c_str(),
+            "pertensor, mxfp or perblock");
         return ge::GRAPH_FAILED;
     }
 
@@ -832,7 +833,7 @@ const gert::Shape &AllGatherQuantBmmHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV1)) == nullptr) {
-        OP_LOGE(inputParams_.opName, "%s is quant, but has no scale_inv1 shape", inputParams_.opName);
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "scale_inv1");
         return defaultShape;
     }
     return context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV1))->GetStorageShape();

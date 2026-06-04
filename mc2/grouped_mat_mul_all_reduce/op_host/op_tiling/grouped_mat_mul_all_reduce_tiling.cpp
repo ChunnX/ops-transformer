@@ -255,16 +255,17 @@ ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* conte
             weightDtype = inputDescPtr1->GetDataType(); // save weight dtype
             mmDataTypeSize = GetSizeByDataType(mmDType);
             OP_TILING_CHECK(
-                mmDataTypeSize == 0,
-                OP_LOGE(
-                    opName, "get dtype[%s] size is 0.", TypeUtils::DataTypeToAscendString(mmDType).GetString()),
-                return ge::GRAPH_FAILED);
+            mmDataTypeSize == 0,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "mmDType",
+                TypeUtils::DataTypeToAscendString(mmDType).GetString(), "get size is 0"),
+            return ge::GRAPH_FAILED);
             uint32_t numInOneBlk = std::max<uint32_t>(1, ONE_BLK_SIZE / mmDataTypeSize);
             maxMKN = INT_MAX / numInOneBlk * numInOneBlk;
         }
         OP_TILING_CHECK(
             bs > maxMKN || xShape.GetDim(xDimNum - 1) > maxMKN || wShape.GetDim(1) > maxMKN,
-            OP_LOGE(opName, "32B-aligned m, n or k axis is out of range int32 %ld!", maxMKN),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "shape dimension", std::to_string(maxMKN).c_str(),
+                "32B-aligned m, n or k axis is out of int32 range"),
             return ge::GRAPH_FAILED);
         mList[i] = static_cast<int32_t>(bs);                         // m axis of x
         kList[i] = static_cast<int32_t>(xShape.GetDim(xDimNum - 1)); // x shape is [m, k], k index is xDimNum - 1

@@ -354,7 +354,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         dataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(dataSize).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", dataSize),
         return ge::GRAPH_FAILED);
 
     context_->GetRawTilingData()->SetDataSize(dataSize);
