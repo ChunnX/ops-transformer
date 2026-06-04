@@ -9,19 +9,28 @@
  */
 
 /*!
- * \file kv_compress_epilog.h
- * \brief L0 op API for KvCompressEpilog
+ * \file indexer_compress_epilog_proto.cpp
+ * \brief
  */
+#include <graph/utils/type_utils.h>
+#include <register/op_impl_registry.h>
 
-#ifndef OP_API_INC_LEVEL0_OP_KV_COMPRESS_EPILOG_OP_H
-#define OP_API_INC_LEVEL0_OP_KV_COMPRESS_EPILOG_OP_H
+#include "error/ops_error.h"
 
-#include "opdev/op_executor.h"
+using namespace ge;
+namespace ops {
 
-namespace l0op {
-const aclTensor *KvCompressEpilog(const aclTensor *kvCompressCache, const aclTensor *x, const aclTensor *slotMapping,
-                                  int64_t quantGroupSize, int64_t quantMode, int64_t roundScale, float scaleAttr,
-                                  int64_t padCount, aclOpExecutor *executor);
-} // namespace l0op
+graphStatus InferShape4IndexerCompressEpilog(gert::InferShapeContext* context)
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-#endif // OP_API_INC_LEVEL0_OP_KV_COMPRESS_EPILOG_OP_H
+graphStatus InferDtype4IndexerCompressEpilog(gert::InferDataTypeContext* context)
+{
+    return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSHAPE(IndexerCompressEpilog)
+    .InferShape(InferShape4IndexerCompressEpilog)
+    .InferDataType(InferDtype4IndexerCompressEpilog);
+}  // namespace ops
