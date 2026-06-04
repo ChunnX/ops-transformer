@@ -74,6 +74,11 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT = 64;
+constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_64 = 64;
+constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_32 = 32;
+constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_24 = 24;
+constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_16 = 16;
+constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_8 = 8;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(LITilingData)
