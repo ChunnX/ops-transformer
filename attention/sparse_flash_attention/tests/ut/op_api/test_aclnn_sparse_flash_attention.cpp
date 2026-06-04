@@ -131,3 +131,29 @@ TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_1)
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
 }
+
+// value is optional. Null value should be accepted by the public aclnn wrapper.
+TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_value_optional_null)
+{
+    char layoutQ[] = "BSND";
+    char layoutKv[] = "BSND";
+    auto query = unique_ptr<aclTensor, decltype(&DestroyAclTensor)>(
+        TensorDesc({1, 64, 8, 128}, ACL_FLOAT16, ACL_FORMAT_ND).ToAclTypeRawPtr(), DestroyAclTensor);
+    auto key = unique_ptr<aclTensor, decltype(&DestroyAclTensor)>(
+        TensorDesc({1, 128, 1, 128}, ACL_FLOAT16, ACL_FORMAT_ND).ToAclTypeRawPtr(), DestroyAclTensor);
+    auto sparseIndices = unique_ptr<aclTensor, decltype(&DestroyAclTensor)>(
+        TensorDesc({1, 64, 1, 4}, ACL_INT32, ACL_FORMAT_ND).ToAclTypeRawPtr(), DestroyAclTensor);
+    auto attentionOut = unique_ptr<aclTensor, decltype(&DestroyAclTensor)>(
+        TensorDesc({1, 64, 8, 128}, ACL_FLOAT16, ACL_FORMAT_ND).ToAclTypeRawPtr(), DestroyAclTensor);
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGetWorkspaceSize(
+        query.get(), key.get(), nullptr, sparseIndices.get(),
+        nullptr, nullptr, nullptr, nullptr, nullptr,
+        0.0883883476, 64, layoutQ, layoutKv, 3, INT64_MAX, INT64_MAX, 0, false,
+        attentionOut.get(), nullptr, nullptr, &workspaceSize, &executor);
+
+    EXPECT_EQ(aclRet, ACL_SUCCESS);
+    EXPECT_NE(executor, nullptr);
+}
