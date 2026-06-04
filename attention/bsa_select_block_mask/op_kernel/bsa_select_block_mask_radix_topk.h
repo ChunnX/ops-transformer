@@ -1161,6 +1161,44 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batchIdx, uint32_t headIdx,
                                                                      GlobalTensor<OUT_T> &maskOutGm)
 {
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[TopK] v6.7: CopyMaskToOutput implemented\n");
+    }
+
+    // Calculate output offset for this batch and head
+    uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * sortLen_;
+
+    // Loop through all tiles
+    for (uint64_t tileIdx = 0; tileIdx < tileNum_; tileIdx++) {
+        uint64_t curTileLen = (tileIdx == tileNum_ - 1) ? tailTileLen_ : tileLen_;
+        uint64_t tileGmOffset = tileIdx * tileLen_;
+        uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+
+        // Read uint8_t mask from maskTmpGmLocal to UB
+        LocalTensor<uint8_t> maskLocal8 = maskLocalBuf_.Get<uint8_t>();
+        DataCopyPad(maskLocal8, maskTmpGmLocal[tileGmOffset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
+                    DataCopyPadExtParams<uint8_t>(false, 0,
+                        static_cast<uint8_t>(alignLen - curTileLen), 0));
+        PipeBarrier<PIPE_V>();
+
+        // Cast uint8_t to OUT_T (int8_t) if needed
+        if constexpr (!IsSameType<uint8_t, OUT_T>::value) {
+            LocalTensor<OUT_T> maskLocalOut = maskLocal8.template ReinterpretCast<OUT_T>();
+            Cast<OUT_T, uint8_t>(maskLocalOut, maskLocal8, RoundMode::CAST_NONE, alignLen);
+            PipeBarrier<PIPE_V>();
+
+            // Write to maskOutGm
+            VToMTE3Sync();
+            DataCopyPad(maskOutGm[outputOffset + tileGmOffset], maskLocalOut,
+                        DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(OUT_T)), 0, 0));
+        } else {
+            // Direct copy if types are the same
+            VToMTE3Sync();
+            DataCopyPad(maskOutGm[outputOffset + tileGmOffset], maskLocal8,
+                        DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+        }
+    }
 }
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
