@@ -129,7 +129,7 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-5, -4, -3, -2],
+    out_idx=[-4, -3, -2, -1],
     workspace_idx=[10, 11, 12, 13, 14, 19],
     pass_configs=pass_configs,
 )
@@ -171,7 +171,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dWeight: T.Tensor((B, S1, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        LossOut: T.Tensor((1,), calc_dtype),
+        LossOut: T.Tensor((B, S1, 16), calc_dtype),
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -594,7 +594,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.add(loss_accum_ub, loss_accum_ub, loss_sum_ub)
                         T.barrier_all()
 
-                    T.tile.atomic_add(LossOut[0:1], loss_accum_ub[0:1])
+                    T.copy(
+                        loss_accum_ub,
+                        LossOut[bz, s1_id, 0:16],
+                    )
                     T.barrier_all()
 
                 T.set_cross_flag("V", 2)
@@ -845,7 +848,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
         d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=query.device)
         relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
-        loss_out = torch.zeros(1, dtype=torch.float32, device=query.device)
+        loss_out = torch.zeros(B, S1, 16, dtype=torch.float32, device=query.device)
 
         torch.npu.synchronize()
         results = func(
@@ -862,32 +865,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_query_index = results[0]
         d_weight = results[1]
         relu_grad = results[2]
-        kl_loss_val = results[3]
+        loss_out = results[3]
 
-        # Debug: recompute bmm1/bmm2 from original inputs for accurate reference
-        # Use FP16 matmul to match NPU Cube precision
-        ref_bmm1 = torch.matmul(query, gather_key.transpose(-1, -2)).float()  # (B, S1, N1, K)
-        ref_bmm2_raw = torch.matmul(query_index, gather_key_index.transpose(-1, -2)).float()  # (B, S1, Nidx1, K)
-        ref_bmm2 = torch.relu(ref_bmm2_raw)
-        ref_dw, ref_rg, ref_loss = _compute_vector_outputs(
-            ref_bmm1, ref_bmm2, weights, softmax_max, softmax_sum,
-            scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
-            input_dtype,
-        )
-        tl_dw_fp32 = d_weight.float()
-        tl_rg_fp32 = relu_grad.float()
-        logger.warning(f"[DEBUG] dWeight: max_diff={(tl_dw_fp32 - ref_dw).abs().max().item():.6f}, ref_max={ref_dw.abs().max().item():.6f}")
-        logger.warning(f"[DEBUG] reluGrad: max_diff={(tl_rg_fp32 - ref_rg).abs().max().item():.6f}, ref_max={ref_rg.abs().max().item():.6f}")
-        logger.warning(f"[DEBUG] P_reduced ws range: [{p_reduced_ws.min().item():.6f}, {p_reduced_ws.max().item():.6f}]")
-        logger.warning(f"[DEBUG] ReduceSumY ws range: [{reduce_sum_y_ws.min().item():.6f}, {reduce_sum_y_ws.max().item():.6f}]")
-        logger.warning(f"[DEBUG] SoftmaxI ws range: [{softmax_i_ws.min().item():.6f}, {softmax_i_ws.max().item():.6f}]")
-        logger.warning(f"[DEBUG] bmm1Res ws range: [{bmm1_res_ws.min().item():.6f}, {bmm1_res_ws.max().item():.6f}]")
-        logger.warning(f"[DEBUG] bmm2Res ws range: [{bmm2_res_ws.min().item():.6f}, {bmm2_res_ws.max().item():.6f}]")
-        logger.warning(f"[DEBUG] ref_bmm1 range: [{ref_bmm1.min().item():.6f}, {ref_bmm1.max().item():.6f}]")
-        logger.warning(f"[DEBUG] ref_bmm2 range: [{ref_bmm2.min().item():.6f}, {ref_bmm2.max().item():.6f}]")
-
-        # KL Loss: now computed in NPU kernel
-        kl_loss = kl_loss_val
+        # KL Loss: computed in NPU kernel
+        kl_loss = loss_out[0, 0, 0]
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
