@@ -1395,8 +1395,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_GMM1_END);
             }
 
-            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 + combine 跑完 =====
-            //   GMM2 直接写 GM，AIV1 通过 rowReadyFlags 等数据并 combine，不走 cube/vec 通道。
+            // ===== GMM1→GMM2 切换：drain GMM1 的 AIV0→AIC 残留信号，避免与 GMM2 的 AIV1 信号串扰 =====
+            // GMM1 用 AIV0 (flags 0-10 on AIC)，GMM2 用 AIV1 (flags 16-26 on AIC)，物理上不冲突，
+            // 但为了状态干净，先把 GMM1 的 pending NotifyCube drain 掉。
+            EndSync();
+            vecSetSyncCom_ = 0;
+            gmm1PingPongIdx_ = 0;
+
+            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 (UB ping-pong) + combine 跑完 =====
+            //   GMM2 tile M=128，输出到 UB [64K,192K) ping-pong，AIC↔AIV1 通过 NotifyVector/WaitForCube 同步。
             for (uint32_t bi = 0; bi < batchSize; ++bi) {
                 uint64_t waveIdx = batchedWaves[bi];
                 int curWaveTrace = waveTraceIdx_ + static_cast<int>(bi);

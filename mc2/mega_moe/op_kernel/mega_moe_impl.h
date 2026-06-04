@@ -44,6 +44,9 @@ constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
 constexpr uint32_t MAX_SINGLE_MN = L1_TILE_M * L1_TILE_N;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
+constexpr uint32_t L1_TILE_M_GMM2 = 128;
+constexpr uint32_t MAX_SINGLE_MN_GMM2 = L1_TILE_M_GMM2 * L1_TILE_N;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_GMM2 = (MAX_SINGLE_MN_GMM2 + 31U) / ALIGN32 * ALIGN32;
 // UB 容量（Da Vinci AIV 每核 256KB），用于判断 GMM1 是否还能 pingpong（需要 2 块 UbFirst+UbSecond）。
 constexpr uint32_t UB_CAPACITY_BYTES = 256U * 1024U;
 
@@ -361,11 +364,13 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     }
 }
 
-// GroupMatmul2Optimize - GMM2 (GM-direct) + Combine via triple-info routing (per-wave)
-// merge_static 路径专用：与 GroupMatmul2 结构完全一致，区别在于：
-//   - 取 ParamsOptimize（dispatchRev / triple 用的 workspace）
-//   - AIV 端调用 CombineTileOptimize（用 tripleTensor 路由），而非 CombineTile（用 tokenPerExpertWin）
-//   - 给 CombineTileOptimize 传 groupCnt = expertBeforeCnt + waveRowOffset，用于读 tripleInfoPtr
+// GroupMatmul2Optimize - GMM2 (UB ping-pong) + Combine via triple-info routing (per-wave)
+// merge_static 路径专用：GMM2 tile M 改为 128（L1_TILE_M_GMM2），输出到 UB ping-pong 而非 GM direct。
+//   UB 布局: ping [64K, 128K), pong [128K, 192K) — 每块 128*256*sizeof(bf16) = 64KB。
+//   AIC ↔ AIV 通过 NotifyVector/WaitForCube + NotifyCube/WaitForVector 同步，替代 GM rowReadyFlags。
+//   GM 空间 (gmm2OutGlobal / rowReadyFlags) 仍保留不动，只是本函数不再使用。
+//   注意：调用方需在 GMM1→GMM2 阶段切换时自行 drain GMM1 残留的 AIV→AIC 信号，
+//   否则可能与 GMM2 首个 WaitForVector 串扰。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           bool IsInterleaved = false>
 __aicore__ inline void GroupMatmul2Optimize(
@@ -378,13 +383,8 @@ __aicore__ inline void GroupMatmul2Optimize(
     uint32_t n = Get<K_VALUE>(problemShape);
     uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
 
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
-
-    GlobalTensor<int32_t> rowReadyFlags;
-    rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrGmm2RowReady);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -416,7 +416,8 @@ __aicore__ inline void GroupMatmul2Optimize(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
-    auto layoutC = MakeLayoutC{}(m, n);
+    // GMM2 tile layout: L1_TILE_M_GMM2 x L1_TILE_N (128x256), 用于 UB ping-pong
+    auto layoutC = MakeLayoutC{}(L1_TILE_M_GMM2, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -429,12 +430,23 @@ __aicore__ inline void GroupMatmul2Optimize(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_GMM2, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
-    auto gmC = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
+    // GMM2 UB ping-pong: ping [64K, 128K), pong [128K, 192K)
+    // 每块 128*256*sizeof(bf16)=64KB，占用前 GMM1 CombineTileOptimize 的 UB buffer 同区域
+    constexpr int64_t GMM2_UB_BASE = 64 * 1024;
+    constexpr int64_t GMM2_UB_STRIDE = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_GMM2 * sizeof(ElementC));
+
+    auto l0cOutUbPing = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE), layoutC);
+    auto l0cOutUbPong = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE + GMM2_UB_STRIDE), layoutC);
+
+    LocalTensor<ElementC> ubGmm2Ping(TPosition::VECIN, GMM2_UB_BASE, L1_TILE_M_GMM2 * L1_TILE_N);
+    LocalTensor<ElementC> ubGmm2Pong(TPosition::VECIN, GMM2_UB_BASE + GMM2_UB_STRIDE,
+                                     L1_TILE_M_GMM2 * L1_TILE_N);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -450,8 +462,11 @@ __aicore__ inline void GroupMatmul2Optimize(
 
     BlockScheduler scheduler(
         {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_GMM2), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
+
+    int32_t vecSetSyncCom2 = 0;
+    uint16_t localPingpong = 0;
 
     for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -485,14 +500,22 @@ __aicore__ inline void GroupMatmul2Optimize(
                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
 
+            // Ping-pong: 等 AIV1 释放当前 buffer（前 2 个 tile buffer 尚未使用，无需等待）
+            // AIV1 的 0-10 信号对应 AIC 的 16-26，AIC 侧需 +16
+            if (vecSetSyncCom2 >= 2) {
+                WaitForVector(static_cast<uint16_t>(localPingpong + 16));
+            }
+
             auto gmBlockA = gmA.Slice(
                 Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
             auto gmBlockScaleA = gmScaleA.Slice(
                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
 
-            auto gmBlockC = gmC.Slice(
-                Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            // 输出到 UB ping/pong，替代原来的 gmBlockC (GM direct)
+            auto tensorUb = (localPingpong == 0) ? l0cOutUbPing : l0cOutUbPong;
+            auto tensorBlockUb = tensorUb.Slice(
+                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
 
             auto gmBlockB = gmB.Slice(
                 Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -503,10 +526,10 @@ __aicore__ inline void GroupMatmul2Optimize(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
 
-            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
 
-            SyncFuncStatic<AscendC::HardEvent::FIX_S, 0>();
-            AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
+            // 通知 AIV1：当前 tile 的 GMM2 输出已在 UB 就绪（AIC→AIV1 需 +16）
+            NotifyVector(static_cast<uint16_t>(localPingpong + 16));
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -516,22 +539,32 @@ __aicore__ inline void GroupMatmul2Optimize(
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
             }
-        } else {
-            while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
-                int64_t st = GetSystemCycle();
-                while (GetSystemCycle() - st < 100) {}
-            }
+        } else {  // AIV1 (subBlockIdx_==1)
+            // 等 AIC 把当前 tile 的 GMM2 输出写到 UB（AIV1 侧无需 +16，硬件自动映射）
+            WaitForCube(localPingpong);
+
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
-            AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECCALC, 64 * 1024, L1_TILE_M * L1_TILE_N);
-            MegaMoeCombineImpl::CombineTileOptimize<bfloat16_t, decltype(actualShape)>(
-                mLoc, nLoc, n, expertIdx, rankId, gmmAddrInfo.gmm2OutGlobal,
-                ubBuffer, actualShape, params, static_cast<uint32_t>(groupCnt + waveRowOffset),
-                waveTraceIdx, isFirstTile);
+            // GMM2 输出已在 UB (ping/pong)，直接加载 triple 做 combine，无需 GM→UB 拷贝
+            uint32_t rowCount = Get<M_VALUE>(actualShape);
+            LocalTensor<ElementC> ubBuffer = (localPingpong == 0) ? ubGmm2Ping : ubGmm2Pong;
+
+            GlobalTensor<int32_t> tripleGm;
+            LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, rowCount * 8);
+            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                params.workspaceInfo.tripleInfoPtr +
+                (static_cast<uint64_t>(groupCnt) + waveRowOffset + static_cast<uint64_t>(mLoc)) * 32UL));
+            DataCopy(tripleTensor, tripleGm, rowCount * 8);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, 0>();
+
+            MegaMoeCombineImpl::CombineTokensOptimize<ElementC, decltype(actualShape)>(
+                mLoc, nLoc, n, expertIdx, rankId, tripleTensor, ubBuffer, actualShape, params);
+
+            // 通知 AIC：当前 tile 的 UB buffer 已消费完毕（AIV1→AIC 硬件自动 +16）
+            NotifyCube(localPingpong);
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -541,6 +574,17 @@ __aicore__ inline void GroupMatmul2Optimize(
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
             }
+        }
+
+        vecSetSyncCom2++;
+        localPingpong = 1 - localPingpong;
+    }
+
+    // Drain 最后一个 tile AIV1 发出的 NotifyCube（AIC 侧消费，+16 因为 AIV1→AIC 映射到 16-26）
+    // loop 结束后 localPingpong 已 flip 指向"下一个"buffer，最后一个使用过的 buffer = 1-localPingpong
+    if constexpr (g_coreType == AscendC::AIC) {
+        if (vecSetSyncCom2 > 0) {
+            WaitForVector(static_cast<uint16_t>(1 - localPingpong + 16));
         }
     }
 }
