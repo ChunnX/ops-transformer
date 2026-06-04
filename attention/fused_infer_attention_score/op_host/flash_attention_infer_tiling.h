@@ -50,7 +50,6 @@ namespace optiling{
 
     BEGIN_TILING_DATA_DEF(StridesConstInfo)
     TILING_DATA_FIELD_DEF(uint64_t, bnStride)
-    TILING_DATA_FIELD_DEF(uint64_t, n2Stride)
     END_TILING_DATA_DEF
     REGISTER_TILING_DATA_CLASS(StridesConstInfoOp, StridesConstInfo)
 
@@ -163,9 +162,7 @@ namespace optiling{
         bool kvcacheNzFlag = false;
         string layout;
         uint64_t keyBnStride = 0;
-        uint64_t keyN2Stride = 0;
         uint64_t valueBnStride = 0;
-        uint64_t valueN2Stride = 0;
     };
 
     class FAInferTiling {
@@ -262,9 +259,7 @@ namespace optiling{
         faTilingData.set_pseQ(faInfo_.pseQ);
         faTilingData.set_pseKv(faInfo_.pseKv);
         faTilingData.keyStrides.set_bnStride(faInfo_.keyBnStride);
-        faTilingData.keyStrides.set_n2Stride(faInfo_.keyN2Stride);
         faTilingData.valueStrides.set_bnStride(faInfo_.valueBnStride);
-        faTilingData.valueStrides.set_n2Stride(faInfo_.valueN2Stride);
     }
 
     uint64_t FAInferTiling::GetTilingKey() 
