@@ -99,7 +99,7 @@ class NPUBackend(Backend):
             seqused_q=sq_t, seqused_kv=skv_t,
             softmax_scale=scale, mask_mode=mask_mode,
             win_left=wl, win_right=wr,
-            max_seqlen_q=msq, max_seqlen_kv=msk,
+            max_seqlen_q=-1, max_seqlen_kv=-1,
             layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
             return_softmax_lse=0,
         )
