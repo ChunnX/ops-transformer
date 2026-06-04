@@ -36,7 +36,7 @@ public:
             .AutoContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOA16T})
+            .DataTypeList({ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
@@ -110,88 +110,86 @@ public:
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
-        this->Input("q")
+        OpAICoreConfig aicore_config_95;
+        aicore_config_95.Input("q")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("k")
+        aicore_config_95.Input("k")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
-        this->Input("w")
+        aicore_config_95.Input("w")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("q_descale")
+        aicore_config_95.Input("q_descale")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("k_descale")
+        aicore_config_95.Input("k_descale")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
-        this->Input("cu_seqlens_q")
+        aicore_config_95.Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cu_seqlens_k")
+        aicore_config_95.Input("cu_seqlens_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_q")
+        aicore_config_95.Input("seqused_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_k")
+        aicore_config_95.Input("seqused_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cmp_residual_k")
+        aicore_config_95.Input("cmp_residual_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("block_table")
+        aicore_config_95.Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("output_idx_offset")
+        aicore_config_95.Input("output_idx_offset")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("metadata")
+        aicore_config_95.Input("metadata")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("sparse_indices")
+        aicore_config_95.Output("sparse_indices")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Output("sparse_values")
+        aicore_config_95.Output("sparse_values")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 默认值，筛选前2048
-        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: 默认值，per-token-head
-        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
-        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);  // -1: 默认值，表示任意可能长度
-        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);      // 3: 默认值，只计算下三角
-        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
-        this->Attr("return_value").AttrType(OPTIONAL).Int(0);               //  0: 默认值
-        OpAICoreConfig aicore_config_95;
+        aicore_config_95.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true);
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
