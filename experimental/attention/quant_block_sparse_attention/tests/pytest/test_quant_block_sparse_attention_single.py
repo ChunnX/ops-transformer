@@ -67,18 +67,21 @@ def bsa(param_combinations, case_id):
     try:
         npu_result, cpu_result = quant_block_sparse_attention_process.test_quant_block_sparse_attention_process_ci(
             test_data, device_id=DEVICE_ID)
+        print("PRECISION COMPARE START")
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        print(f"PRECISION COMPARE RESULT: result={result}, fulfill_percent={fulfill_percent:.6f}%")
     except pytest.skip.Exception:
         raise
     except Exception as error:
         print("NPU ERROR:", error)
+        print("PRECISION COMPARE SKIPPED: NPU execution failed before result_compare_method.check_result.")
         result = "NPU ERROR"
         fulfill_percent = 0
 
     utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
 
     if result != "Pass":
-        pytest.fail(f"case failed: {test_data['Testcase_Name']}")
+        pytest.fail(f"case failed: {test_data['Testcase_Name']}, result={result}, fulfill_percent={fulfill_percent}")
 
 
 @pytest.mark.ci

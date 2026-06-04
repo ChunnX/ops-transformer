@@ -81,7 +81,7 @@ public:
     static constexpr int64_t FP8_QUANT_V_BLOCK_SIZE = 512;
     // ==================== Functions ======================
     __aicore__ inline BSABlockVecBase() {};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttentionTilingData *__restrict tiling,
         CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo) {
         if ASCEND_IS_AIV {
             tPipe = pipe;
@@ -108,7 +108,7 @@ public:
         ConstInfo<isInfer, hasRope> &constInfo);
 
     TPipe *tPipe;
-    const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
+    const QuantBlockSparseAttentionTilingData *__restrict tilingData;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<half> attentionOutInitGm;
 
@@ -1892,7 +1892,7 @@ public:
     __aicore__ inline BSABlockVecDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, 
         ConstInfo<isInfer, hasRope> &constInfo) {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttentionTilingData *__restrict tiling,
         CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
         AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo) {};
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace) {}

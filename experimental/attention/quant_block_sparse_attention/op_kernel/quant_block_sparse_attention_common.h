@@ -30,7 +30,7 @@ enum class BSALayout : uint32_t {
 
 enum class BSAKvLayout : uint32_t {
     CONTIGUOUS = 0,
-    PA_ND = 1,
+    PA_BNSD = 1,
 };
 
 enum class BSADType : uint32_t {
@@ -38,10 +38,9 @@ enum class BSADType : uint32_t {
     HIF8 = 1,
 };
 
-enum class BSACompressMode : uint32_t {
+enum class BSAMaskMode : uint32_t {
     NONE = 0,
-    LEFT_UP_CAUSAL = 1,
-    RIGHT_DOWN_CAUSAL = 2,
+    CAUSAL = 3,
 };
 
 constexpr uint32_t BSA_BLOCK_SIZE = 128U;

@@ -33,8 +33,8 @@ using namespace AscendC;
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                       \
             BaseApi::BSABlockVecDummy<__VA_ARGS__>, BaseApi::BSABlockVec<__VA_ARGS__>>::type;            \
         BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType> op;                             \
-        GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling);      \
-        const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;            \
+        GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
+        const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, /*dropMask*/nullptr, /*paddingMask*/nullptr,   \
             attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
@@ -80,7 +80,7 @@ __global__ __aicore__ void quant_block_sparse_attention(
     (void)sparseIndices;
     (void)sparseSeqLen;
     (void)metadata;
-    // 压缩 mask 模式 / softmaxLse 使能属运行期信息（经 tilingData / 输出张量），不进 block 模板参数。
+    // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)COMPRESS_MODE;
     (void)RETURN_SOFTMAX_LSE;
 
@@ -90,14 +90,12 @@ __global__ __aicore__ void quant_block_sparse_attention(
     // layout: BSND -> LAYOUT_BSH（B,S,H≡B,S,N*D，LayOutTypeEnum 无 LAYOUT_BSND）; TND -> LAYOUT_TND
     constexpr LayOutTypeEnum bsaLayout =
         (LAYOUT_T == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::LAYOUT_BSH;
-    // isPa: KV 连续 -> false; PA_ND -> true
+    // isPa: KV 连续 -> false; PA_BNSD -> true
     constexpr bool bsaIsPa = (KV_LAYOUT_T == BSA_KV_LAYOUT_PA_ND);
 
     // block 模板参数顺序对齐 CUBE_BLOCK_TRAITS：
     // INPUT_T, T(计算 float), OUTPUT_T(BF16), implMode, layout, s1Tpl, s2Tpl, dTpl, dVTpl,
     // pseMode, hasAtten, hasDrop, hasRope, isInfer, isPa, enableKVPrefix, enableS1OutSplit
-    // TODO: 待实现 - host tiling 当前产出 QuantBlockSparseAttentionTilingData，kernel 侧 InitBaseAPI 取
-    //       FlashAttentionScoreSimplifiedTilingData，host/kernel tiling 结构对齐留作后续。
     if constexpr (QKV_DTYPE == BSA_DTYPE_FP8_E4M3FN) {
         BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
             S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,

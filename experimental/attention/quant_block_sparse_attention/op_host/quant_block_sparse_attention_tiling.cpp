@@ -17,7 +17,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 
+#include <tiling/platform/platform_ascendc.h>
+#include "../op_kernel/quant_block_sparse_attention_template_tiling_key.h"
 #include "quant_block_sparse_attention_tiling.h"
 #include "register/op_impl_registry.h"
 
@@ -34,6 +37,15 @@ constexpr size_t DIM_BLOCK_SIZE = 1U;
 constexpr size_t DIM_BLOCK_TABLE_MAX = 1U;
 constexpr size_t DIM_SPARSE_QB = 3U;
 constexpr size_t DIM_SPARSE_COUNT = 4U;
+constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
+constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
+constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
+constexpr uint32_t BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;
+constexpr uint8_t BSA_LAYOUT_TYPE_BSH = 1U;
+constexpr uint8_t BSA_LAYOUT_TYPE_TND = 4U;
+constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
+constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
+constexpr uint8_t BSA_COMPAT_MASK_LEFT_UP_CAUSAL = 1U;
 
 uint32_t CeilDiv(uint32_t value, uint32_t divisor)
 {
@@ -82,6 +94,29 @@ float GetFloatAttr(const gert::RuntimeAttrs *attrs, uint32_t index, float defaul
     const float *attrPtr = attrs->GetAttrPointer<float>(index);
     return attrPtr == nullptr ? defaultValue : *attrPtr;
 }
+
+bool GetBoolAttr(const gert::RuntimeAttrs *attrs, uint32_t index, bool defaultValue)
+{
+    const bool *attrPtr = attrs->GetAttrPointer<bool>(index);
+    return attrPtr == nullptr ? defaultValue : *attrPtr;
+}
+
+std::string GetStringAttr(const gert::RuntimeAttrs *attrs, uint32_t index, const char *defaultValue)
+{
+    const char *attrPtr = attrs->GetAttrPointer<char>(index);
+    return attrPtr == nullptr ? std::string(defaultValue) : std::string(attrPtr);
+}
+
+uint32_t GetAicCoreNum(gert::TilingContext *context)
+{
+    auto platformInfo = context->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        return BSA_MAX_CORE_NUM;
+    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    return aicNum == 0U ? BSA_MAX_CORE_NUM : std::min<uint32_t>(aicNum, BSA_MAX_CORE_NUM);
+}
 } // namespace
 
 ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
@@ -121,29 +156,52 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    const std::string layoutKv = GetStringAttr(attrs, BSA_LAYOUT_KV_ATTR_INDEX, "PA_BNSD");
+    const std::string layoutQ = GetStringAttr(attrs, BSA_LAYOUT_Q_ATTR_INDEX, "TND");
+    const std::string layoutSparseIndices =
+        GetStringAttr(attrs, BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
+    const uint32_t quantMode = GetUintAttr(attrs, BSA_QUANT_MODE_ATTR_INDEX, 1U);
+    const uint32_t maskMode = GetUintAttr(attrs, BSA_MASK_MODE_ATTR_INDEX, 3U);
+    const bool returnSoftmaxLse = GetBoolAttr(attrs, BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX, false);
+    if (layoutKv != "PA_BNSD" || layoutSparseIndices != "B_N_Qb_Kb" || quantMode != 1U ||
+        (maskMode != 0U && maskMode != 3U)) {
+        return ge::GRAPH_FAILED;
+    }
+
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t s1Size = 0;
+    uint32_t qTokenNum = 0;
+    uint32_t dSize = 0;
     const size_t queryDimNum = queryShape.GetDimNum();
-    if (queryDimNum == DIM_NUM_4) {
+    uint32_t layoutQValue = BSA_LAYOUT_Q_BSND_VALUE;
+    if (queryDimNum == DIM_NUM_4 && layoutQ == "BSND") {
         if (!GetDimAsU32(queryShape, DIM_B, bSize) || !GetDimAsU32(queryShape, DIM_S, s1Size) ||
-            !GetDimAsU32(queryShape, DIM_N, n1Size)) {
+            !GetDimAsU32(queryShape, DIM_N, n1Size) || !GetDimAsU32(queryShape, DIM_NUM_3, dSize)) {
             return ge::GRAPH_FAILED;
         }
-    } else if (queryDimNum == DIM_NUM_3) {
+        qTokenNum = bSize * s1Size;
+    } else if (queryDimNum == DIM_NUM_3 && layoutQ == "TND") {
         if (!GetDimAsU32(sparseIndicesShape, DIM_B, bSize) || !GetDimAsU32(queryShape, DIM_B, s1Size) ||
-            !GetDimAsU32(queryShape, DIM_S, n1Size)) {
+            !GetDimAsU32(queryShape, DIM_S, n1Size) || !GetDimAsU32(queryShape, DIM_N, dSize)) {
             return ge::GRAPH_FAILED;
         }
+        qTokenNum = s1Size;
         s1Size = GetPositiveAttr(attrs, BSA_MAX_SEQLEN_Q_ATTR_INDEX, s1Size);
+        layoutQValue = BSA_LAYOUT_Q_TND_VALUE;
     } else {
+        return ge::GRAPH_FAILED;
+    }
+    if (dSize != BSA_D_SIZE) {
         return ge::GRAPH_FAILED;
     }
 
     uint32_t n2Size = 0;
     uint32_t physicalKvBlockSize = 0;
+    uint32_t kvDSize = 0;
     if (keyShape.GetDimNum() != DIM_NUM_4 || !GetDimAsU32(keyShape, DIM_BLOCK_SIZE, physicalKvBlockSize) ||
-        !GetDimAsU32(keyShape, DIM_N, n2Size) || physicalKvBlockSize != kvBlockSize) {
+        !GetDimAsU32(keyShape, DIM_N, n2Size) || !GetDimAsU32(keyShape, DIM_SPARSE_QB, kvDSize) ||
+        physicalKvBlockSize != kvBlockSize || kvDSize != BSA_D_SIZE) {
         return ge::GRAPH_FAILED;
     }
     if (n2Size == 0U || n1Size % n2Size != 0U) {
@@ -183,6 +241,10 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     }
 
     uint32_t maxBlockNumPerBatch = kbMax;
+    uint32_t paBlockNumSum = 0;
+    if (!GetDimAsU32(keyShape, DIM_B, paBlockNumSum)) {
+        return ge::GRAPH_FAILED;
+    }
     const gert::StorageShape *blockTableStorageShape = context->GetOptionalInputShape(BSA_BLOCK_TABLE_INDEX);
     if (blockTableStorageShape != nullptr && blockTableStorageShape->GetStorageShape().GetShapeSize() > 0) {
         const gert::Shape &blockTableShape = blockTableStorageShape->GetStorageShape();
@@ -193,17 +255,21 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
         }
     }
 
-    const uint64_t totalTaskNum = static_cast<uint64_t>(bSize) * n2Size * gSize * qbMax;
+    const uint32_t gS1OuterSize = gSize * qbMax;
+    const uint32_t bnCount = bSize * n2Size;
+    const uint64_t totalTaskNum = static_cast<uint64_t>(bnCount) * gS1OuterSize;
     if (totalTaskNum == 0U || totalTaskNum > std::numeric_limits<uint32_t>::max()) {
         return ge::GRAPH_FAILED;
     }
+    const uint32_t maxAicCoreNum = GetAicCoreNum(context);
     const uint32_t usedCoreNum = static_cast<uint32_t>(
-        std::min<uint64_t>(static_cast<uint64_t>(BSA_MAX_CORE_NUM), totalTaskNum));
-    uint32_t coreStart[BSA_MAX_CORE_NUM] = {};
-    uint32_t coreEnd[BSA_MAX_CORE_NUM] = {};
-    for (uint32_t coreIdx = 0U; coreIdx < usedCoreNum; ++coreIdx) {
-        coreStart[coreIdx] = static_cast<uint32_t>(totalTaskNum * coreIdx / usedCoreNum);
-        coreEnd[coreIdx] = static_cast<uint32_t>(totalTaskNum * (coreIdx + 1U) / usedCoreNum);
+        std::min<uint64_t>(static_cast<uint64_t>(maxAicCoreNum), totalTaskNum));
+    uint32_t bnStartIdx[BSA_CORE_SPLIT_NUM] = {};
+    int64_t sparseStartIdx[BSA_CORE_SPLIT_NUM] = {};
+    for (uint32_t boundaryIdx = 0U; boundaryIdx <= usedCoreNum; ++boundaryIdx) {
+        const uint64_t taskOffset = totalTaskNum * boundaryIdx / usedCoreNum;
+        bnStartIdx[boundaryIdx] = static_cast<uint32_t>(taskOffset / gS1OuterSize);
+        sparseStartIdx[boundaryIdx] = static_cast<int64_t>(taskOffset % gS1OuterSize);
     }
 
     QuantBlockSparseAttentionTilingData tilingData;
@@ -213,19 +279,141 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     tilingData.baseParams.set_gSize(gSize);
     tilingData.baseParams.set_s1Size(s1Size);
     tilingData.baseParams.set_s2Size(s2Size);
+    tilingData.baseParams.set_dSize(BSA_D_SIZE);
+    tilingData.baseParams.set_dSizeV(BSA_D_SIZE);
     tilingData.baseParams.set_qbMax(qbMax);
     tilingData.baseParams.set_kbMax(kbMax);
     tilingData.baseParams.set_sparseCount(sparseCount);
-    tilingData.baseParams.set_blockSize(qBlockSize);
+    tilingData.baseParams.set_qBlockSize(qBlockSize);
+    tilingData.baseParams.set_kvBlockSize(kvBlockSize);
     tilingData.baseParams.set_maxBlockNumPerBatch(maxBlockNumPerBatch);
-    tilingData.baseParams.set_attenMaskCompressMode(GetUintAttr(attrs, BSA_MASK_MODE_ATTR_INDEX, 0U));
-    tilingData.baseParams.set_usedCoreNum(usedCoreNum);
-    tilingData.baseParams.set_softmaxScale(GetFloatAttr(attrs, BSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F));
-    tilingData.set_coreStart(coreStart);
-    tilingData.set_coreEnd(coreEnd);
+    const float softmaxScale = GetFloatAttr(attrs, BSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
+    tilingData.baseParams.set_softmaxScale(softmaxScale);
+    tilingData.attrParams.set_layoutQ(layoutQValue);
+    tilingData.attrParams.set_layoutKv(BSA_LAYOUT_KV_PA_BNSD_VALUE);
+    tilingData.attrParams.set_layoutSparseIndices(BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE);
+    tilingData.attrParams.set_quantMode(quantMode);
+    tilingData.attrParams.set_maskMode(maskMode);
+    tilingData.attrParams.set_returnSoftmaxLse(returnSoftmaxLse ? 1U : 0U);
+    tilingData.paParams.set_blockSize(kvBlockSize);
+    tilingData.paParams.set_blockTableDim2(maxBlockNumPerBatch);
+    tilingData.paParams.set_paBlockNumSum(paBlockNumSum);
+    tilingData.paParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
+    tilingData.sparseParams.set_gS1OuterSize(gS1OuterSize);
+    tilingData.sparseParams.set_sparseSeqLenStride(qbMax);
+    tilingData.sparseParams.set_sparseIndicesStride(sparseCount);
+
+    const uint8_t compatMaskMode = (maskMode == 3U) ? BSA_COMPAT_MASK_LEFT_UP_CAUSAL : BSA_COMPAT_MASK_NONE;
+    auto &inputParams = tilingData.inputParamsRegbase;
+    inputParams.set_bSize(bSize);
+    inputParams.set_t1Size(qTokenNum);
+    inputParams.set_t2Size(s2Size);
+    inputParams.set_n2Size(n2Size);
+    inputParams.set_gSize(gSize);
+    inputParams.set_s1Size(s1Size);
+    inputParams.set_s2Size(s2Size);
+    inputParams.set_alignedS2(kbMax * kvBlockSize);
+    inputParams.set_dSize(BSA_D_SIZE);
+    inputParams.set_dSizeV(BSA_D_SIZE);
+    inputParams.set_dSizeRope(0);
+    inputParams.set_keepProb(1.0F);
+    inputParams.set_scaleValue(softmaxScale);
+    inputParams.set_preTokens(std::numeric_limits<int32_t>::max());
+    inputParams.set_nextTokens(0);
+    inputParams.set_pseS1Size(0);
+    inputParams.set_pseS2Size(0);
+    inputParams.set_pseBSize(0);
+    inputParams.set_bandIndex(0);
+    inputParams.set_layoutType(layoutQValue == BSA_LAYOUT_Q_TND_VALUE ? BSA_LAYOUT_TYPE_TND : BSA_LAYOUT_TYPE_BSH);
+    inputParams.set_pseShapeType(0);
+    inputParams.set_attenMaskShapeType(2);
+    inputParams.set_attenMaskDataType(1);
+    inputParams.set_attenMaskCompressMode(compatMaskMode);
+    inputParams.set_implMode(0);
+    inputParams.set_sparseType(0);
+    inputParams.set_needDropMaskOp(0);
+    inputParams.set_dropMaskOuter(0);
+    inputParams.set_pseEncodeType(0);
+    inputParams.set_tndSoftmaxOut(0);
+    inputParams.set_remain(0);
+    inputParams.set_attenMaskS2Size(s2Size);
+    inputParams.set_pseType(0);
+    inputParams.set_rsv1(0);
+    inputParams.set_qStartIdx(0);
+    inputParams.set_kvStartIdx(0);
+    inputParams.set_s1SparseValidSize(s1Size);
+    inputParams.set_s2SparseValidSize(s2Size);
+    inputParams.set_seed(0);
+    inputParams.set_offset(0);
+    inputParams.set_keepProbUint8(255);
+    inputParams.set_pseAlibiBaseS1(0);
+    inputParams.set_pseAlibiBaseS2(0);
+    inputParams.set_deqScaleFlag(1);
+    inputParams.set_deqScale2Flag(1);
+    inputParams.set_isActualSeqLengthsNull(1);
+    inputParams.set_isActualSeqLengthsKVNull(1);
+    inputParams.set_actualSeqLengthsSize(bSize);
+    inputParams.set_actualSeqLengthsKVSize(bSize);
+    inputParams.set_isKvContinuous(1);
+    inputParams.set_fromFused(0);
+    inputParams.set_isBSNDOut(0);
+    inputParams.set_transposeLayout(0);
+    inputParams.set_isGqa(gSize > 1U ? 1 : 0);
+    inputParams.set_isSoftMaxLseEnable(returnSoftmaxLse ? 1 : 0);
+    inputParams.set_isActualSharedPrefixLenNull(1);
+    inputParams.set_isQHasLeftPadding(0);
+    inputParams.set_isKVHasLeftPadding(0);
+    inputParams.set_ropeHeadSize(0);
+    inputParams.set_prefixSeqInnerSize(0);
+    inputParams.set_headNumRatio(1U);
+    inputParams.set_blockSize(kvBlockSize);
+    inputParams.set_blockTableDim2(maxBlockNumPerBatch);
+    inputParams.set_paBlockNumSum(paBlockNumSum);
+    inputParams.set_attenMaskS1Size(s1Size);
+    inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
+    inputParams.set_isRowInvalid(0);
+    inputParams.set_isPostQuantPerChnl(0);
+    inputParams.set_isPostQuantBF16(0);
+    inputParams.set_antiquantPageAttentionFlag(0);
+    inputParams.set_antiquantPerTensorFlag(0);
+    inputParams.set_antiquantPerHeadFlag(0);
+    inputParams.set_antiquantParaSeqSize(0);
+
+    auto &multiCoreParams = tilingData.multiCoreParamsRegbase;
+    multiCoreParams.set_coreNum(static_cast<int32_t>(usedCoreNum));
+    multiCoreParams.set_totalSize(static_cast<int64_t>(totalTaskNum));
+    multiCoreParams.set_s1OuterSize(qbMax);
+    multiCoreParams.set_splitFactorSize(0);
+    multiCoreParams.set_splitFactorTailSize(0);
+    multiCoreParams.set_bnStartIdx(bnStartIdx);
+    multiCoreParams.set_sparseStartIdx(sparseStartIdx);
+    multiCoreParams.set_firstFullLoadS1OuterIdx(0);
+    multiCoreParams.set_splitCoreMode(0);
+    uint8_t reserve[3] = {};
+    multiCoreParams.set_reserve(reserve);
+
+    tilingData.dropmaskParamsRegbase.set_multiCoreFactorSize(0);
+    tilingData.dropmaskParamsRegbase.set_baseUbCalSize(0);
+    tilingData.dropmaskParamsRegbase.set_multiCoreTotalSize(0);
+    tilingData.dropmaskParamsRegbase.set_shapeTotalSize(0);
+    tilingData.dropmaskParamsRegbase.set_dropMaskAddrOffset(0);
+
+    const int64_t totalOutputSize = static_cast<int64_t>(qTokenNum) * n1Size * BSA_D_SIZE;
+    const int64_t totalSoftmaxLseSize = static_cast<int64_t>(qTokenNum) * n1Size;
+    tilingData.initOutputParams.set_singleCoreSize(0);
+    tilingData.initOutputParams.set_needInit(0);
+    tilingData.initOutputParams.set_isOneN(n1Size == 1U ? 1 : 0);
+    uint8_t rsvd[2] = {};
+    tilingData.initOutputParams.set_rsvd(rsvd);
+    tilingData.initOutputParams.set_totalOutputSize(totalOutputSize);
+    tilingData.initOutputParams.set_totalSoftMaxLseOutputSize(totalSoftmaxLseSize);
 
     context->SetBlockDim(usedCoreNum);
-    context->SetTilingKey(0);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        BSA_DTYPE_FP8_E4M3FN, layoutQValue,
+        BSA_KV_LAYOUT_PA_ND, maskMode, returnSoftmaxLse ? 1U : 0U);
+    context->SetTilingKey(tilingKey);
+    context->SetScheduleMode(1);
     tilingData.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
     rawTilingData->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;

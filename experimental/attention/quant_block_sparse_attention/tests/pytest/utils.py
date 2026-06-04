@@ -18,6 +18,12 @@ import pytest
 
 
 REQUIRED_EXCEL_COLUMNS = ["layout_q", "layout_kv", "B", "S1", "S2", "N1", "N2", "D"]
+LEGACY_RESULT_COLUMN_RENAMES = {
+    "kv_layout": "layout_kv",
+    "q_block_size": "sparse_q_block_size",
+    "kv_block_size": "sparse_kv_block_size",
+    "sparse_indices_layout": "layout_sparse_indices",
+}
 
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
@@ -96,13 +102,21 @@ def save_result(params, result, fulfill_percent, result_path):
         row_data = _row_from_legacy_tuple(params, result, fulfill_percent)
 
     if result_path.exists():
-        df = pd.read_excel(result_path)
-        if set(df.columns) != set(row_data.keys()):
-            print("warning: result.xlsx columns do not match current case fields")
-            print(f"Excel columns: {list(df.columns)}")
-            print(f"Current fields: {list(row_data.keys())}")
-            return False
-        df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
+        df = pd.read_excel(result_path).rename(columns=LEGACY_RESULT_COLUMN_RENAMES)
+        current_columns = list(row_data.keys())
+        if set(df.columns) != set(current_columns):
+            missing_columns = [column for column in current_columns if column not in df.columns]
+            extra_columns = [column for column in df.columns if column not in current_columns]
+            print("warning: result.xlsx columns do not match current case fields, merging columns")
+            print(f"Missing columns: {missing_columns}")
+            print(f"Extra columns: {extra_columns}")
+            for column in missing_columns:
+                df[column] = None
+            for column in extra_columns:
+                row_data[column] = None
+            current_columns.extend(extra_columns)
+        df = df.reindex(columns=current_columns)
+        df = pd.concat([df, pd.DataFrame([row_data], columns=current_columns)], ignore_index=True)
     else:
         df = pd.DataFrame([row_data])
 

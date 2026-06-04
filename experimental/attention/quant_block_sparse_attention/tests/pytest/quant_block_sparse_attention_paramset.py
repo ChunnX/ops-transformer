@@ -15,16 +15,17 @@ import torch
 
 COMMON = {
     "Testcase_Name": [None],
-    "layout_kv": ["PA_BSND"],
+    "layout_kv": ["PA_BNSD"],
     "output_dtype": [torch.bfloat16],
-    "N1": [8],
-    "N2": [2],
-    "D": [64],
+    "N1": [32],
+    "N2": [4],
+    "D": [128],
     "sparse_q_block_size": [128],
     "sparse_kv_block_size": [128],
-    "softmax_scale": [0.125],
-    "layout_sparse_indices": ["BNQQbKb"],
-    "quant_mode": [0],
+    "softmax_scale": [0.088388],
+    "layout_sparse_indices": ["B_N_Qb_Kb"],
+    "quant_mode": [1],
+    "mask_mode": [3],
     "S1EQS2": [False],
 }
 
@@ -42,7 +43,6 @@ TEST_PARAMS = {
         S1=[128],
         S2=[256],
         sparse_count=[2],
-        mask_mode=[0],
         return_softmax_lse=[True],
         actlen_mode=["full"],
         sparse_pattern=["sequential"],
@@ -57,7 +57,6 @@ TEST_PARAMS = {
         S1=[128],
         S2=[256],
         sparse_count=[2],
-        mask_mode=[0],
         return_softmax_lse=[False],
         actlen_mode=["full"],
         sparse_pattern=["sequential"],
@@ -72,7 +71,6 @@ TEST_PARAMS = {
         S1=[128],
         S2=[192],
         sparse_count=[2],
-        mask_mode=[0],
         return_softmax_lse=[True],
         actlen_mode=["full"],
         sparse_pattern=["tail"],
@@ -87,7 +85,6 @@ TEST_PARAMS = {
         S1=[128],
         S2=[256],
         sparse_count=[2],
-        mask_mode=[0],
         return_softmax_lse=[True],
         actlen_mode=["full"],
         sparse_pattern=["empty"],
@@ -102,7 +99,6 @@ TEST_PARAMS = {
         S1=[128],
         S2=[256],
         sparse_count=[2],
-        mask_mode=[0],
         return_softmax_lse=[True],
         actlen_mode=["random"],
         sparse_pattern=["random"],
@@ -117,7 +113,6 @@ TEST_PARAMS = {
         S1=[256],
         S2=[256],
         sparse_count=[2],
-        mask_mode=[1],
         return_softmax_lse=[True],
         actlen_mode=["full"],
         sparse_pattern=["causal"],
@@ -132,7 +127,6 @@ TEST_PARAMS = {
         S1=[256],
         S2=[128],
         sparse_count=[1],
-        mask_mode=[2],
         return_softmax_lse=[True],
         actlen_mode=["full"],
         sparse_pattern=["causal"],
@@ -143,5 +137,5 @@ TEST_PARAMS = {
     ),
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["tnd_random_actlen"]]
+ENABLED_PARAMS = [TEST_PARAMS["bsnd_dense_equiv"]]
 # ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

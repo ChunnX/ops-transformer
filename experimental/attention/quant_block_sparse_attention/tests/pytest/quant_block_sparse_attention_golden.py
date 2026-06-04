@@ -44,13 +44,13 @@ def _normalize_params(params):
     normalized = dict(params)
     normalized.setdefault("Testcase_Name", None)
     normalized.setdefault("layout_q", "BSND")
-    normalized.setdefault("layout_kv", "PA_BSND")
+    normalized.setdefault("layout_kv", "PA_BNSD")
     normalized.setdefault("output_dtype", torch.bfloat16)
     normalized.setdefault("sparse_q_block_size", 128)
     normalized.setdefault("sparse_kv_block_size", 128)
-    normalized.setdefault("layout_sparse_indices", "BNQQbKb")
-    normalized.setdefault("quant_mode", 0)
-    normalized.setdefault("mask_mode", 0)
+    normalized.setdefault("layout_sparse_indices", "B_N_Qb_Kb")
+    normalized.setdefault("quant_mode", 1)
+    normalized.setdefault("mask_mode", 3)
     normalized.setdefault("return_softmax_lse", False)
     normalized.setdefault("actlen_mode", "full")
     normalized.setdefault("S1EQS2", False)
@@ -132,10 +132,11 @@ def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size
         return []
     if mask_mode == 0:
         return list(range(block_num))
+    if mask_mode != 3:
+        raise ValueError(f"unsupported mask_mode: {mask_mode}")
 
     max_token = (qb_idx + 1) * sparse_q_block_size - 1
-    if mask_mode == 2:
-        max_token += kv_len - q_len  # RIGHT_DOWN: col<=row+(kv_len-q_len), 对齐 CUDA softmax.h:162 / kernel deltaN=S2-S1
+    max_token += kv_len - q_len
     if max_token < 0:
         return []
     max_block = min(block_num - 1, max_token // sparse_kv_block_size)
@@ -266,10 +267,9 @@ def _make_scales(case, cu_seqlens_q, cu_seqlens_kv):
 def _mask_positions(case, q_idx, positions, q_len, kv_len):
     if case["mask_mode"] == 0:
         return torch.ones((len(positions),), dtype=torch.bool)
-    if case["mask_mode"] == 1:
-        limit = q_idx
-    else:
-        limit = q_idx + kv_len - q_len  # RIGHT_DOWN: col<=row+(kv_len-q_len), 对齐 CUDA softmax.h:162 / kernel deltaN=S2-S1
+    if case["mask_mode"] != 3:
+        raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
+    limit = q_idx + kv_len - q_len
     return torch.tensor([pos <= limit for pos in positions], dtype=torch.bool)
 
 
