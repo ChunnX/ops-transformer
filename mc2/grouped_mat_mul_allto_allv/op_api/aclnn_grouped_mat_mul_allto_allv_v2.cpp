@@ -184,10 +184,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX,
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
     aclrtStream stream)
 {
-    if (executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
-        return ACLNN_ERR_INNER;
-    }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
