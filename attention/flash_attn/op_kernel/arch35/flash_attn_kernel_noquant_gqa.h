@@ -92,6 +92,10 @@ public:
     static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
     static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
     static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
+    // 与上面静态分配的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子(__mix__(1,2)) 的标准做法。
+    // 不再使用 CrossCoreSetFlag<0> 自实现 barrier ：手动 mode 0 + PIPE_ALL 在某些时序下会
+    // 触发 aicore subErrType 0x4 trap（见 base04_aicore.log），SyncAll 内部封装更稳健。
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -367,16 +371,21 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
+            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
+            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
+            //   - AIV0 SetFlag(N)  →  AIC's flagId N
+            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
+            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
+            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
+            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
+            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
+            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
             if constexpr (BMM2_TOUB) {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
             }
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
         }
     }
 
@@ -811,6 +820,9 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
@@ -819,9 +831,14 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
-        SyncAll();
+        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
+        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
+        AscendC::SyncAll();
         vecFdBlock.FreeEventID();
     }
 

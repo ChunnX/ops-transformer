@@ -294,7 +294,9 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        // 静态Tensor编程：不依赖TPipe，使用预分配的静态event ID（MTE2_V 通道 ID=3）
+        // 与 FA vec block 中 FA_MTE2_TO_V_ID(=2) 和 FA_MTE2_TO_V_SINK(=4) 错开，不与 6/7 冲突
+        constexpr event_t enQueEvtID = static_cast<event_t>(3);
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
     } else {
@@ -306,7 +308,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         // 第一块完整的mask
         LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        // 静态Tensor编程：不依赖TPipe，使用预分配的静态event ID（MTE2_V 通道 ID=3）
+        constexpr event_t enQueEvtID = static_cast<event_t>(3);
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
@@ -362,7 +365,8 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyPad(attenMaskUb[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
 
-    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    // 静态Tensor编程：不依赖TPipe，使用预分配的静态event ID（MTE2_V 通道 ID=3）
+    constexpr event_t enQueEvtID = static_cast<event_t>(3);
     SetFlag<HardEvent::MTE2_V>(enQueEvtID);
     WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 

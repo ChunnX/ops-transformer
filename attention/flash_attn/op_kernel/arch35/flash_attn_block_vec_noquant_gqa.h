@@ -130,6 +130,8 @@ public:
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
+    // 与上面的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子的标准做法。
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -299,7 +301,12 @@ public:
                 InitLseOutputSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
+            // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+            // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
+            // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+            // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+            //   不会触发 aicore subErrType 0x4 timeout-trap。
+            AscendC::SyncAll();
         }
     }
 
