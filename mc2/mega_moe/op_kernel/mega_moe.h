@@ -689,7 +689,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bScaleGlobal =
             params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(offset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.gmm1OutGlobal =
-            params_.workspaceInfo.ptrMmadTileResFirst + Get<IDX_GMM1_OFFSET>(offset) * sizeof(float);
+            params_.workspaceInfo.ptrGmm1MmadRes + Get<IDX_GMM1_OFFSET>(offset) * sizeof(float);
         if constexpr (g_coreType == AIV) {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(offset), Get<IDX_C_SCALE_OFFSET>(offset),
@@ -703,7 +703,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(offset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.gmm2OutGlobal =
-            params_.workspaceInfo.ptrMmadTileResSecond + Get<IDX_GMM2_OFFSET>(offset) * sizeof(bfloat16_t);
+            params_.workspaceInfo.ptrGmm2MmadRes + Get<IDX_GMM2_OFFSET>(offset) * sizeof(bfloat16_t);
         if constexpr (g_coreType == AIC) {
             gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(offset) * sizeof(ActivationType);
             gmmAddrInfo.aScaleGlobal =
