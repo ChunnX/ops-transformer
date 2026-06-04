@@ -165,18 +165,17 @@ def _gen_block_table_lines(b, seqused_kv, block_size, block_table_shape) -> List
 
 
 def _kernel_call(d, mm, lq, lkv, lo) -> List[str]:
-    lines = [
+    return [
         f"    npu_flash_attn(q, k, v, block_table=block_table,",
-        f"        attn_mask=None, metadata=metadata,",
+        f"        attn_mask=_m, metadata=metadata,",
         f"        cu_seqlens_q=cu_q_meta, cu_seqlens_kv=cu_kv_meta,",
         f"        seqused_q=seq_q_meta, seqused_kv=seq_kv_meta,",
         f"        softmax_scale=1/({d}**0.5), mask_mode={mm},",
-        f"        win_left={wl}, win_right={wr},",
-        f"        max_seqlen_q={s1}, max_seqlen_kv={s2},",
+        f"        win_left=-1, win_right=-1,",
+        f"        max_seqlen_q=-1, max_seqlen_kv=-1,",
         f"        layout_q='{lq}', layout_kv='{lkv}', layout_out='{lo}',",
         "        return_softmax_lse=0)",
     ]
-    return lines
 
 
 def _gen_hot(c, idx, runs, total) -> List[str]:
@@ -187,6 +186,10 @@ def _gen_hot(c, idx, runs, total) -> List[str]:
 
     lines = [
         f"# hot {idx}: B={b} N1={n1} N2={n2} S1={s1} S2={s2} D={d} {lq}/{lkv}",
+        f"if {mm} != 0:",
+        f"    _m = torch.triu(torch.ones(2048, 2048), diagonal=1).to(dtype=torch.int8, device=device)",
+        f"else:",
+        f"    _m = None",
         f"q = torch.randn{_q_shape(b, n1, s1, d, lq)}, dtype={dt}, device=device)",
         f"k = torch.randn{_kv_shape(b, n2, s2, d, lkv)}, dtype={dt}, device=device)",
         f"v = torch.randn{_kv_shape(b, n2, s2, d, lkv)}, dtype={dt}, device=device)",
@@ -208,7 +211,7 @@ def _gen_hot(c, idx, runs, total) -> List[str]:
     lines.append("        torch.npu.synchronize()")
     # Need to re-expand _kernel_call inline with the right indentation
     lines.append(f"        npu_flash_attn(q, k, v, block_table=block_table,")
-    lines.append(f"            attn_mask=None, metadata=metadata,")
+    lines.append(f"            attn_mask=_m, metadata=metadata,")
     lines.append(f"            cu_seqlens_q=cu_q_meta, cu_seqlens_kv=cu_kv_meta,")
     lines.append(f"            seqused_q=seq_q_meta, seqused_kv=seq_kv_meta,")
     lines.append(f"            softmax_scale=1/({d}**0.5), mask_mode={mm},")
@@ -235,6 +238,10 @@ def _gen_cold(c, idx, runs, total) -> List[str]:
 
     lines = [
         f"# cold {idx}: B={b} N1={n1} N2={n2} S1={s1} S2={s2} D={d} {lq}/{lkv}",
+        f"if {mm} != 0:",
+        f"    _m = torch.triu(torch.ones(2048, 2048), diagonal=1).to(dtype=torch.int8, device=device)",
+        f"else:",
+        f"    _m = None",
     ]
     lines.extend(_meta_call_lines(n1, n2, d, b, s1, s2, mm, wl, wr, lq, lkv, lo,
                                    is_tnd, have_pa, seqused_kv, block_size))
@@ -258,7 +265,7 @@ def _gen_cold(c, idx, runs, total) -> List[str]:
     lines.append(f"        _f2 = torch.randn(32, 32768, 1, 128, dtype={dt}, device=device)")
     lines.append("        torch.npu.synchronize()")
     lines.append(f"        npu_flash_attn(q, k, v, block_table=bt,")
-    lines.append(f"            attn_mask=None, metadata=metadata,")
+    lines.append(f"            attn_mask=_m, metadata=metadata,")
     lines.append(f"            cu_seqlens_q=cu_q_meta, cu_seqlens_kv=cu_kv_meta,")
     lines.append(f"            seqused_q=seq_q_meta, seqused_kv=seq_kv_meta,")
     lines.append(f"            softmax_scale=1/({d}**0.5), mask_mode={mm},")
