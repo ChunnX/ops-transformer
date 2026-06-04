@@ -491,8 +491,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
     auto skSumShape = skSumPtr->GetStorageShape();
     auto attrsPtr = context->GetAttrs();
     CHECK_NULLPTR(attrsPtr);
-    auto hcEpsPtr = attrsPtr->GetAttrPointer<int32_t>(0);
-    CHECK_NULLPTR(hcEpsPtr);
 
     int64_t batchSize = xShape.GetDim(BATCH_SIZE_DIM_IDX);
     int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
@@ -507,7 +505,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
     tile = min(tile, tileUB);
 
     int64_t skIterCount = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
-    float hcEps = *hcEpsPtr;
 
     int64_t mm1K = n * n + 2 * n;
     int64_t mm1M = tile * 2;
@@ -517,7 +514,7 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    MhcPreSinkhornBackwardArch35TilingData tilingData;
+    MhcPreSinkhornBackwardTilingData tilingData;
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
@@ -557,7 +554,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
     tilingData.set_c1(c1);
     tilingData.set_aivNum(aivNum);
     tilingData.set_skIterCount(skIterCount);
-    tilingData.set_hcEps(hcEps);
     tilingData.set_tileSize(tile);
 
     ADD_TILING_DATA(context, tilingData);
