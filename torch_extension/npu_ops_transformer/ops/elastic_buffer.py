@@ -55,7 +55,7 @@ class MoEElasticBuffer:
     ):
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
-        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=True)
+        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ccl_buffer_size = IntWrapper()
         self.ep_world_size = IntWrapper()
         context_struct_size = (2 + 1024)

@@ -42,7 +42,8 @@ def run_test_dispatch_forward_upper_bound(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -84,7 +85,8 @@ def run_test_combine_forward_pure_sum(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -125,7 +127,8 @@ def run_test_combine_forward_with_weights(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -170,7 +173,8 @@ def run_test_ephandle_properties(rank):
     top_k = 4
     num_local_experts = num_experts // world_size
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
@@ -209,7 +213,8 @@ def run_test_bias_rejected(rank):
     hidden = 4096
     top_k = 4
 
-    group = dist.new_group(backend="hccl")
+    group = dist.new_group(backend="hccl", ranks=list(range(world_size)))
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     buf = MoEElasticBuffer(
         group,
         num_max_tokens_per_rank=num_max_tokens_per_rank,
