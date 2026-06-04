@@ -555,11 +555,12 @@ private:
             slotMappingDbPoolUb_[activeBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
         const uint32_t kLocalBaseRow = QkLocalKBaseRow(tile);
         for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
+            const uint32_t globalTokenOffset = slice.tokenOffset + tokenIdx;
             const uint32_t qRowIdx = tokenIdx * tilingData_->numQHeads;
             const uint32_t qUbOffset = qRowIdx * tilingData_->headDim;
             const uint32_t qGmOffset =
-                (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads * tilingData_->headDim;
-            const uint32_t qScaleOffset = (slice.tokenOffset + tokenIdx) * tilingData_->numQHeads;
+                globalTokenOffset * tilingData_->numQHeads * tilingData_->headDim;
+            const uint32_t qScaleOffset = globalTokenOffset * tilingData_->numQHeads;
             DataCopyPad(qOutGm_[qGmOffset], qkFp8[qUbOffset], qCopyParams);
             DataCopyPad(qScaleGm_[qScaleOffset], qkScale[QScaleStagingOffset(tokenIdx, 0U)], qScaleCopyParams);
 

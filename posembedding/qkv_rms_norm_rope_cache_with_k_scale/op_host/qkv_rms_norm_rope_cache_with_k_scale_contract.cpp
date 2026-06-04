@@ -115,6 +115,16 @@ uint32_t CeilDiv(uint32_t value, uint32_t divisor)
     return (value + divisor - 1) / divisor;
 }
 
+uint32_t CalcCubeTokenSize(uint32_t tokenSize)
+{
+    return AlignUp(tokenSize, kAivPerAic);
+}
+
+uint32_t CalcCubeHalfTokenSize(uint32_t tokenSize)
+{
+    return CalcCubeTokenSize(tokenSize) / kAivPerAic;
+}
+
 ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling)
 {
     tiling = {};
@@ -265,9 +275,9 @@ uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum)
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)
 {
     AivSlice slice;
-    const uint32_t aiv0TokenSize = CeilDiv(tile.tokenSize, kAivPerAic);
-    const uint32_t tokenPrefix = aivLocalId == 0 ? 0 : aiv0TokenSize;
-    const uint32_t tokenSize = aivLocalId == 0 ? aiv0TokenSize : tile.tokenSize - aiv0TokenSize;
+    const uint32_t cubeHalfTokenSize = CalcCubeHalfTokenSize(tile.tokenSize);
+    const uint32_t tokenPrefix = aivLocalId == 0 ? 0 : cubeHalfTokenSize;
+    const uint32_t tokenSize = aivLocalId == 0 ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
     slice.tokenOffset = tile.tokenOffset + tokenPrefix;
     slice.tokenSize = tokenSize;
     slice.rowOffset = tokenPrefix * qkHeadTile;

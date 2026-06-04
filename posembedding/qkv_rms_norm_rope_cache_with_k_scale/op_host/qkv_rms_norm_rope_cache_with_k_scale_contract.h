@@ -154,6 +154,8 @@ struct AivSlice {
 
 uint32_t AlignUp(uint32_t value, uint32_t align);
 uint32_t CeilDiv(uint32_t value, uint32_t divisor);
+uint32_t CalcCubeTokenSize(uint32_t tokenSize);
+uint32_t CalcCubeHalfTokenSize(uint32_t tokenSize);
 ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling);
 uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile);
 uint32_t CalcCoreTokenTile(uint32_t totalTokens, uint32_t aicNum);

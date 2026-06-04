@@ -304,9 +304,9 @@ __aicore__ inline uint32_t GetAivCubeIndex()
 __aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)
 {
     AivSlice slice = {0U, 0U, 0U, 0U};
-    const uint32_t aiv0TokenSize = CeilDiv(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
-    const uint32_t tokenPrefix = aivLocalId == 0U ? 0U : aiv0TokenSize;
-    const uint32_t tokenSize = aivLocalId == 0U ? aiv0TokenSize : tile.tokenSize - aiv0TokenSize;
+    const uint32_t cubeHalfTokenSize = MakeCubeHalfTokenSize(tile);
+    const uint32_t tokenPrefix = aivLocalId == 0U ? 0U : cubeHalfTokenSize;
+    const uint32_t tokenSize = aivLocalId == 0U ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
 
     slice.tokenOffset = tile.tokenOffset + tokenPrefix;
     slice.tokenSize = tokenSize;

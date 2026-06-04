@@ -425,11 +425,30 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
     EXPECT_EQ(tailAiv0.tokenSize, 3U);
     EXPECT_EQ(tailAiv0.rowOffset, 0U);
     EXPECT_EQ(tailAiv0.rowSize, 3U * tiling.qkHeadTile);
-    EXPECT_EQ(tailAiv1.tokenOffset, 9U);
+    EXPECT_EQ(tailAiv1.tokenOffset, tailTile.tokenOffset + CalcCubeHalfTokenSize(tailTile.tokenSize));
     EXPECT_EQ(tailAiv1.tokenSize, 2U);
     EXPECT_EQ(tailAiv1.rowOffset, tailAiv0.rowSize);
     EXPECT_EQ(tailAiv1.rowSize, 2U * tiling.qkHeadTile);
     EXPECT_EQ(tailAiv0.rowSize + tailAiv1.rowSize, tailTile.rowSize);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
+{
+    ContractTiling tiling;
+    auto input = BuildInput(17, 16, 2, 2);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+
+    auto tile = MakeTileParamForTest(1, 6, 5, input.totalTokens, tiling);
+    auto aiv0 = MakeAivSlice(tile, tiling.qkHeadTile, 0);
+    auto aiv1 = MakeAivSlice(tile, tiling.qkHeadTile, 1);
+
+    ASSERT_EQ(tile.tokenOffset, 6U);
+    ASSERT_EQ(tile.tokenSize, 5U);
+    EXPECT_EQ(CalcCubeHalfTokenSize(tile.tokenSize), 3U);
+    EXPECT_EQ(aiv0.tokenOffset, tile.tokenOffset);
+    EXPECT_EQ(aiv1.tokenOffset, tile.tokenOffset + CalcCubeHalfTokenSize(tile.tokenSize));
+    EXPECT_EQ(aiv0.tokenOffset + aiv0.tokenSize, aiv1.tokenOffset);
+    EXPECT_EQ(aiv0.tokenSize + aiv1.tokenSize, tile.tokenSize);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
