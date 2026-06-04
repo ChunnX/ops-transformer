@@ -69,6 +69,7 @@ only selects data buffers; it is not used to derive CrossCore flag ids.
 | `A_READY` | AIV -> AIC | `PIPE_MTE3` | `PIPE_MTE1` | `SYNC_A_READY = 0` |
 | `C_READY` | AIC -> AIV | `PIPE_FIX` | `PIPE_V` | `SYNC_C_READY = 1` |
 | `C_CONSUMED` | AIV -> AIC | `PIPE_MTE3` | `PIPE_FIX` | `SYNC_C_CONSUMED = 2` |
+| `A_CONSUMED` | AIC -> AIV | `PIPE_MTE1` | `PIPE_MTE3` | `SYNC_A_CONSUMED = 3` |
 
 AIV code sets or waits only the base flag id. AIC wrappers handle both AIV0 and
 AIV1 using `flag + 16` for AIV1 and the base id for AIV0. Basic block owns the
@@ -93,13 +94,14 @@ pair and are statically checked to stay in `0..5`.
 | `V -> MTE3` / `MTE3 -> V` | AIV-private AL1 staging pipe boundary | `4` |
 | `MTE2 -> MTE1` | resident AIC rotation L1 ready | `5` |
 | `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
-| `MMAD -> FIX` / `FIX -> MMAD` | AIC L0C pingpong path | `0/1` |
 
 Init currently sets only reusable reverse events (`V_MTE2`, `MTE3_V`,
-`M_MTE1`, `FIX_M`); End waits the same events to consume the final reusable
-tokens. T06 uses event id `4` inside `D128FastVec::ComputeTile` for the current
-AL1 staging pipe handoff only. It is not initialized in lifecycle hooks and
-is not per-AL1-buffer synchronization.
+`M_MTE1`); End waits the same events to consume the final reusable tokens. No
+AIC `MMAD -> FIX` / `FIX -> MMAD` local event is allocated in this path: the
+Cube/Fixpipe calls use `unitFlag`, and L0C/output reuse is gated by the
+CrossCore `C_CONSUMED` credit sequence. T06 uses event id `4` inside
+`D128FastVec::ComputeTile` for the current AL1 staging pipe handoff only. It is
+not initialized in lifecycle hooks and is not per-AL1-buffer synchronization.
 
 T06 wires the AIV preprocess boundary and the initial numeric Q/K path. Each
 AIV derives local tensor views inside `ComputeTile`, waits for input UB reuse,
