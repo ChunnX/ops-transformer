@@ -564,8 +564,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         T.tile.ln(loss_log_p_ub, loss_chunk_ub)
                         T.barrier_all()
-                        T.tile.mul(loss_log_p_ub, loss_log_p_ub, 0.693147)
-                        T.barrier_all()
 
                         T.copy(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
@@ -575,8 +573,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_si_ub, loss_chunk_ub)
-                        T.barrier_all()
-                        T.tile.mul(loss_log_si_ub, loss_log_si_ub, 0.693147)
                         T.barrier_all()
 
                         T.copy(
