@@ -53,7 +53,7 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     if (inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND") {
-        OP_LOGE(context, "The input layout query should be TND or BSND, but got %s.", inputLayoutQueryPtrStr.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT("QuantLightningIndexer", "query", inputLayoutQueryPtrStr.c_str(), "BSND or TND");
         return GRAPH_FAILED;
     }
 

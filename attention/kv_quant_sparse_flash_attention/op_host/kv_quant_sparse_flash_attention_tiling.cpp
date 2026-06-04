@@ -661,8 +661,7 @@ void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expec
             qsfaOssLayout << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports layout %s, but got %s",
-        name.c_str(), qsfaOssLayout.str().c_str(), QSFALayoutToSerialString(actualLayout).c_str());
+    OP_LOGE_FOR_INVALID_FORMAT(opName_, name.c_str(), QSFALayoutToSerialString(actualLayout).c_str(), qsfaOssLayout.str().c_str());
 }
 
 ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const
@@ -1162,7 +1161,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
     std::string layoutQuery = opParamInfo_.layoutQuery;
     OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(),
         qsfaLayoutSupportList.end(), layoutQuery) == qsfaLayoutSupportList.end(),
-        OP_LOGE(opName_, "layoutQuery only supports BSND/TND, but got %s", layoutQuery.c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", layoutQuery.c_str(), "BSND or TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1622,11 +1621,13 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
     if (it != layoutKVMap.end()) {
         kvLayout_ = it->second;
     } else {
-        OP_LOGE(opName_, "layoutKV is %s, it is unsupported.", layout.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV", layout.c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {
-        OP_LOGE(opName_, "When layoutKV is not PA_BSND, layoutKV must be the same as layoutQ.");
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "KV and Q",
+            QSFALayoutToSerialString(kvLayout_) + " and " + QSFALayoutToSerialString(qLayout_),
+            "When layoutKV is not PA_BSND, layoutKV and layoutQ must be same.");
         return ge::GRAPH_FAILED;
     }
     uint32_t keyDimNum = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
@@ -1732,7 +1733,7 @@ ge::graphStatus QSFAInfoParser::GetQueryAndOutLayout()
         qLayout_ = qsfaLayoutIt->second.first;
         outLayout_ = qsfaLayoutIt->second.second;
     } else {
-        OP_LOGE(opName_, "layoutQuery is %s, it is unsupported.", qsfaLayout.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", qsfaLayout.c_str(), "BSND or TND");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
