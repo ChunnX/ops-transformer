@@ -758,8 +758,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad = results[2]
 
         # Debug: recompute bmm1/bmm2 from original inputs for accurate reference
-        ref_bmm1 = torch.matmul(query.float(), gather_key.float().transpose(-1, -2))  # (B, S1, N1, K)
-        ref_bmm2_raw = torch.matmul(query_index.float(), gather_key_index.float().transpose(-1, -2))  # (B, S1, Nidx1, K)
+        # Use FP16 matmul to match NPU Cube precision
+        ref_bmm1 = torch.matmul(query, gather_key.transpose(-1, -2)).float()  # (B, S1, N1, K)
+        ref_bmm2_raw = torch.matmul(query_index, gather_key_index.transpose(-1, -2)).float()  # (B, S1, Nidx1, K)
         ref_bmm2 = torch.relu(ref_bmm2_raw)
         ref_dw, ref_rg, ref_loss = _compute_vector_outputs(
             ref_bmm1, ref_bmm2, weights, softmax_max, softmax_sum,
