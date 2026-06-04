@@ -530,7 +530,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCac
     }
 }
 
-void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2TokenRange,
+void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange,
                                                                   const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t oriS2FirstToken = oriS2TokenRange.first;
@@ -563,7 +563,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(Range<int64_t>
     }
 }
 
-void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange,
+void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange,
                                                                   const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t cmpS2FirstToken = cmpS2TokenRange.first;
@@ -833,7 +833,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &
     }
 }
 
-int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(AssignContext &assignContext)
+int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const AssignContext &assignContext)
 {
     int64_t curCost = 0;
     if (assignContext.curS2Idx < assignContext.s1GCache.cmpS2Start) {

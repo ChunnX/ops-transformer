@@ -269,8 +269,8 @@ private:
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-    void CalcOriBlockRange(Range<int64_t> &oriS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
-    void CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
     void CalcOriS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void GatherOriAndCmpCache(S1GCache &s1GCache);
@@ -286,7 +286,7 @@ private:
     void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
-    int64_t CalcCurBlockCost(AssignContext &assignContext);
+    int64_t CalcCurBlockCost(const AssignContext &assignContext);
     void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
     void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignBlocksToCore(const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);

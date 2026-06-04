@@ -23,6 +23,8 @@
 extern "C" {
 #endif
 
+namespace {
+
 enum class SparseModeQsmla : uint8_t {
     DEFAULT_MASK = 0,
     ALL_MASK,
@@ -31,10 +33,11 @@ enum class SparseModeQsmla : uint8_t {
     BAND,
     SPARSE_BUTT,
 };
-int64_t QSMLA_QUANT_MODE_LOWER_BOUND = 1;
-int64_t QSMLA_QUANT_MODE_UPPER_BOUND = 2;
-int64_t QSMLA_CMP_RATIO_LOWER_BOUND = 1;
-int64_t QSMLA_CMP_RATIO_UPPER_BOUND = 128;
+
+inline constexpr int64_t QSMLA_QUANT_MODE_LOWER_BOUND = 1;
+inline constexpr int64_t QSMLA_QUANT_MODE_UPPER_BOUND = 2;
+inline constexpr int64_t QSMLA_CMP_RATIO_LOWER_BOUND = 1;
+inline constexpr int64_t QSMLA_CMP_RATIO_UPPER_BOUND = 128;
 
 inline bool IsTensorExistQsmla(const aclTensor *tensor)
 {
@@ -608,6 +611,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     } else {
         return ACLNN_ERR_PARAM_INVALID;
     }
+}
 }
 
 #ifdef __cplusplus

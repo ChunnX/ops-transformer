@@ -530,8 +530,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache, const 
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2TokenRange,
-                                                                  const BatchCache &batchCache, S1GCache &s1GCache)
+void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange,
+                                                        const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t oriS2FirstToken = oriS2TokenRange.first;
     int64_t oriS2LastToken = oriS2TokenRange.second;
@@ -563,8 +563,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2Tok
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange,
-                                                                  const BatchCache &batchCache, S1GCache &s1GCache)
+void SparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange,
+                                                        const BatchCache &batchCache, S1GCache &s1GCache)
 {
     int64_t cmpS2FirstToken = cmpS2TokenRange.first;
     int64_t cmpS2LastToken = cmpS2TokenRange.second;
@@ -833,7 +833,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitConte
     }
 }
 
-int64_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(AssignContext &assignContext)
+int64_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const AssignContext &assignContext)
 {
     int64_t curCost = 0;
     if (assignContext.curS2Idx < assignContext.s1GCache.cmpS2Start) {
