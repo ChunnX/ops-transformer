@@ -9,36 +9,36 @@
  */
 
 /*!
- * \file compressor.cpp
+ * \file quant_compressor.cpp
  * \brief
  */
 
-#include "arch35/compressor_kernel.h"
-#include "arch35/compressor_kernel_full_load.h"
+#include "arch35/quant_compressor_kernel.h"
+#include "arch35/quant_compressor_kernel_full_load.h"
  
-using namespace Compressor;
+using namespace QuantCompressor;
 
-#define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
+#define INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
-        op.Init(x, wKv, wGate, xScale, wKvScale, wGateScale, stateCache, ape, normWeight, ropeSin, ropeCos,            \
-                stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);                                   \
+        op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos,            \
+                xDescale, wKvDescale, wGateDescale, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);                                   \
         op.Process();                                                                                                  \
     } while (0)
 
-template<uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t RotaryMode, uint8_t CacheMode, uint8_t TemplateId, uint8_t QuantMode>
-__global__ __aicore__ void compressor(
+template<uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t RotaryMode, uint8_t CacheMode, uint8_t QuantMode, uint8_t TemplateId>
+__global__ __aicore__ void quant_compressor(
     __gm__ uint8_t *x,
     __gm__ uint8_t *wKv,
     __gm__ uint8_t *wGate,
-    __gm__ uint8_t *xScale,
-    __gm__ uint8_t *wKvScale,
-    __gm__ uint8_t *wGateScale,
     __gm__ uint8_t *stateCache,
     __gm__ uint8_t *ape,
     __gm__ uint8_t *normWeight,
     __gm__ uint8_t *ropeSin,
     __gm__ uint8_t *ropeCos,
+    __gm__ uint8_t *xDescale,
+    __gm__ uint8_t *wKvDescale,
+    __gm__ uint8_t *wGateDescale,
     __gm__ uint8_t *stateBlockTable,
     __gm__ uint8_t *cuSeqlens,
     __gm__ uint8_t *seqUsed,
@@ -47,22 +47,23 @@ __global__ __aicore__ void compressor(
     __gm__ uint8_t *stateCacheOut,
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) {
-    REGISTER_TILING_DEFAULT(optiling::CompressorTilingData);
+    REGISTER_TILING_DEFAULT(optiling::QuantCompressorTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    GET_TILING_DATA_WITH_STRUCT(optiling::CompressorTilingData, tilingDataIn, tiling);
+    GET_TILING_DATA_WITH_STRUCT(optiling::QuantCompressorTilingData, tilingDataIn, tiling);
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
     }
-    const optiling::CompressorTilingData *__restrict tilingData = &tilingDataIn;
+    const optiling::QuantCompressorTilingData *__restrict tilingData = &tilingDataIn;
     TPipe pipe;
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
     constexpr auto xDtype = static_cast<X_DTYPE>(XDType);
     constexpr auto coff = static_cast<COFF>(Coff);
     constexpr auto rotaryMode = static_cast<ROTARY_MODE>(RotaryMode);
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
+    constexpr auto quantMode = static_cast<QUANT_MODE>(QuantMode);
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff, rotaryMode, cacheMode);
+        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernelFullLoad, xLayout, xDtype, coff, rotaryMode, cacheMode, quantMode);
     } else {
-        INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode);
+        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode, quantMode);
     }
 }

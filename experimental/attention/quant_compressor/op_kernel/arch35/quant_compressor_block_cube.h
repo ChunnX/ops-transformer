@@ -9,37 +9,37 @@
  */
 
 /*!
- * \file compressor_block_cube.h
+ * \file quant_compressor_block_cube.h
  * \brief
  */
 
-#ifndef COMPRESSOR_BLOCK_CUBE_H
-#define COMPRESSOR_BLOCK_CUBE_H
+#ifndef QUANT_COMPRESSOR_BLOCK_CUBE_H
+#define QUANT_COMPRESSOR_BLOCK_CUBE_H
 
-#include "compressor_comm.h"
-#include "compressor_tools.h"
+#include "quant_compressor_comm.h"
+#include "quant_compressor_tools.h"
 
 using namespace AscendC;
 
-namespace Compressor {
+namespace QuantCompressor {
 
-template<typename COMP> class CompressorBlockCube {
+template<typename COMP> class QuantCompressorBlockCube {
 using MM1_OUT_T = float;
 public:
-    __aicore__ inline CompressorBlockCube(){};
-    __aicore__ inline void InitParams(const ConstInfo &constInfo, const CompressorTools<COMP> &tools);
+    __aicore__ inline QuantCompressorBlockCube(){};
+    __aicore__ inline void InitParams(const ConstInfo &constInfo, const QuantCompressorTools<COMP> &tools);
     __aicore__ inline void Init(
         __gm__ uint8_t *x,
         __gm__ uint8_t *wKv,
         __gm__ uint8_t *wGate,
-        __gm__ uint8_t *xScale,
-        __gm__ uint8_t *wKvScale,
-        __gm__ uint8_t *wGateScale,
         __gm__ uint8_t *stateCache,
         __gm__ uint8_t *ape,
         __gm__ uint8_t *normWeight,
         __gm__ uint8_t *ropeSin,
         __gm__ uint8_t *ropeCos,
+        __gm__ uint8_t *xDescale,
+        __gm__ uint8_t *wKvDescale,
+        __gm__ uint8_t *wGateDescale,
         __gm__ uint8_t *stateBlockTable,
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
@@ -69,7 +69,7 @@ private:
         uint32_t coffId, uint32_t mStart, uint32_t mDealSize, uint32_t nStart, uint32_t nDealSize);
 
     ConstInfo constInfo_ = {};
-    CompressorTools<COMP> tools_;
+    QuantCompressorTools<COMP> tools_;
 
     // GM
     GlobalTensor<X_T> xGm_;
@@ -126,13 +126,13 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::InitParams(const ConstInfo &constInfo, const CompressorTools<COMP> &tools)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::InitParams(const ConstInfo &constInfo, const QuantCompressorTools<COMP> &tools)
 {
     this->constInfo_ = constInfo;
     this->tools_ = tools;
 }
 
-template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
+template <typename COMP> __aicore__ inline void QuantCompressorBlockCube<COMP>::Init(
         __gm__ uint8_t *x,
         __gm__ uint8_t *wKv,
         __gm__ uint8_t *wGate,
@@ -141,6 +141,9 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
         __gm__ uint8_t *normWeight,
         __gm__ uint8_t *ropeSin,
         __gm__ uint8_t *ropeCos,
+        __gm__ uint8_t *xDescale,
+        __gm__ uint8_t *wKvDescale,
+        __gm__ uint8_t *wGateDescale,
         __gm__ uint8_t *stateBlockTable,
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
@@ -161,7 +164,7 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::InitBuffers(TPipe *pipe)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::InitBuffers(TPipe *pipe)
 {
     // L1
     // 1. coff=1时, mBase=256, kL1=256, X单次拷贝到L1的数据量最大为mBase*kL1*sizeof(BF16/FP16)=256*256*2=128K
@@ -179,14 +182,14 @@ __aicore__ inline void CompressorBlockCube<COMP>::InitBuffers(TPipe *pipe)
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm)
 {
     this->kvMm1ResGm = kvMm1ResGm;
     this->scoreMm1ResGm = scoreMm1ResGm;
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::AllocEventID(TPipe *pipe)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::AllocEventID(TPipe *pipe)
 {
     SetFlag<HardEvent::MTE1_MTE2>(X_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(X_EVENT1);
@@ -206,7 +209,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::AllocEventID(TPipe *pipe)
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::FreeEventID(TPipe *pipe)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::FreeEventID(TPipe *pipe)
 {
     WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT1);
@@ -226,7 +229,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::FreeEventID(TPipe *pipe)
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &info, LocalTensor<X_T> xL1Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &info, LocalTensor<X_T> xL1Tensor,
     uint32_t hIdx, uint32_t kBase)
 {
     uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
@@ -243,7 +246,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
     uint32_t hIdx, uint32_t kBase, uint32_t coffId)
 {
     // coffId=0, 搬运左矩阵的数据; coffId=1, 搬运右矩阵的数据
@@ -259,7 +262,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyWeightGmToL1(LocalTensor<X
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor,
     LocalTensor<X_T> xL1Tensor, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
 {
     uint32_t mSize = info.dealSeqCnt;
@@ -280,7 +283,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::LoadAToL0(const RunInfo &info,
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::LoadBToL0(const RunInfo &info, LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::LoadBToL0(const RunInfo &info, LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
     uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize)
 {
     uint32_t nSize = 2 * constInfo_.dBaseSize;
@@ -301,7 +304,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::LoadBToL0(const RunInfo &info,
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
     LocalTensor<X_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C)
 {
     MmadParams mmadParams;
@@ -314,7 +317,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::MatrixMmad(LocalTensor<T> cL0T
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor,
+__aicore__ inline void QuantCompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor,
     uint32_t coffId, uint32_t mStart, uint32_t mDealSize, uint32_t nStart, uint32_t nDealSize)
 {
     // coffId=0, 存左矩阵的数据; coffId=1, 存右矩阵的数据
@@ -339,13 +342,13 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &i
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorBlockCube<COMP>::GetMSize(const RunInfo &info, uint32_t coffId)
+__aicore__ inline uint32_t QuantCompressorBlockCube<COMP>::GetMSize(const RunInfo &info, uint32_t coffId)
 {
     return info.dealSeqCnt;
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void QuantCompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info)
 {
     static constexpr uint32_t K_L1_BASE = 256;
     static constexpr uint32_t M_L0_BASE = 128;
@@ -437,6 +440,6 @@ __aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info
     }
 }
 
-} // namespace Compressor
+} // namespace QuantCompressor
 
-#endif // COMPRESSOR_BLOCK_CUBE_H
+#endif // QUANT_COMPRESSOR_BLOCK_CUBE_H

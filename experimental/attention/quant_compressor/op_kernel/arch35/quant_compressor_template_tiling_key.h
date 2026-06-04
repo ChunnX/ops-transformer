@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef COMPRESSOR_TEMPLATE_TILING_KEY_H
-#define COMPRESSOR_TEMPLATE_TILING_KEY_H
+#ifndef QUANT_COMPRESSOR_TEMPLATE_TILING_KEY_H
+#define QUANT_COMPRESSOR_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -23,8 +23,7 @@
 #define ASCENDC_TPL_4_BW 4 // 每个参数占用4个bit位
 
 // 可表示的tilingkey范围为64bit，注意不可超过限制
-ASCENDC_TPL_ARGS_DECL(compressor, // 算子唯一标识，与opType保持一致
-    // 可能需要切分之后的headdim
+ASCENDC_TPL_ARGS_DECL(quant_compressor, // 算子唯一标识，与opType保持一致
     // bit:0 LAYOUT 0:BSH 1:TH 
     ASCENDC_TPL_UINT_DECL(X_LAYOUT, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 0, 1),
     // bit:1-4 x的dtype  0:BF16 1:FP16
@@ -35,10 +34,10 @@ ASCENDC_TPL_ARGS_DECL(compressor, // 算子唯一标识，与opType保持一致
     ASCENDC_TPL_UINT_DECL(ROTARY_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
     // bit:9-10  cache_mode 1:CONTINUOUS 2:cycle
     ASCENDC_TPL_UINT_DECL(CACHE_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
-    // bit:11-12  template_id 0:empty_tensor 1:normal 2:full load
-    ASCENDC_TPL_UINT_DECL(TEMPLATE_ID, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2),
-    // bit:13  quant_mode 0:no_quant 1:static_quant
+    // bit:11  quant_mode 1:hifp8量化
     ASCENDC_TPL_UINT_DECL(QUANT_MODE, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 1),
+    // bit:12-13  template_id 0:empty_tensor 1:normal 2:full load
+    ASCENDC_TPL_UINT_DECL(TEMPLATE_ID, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2),
 
 );
 
@@ -49,9 +48,9 @@ ASCENDC_TPL_SEL(
                         ASCENDC_TPL_UINT_SEL(COFF, ASCENDC_TPL_UI_LIST, 1, 2),
                         ASCENDC_TPL_UINT_SEL(ROTARY_MODE, ASCENDC_TPL_UI_LIST, 1, 2),
                         ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2),
-                        ASCENDC_TPL_UINT_SEL(TEMPLATE_ID, ASCENDC_TPL_UI_LIST, 0, 1, 2),
                         ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, 1),
-                        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::CompressorTilingData)),
+                        ASCENDC_TPL_UINT_SEL(TEMPLATE_ID, ASCENDC_TPL_UI_LIST, 0, 1, 2),
+                        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::QuantCompressorTilingData)),
 );
 
-#endif // COMPRESSOR_TEMPLATE_TILING_KEY_H
+#endif // QUANT_COMPRESSOR_TEMPLATE_TILING_KEY_H

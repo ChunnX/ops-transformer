@@ -19,34 +19,30 @@ namespace ops {
     constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
     constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
     constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-
-    constexpr uint32_t X_SCALE_INPUT_INDEX = 3;
-    constexpr uint32_t W_KV_SCALE_INPUT_INDEX = 4;
-    constexpr uint32_t W_GATE_SCALE_INPUT_INDEX = 5;
-
-    constexpr uint32_t STATE_CACHE_INPUT_INDEX = 6;
-
-    constexpr uint32_t APE_INPUT_INDEX = 7;
-    constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 8;
-    constexpr uint32_t ROPE_SIN_INPUT_INDEX = 9;
-    constexpr uint32_t ROPE_COS_INPUT_INDEX = 10;
+    constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
+    constexpr uint32_t APE_INPUT_INDEX = 4;
+    constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 5;
+    constexpr uint32_t ROPE_SIN_INPUT_INDEX = 6;
+    constexpr uint32_t ROPE_COS_INPUT_INDEX = 7;
 
     // INPUT(OPTION)
+    constexpr uint32_t X_DESCALE_INPUT_INDEX = 8;
+    constexpr uint32_t WKV_DESCALE_INPUT_INDEX = 9;
+    constexpr uint32_t WGATE_DESCALE_INPUT_INDEX = 10;
     constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 11;
-
     constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 12;
     constexpr uint32_t SEQ_USED_INPUT_INDEX = 13;
     constexpr uint32_t START_POS_INPUT_INDEX = 14;
 
     // ATTR
-    constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 0;
-    constexpr uint32_t CMP_RATIO_ATTR_INDEX = 1;
-    constexpr uint32_t COFF_ATTR_INDEX = 2;
-    constexpr uint32_t NORM_EPS_ATTR_INDEX = 3;
-    constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
-    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
-    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
-    constexpr uint32_t QUANT_MODE_ATTR_INDEX = 7;
+    constexpr uint32_t QUANT_MODE_ATTR_INDEX = 0;
+    constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 1;
+    constexpr uint32_t CMP_RATIO_ATTR_INDEX = 2;
+    constexpr uint32_t COFF_ATTR_INDEX = 3;
+    constexpr uint32_t NORM_EPS_ATTR_INDEX = 4;
+    constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 5;
+    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 6;
+    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 7;
 
     // OUTPUT
     constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
@@ -56,7 +52,7 @@ namespace ops {
     constexpr uint32_t COFF_VALUE = 1;
     constexpr uint32_t QUANT_MODE_VALUE = 1;
 
-struct CompressorProtoShapeParam {
+struct QuantCompressorProtoShapeParam {
     bool isBsMerge { false };
     int64_t B { 0 };
     int64_t T { 0 };
@@ -76,7 +72,7 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, CompressorProtoShapeParam &shapeParam)
+ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext* context, QuantCompressorProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
     OPS_LOG_E_IF_NULL(context, xShape, return ge::GRAPH_FAILED)
@@ -84,6 +80,13 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     OPS_LOG_E_IF_NULL(context, wkvShape, return ge::GRAPH_FAILED)
     auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);  // (coff * D, H)
     OPS_LOG_E_IF_NULL(context, wgateShape, return ge::GRAPH_FAILED)
+
+    auto xDescaleShape = context->GetOptionalInputShape(X_DESCALE_INPUT_INDEX);    // (1)
+    OPS_LOG_E_IF_NULL(context, xDescaleShape, return ge::GRAPH_FAILED)
+    auto wkvDescaleShape = context->GetOptionalInputShape(WKV_DESCALE_INPUT_INDEX);    // (coff * D)
+    OPS_LOG_E_IF_NULL(context, wkvDescaleShape, return ge::GRAPH_FAILED)
+    auto wgateDescaleShape = context->GetOptionalInputShape(WGATE_DESCALE_INPUT_INDEX);    // (coff * D)
+    OPS_LOG_E_IF_NULL(context, wgateDescaleShape, return ge::GRAPH_FAILED)
 
     auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, tokrn_size, 2 * coff * D)
     OPS_LOG_E_IF_NULL(context, stateCacheShape, return ge::GRAPH_FAILED)
@@ -125,11 +128,13 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
+ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
 {
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);                 // query: (B, S, N, Hckv) | (T, N, Hckv)
     OPS_LOG_E_IF_NULL(context, cmpKvShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
+    const uint32_t *quantModePtr = attr->GetAttrPointer<uint32_t>(QUANT_MODE_ATTR_INDEX);
+    uint32_t quantMode = (quantModePtr != nullptr) ? *quantModePtr : QUANT_MODE_VALUE;
     const uint32_t *cmpRatioPtr = attr->GetAttrPointer<uint32_t>(CMP_RATIO_ATTR_INDEX);
     uint32_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
     const uint32_t *coffPtr = attr->GetAttrPointer<uint32_t>(COFF_ATTR_INDEX);
@@ -149,32 +154,32 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
+ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OPS_LOG_I(context->GetNodeName(), "Enter Compressor inferDataType impl.");
+    OPS_LOG_I(context->GetNodeName(), "Enter QuantCompressor inferDataType impl.");
 
     context->SetOutputDataType(CMP_KV_OUTPUT_INDEX, ge::DT_BF16);
 
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferShapeCompressor(gert::InferShapeContext* context)
+ge::graphStatus InferShapeQuantCompressor(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OPS_LOG_I(context->GetNodeName(), "Enter Compressor infershape impl.");
+    OPS_LOG_I(context->GetNodeName(), "Enter QuantCompressor infershape impl.");
 
-    CompressorProtoShapeParam shapeParam {};
-    auto apiRet = GetCompressorShapeDim(context, shapeParam);
+    QuantCompressorProtoShapeParam shapeParam {};
+    auto apiRet = GetQuantCompressorShapeDim(context, shapeParam);
     OPS_LOG_E_IF((apiRet != GRAPH_SUCCESS), context, return ge::GRAPH_FAILED, "Context get input shape failed");
 
-    apiRet = SetCompressorShapeDim(shapeParam, context);
+    apiRet = SetQuantCompressorShapeDim(shapeParam, context);
     OPS_LOG_E_IF((apiRet != GRAPH_SUCCESS), context, return ge::GRAPH_FAILED, "Context set output shape failed");
 
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(Compressor).InferShape(InferShapeCompressor).InferDataType(InferDataTypeCompressor);
+IMPL_OP_INFERSHAPE(QuantCompressor).InferShape(InferShapeQuantCompressor).InferDataType(InferDataTypeQuantCompressor);
 }  // namespace ops

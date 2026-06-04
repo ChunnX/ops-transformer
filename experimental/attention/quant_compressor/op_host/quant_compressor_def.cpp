@@ -11,7 +11,7 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class Compressor : public OpDef {
+class QuantCompressor : public OpDef {
 public:
     static constexpr uint32_t ROPE_HEAD_DIM_VALUE = 64;
     static constexpr uint32_t CMP_RATIO_VALUE = 4;
@@ -21,7 +21,7 @@ public:
     static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;
     static constexpr uint32_t QUANT_MODE_VALUE = 1;
 
-    explicit Compressor(const char *name) : OpDef(name)
+    explicit QuantCompressor(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -36,21 +36,6 @@ public:
         this->Input("wgate")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("x_scale")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("w_kv_scale")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("w_gate_scale")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("state_cache")
@@ -75,6 +60,21 @@ public:
             .AutoContiguous();
         this->Input("rope_cos")
             .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("x_descale")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("wkv_descale")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("wgate_descale")
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -106,6 +106,7 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
+        this->Attr("quant_mode").AttrType(REQUIRED).Int(QUANT_MODE_VALUE);
         this->Attr("rope_head_dim").AttrType(REQUIRED).Int(ROPE_HEAD_DIM_VALUE);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
@@ -113,7 +114,6 @@ public:
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
-        this->Attr("quant_mode").AttrType(OPTIONAL).Int(QUANT_MODE_VALUE);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -125,5 +125,5 @@ public:
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
-OP_ADD(Compressor, optiling::CompressorCompileInfo);
+OP_ADD(QuantCompressor, optiling::QuantCompressorCompileInfo);
 } // namespace ops

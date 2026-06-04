@@ -17,7 +17,7 @@
 #define VF_ROPE_H
 
 #include "kernel_operator.h"
-#include "../compressor_comm.h"
+#include "../quant_compressor_comm.h"
 
 using namespace AscendC;
 
@@ -139,7 +139,7 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
 }
 
 
-template <Compressor::ROTARY_MODE MODE, typename T, typename ROPET>
+template <QuantCompressor::ROTARY_MODE MODE, typename T, typename ROPET>
 __aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
                               const LocalTensor<T> &inTensor, const LocalTensor<ROPET> &outTensor, uint32_t row,
                               uint32_t col, uint32_t actualCol, uint64_t baseAddr)
@@ -149,7 +149,7 @@ __aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor
     __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
     __ubuf__ ROPET *outUb = (__ubuf__ ROPET *)outTensor.GetPhyAddr();
 
-    if constexpr (MODE == Compressor::ROTARY_MODE::HALF) {
+    if constexpr (MODE == QuantCompressor::ROTARY_MODE::HALF) {
         HalfModeRopeVF(sinUb, cosUb, inUb, outUb, row, col, actualCol, baseAddr);
     } else {
         InterleaveModeRopeVF(sinUb, cosUb, inUb, outUb, row, col, actualCol, baseAddr);

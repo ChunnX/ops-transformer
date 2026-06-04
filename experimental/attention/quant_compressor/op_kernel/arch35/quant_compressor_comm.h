@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file compressor_comm.h
+ * \file quant_compressor_comm.h
  * \brief
  */
 
-#ifndef COMPRESSOR_COMM_H
-#define COMPRESSOR_COMM_H
+#ifndef QUANT_COMPRESSOR_COMM_H
+#define QUANT_COMPRESSOR_COMM_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -24,7 +24,7 @@
 
 using namespace AscendC;
 
-namespace Compressor {
+namespace QuantCompressor {
 template <typename T>
 __aicore__ inline T CeilDivT(T num1, T num2)
 {
@@ -95,19 +95,24 @@ enum class CACHE_MODE : std::uint8_t {
     CYCLE = static_cast<std::uint8_t>(2)
 };
 
+enum class QUANT_MODE : std::uint8_t {
+    HIFP8 = static_cast<std::uint8_t>(1)
+};
+
 enum class TEMPLATE_ID : uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
     FULL_LOAD = 2
 };
 
-template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, ROTARY_MODE Rotary_Mode, CACHE_MODE Cache_Mode, typename... Args>
+template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, ROTARY_MODE Rotary_Mode, CACHE_MODE Cache_Mode, QUANT_MODE Quant_Mode, typename... Args>
 struct COMPType {
     static constexpr X_LAYOUT xLayout = X_L;
     static constexpr X_DTYPE xDtype = X_T;
     static constexpr COFF coff = C;
     static constexpr ROTARY_MODE rotaryMode = Rotary_Mode;
     static constexpr CACHE_MODE cacheMode = Cache_Mode;
+    static constexpr QUANT_MODE quantMode = Quant_Mode;
 };
 
 struct CmpBlockInfo {
@@ -441,5 +446,5 @@ __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, 
     // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
-} // namespace Compressor
+} // namespace QuantCompressor
 #endif

@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file COMPRESSOR_tiling_datay.h
+ * \file quant_compressor_tiling_data.h
  * \brief
  */
 
-#ifndef COMPRESSOR_TILING_DATA_H
-#define COMPRESSOR_TILING_DATA_H
+#ifndef QUANT_COMPRESSOR_TILING_DATA_H
+#define QUANT_COMPRESSOR_TILING_DATA_H
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
 const uint32_t CMP_MAX_AIC_CORE_NUM = 36;
 
 namespace optiling {
-    struct CompressorSplitCoreParams {
+    struct QuantCompressorSplitCoreParams {
         uint32_t mStart;
         uint32_t mEnd;
         uint32_t nStart;
@@ -31,7 +31,7 @@ namespace optiling {
     };
 
     // 1. 基础参数结构体
-    struct CompressorBaseParams {   
+    struct QuantCompressorBaseParams {   
         uint32_t batchSize = 0;             // bastch size（批大小）
         uint32_t seqSize = 0;               // sequence size（kvs大小）  
         uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
@@ -50,21 +50,21 @@ namespace optiling {
         uint32_t kBaseSize = 0;
         uint32_t coreGroupNum = 0;
         uint32_t mLoopNum = 0;
-        CompressorSplitCoreParams splitCoreParam[CMP_MAX_AIC_CORE_NUM];
+        QuantCompressorSplitCoreParams splitCoreParam[CMP_MAX_AIC_CORE_NUM];
     };
 
-    struct CompressorPageAttentionParams {
+    struct QuantCompressorPageAttentionParams {
         uint32_t blockNum = 0;
         uint32_t blockSize = 1;
         uint32_t maxBlockNumPerBatch = 1;
     };
 
-    struct CompressorInnerSplitParams {
+    struct QuantCompressorInnerSplitParams {
         uint32_t mBaseSize;
         uint32_t dBaseSize;
     };
     
-    struct CompressorWorkspaceParams {
+    struct QuantCompressorWorkspaceParams {
         uint32_t mm1KvResSize;
         uint32_t mm1ScoreResSize;
         uint32_t vec1ResSize;
@@ -72,12 +72,12 @@ namespace optiling {
         uint32_t dbWorkspaceRatio = 1;
     };
 
-    struct CompressorTilingData {
-        CompressorBaseParams baseParams;
-        CompressorPageAttentionParams pageAttentionParams;
-        CompressorInnerSplitParams innerSplitParams;
-        CompressorWorkspaceParams workspaceParams;
+    struct QuantCompressorTilingData {
+        QuantCompressorBaseParams baseParams;
+        QuantCompressorPageAttentionParams pageAttentionParams;
+        QuantCompressorInnerSplitParams innerSplitParams;
+        QuantCompressorWorkspaceParams workspaceParams;
     };
 } // optiling
 
-#endif  // COMPRESSOR_TILING_DATA_H
+#endif  // QUANT_COMPRESSOR_TILING_DATA_H
