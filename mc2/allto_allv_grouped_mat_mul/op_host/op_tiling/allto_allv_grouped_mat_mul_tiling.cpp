@@ -282,10 +282,10 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
         return ge::GRAPH_FAILED;
     }
 
-    if (sendCountsSize >= MC2KernelTemplate::MAX_EXPERT_SIZE) {
+    if (sendCountsSize > MC2KernelTemplate::MAX_EXPERT_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "sendCounts",
             std::to_string(sendCountsSize).c_str(),
-            (std::string("<") + std::to_string(MC2KernelTemplate::MAX_EXPERT_SIZE)).c_str());
+            (std::string("<=") + std::to_string(MC2KernelTemplate::MAX_EXPERT_SIZE)).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -319,10 +319,10 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
         return ge::GRAPH_FAILED;
     }
 
-    if (eExpert <= NUM_ZERO || eExpert >= E_MAX_VALUE_NON_QUANT) {
+    if (eExpert <= NUM_ZERO || eExpert > E_MAX_VALUE_NON_QUANT) {
         OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "eExpert",
             std::to_string(eExpert).c_str(),
-            (std::string("[1, ") + std::to_string(E_MAX_VALUE_NON_QUANT) + ")").c_str());
+            (std::string("[1, ") + std::to_string(E_MAX_VALUE_NON_QUANT) + "]").c_str());
         return ge::GRAPH_FAILED;
     }
 
