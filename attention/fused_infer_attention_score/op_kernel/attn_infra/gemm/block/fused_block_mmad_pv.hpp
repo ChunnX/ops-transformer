@@ -136,7 +136,7 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(uint32_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
+    void getKVOffset(uint64_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
     {
         kOffset = nIdx * maxKVStackLen * strideKV;
     }
@@ -199,7 +199,7 @@ public:
         uint32_t embed = actualOriShape[COORD_DIM1];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM2];
         GemmCoord actualShape{rowNum, embed, 0};
-        uint32_t gBOffset = 0;
+        uint64_t gBOffset = 0;
 
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(stackSeqTile, embed);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
