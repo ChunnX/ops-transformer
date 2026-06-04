@@ -98,7 +98,14 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
+    if (this->aicIdx == 0) {
+        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d\n", this->aicIdx, actualCoreNums);
+    }
     if (this->aicIdx >= actualCoreNums) {
+        if (this->aicIdx == 0) {
+            printf("[BSA_DEBUG] exit ProcessMainLoop by inactive core aicIdx=%d coreNum=%d\n",
+                this->aicIdx, actualCoreNums);
+        }
         return;
     }
     // 确定核内切分起点
@@ -109,14 +116,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     int64_t nextGs1Idx = this->sharedParams.multiCoreInnerLimit;
     bnStartIdx = this->sharedParams.bnStartIdx;
     gS1StartIdx = this->sharedParams.multiCoreInnerOffset;
-    if (likely((this->sharedParams.coreNum - 1) > this->aicIdx)) {
-        bnEndIdx = this->sharedParams.bnEndIdx;
-        if (nextGs1Idx != 0) {
-            bnEndIdx++;
-        }
-    } else {
-        bnEndIdx = this->sharedParams.bSize * this->constInfo.n2Size *
-            this->constInfo.headNumRatio;
+    bnEndIdx = this->sharedParams.bnEndIdx;
+    if (nextGs1Idx != 0) {
+        bnEndIdx++;
     }
     int64_t taskId = 0;
     bool notLast = true;
@@ -130,8 +132,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     int64_t multiCoreInnerIdx = 1;
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; ++bnIdx) {
         bool lastBN = (bnIdx == bnEndIdx - 1);
-        runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
-        runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
+        runParam.boIdx = bnIdx / this->constInfo.n2Size;
+        runParam.n2oIdx = bnIdx % this->constInfo.n2Size;
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, this->attenMaskInfo,
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, lastBN,
@@ -225,6 +227,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::Process()
 {
+    if (this->aicIdx == 0) {
+        printf("[BSA_DEBUG] enter Process aicIdx=%d needInit=%d\n", this->aicIdx,
+            static_cast<int32_t>(this->sharedParams.needInit));
+    }
     // SyncAll Cube和Vector都需要调用
     if (this->sharedParams.needInit) {
         SyncAll<false>();
