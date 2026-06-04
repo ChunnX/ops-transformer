@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v3.cpp
@@ -84,52 +84,21 @@
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_QUANT_GATHER_DROP 1110100        // 多核排序、静态量化、GATHER索引
 
 /*
- * 非量化、有Gather(计数排序排序路径)
+ * 非量化、有Gather
  */
 #define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER 1200000 // 单核Gather->单核或多核排序、非量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER 1201000 // 单核Gather->单核或多核排序、非量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER 1300000 // 多核Gather->多核排序、非量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER 1301000 // 多核Gather->多核排序、非量化、SCATTER索引
 
-/*
-有Gather（计数排序路径）、Drop/Pad
-*/
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER_DROP 1200100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER_DROP 1201100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER_DROP 1300100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER_DROP 1301100
-/*
-
-有Gather（计数排序路径）、静态量化
-*/
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_GATHER 1210000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_SCATTER 1211000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_GATHER 1310000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_SCATTER 1311000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_GATHER_DROP 1210100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_SCATTER_DROP 1211100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_GATHER_DROP 1310100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_SCATTER_DROP 1311100
-/*
-
-有Gather（计数排序路径）、动态量化
-*/
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_GATHER 1220000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_SCATTER 1221000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_GATHER 1320000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_SCATTER 1321000
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_GATHER_DROP 1220100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_SCATTER_DROP 1221100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_GATHER_DROP 1320100
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_SCATTER_DROP 1321100
-
 #define EMPTY_TENSOR 3000000
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
-extern "C" __global__ __aicore__ void moe_init_routing_v3(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-    GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
+                                                          GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                                          GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
+                                                          GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if (g_coreType == AIC) {
@@ -274,59 +243,38 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(
         return;
     }
 
-    // Counting sort optimization: intercept all counting sort tiling keys (sortMode=2: SORTONECORE)
+    // Counting sort optimization: intercept gather-first four tiling keys
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_QUANT_SCATTER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_DYNAMICQUANT_SCATTER_DROP)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER)) {
         bool useCountingSort =
-        (t->actualExpertNum <= 128 && t->actualExpertNum > 0 &&
-        !(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
-        (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
+            (t->dropPadMode == 0 && t->expertTokensNumType == EXERPT_TOKENS_COUNT && t->quantMode == -1 &&
+             t->actualExpertNum <= 128 &&
+             !(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
+               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
         if (useCountingSort) {
             // FullLoad counting sort (decode small T)
             TPipe countSortPipe;
             MoeV3FullLoadCutOriginT<DTYPE_X> op;
             op.Init(
-                x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                userWS, t, &countSortPipe);
+                x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                &countSortPipe);
             op.Process();
             countSortPipe.Destroy();
             return;
         }
     }
 
-    // Counting sort: sortMode=3 SORTMULTICORE
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_QUANT_SCATTER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_DYNAMICQUANT_SCATTER_DROP)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER)) {
         bool useCountingSort =
-        (t->actualExpertNum <= 128 && t->actualExpertNum > 0 &&
-        !(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
-        (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
+            (!(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
+               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
         if (useCountingSort) {
             // Non-FullLoad counting sort (prefill large T)
             TPipe countSortPipe;
             MoeV3CutOriginT<DTYPE_X> op;
             op.Init(
-                x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
                 &countSortPipe);
             op.Process();
             countSortPipe.Destroy();

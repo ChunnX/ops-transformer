@@ -27,9 +27,8 @@ class MoeV3FullLoadCutOriginT {
 public:
     __aicore__ inline MoeV3FullLoadCutOriginT(){};
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-        GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
-        TPipe* pipe);
+        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
+        GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe);
     __aicore__ inline void Process();
 
 private:
@@ -56,11 +55,9 @@ private:
     GlobalTensor<T> xGm_;
     GlobalTensor<float> scaleGm_;
     GlobalTensor<T> expandedXGm_;
-    GlobalTensor<int8_t> expandedXInt8Gm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int64_t> expertTokensGm_;
     GlobalTensor<float> expandedScaleGm_;
-    GlobalTensor<float> offsetGm_;
     GlobalTensor<int32_t> workspaceGm_;
 
     int64_t blockIdx_;
@@ -73,12 +70,9 @@ private:
     int64_t actualExpertNum_;
     int64_t rowIdxType_;
     int64_t isInputScale_;
-    int64_t quantMode_;
     int64_t filterNeedCoreNum_;
     int64_t coreNum_;
     int64_t expertTokensNumFlag_;
-    int64_t expertTokensNumType_;
-    int64_t dropPadMode_;
     int64_t activeNum_;
 
     int64_t coreTokenStart_;
@@ -116,23 +110,13 @@ private:
     int64_t flatIdxBufferLocalOffset_;
     int64_t gatheredIdxLocalOffset_;
 
-    // Quantization UB offsets (used during GatherAndWrite)
-    int64_t quantFloatLocalOffset_;
-    int64_t quantInt8LocalOffset_;
-    int64_t quantScaleOutLocalOffset_;
-
-    // Static quant params
-    float staticQuantScale_;
-    float staticQuantOffset_;
-
     int64_t totalBufSize_;
 };
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-    GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
-    TPipe* pipe)
+    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
+    GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe)
 {
     pipe_ = pipe;
     blockIdx_ = GetBlockIdx();
@@ -146,16 +130,10 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
     actualExpertNum_ = tiling->actualExpertNum;
     rowIdxType_ = tiling->rowIdxType;
     isInputScale_ = tiling->isInputScale;
-    quantMode_ = tiling->quantMode;
     filterNeedCoreNum_ = tiling->gatherOutComputeParamsOp.needCoreNum;
     coreNum_ = tiling->coreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
-    expertTokensNumType_ = tiling->expertTokensNumType;
-    dropPadMode_ = tiling->dropPadMode;
     activeNum_ = tiling->activeNum;
-    if (dropPadMode_ == DROP_PAD_MODE) {
-        activeNum_ = totalLength_;
-    }
 
     // Per-core token distribution
     int64_t filterPerCoreTokens = tiling->gatherOutComputeParamsOp.perCoreIndicesElements;
@@ -182,11 +160,7 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
     // Setup GlobalTensors
     xGm_.SetGlobalBuffer((__gm__ T*)x);
     expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-    if (quantMode_ == -1) {
-        expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
-    } else {
-        expandedXInt8Gm_.SetGlobalBuffer((__gm__ int8_t*)expandedX);
-    }
+    expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
     workspaceGm_.SetGlobalBuffer((__gm__ int32_t*)workspace);
     if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
@@ -194,15 +168,6 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
     }
     if (isInputScale_) {
         scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
-    }
-    if (quantMode_ == 0) {
-        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        offsetGm_.SetGlobalBuffer((__gm__ float*)offset);
-        staticQuantScale_ = scaleGm_.GetValue(0);
-        staticQuantOffset_ = offsetGm_.GetValue(0);
-    }
-    if (quantMode_ == 1) {
         expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
     }
 
@@ -217,91 +182,69 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
     }
 
     // Compute UB layout offsets
-    int64_t ubOff = 0;
+    int64_t offset = 0;
 
     // xLocal: coreTokenNum_ * colsAligned_ elements of T
-    xLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(coreTokenNum_ * colsAligned_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES);
+    xLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(coreTokenNum_ * colsAligned_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES);
 
     // expertIdxLocal: coreEntries_ elements of int32
-    expertIdxLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(coreEntries_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    expertIdxLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(coreEntries_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // scaleLocal: coreTokenNum_ * scaleSlotSize_ elements of float (32B-aligned per token)
-    scaleLocalOffset_ = ubOff;
+    scaleLocalOffset_ = offset;
     if (isInputScale_) {
-        ubOff += OpsBaseCeilAlign(coreTokenNum_ * scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
+        offset += OpsBaseCeilAlign(coreTokenNum_ * scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
     }
 
     // expertCountLocal: expertCountStride_ elements of int32
-    expertCountLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    expertCountLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // allCoreExpertCountLocal: filterNeedCoreNum_ * expertCountStride_ elements of int32
-    allCoreExpertCountLocalOffset_ = ubOff;
-    ubOff +=
+    allCoreExpertCountLocalOffset_ = offset;
+    offset +=
         OpsBaseCeilAlign(filterNeedCoreNum_ * expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
-    // expertTokensLocal: int64 buffer for expert tokens output
-    expertTokensLocalOffset_ = ubOff;
-    int64_t expertTokensElements = (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE)
-                                    ? (actualExpertNum_ + 1) * 2
-                                    : actualExpertNum_;
-    ubOff += OpsBaseCeilAlign(expertTokensElements * static_cast<int64_t>(sizeof(int64_t)), BLOCK_BYTES);
+    // expertTokensLocal: actualExpertNum_ elements of int64
+    expertTokensLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(actualExpertNum_ * static_cast<int64_t>(sizeof(int64_t)), BLOCK_BYTES);
 
     // prefixSumLocal: expertCountStride_ elements of int32
-    prefixSumLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    prefixSumLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // filteredPairsLocal: maxFilteredCount_ * 2 elements of int32
-    filteredPairsLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(maxFilteredCount_ * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    filteredPairsLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(maxFilteredCount_ * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // Vector filter additional buffers (only needed when useVectorFilter_)
     // expertIdxFp32Local: entriesAligned_ elements of float (independent buffer for CompareScalar)
-    expertIdxFp32LocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
+    expertIdxFp32LocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
 
     // compareMask0, compareMask1, gatherMask
-    compareMask0Offset_ = ubOff;
-    ubOff += maskBytes_;
-    compareMask1Offset_ = ubOff;
-    ubOff += maskBytes_;
-    gatherMaskOffset_ = ubOff;
-    ubOff += maskBytes_;
+    compareMask0Offset_ = offset;
+    offset += maskBytes_;
+    compareMask1Offset_ = offset;
+    offset += maskBytes_;
+    gatherMaskOffset_ = offset;
+    offset += maskBytes_;
 
     // gatheredExpertLocal: entriesAligned_ elements of int32
-    gatheredExpertLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    gatheredExpertLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // flatIdxBufferLocal: entriesAligned_ elements of int32
-    flatIdxBufferLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    flatIdxBufferLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // gatheredIdxLocal: entriesAligned_ elements of int32
-    gatheredIdxLocalOffset_ = ubOff;
-    ubOff += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    gatheredIdxLocalOffset_ = offset;
+    offset += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
-    // Quantization buffers (reused during GatherAndWrite phase)
-    quantFloatLocalOffset_ = 0;
-    quantInt8LocalOffset_ = 0;
-    quantScaleOutLocalOffset_ = 0;
-    if (quantMode_ == 0 || quantMode_ == 1) {
-        quantFloatLocalOffset_ = ubOff;
-        ubOff += OpsBaseCeilAlign(colsAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
-        quantInt8LocalOffset_ = ubOff;
-        ubOff += OpsBaseCeilAlign(colsAligned_ * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
-    }
-    if (quantMode_ == 1) {
-        quantScaleOutLocalOffset_ = ubOff;
-        ubOff += OpsBaseCeilAlign(scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
-    }
-
-    // Static quant: read scale and ubOff from GM
-    staticQuantScale_ = 0.0f;
-    staticQuantOffset_ = 0.0f;
-
-    totalBufSize_ = ubOff;
+    totalBufSize_ = offset;
     pipe_->InitBuffer(buf_, totalBufSize_);
 }
 
@@ -553,42 +496,9 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::WriteExpertTokens()
     if (blockIdx_ == 0) {
         LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
         SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-
-        if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
-            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
-
-        } else if (expertTokensNumType_ == EXERPT_TOKENS_CUMSUM) {
-            int64_t cumsum = 0;
-            for (int64_t e = 0; e < actualExpertNum_; e++) {
-                cumsum += expertTokensLocal.GetValue(e);
-                expertTokensLocal.SetValue(e, cumsum);
-            }
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
-
-        } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-            int64_t kvOffset = 0;
-            for (int64_t e = 0; e < actualExpertNum_; e++) {
-                int64_t count = expertTokensLocal.GetValue(e);
-                if (count != 0) {
-                    expertTokensLocal.SetValue((actualExpertNum_ + 1) + kvOffset * 2,
-                                            static_cast<int64_t>(e + expertStart_));
-                    expertTokensLocal.SetValue((actualExpertNum_ + 1) + kvOffset * 2 + 1, count);
-                    kvOffset++;
-                }
-            }
-            int64_t kvElements = (actualExpertNum_ + 1) * 2;
-            LocalTensor<int64_t> kvLocal =
-                expertTokensLocal[(actualExpertNum_ + 1)];
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(kvElements * sizeof(int64_t)), 0, 0, 0};
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyPad(expertTokensGm_, kvLocal, copyParams);
-        }
+        DataCopyExtParams copyParams{
+            static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+        DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
     }
 }
 
@@ -614,21 +524,6 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::GatherAndWrite()
     DataCopyExtParams scaleCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     DataCopyExtParams idxCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
 
-    // Quantization buffers
-    LocalTensor<float> quantFloatLocal;
-    LocalTensor<int8_t> quantInt8Local;
-    LocalTensor<float> quantScaleOutLocal;
-    DataCopyExtParams int8CopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(cols_ * sizeof(int8_t)), 0, 0, 0};
-    if (quantMode_ == 0 || quantMode_ == 1) {
-        quantFloatLocal = buf_.Get<float>()[quantFloatLocalOffset_ / sizeof(float)];
-        quantInt8Local = buf_.Get<int8_t>()[quantInt8LocalOffset_];
-    }
-    if (quantMode_ == 1) {
-        quantScaleOutLocal = buf_.Get<float>()[quantScaleOutLocalOffset_ / sizeof(float)];
-    }
-
-    int64_t colsAlignedInt8 = colsAligned_;
-
     for (int64_t fIdx = 0; fIdx < filteredCount_; fIdx++) {
         int32_t localFlatIdx = filteredPairsLocal.GetValue(fIdx * 2);
         int32_t expertOffset = filteredPairsLocal.GetValue(fIdx * 2 + 1);
@@ -653,95 +548,12 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::GatherAndWrite()
 
         SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
         if (newPos < activeNum_) {
-            if (quantMode_ == -1) {
-                // Unquantized: direct copy
-                DataCopyPad(
-                    expandedXGm_[static_cast<int64_t>(newPos) * cols_], xLocal[tokenRow * colsAligned_], xCopyParams);
-                if (isInputScale_) {
-                    DataCopyPad(expandedScaleGm_[newPos], scaleLocal[tokenRow * scaleSlotSize_], scaleCopyParams);
-                }
-
-            } else if (quantMode_ == 0) {
-                // Static quantization: x → float → *scale → +offset → int8
-                if constexpr (IsSameType<T, float>::value) {
-                    DataCopy(quantFloatLocal, xLocal[tokenRow * colsAligned_], colsAlignedInt8);
-                } else if constexpr (!IsSameType<T, int8_t>::value) {
-                    Cast(quantFloatLocal, xLocal[tokenRow * colsAligned_], RoundMode::CAST_NONE,
-                        static_cast<int32_t>(colsAlignedInt8));
-                    PipeBarrier<PIPE_V>();
-                }
-                Muls(quantFloatLocal, quantFloatLocal, staticQuantScale_, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                Adds(quantFloatLocal, quantFloatLocal, staticQuantOffset_, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
-                Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                SetDeqScale((half)1.000000e+00f);
-                LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
-                Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], quantInt8Local, int8CopyParams);
-
-            } else if (quantMode_ == 1) {
-                // Dynamic quantization: x → float → (smooth) → abs → max → /scale → int8
-                if constexpr (IsSameType<T, float>::value) {
-                    DataCopy(quantFloatLocal, xLocal[tokenRow * colsAligned_], colsAlignedInt8);
-                } else if constexpr (!IsSameType<T, int8_t>::value) {
-                    Cast(quantFloatLocal, xLocal[tokenRow * colsAligned_], RoundMode::CAST_NONE,
-                        static_cast<int32_t>(colsAlignedInt8));
-                    PipeBarrier<PIPE_V>();
-                }
-                if (isInputScale_) {
-                    LocalTensor<float> smoothRow = scaleLocal[tokenRow * scaleSlotSize_];
-                    Mul(quantFloatLocal, quantFloatLocal, smoothRow, cols_);
-                    PipeBarrier<PIPE_V>();
-                }
-                // Compute per-row scale: max(|x|) / 127
-                LocalTensor<float> tempLocal = quantScaleOutLocal;
-                Abs(quantFloatLocal, quantFloatLocal, cols_);
-                PipeBarrier<PIPE_V>();
-                ReduceMax(tempLocal, quantFloatLocal, quantFloatLocal, cols_);
-                SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-                float scaleValue = tempLocal.GetValue(0) / MAX_INT8;
-                // Re-read original data for quantization
-                if constexpr (IsSameType<T, float>::value) {
-                    DataCopy(quantFloatLocal, xLocal[tokenRow * colsAligned_], colsAlignedInt8);
-                } else if constexpr (!IsSameType<T, int8_t>::value) {
-                    Cast(quantFloatLocal, xLocal[tokenRow * colsAligned_], RoundMode::CAST_NONE,
-                        static_cast<int32_t>(colsAlignedInt8));
-                    PipeBarrier<PIPE_V>();
-                }
-                if (isInputScale_) {
-                    LocalTensor<float> smoothRow = scaleLocal[tokenRow * scaleSlotSize_];
-                    Mul(quantFloatLocal, quantFloatLocal, smoothRow, cols_);
-                    PipeBarrier<PIPE_V>();
-                }
-                if (scaleValue > 0.0f) {
-                    Muls(quantFloatLocal, quantFloatLocal, 1.0f / scaleValue, cols_);
-                } else {
-                    Duplicate(quantFloatLocal, static_cast<float>(0), cols_);
-                }
-                PipeBarrier<PIPE_V>();
-                LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
-                Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                SetDeqScale((half)1.000000e+00f);
-                LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
-                Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, colsAlignedInt8);
-                PipeBarrier<PIPE_V>();
-                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], quantInt8Local, int8CopyParams);
-                // Write per-row scale
-                Duplicate(quantScaleOutLocal, scaleValue, INT32_ONE_BLOCK_NUM);
-                PipeBarrier<PIPE_V>();
-                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                DataCopyPad(expandedScaleGm_[newPos], quantScaleOutLocal, scaleCopyParams);
+            // Copy x row: UB -> GM
+            DataCopyPad(
+                expandedXGm_[static_cast<int64_t>(newPos) * cols_], xLocal[tokenRow * colsAligned_], xCopyParams);
+            // Copy scale
+            if (isInputScale_) {
+                DataCopyPad(expandedScaleGm_[newPos], scaleLocal[tokenRow * scaleSlotSize_], scaleCopyParams);
             }
         }
     }
