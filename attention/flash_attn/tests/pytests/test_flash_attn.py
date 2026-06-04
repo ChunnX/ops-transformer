@@ -63,7 +63,7 @@ if __name__ == "__main__":
     if args.perf_mode:
         from pathlib import Path
         from utils.perf_runner import run_all_perf
-        from utils.perf_parser import parse_op_summary, compute_stats, _case_key
+        from utils.perf_parser import parse_op_summary, compute_stats
 
         cases_list = [normalize_params(all_cases[name]) for name in run_cases]
         out = Path(args.perf_output)
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
         entries = parse_op_summary(str(csv_path))
         stats, crashed = compute_stats(entries, cases_list, args.perf_runs,
-                                         args.perf_cold_thr, log_dir=str(out))
+                                        args.perf_cold_thr, log_dir=str(out))
 
         SEP = "─" * 110
         print(f"\n┌{SEP}┐")
@@ -85,11 +85,13 @@ if __name__ == "__main__":
         print(f"├{SEP}┤")
         print(f"│  {'Case':<55}  {'Avg(us)':>9}  {'Min(us)':>9}  {'Max(us)':>9}  {'Mode':>6}  │")
         print(f"├{SEP}┤")
-        for name in run_cases:
-            s = stats.get(_case_key(normalize_params(all_cases[name])))
-            if not s: continue
+        for idx, name in enumerate(run_cases):
+            if idx >= len(stats):
+                continue
+            s = stats[idx]
+            is_crash = s["mode"] == "CRASH"
             short = name[:55] if len(name) <= 55 else name[:52] + "..."
-            if s["mode"] == "CRASH":
+            if is_crash:
                 print(f"│  {short:<55}  {'-':>9}  {'-':>9}  {'-':>9}  {'CRASH':>6}  │")
             else:
                 print(f"│  {short:<55}  {s['avg_us']:>9.2f}  {s['min_us']:>9.2f}  "
@@ -101,14 +103,15 @@ if __name__ == "__main__":
         with open(perf_csv, "w", newline="") as f:
             w = csv_mod.DictWriter(f, ["#","case","dir","avg_us","min_us","max_us","mode","error"])
             w.writeheader()
-            for idx, name in enumerate(run_cases, 1):
-                s = stats.get(_case_key(normalize_params(all_cases[name])))
-                if not s: continue
+            for idx, name in enumerate(run_cases):
+                if idx >= len(stats):
+                    continue
+                s = stats[idx]
                 is_crash = s["mode"] == "CRASH"
                 w.writerow(dict(
-                    **{"#": idx},
+                    **{"#": idx + 1},
                     case=name,
-                    dir=f"case_{idx-1:04d}",
+                    dir=f"case_{idx:04d}",
                     avg_us="" if is_crash else s["avg_us"],
                     min_us="" if is_crash else s["min_us"],
                     max_us="" if is_crash else s["max_us"],

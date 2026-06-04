@@ -2,7 +2,7 @@
 
 import json
 import csv
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -44,41 +44,46 @@ def compute_stats(entries: List[Tuple[float, float]],
                   cases: List[Dict],
                   runs: int,
                   cold_thr: int,
-                  log_dir: str = None) -> Tuple[Dict[str, Dict], List[str]]:
+                  log_dir: str = None) -> Tuple[List[Dict], List[int]]:
     """Group entries by case and compute statistics.
 
-    Uses _perf_log.jsonl for crash detection and entry alignment.
+    Returns:
+        results: list of {avg_us, min_us, max_us, mode, error} indexed by case order
+        crashed: list of case indices that crashed
     """
-    hot_cases = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) > cold_thr]
-    cold_cases = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) <= cold_thr]
+    hot = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) > cold_thr]
+    cold = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) <= cold_thr]
+    total = len(cases)
 
-    # Build tag→case key mapping from log
+    # Build index→tag mapping
+    idx_to_tag = {}
+    for tag_idx, (orig_idx, c) in enumerate(hot):
+        idx_to_tag[orig_idx] = f"hot{tag_idx}"
+    for tag_idx, (orig_idx, c) in enumerate(cold):
+        idx_to_tag[orig_idx] = f"cold{tag_idx}"
+
     perf_log = _read_perf_log(log_dir) if log_dir else {}
-    tag_to_key = {}
-    for idx, (orig_i, c) in enumerate(hot_cases):
-        tag_to_key[f"hot{idx}"] = _case_key(c)
-    for idx, (orig_i, c) in enumerate(cold_cases):
-        tag_to_key[f"cold{idx}"] = _case_key(c)
 
-    # Determine crashed cases from log
-    crashed_tags = {tag for tag, info in perf_log.items()
+    # Determine crashed case indices
+    crashed_tags = {tag: info for tag, info in perf_log.items()
                     if not info.get("ok", False)}
-    crash_keys = {tag_to_key.get(t, t) for t in crashed_tags}
+    crashed_idxs = set()
+    for orig_idx, tag in idx_to_tag.items():
+        if tag in crashed_tags:
+            crashed_idxs.add(orig_idx)
 
     # Build expected entries, skipping crashed cases
     expected = []
-    for idx, (orig_i, c) in enumerate(hot_cases):
-        tag = f"hot{idx}"
-        if tag in crashed_tags:
+    for tag_idx, (orig_idx, c) in enumerate(hot):
+        if orig_idx in crashed_idxs:
             continue
         for _ in range(runs):
-            expected.append((_case_key(c), "hot"))
-    for idx, (orig_i, c) in enumerate(cold_cases):
-        tag = f"cold{idx}"
-        if tag in crashed_tags:
+            expected.append((orig_idx, "hot"))
+    for tag_idx, (orig_idx, c) in enumerate(cold):
+        if orig_idx in crashed_idxs:
             continue
         for _ in range(runs):
-            expected.append((_case_key(c), "cold"))
+            expected.append((orig_idx, "cold"))
 
     if len(entries) > len(expected) and expected:
         ratio = len(entries) // len(expected)
@@ -90,30 +95,25 @@ def compute_stats(entries: List[Tuple[float, float]],
     raw = defaultdict(lambda: {"hot": [], "cold": []})
 
     for i in range(n):
-        c_key, mode = expected[i]
-        raw[c_key][mode].append(entries[i][1])
+        orig_idx, mode = expected[i]
+        raw[orig_idx][mode].append(entries[i][1])
 
-    result = {}
+    results = []
     crashed = []
-
-    # Add crashed cases first
-    for key in crash_keys:
-        error_msg = ""
-        for tag, info in perf_log.items():
-            if tag_to_key.get(tag) == key:
-                error_msg = info.get("error", "").replace('"', "'")
-                break
-        result[key] = {
-            "avg_us": 0.0, "min_us": 0.0, "max_us": 0.0,
-            "mode": "CRASH",
-            "error": error_msg,
-        }
-        crashed.append(key)
-
-    # Add OK cases
-    for key, d in raw.items():
-        if key in crash_keys:
+    for orig_idx in range(total):
+        d = raw.get(orig_idx, {"hot": [], "cold": []})
+        if orig_idx in crashed_idxs or (not d["hot"] and not d["cold"]):
+            error_msg = ""
+            tag = idx_to_tag.get(orig_idx, "")
+            info = crashed_tags.get(tag, {})
+            error_msg = info.get("error", "").replace('"', "'")
+            results.append({
+                "avg_us": 0.0, "min_us": 0.0, "max_us": 0.0,
+                "mode": "CRASH", "error": error_msg,
+            })
+            crashed.append(orig_idx)
             continue
+
         if d["hot"]:
             keep = d["hot"][1:]
             avg = sum(keep) / len(keep) if keep else 0.0
@@ -126,21 +126,16 @@ def compute_stats(entries: List[Tuple[float, float]],
             mode = "cold"
             all_durs = d["cold"]
         else:
+            results.append({"avg_us": 0.0, "min_us": 0.0, "max_us": 0.0,
+                            "mode": "CRASH", "error": ""})
+            crashed.append(orig_idx)
             continue
-        result[key] = {
+
+        results.append({
             "avg_us": round(avg, 2),
             "min_us": round(min(all_durs), 2) if all_durs else 0.0,
             "max_us": round(max(all_durs), 2) if all_durs else 0.0,
-            "mode": mode,
-        }
+            "mode": mode, "error": "",
+        })
 
-    return result, crashed
-
-
-def _case_key(c: Dict) -> str:
-    parts = []
-    for k in ("B", "N1", "N2", "S1", "S2", "D", "Dtype",
-              "layout_q", "layout_kv", "mask_mode"):
-        if k in c:
-            parts.append(f"{k}={c[k]}")
-    return "_".join(parts)
+    return results, crashed
