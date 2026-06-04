@@ -22,15 +22,22 @@ class CPUBackend(Backend):
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        """CPU Golden 计算。
-
-        inputs 中的 Q/K/V 已经在 CPU 上（由 orchestrator 从 device 拷贝）。
-        """
         from backends.cpu_impl import tforward
 
-        q = inputs["q"].clone().float()
-        k = inputs["k"].clone().float()
-        v = inputs["v"].clone().float()
+        layout = params.get("input_layout", params.get("layout_q", "BNSD"))
+
+        if layout == "BSND":
+            q = inputs["q"].permute(0, 2, 1, 3).contiguous().clone().float()
+            k = inputs["k"].permute(0, 2, 1, 3).contiguous().clone().float()
+            v = inputs["v"].permute(0, 2, 1, 3).contiguous().clone().float()
+        elif layout == "TND":
+            q = inputs["q"].clone().float()
+            k = inputs["k"].clone().float()
+            v = inputs["v"].clone().float()
+        else:  # BNSD / BSH
+            q = inputs["q"].clone().float()
+            k = inputs["k"].clone().float()
+            v = inputs["v"].clone().float()
 
         s1 = q.shape[2] if q.dim() == 4 else q.shape[1]
         s2 = k.shape[2] if k.dim() == 4 else k.shape[1]
