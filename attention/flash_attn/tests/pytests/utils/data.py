@@ -129,9 +129,9 @@ def rearrange_by_block_table(bnsd_tensor, block_table, block_size, b, act_seq_le
         blk_elem = 32 // dtype_sizeof(kv_dtype)
         page_cache_tensor = page_cache_tensor.reshape(page_cache_tensor.shape[0],
                                                        page_cache_tensor.shape[1],
-                                                       page_cache_tensor.shape[2] // blk_elem,
-                                                       blk_elem,
-                                                       page_cache_tensor.shape[3]).permute(0, 1, 2, 4, 3)
+                                                       page_cache_tensor.shape[2],
+                                                       page_cache_tensor.shape[3] // blk_elem,
+                                                       blk_elem).permute(0, 1, 3, 2, 4)
         return page_cache_tensor
     else:
         return None
