@@ -15,6 +15,7 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/rope_interleaved_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/rope_rotate_half_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/rope_rotate_matrix_tiling.cpp
+        ${PROJECT_SOURCE_DIR}/third_party/opbase/src/op_common/log/log.cpp
         )
     # 使用AddOpTestCase
     # param1：算子名称，以kernel方式命名
