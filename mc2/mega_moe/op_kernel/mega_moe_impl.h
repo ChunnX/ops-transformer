@@ -126,15 +126,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     // GMM1 pingpong 开启条件：交织 + 两块 UbFirst/UbSecond 都能塞进 UB。
     // L1_TILE_M=256 + ElementC=bf16(2B)：2 * 256*256*2 = 256KB ≤ UB ✓；
-    // 如果 ElementC 是 float(4B)：2 * 256*256*4 = 512KB ✗。本 branch 走 bf16，pingpong 开。
-    //
-    // [TEMP DISABLE] 临时关闭 wave 级 pingpong，测试 bf16 单独 vs float 的耗时差。
-    // 关掉之后所有 wave 走 non-pingpong 串行分支（单 UbFirst + 每 iter WaitForVector）。
-    // gmm1PingPongIdx_ 由于 constexpr 守卫（L355）在 false 路径下不翻转，永远 0，无副作用。
-    // 验证完后把下面 `&& false` 去掉即可恢复。
+    // 如果 ElementC 是 float(4B)：2 * 256*256*4 = 512KB ✗。
     constexpr bool kGmm1Pingpong = IsInterleaved &&
-        (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC) * 2U <= UB_CAPACITY_BYTES) &&
-        false;
+        (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC) * 2U <= UB_CAPACITY_BYTES);
 
     int64_t ubOffset = 0;
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
@@ -206,9 +200,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
-                // [TRACE] sp2: AIC 第一个 tile 等 dispatch flag 完成
-                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-                                              MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
             }
 
             // 等 AIV 释放 UB 槽：
@@ -222,6 +213,12 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 if (vecSetSyncCom) {
                     WaitForVector();
                 }
+            }
+
+            // [TRACE] sp2: AIC 第一个 tile 等所有依赖完成（dispatch flag + UB），即将发射 mmad
+            if (loopIdx == coreInGroup) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
             }
 
             auto gmBlockA = gmA.Slice(
