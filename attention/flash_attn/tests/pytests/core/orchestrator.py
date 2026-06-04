@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
 from utils.compare import check_result
+from utils.data import trans_bnsd_to_layout
 
 
 def run_case(params: dict,
@@ -13,24 +14,15 @@ def run_case(params: dict,
              golden: Backend,
              spec: InputSpec = None,
              comparators: List[Backend] = None) -> dict:
-    """标准测试流程。
-
-    1. 在 primary.device 上生成数据
-    2. 拷贝 CPU → golden 计算
-    3. primary 计算
-    4. 精度对比 (primary vs golden)
-    5. (可选) comparator 计算 + 对比
-
-    Returns: {"attn": {...}, "lse": {...}}
-    """
     spec = spec or flash_attn_inputs
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
+    out_layout = params.get("layout_out", layout)
 
-    # 1. 在 primary device 上生成输入
+    # 1. 生成数据
     inputs = spec.generate(params, device=primary.device, layout=layout)
 
-    # 2. CPU golden
+    # 2. CPU golden（始终在 BNSD 格式下计算）
     print(f"  [golden] CPU 参考计算...")
     cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
     golden_out = golden.compute(cpu_inputs, params)
@@ -39,9 +31,12 @@ def run_case(params: dict,
     print(f"  [primary] {primary.name} 计算...")
     primary_out = primary.compute(inputs, params)
 
-    # 4. 精度对比
-    cpu_out = golden_out["out"]
-    dev_out = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
+    # 4. 精度对比 —— 统一到 target output_layout 再比
+    cpu_raw = golden_out["out"]
+    dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
+
+    cpu_out = trans_bnsd_to_layout(cpu_raw, out_layout, **params) if out_layout != "BNSD" else cpu_raw
+    dev_out = trans_bnsd_to_layout(dev_raw, out_layout, **params) if out_layout != "BNSD" else dev_raw
 
     print(f"  [compare] CPU vs {primary.name}")
     attn_result = check_result(f"CPU_vs_{primary.name}",
@@ -59,7 +54,7 @@ def run_case(params: dict,
             lse_result = check_result("LSE", cpu_lse.float(), dev_lse.float(),
                                       except_label="CPU_lse", comp_label=f"{primary.name}_lse")
 
-    # 5. 额外对比 (GPU vs NPU 等)
+    # 5. 额外对比
     for comp in comparators:
         comp_inputs = {k: v.to(comp.device) for k, v in inputs.items()}
         comp_out = comp.compute(comp_inputs, params)
