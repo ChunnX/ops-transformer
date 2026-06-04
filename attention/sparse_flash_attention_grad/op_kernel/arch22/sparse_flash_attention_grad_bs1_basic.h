@@ -36,7 +36,7 @@ public:
     __aicore__ inline SelectedAttentionGradBasic(){};
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out,
                                    GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
-                                   GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
+                                   GM_ADDR topk_indices, bool kv_merge, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
                                    GM_ADDR query_rope, GM_ADDR key_rope,
                                    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope, 
                                    GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
@@ -169,6 +169,7 @@ private:
     RunInfo tmpScatterRunInfo[2];
     RunInfo tmpScatterRunInfoDet;
     bool isValidBegin{false};
+    bool kvMerge{false};
     // gm
     GlobalTensor<int32_t> topkIndicesGm;
 };
@@ -228,10 +229,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Init(const TILING_CLAS
 template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR softmax_max,
-    GM_ADDR softmax_sum, GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
+    GM_ADDR softmax_sum, GM_ADDR topk_indices, bool kv_merge, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
     GM_ADDR query_rope, GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope,
     GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
 {
+    kvMerge = kv_merge;
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
     if constexpr (IS_BSND == false) {
@@ -309,7 +311,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         TPipe pipeVec;
         VecOp<SFAGT> vecOp;
         vecOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
-                   actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, tilingData, &pipeVec);
+                   actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, kvMerge, tilingData, &pipeVec);
         SyncAll();
         tmpScatterRunInfo[0].changeS1 = false;
         tmpScatterRunInfo[1].changeS1 = false;
@@ -403,9 +405,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if (kvMerge) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
@@ -493,7 +501,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         TPipe pipeVec;
         VecOp<SFAGT> vecOp;
         vecOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
-                   actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, tilingData, &pipeVec);
+                   actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, kvMerge, tilingData, &pipeVec);
         SyncAll();
         bool isCruS1Empty = false;
         tmpScatterRunInfoDet.changeS1 = false;
@@ -613,9 +621,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if (kvMerge) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
