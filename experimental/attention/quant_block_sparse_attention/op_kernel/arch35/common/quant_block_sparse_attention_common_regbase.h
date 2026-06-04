@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file flash_attention_score_common_regbase.h
+ * \file quant_block_sparse_attention_common_regbase.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_SCORE_COMMON_REGBASE_H

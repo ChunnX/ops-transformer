@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file infer_flash_attention_comm.h
+ * \file quant_block_sparse_attention_comm.h
  * \brief
  */
 #ifndef INFER_FLASH_ATTENTION_COMM_H

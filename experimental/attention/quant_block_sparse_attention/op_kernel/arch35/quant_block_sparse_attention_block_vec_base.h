@@ -18,14 +18,14 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_VEC_BASE_H_
 #define QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_VEC_BASE_H_
 #include "common/util_regbase.h"
-#include "common/infer_flash_attention_comm.h"
-#include "common/flash_attention_score_common_regbase.h"
+#include "common/quant_block_sparse_attention_comm.h"
+#include "common/quant_block_sparse_attention_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_div_cast.h"
-#include "common/flash_attention_score_tiling_regbase.h"
+#include "common/quant_block_sparse_attention_tiling_regbase.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
