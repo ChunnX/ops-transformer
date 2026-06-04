@@ -299,7 +299,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                 this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
                 if (actualS2Len <= 0 && actualS1Len != 0) {
                     int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[i - 1];
-                    if (actualS1Len < 0 && accumSize > 0) {
+                    if (actualS1Len < 0 && accumSize > 0) { 
                         actualS1Len = constInfo.s1Size - accumSize;
                         int64_t frontCoreNum = actualS1Len % (this->sharedParams.coreNum * 2);
                         int64_t splitFactor = frontCoreNum > 0 ? 1 : 0;
