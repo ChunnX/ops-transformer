@@ -83,6 +83,7 @@ private:
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
 
 protected:
     GlobalTensor<float> lseSumFdGm;
@@ -190,7 +191,7 @@ public:
     }
     __aicore__ inline void InitParams()
     {
-        this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
+        this->dSizeV_Align = this->Align(dVBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
     __aicore__ inline void InitDecodeParams()
     {
@@ -259,16 +260,16 @@ protected:
         DataCopyExtParams copyInParams;
         DataCopyPadExtParams<T> copyInPadParams;
         copyInParams.blockCount = dealRowCount;
-        copyInParams.blockLen = constInfo.dSizeV * sizeof(T);
+        copyInParams.blockLen = dVBaseSize * sizeof(T);
         copyInParams.srcStride = 0;
-        copyInParams.dstStride = (this->dSizeV_Align - constInfo.dSizeV) / BLOCK_ELEMENT_NUM;
+        copyInParams.dstStride = (this->dSizeV_Align - dVBaseSize) / BLOCK_ELEMENT_NUM;
 
         copyInPadParams.isPad = true;
         copyInPadParams.leftPadding = 0;
-        copyInPadParams.rightPadding = (this->dSizeV_Align - constInfo.dSizeV) % BLOCK_ELEMENT_NUM;
+        copyInPadParams.rightPadding = (this->dSizeV_Align - dVBaseSize) % BLOCK_ELEMENT_NUM;
         copyInPadParams.paddingValue = 0;
-        uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV +                 // taskoffset + g轴offset
-                                         splitKVIndex * s1BaseSize * constInfo.dSizeV; // 份数offset
+        uint64_t combineAccumOutOffset = startRow * dVBaseSize +                 // taskoffset + g轴offset
+                                         splitKVIndex * s1BaseSize * dVBaseSize; // 份数offset
 
         DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
     }
@@ -318,14 +319,14 @@ protected:
                         .gS1Idx = taskInfo.gS1Idx + startRow,
                         .dIdx = 0,
                         .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+                        .dDealSize = dVBaseSize};
 
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+                                              dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -333,21 +334,21 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+                                              dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -366,7 +367,7 @@ protected:
         DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
         DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
+        uint32_t shapeArray[] = {dealRowCount, dVBaseSize};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align);
