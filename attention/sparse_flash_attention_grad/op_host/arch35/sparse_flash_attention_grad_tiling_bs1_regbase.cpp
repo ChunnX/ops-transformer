@@ -413,7 +413,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
     } else {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode = 0 or 3, now sparse_mode=%d.", sparse_mode);
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode = 0 or 3, now sparse_mode=%d.",
+                sparse_mode);
         return ge::GRAPH_FAILED;
     }
     if (dimDq != D_SIZE && dimDq != D_SIZE) {
