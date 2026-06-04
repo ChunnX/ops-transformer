@@ -53,7 +53,7 @@ public:
 
 private:
     using T = float;
-    using X_T = typename AscendC::Conditional<COMP::xDtype == X_DTYPE::BF16, bfloat16_t, half>::type;
+    using X_T = hifloat8_t;
     
     __aicore__ inline uint32_t GetMSize(const RunInfo &info, uint32_t coffId);
     __aicore__ inline void CopyXGmToL1(LocalTensor<X_T> xL1Tensor, uint32_t hIdx, uint32_t kBase);
@@ -353,9 +353,9 @@ __aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::ComputeMm1(const 
     if (mSize == 0) {
         return;
     }
-    static constexpr uint32_t K_L1_BASE = 128;
+    static constexpr uint32_t K_L1_BASE = 256;
     static constexpr uint32_t M_L0_BASE = 128;
-    static constexpr uint32_t K_L0_BASE = 128;
+    static constexpr uint32_t K_L0_BASE = 256;
     static constexpr uint32_t N_L0_BASE = 128;
     uint32_t nCoff =  (uint32_t)COMP::coff;
 
