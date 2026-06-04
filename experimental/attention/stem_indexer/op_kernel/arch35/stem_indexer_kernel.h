@@ -609,7 +609,6 @@ __aicore__ inline void SIPreload<SIT>::Process()
 
     ProcessMain();
 
-    ProcessDecode();
 }
 
 template <typename SIT>
@@ -658,9 +657,20 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             runInfo.s2Start = splitCoreInfo.s2Start;
             runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
-            for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
-                ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
-                ++gloop;
+            // 短路分支：validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS 时直接输出连续索引
+            const uint32_t INIT_BLOCKS = 4;
+            const uint32_t WINDOW_BLOCKS = 4;
+            if (tempLoopInfo.validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS) {
+                // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
+                vectorService.ProcessDirectOutput(runInfo, tempLoopInfo.validS2Len);
+            } else {
+                // 正常 TopK 流程：减去 WINDOW_BLOCKS
+                tempLoopInfo.validS2Len = tempLoopInfo.validS2Len - WINDOW_BLOCKS;
+                
+                for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
+                    ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
+                    ++gloop;
+                }
             }
             splitCoreInfo.s2Start = 0;
         }
@@ -687,22 +697,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
-        }
-    }
-}
-
- template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessDecode()
-{
-    if ASCEND_IS_AIV {
-        vectorService.InitLDBuffers(pipe, ldInfo);
-        ICachePreLoad(LD_PREFETCH_LEN);
-        SyncAll();
-        if (ldInfo.isLdCoreEnable) {
-            vectorService.ProcessLD();
-        }
+        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
 
