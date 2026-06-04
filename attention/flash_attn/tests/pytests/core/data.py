@@ -227,33 +227,20 @@ def _generate(method, shape, dtype, device, rng, **kw):
 
 flash_attn_inputs = (
     InputSpec("flash_attn")
-    # q — 始终按 layout_q
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "q_range" in p)
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             when=lambda p: "q_range" not in p)
-    # k/v — 按 layout_kv（PA 时 shape 不同）
-    .tensor("k", layout={
-            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
-            "PA_BBND": "num_blocks,block_size,N2,D", "PA_BNBD": "num_blocks,N2,block_size,D",
-            "PA_NZ":   "num_blocks,N2,block_size,D"},
+    # k/v 始终按 BNSD/BSND/TND 生成；PA 转换在 NPUBackend 里做
+    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "k_range" in p, layout_override="layout_kv")
-    .tensor("k", layout={
-            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
-            "PA_BBND": "num_blocks,block_size,N2,D", "PA_BNBD": "num_blocks,N2,block_size,D",
-            "PA_NZ":   "num_blocks,N2,block_size,D"},
-            when=lambda p: "k_range" not in p, layout_override="layout_kv")
-    .tensor("v", layout={
-            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
-            "PA_BBND": "num_blocks,block_size,N2,_V", "PA_BNBD": "num_blocks,N2,block_size,_V",
-            "PA_NZ":   "num_blocks,N2,block_size,_V"},
+            when=lambda p: "k_range" in p)
+    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
+            when=lambda p: "k_range" not in p)
+    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "v_range" in p, layout_override="layout_kv")
-    .tensor("v", layout={
-            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
-            "PA_BBND": "num_blocks,block_size,N2,_V", "PA_BNBD": "num_blocks,N2,block_size,_V",
-            "PA_NZ":   "num_blocks,N2,block_size,_V"},
-            when=lambda p: "v_range" not in p, layout_override="layout_kv")
+            when=lambda p: "v_range" in p)
+    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
+            when=lambda p: "v_range" not in p)
 )
