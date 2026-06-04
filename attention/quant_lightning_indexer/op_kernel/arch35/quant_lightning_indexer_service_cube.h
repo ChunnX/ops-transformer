@@ -119,7 +119,8 @@ template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    s2BasicBlock_ = (constInfo_.tSize <= 256) ? 256 : 128;
+    // 全场景使用较小的s2BasicBlock（UB大小减少适配）
+    s2BasicBlock_ = 128;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK; // 128*128
 }
 

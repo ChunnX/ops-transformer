@@ -176,10 +176,9 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.s1BaseSize = S1_BASE_SIZE;
 
-    if (constInfo.tSize <= 64) {
-        constInfo.mBaseSize /= 2;
-        constInfo.s1BaseSize /= 2;
-    }
+    // 全场景使用减半的基本块大小（UB大小减少适配）
+    constInfo.mBaseSize /= 2;
+    constInfo.s1BaseSize /= 2;
 
     constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
 }
