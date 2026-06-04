@@ -106,8 +106,6 @@ public:
     static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
-    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
-    static constexpr bool useNz = CubeBlockType::useNz;
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD =  CubeBlockType::splitD;
@@ -183,7 +181,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope);
+        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, key, value, blockTable);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -300,7 +298,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
             }
         }
     }
-    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
     cubeBlock.InitDequantParams(deqScaleQ, deqScaleK, deqScaleV);
 }
 
@@ -308,9 +306,6 @@ template <typename ChildClass, typename CubeBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitMMResBuf()
 {
     uint32_t mm1OutDtype = sizeof(T);
-    if constexpr (useNz) {
-        mm1OutDtype = sizeof(half);
-    }
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
     if constexpr (isMxfp8FullQuant) {
         mm1ResultSize /= 2;
@@ -340,13 +335,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     if ASCEND_IS_AIV {
-        if constexpr (useNz) {
-            bmm1Buffers.Get().SetCrossCore<true>();
-            bmm1Buffers.Get().SetCrossCore<true>();
-        } else {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
-        }
+        bmm1Buffers.Get().SetCrossCore();
+        bmm1Buffers.Get().SetCrossCore();
     }
 }
  
@@ -555,7 +545,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runParam.actualS2Size = constInfo.s2Size;
     }
     runParam.s1RealSize = Min(s1BaseSize, runParam.actualS1Size - runParam.s1oIdx * s1BaseSize);
-    if constexpr (useDn || useNz) {
+    if constexpr (useDn) {
         runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
         runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
     } else {
