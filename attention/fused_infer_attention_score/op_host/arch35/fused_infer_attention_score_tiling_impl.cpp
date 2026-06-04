@@ -95,7 +95,7 @@ void FusedInferAttentionScoreTilingImpl::SetIsIFA(const FiaTilingInfo &fiaInfo)
     bool isTransposeLayout = layoutStr == "BNSD_BSND" || layoutStr == "BSND_BNSD" || layoutStr == "BSH_BNSD" ||
             layoutStr == "NTD" || layoutStr == "NTD_TND";
     if (fiaInfo.s1Size == 1 && !fiaInfo.enableAlibiPse && !isTransposeLayout &&
-        fiaInfo.fullQuantMode != FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) {
+        fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
         isIFAFlag_ =true;
         return;
     }
@@ -286,7 +286,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
         }
         bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
         if (checkDtype && checkQueryAndValueS && checkSparseMode && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D128 &&
-            fiaInfo.fullQuantMode != FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) {
+            fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
             softmaxSOuterFactor = SOUTER_32;
@@ -317,7 +317,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
         sInnerFactor_ = SINNER_128;
         softmaxSOuterFactor = SOUTER_64;
     }
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
         sInnerFactor_ = SINNER_512;
     }
@@ -767,7 +767,7 @@ void FusedInferAttentionScoreTilingImpl::SplitNBSeq(const FiaTilingInfo &fiaInfo
 
 bool FusedInferAttentionScoreTilingImpl::CheckFlashDecode(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.s1Size == 1 && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT) {
+    if (fiaInfo.s1Size == 1 && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
         return false;
     }
     float flashDecodeBNRatio = 0.4F;  // 0.4, 经验值
@@ -1142,9 +1142,12 @@ bool FusedInferAttentionScoreTilingImpl::CheckEnableDN(const FiaTilingInfo &fiaI
     constexpr uint32_t dLimitDN = DSIZE_128;
     constexpr uint32_t sOuterLimitDN = SOUTER_64;
     bool res = !fiaInfo.attenMaskFlag && !fiaInfo.pseShiftFlag && !fiaInfo.enableAlibiPse &&
-               fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.qkHeadDim <= dLimitDN &&
+               fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION &&
+               fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.qkHeadDim <= dLimitDN &&
                fiaInfo.vHeadDim <= dLimitDN && !fiaInfo.sysPrefixFlag &&
-               (fiaInfo.quantMode == FiaQuantMode::NO_QUANT || fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) && sOuterFactor_ * CV_RATIO > sOuterLimitDN;
+               (fiaInfo.quantMode == FiaQuantMode::NO_QUANT ||
+                fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) &&
+                sOuterFactor_ * CV_RATIO > sOuterLimitDN;
     return res;
 }
 
@@ -1174,10 +1177,11 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
             fiaInfo.qkHeadDim == DSIZE_64) {
             sInnerFactor_ = SINNER_256;
         }
-        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT  && fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= 128) {
+        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
+            fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= 128) {
             sInnerFactor_ = SINNER_256;
         }
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
             sOuterFactor_ = SOUTER_64;
             sInnerFactor_ = SINNER_512;
         }
@@ -1360,13 +1364,13 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyQuantMode(const FiaTilin
 
     if (fiaInfo.quantMode == FiaQuantMode::FULL_QUANT) {
         if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
-            tilingKeyInfo_.quantMode = FULLQUANT_MODE_PER_TOKEN_HEAD;
+            tilingKeyInfo_.quantMode = FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR;
         } else if (*fiaInfo.opParamInfo.keyAntiquantMode == 7 && *fiaInfo.opParamInfo.valueAntiquantMode == 7 &&
                    *fiaInfo.opParamInfo.queryQuantMode == 7) {
-            tilingKeyInfo_.quantMode = PerBlock;
+            tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_PERBLOCK;
         } else if (*fiaInfo.opParamInfo.keyAntiquantMode == 6 && *fiaInfo.opParamInfo.valueAntiquantMode == 8 &&
                    *fiaInfo.opParamInfo.queryQuantMode == 6){ // 6: per_token_group, 8: per_channel_group
-            tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
+            tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_MXFP8_PREFILL;
         } else {
             tilingKeyInfo_.quantMode = FullQuantMode;
         }
