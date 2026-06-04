@@ -544,7 +544,8 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                                 uint64_t gmOffsetK = tailKBOffset + kNStartOffset +
                                     static_cast<uint64_t>(kvNIncreIdx * embed);
-                                uint64_t sWorkspaceIncreOffset = static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
+                                uint64_t sWorkspaceIncreOffset =
+                                    static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                                 uint64_t gmOffsetS =
                                     static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                     curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset);
