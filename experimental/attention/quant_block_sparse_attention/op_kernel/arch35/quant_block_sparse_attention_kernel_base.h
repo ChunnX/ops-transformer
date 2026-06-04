@@ -19,7 +19,7 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_BASE_H_
 #define QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_BASE_H_
 #include "quant_block_sparse_attention_block_cube.h"
-#include "quant_block_sparse_attention_block_vec.h"
+// #include "quant_block_sparse_attention_block_vec.h"
 #include "common/flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -56,7 +56,7 @@ struct Bmm2ResBuffSel {
 }
 
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+template <typename ChildClass, typename CubeBlockType>
 class QuantBlockSparseAttentionKernelBase {
 public:
     ARGS_TRAITS;
@@ -155,11 +155,11 @@ public:
 
     /* 模板库Block */
     CubeBlockType cubeBlock;
-    VecBlockType vecBlock;
+    // VecBlockType vecBlock;
 };
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitBaseAPI(
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitBaseAPI(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
@@ -180,9 +180,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         this->tilingData = tiling;
     }
     this->pipe = tPipe;
-    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
-        attenMaskInfo, pseInfo);
-    vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
+    // vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
+    //     attenMaskInfo, pseInfo);
+    // vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
     if ASCEND_IS_AIC {
@@ -206,8 +206,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     this->InitLocalBuffer();
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
 {
     if constexpr (isInfer) {
         if constexpr (enableKVPrefix) {
@@ -222,8 +222,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitGlobalBuffer(
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
@@ -266,7 +266,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         }
     }
 
-    vecBlock.InitDropOut(dropMask, workspace);
+    // vecBlock.InitDropOut(dropMask, workspace);
     uint64_t singleCoreOffset = 0;
     if constexpr (!bmm2Write2Ub) {
         int64_t bmm2ResBlock = this->sharedParams.dSizeV;
@@ -287,10 +287,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         bmm2ResGmBuffers.Init(gmBufferManager, mm2Offset);
         workspace += (totalOffset + mm2Offset * 3);
     }
-    vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum,
-        workspace, singleCoreOffset,
-        this->aicIdx, constInfo);
+    // vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
+    //     prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
             int64_t actualS1Len;
@@ -311,9 +309,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                         accumSize = accumSize + innerOffset1 + innerOffset2;
                         actualS1Len = s1SizeInner + (constInfo.aivIdx >= frontCoreNum ? 0 : splitFactor);
                     }
-                    GlobalTensor<OUTPUT_T> attentionOutEodGm = this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv];
-                    GlobalTensor<float> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
-                    GlobalTensor<float> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
+                    // GlobalTensor<OUTPUT_T> attentionOutEodGm = this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv];
+                    // GlobalTensor<float> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
+                    // GlobalTensor<float> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
                     AscendC::Fill<OUTPUT_T>(attentionOutEodGm, actualS1Len * this->constInfo.n2GDv, static_cast<OUTPUT_T>(0.0));
                     AscendC::Fill<float>(softmaxMaxEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
                     AscendC::Fill<float>(softmaxSumEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
@@ -326,8 +324,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     cubeBlock.InitDequantParams(deqScaleQ, deqScaleK, deqScaleV);
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitMMResBuf()
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitMMResBuf()
 {
     uint32_t mm1OutDtype = sizeof(T);
     if constexpr (useNz) {
@@ -372,14 +370,14 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
 }
  
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::InitLocalBuffer()
 {
-    vecBlock.InitLocalBuffer(pipe, constInfo);
+    // vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeConstexpr()
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::ComputeConstexpr()
 {
     constInfo.s1BaseSize = s1BaseSize;
     constInfo.s2BaseSize = s2BaseSize;
@@ -545,14 +543,14 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     GetDerived()->InitUniqueConstInfo();
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::Process()
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::Process()
 {
     GetDerived()->Process();
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(int64_t boIdx,
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::GetSeqQlenKvlenByBoidx(int64_t boIdx,
     int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(boIdx == 0)) {
@@ -564,8 +562,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     actualSeqKvlen = actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx - 1];
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeAxisIdx(
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::ComputeAxisIdx(
     int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
 {
     // 计算轴的idx
@@ -619,8 +617,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::SetRunInfo(
     RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
@@ -661,8 +659,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     GetDerived()->InitUniqueRunInfo(runParam, runInfo);
 }
 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+template <typename ChildClass, typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType>::ComputeBmm1Tail(
     RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
 {
     // ------------------------S1 Base Related---------------------------
