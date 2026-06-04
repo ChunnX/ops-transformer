@@ -112,8 +112,9 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
-    // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
+    // 与 FA_MTE3_TO_V_0/1 错开，避免 ClearOutput 与 vec1/vec2 流水争用同一 MTE3_V id
+    static constexpr uint32_t initOutputEventId = 6U;
+    // 静态 event ID 常量（避开 6/7 为跨核 mode4；initOutput 已占用 MTE3_V-6）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
     static constexpr uint32_t FA_V_TO_MTE3_0     = 0U;
@@ -122,10 +123,16 @@ public:
     static constexpr uint32_t FA_V_TO_MTE2_ID    = 2U;
     static constexpr uint32_t FA_MTE3_TO_MTE2_ID = 2U;
     static constexpr uint32_t FA_MTE2_TO_V_SINK  = 4U;
-    // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5）
+    // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5；subBlock1 用 8/9 避免双 subblock 抢同一 flag）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
-    // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_SB1_0 = 8U;
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_SB1_1 = 9U;
+    static constexpr uint32_t FA_MTE3_TO_V_SB1_0 = 8U;
+    static constexpr uint32_t FA_MTE3_TO_V_SB1_1 = 9U;
+    static constexpr uint32_t FA_V_TO_MTE3_SB1_0 = 8U;
+    static constexpr uint32_t FA_V_TO_MTE3_SB1_1 = 9U;
+    // attenMask ping/pong 的 MTE2→V（0/1，与 vec2=2、sink=4 错开）
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
 
@@ -288,12 +295,22 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
+            // initOutput 的 MTE3_V event 双 subblock 共享；仅 subBlock0 做 Set/Wait，避免并行 Wait 死锁
+            if (constInfo.subBlockIdx == 0) {
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                InitOutputSingleCore();
+                if (constInfo.isSoftmaxLseEnable) {
+                    InitLseOutputSingleCore();
+                }
+            }
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
+            PipeBarrier<PIPE_ALL>();
             // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
             // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
             // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
@@ -522,9 +539,7 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
-            // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
-            PipeBarrier<PIPE_ALL>();
-            attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
+            attenMaskUb = GetAttenMaskUb(runInfo.loop & (DB - 1));
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
             PipeBarrier<PIPE_MTE2>();
             PipeBarrier<PIPE_V>();
@@ -615,14 +630,14 @@ public:
             }
         }
         if constexpr (hasAtten) {
-            // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
+            // 替代 attenMaskInQue.FreeTensor：双 subblock 均完成 V 读 mask 后再进入后续流水
             PipeBarrier<PIPE_V>();
             PipeBarrier<PIPE_ALL>();
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
-        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 MTE3 才能读 stage1OutBuf
+        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 V/MTE3 握手再 DataCopy
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
@@ -1169,7 +1184,7 @@ public:
             commonBuf = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 121600U, 512U);
         }
 
-        // lseBuf / sinkBuf：runtime 条件，地址已在编译期固定（始终位于 commonBuf 区末尾之后）
+        // lseBuf / sinkBuf
         constexpr uint32_t commonBufSz = hasCommonBuf ? 512U : 0U;
         constexpr uint32_t OFF_LSE = BASE + 121600U + commonBufSz;
         constexpr uint32_t LSE_BUF_SZ = (mBaseSize >> 1U) * 8U * sizeof(float);
@@ -1183,26 +1198,62 @@ public:
         }
     }
 
+    // 进入 FD 前：仅用 PipeBarrier 排干 FA 流水（禁止 subBlock 不对称 WaitFlag，否则会与 SyncAll 互锁）
+    __aicore__ inline void DrainFaPipeEventsForFd()
+    {
+        if constexpr (hasAtten) {
+            PipeBarrier<PIPE_MTE2>();
+            PipeBarrier<PIPE_V>();
+        }
+        PipeBarrier<PIPE_ALL>();
+    }
+
     __aicore__ inline void AllocEventID()
     {
-        mte3ToVId[0] = FA_MTE3_TO_V_0;
-        mte3ToVId[1] = FA_MTE3_TO_V_1;
-        vToMte3Id[0] = FA_V_TO_MTE3_0;
-        vToMte3Id[1] = FA_V_TO_MTE3_1;
-        stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
-        stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        // Mix AIV 双 subblock 须使用不同 pipe event id（静态 id 与 TPipe 动态分配语义对齐）
+        if (constInfo.subBlockIdx == 0) {
+            mte3ToVId[0] = FA_MTE3_TO_V_0;
+            mte3ToVId[1] = FA_MTE3_TO_V_1;
+            vToMte3Id[0] = FA_V_TO_MTE3_0;
+            vToMte3Id[1] = FA_V_TO_MTE3_1;
+            stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
+            stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        } else {
+            mte3ToVId[0] = FA_MTE3_TO_V_SB1_0;
+            mte3ToVId[1] = FA_MTE3_TO_V_SB1_1;
+            vToMte3Id[0] = FA_V_TO_MTE3_SB1_0;
+            vToMte3Id[1] = FA_V_TO_MTE3_SB1_1;
+            stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_SB1_0;
+            stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_SB1_1;
+        }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
+    }
+
+    // subBlock0 用 attenMaskBuf；subBlock1 借用 stage1 另一 ping/pong 槽前 8192B（与当前 loop 槽互斥）
+    __aicore__ inline LocalTensor<uint8_t> GetAttenMaskUb(uint32_t slotIdx)
+    {
+        if (constInfo.subBlockIdx == 0) {
+            return attenMaskBuf[slotIdx];
+        }
+        constexpr uint32_t mm1Sz = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+        constexpr uint32_t mm2Sz = bmm2Write2Ub ?
+            (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
+        constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
+        constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
+        constexpr uint32_t STAGE1_OFF = BASE + 49152U;
+        const uint32_t useSlot = 1U - slotIdx;
+        return LocalTensor<uint8_t>(TPosition::VECIN, STAGE1_OFF + useSlot * 33024U, 8192U);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
@@ -1253,7 +1304,7 @@ public:
 
         if (!IsSkipMaskForPre) {
             const uint32_t preBufIdx = 1U - bufIdx;
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
+            LocalTensor<uint8_t> attenMaskUbPre = GetAttenMaskUb(preBufIdx);
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
