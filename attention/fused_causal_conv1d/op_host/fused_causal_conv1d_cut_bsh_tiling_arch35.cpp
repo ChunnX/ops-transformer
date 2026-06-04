@@ -135,8 +135,9 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetPlatformInfo()
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
 {
     if (xType_ != ge::DataType::DT_FLOAT16 && xType_ != ge::DataType::DT_BF16) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            context_->GetNodeName(), "x", Ops::Base::ToString(xType_).c_str(), "FLOAT16 and BF16");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "x", Ops::Base::ToString(xType_).c_str(),
+            "The dtype of x must be FLOAT16 or BF16");
         return ge::GRAPH_FAILED;
     }
 
@@ -162,8 +163,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
     if (cacheIndicesDesc != nullptr) {
         auto cacheIndicesType = cacheIndicesDesc->GetDataType();
         if (cacheIndicesType != ge::DataType::DT_INT32) {
-            OP_LOGE_FOR_INVALID_DTYPE(
-                context_->GetNodeName(), "cache_indices", Ops::Base::ToString(cacheIndicesType).c_str(), "INT32");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "cache_indices",
+                Ops::Base::ToString(cacheIndicesType).c_str(),
+                "The dtype of cache_indices must be INT32");
             return ge::GRAPH_FAILED;
         }
     }
@@ -173,8 +176,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
     if (seqStartIndexDesc != nullptr) {
         auto seqStartIndexType = seqStartIndexDesc->GetDataType();
         if (seqStartIndexType != ge::DataType::DT_INT32) {
-            OP_LOGE_FOR_INVALID_DTYPE(
-                context_->GetNodeName(), "query_start_loc", Ops::Base::ToString(seqStartIndexType).c_str(), "INT32");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "query_start_loc",
+                Ops::Base::ToString(seqStartIndexType).c_str(),
+                "The dtype of query_start_loc must be INT32");
             return ge::GRAPH_FAILED;
         }
     }

@@ -556,8 +556,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
 {
     if (xDtype_ != ge::DataType::DT_FLOAT16 && xDtype_ != ge::DataType::DT_BF16) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            context_->GetNodeName(), "x", Ops::Base::ToString(xDtype_).c_str(), "FLOAT16 and BFLOAT16");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "x", Ops::Base::ToString(xDtype_).c_str(),
+            "The dtype of x must be FLOAT16 or BFLOAT16");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -594,8 +595,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesType()
         return ge::GRAPH_SUCCESS;
     }
     if (cacheIndicesDtype_ != ge::DataType::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            context_->GetNodeName(), "cache_indices", Ops::Base::ToString(cacheIndicesDtype_).c_str(), "INT32");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "cache_indices",
+            Ops::Base::ToString(cacheIndicesDtype_).c_str(),
+            "The dtype of cache_indices must be INT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -614,8 +617,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
         return ge::GRAPH_FAILED;
     }
     if (queryStartLocDtype_ != ge::DataType::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            context_->GetNodeName(), "query_start_loc", Ops::Base::ToString(queryStartLocDtype_).c_str(), "INT32");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "query_start_loc",
+            Ops::Base::ToString(queryStartLocDtype_).c_str(),
+            "The dtype of query_start_loc must be INT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -628,9 +633,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
         return ge::GRAPH_SUCCESS;
     }
     if (numAcceptedTokenDtype_ != ge::DataType::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE(
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             context_->GetNodeName(), "num_accepted_token",
-            Ops::Base::ToString(numAcceptedTokenDtype_).c_str(), "INT32");
+            Ops::Base::ToString(numAcceptedTokenDtype_).c_str(),
+            "The dtype of num_accepted_token must be INT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
