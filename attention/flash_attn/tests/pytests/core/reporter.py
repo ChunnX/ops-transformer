@@ -2,16 +2,18 @@
 
 import csv
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 
 class Reporter:
-    """收集每条 case 的结果，支持中间统计和最终汇总输出。"""
+    """收集每条 case 的结果，支持中间统计和最终 CSV 输出。"""
 
     def __init__(self):
         self._results: Dict[str, dict] = {}
 
-    def record(self, name: str, result: dict):
+    def record(self, name: str, result: dict, error: str = None):
+        if error:
+            result["_error"] = error
         self._results[name] = result
 
     def print_interim(self, total: int):
@@ -21,22 +23,23 @@ class Reporter:
         return self._print_table(self._results, len(self._results), is_final=True)
 
     def save_csv(self, path: Path):
+        fields = ["case", "attn_pass", "attn_max_abs", "attn_fail_ratio",
+                  "lse_pass", "lse_max_abs", "lse_fail_ratio", "error"]
         with open(path, "w", newline="") as f:
-            w = csv.DictWriter(f, ["case", "attn_pass", "attn_max_abs",
-                                   "attn_fail_ratio", "lse_pass", "lse_max_abs",
-                                   "lse_fail_ratio"])
+            w = csv.DictWriter(f, fields)
             w.writeheader()
             for name, res in self._results.items():
                 a = res.get("attn", {})
                 l = res.get("lse", {})
                 w.writerow({
                     "case": name,
-                    "attn_pass": a.get("passed", False),
+                    "attn_pass": a.get("passed"),
                     "attn_max_abs": a.get("max_abs", ""),
                     "attn_fail_ratio": a.get("fail_ratio", ""),
-                    "lse_pass": l.get("passed", False),
+                    "lse_pass": l.get("passed") if l.get("total", 0) > 0 else "",
                     "lse_max_abs": l.get("max_abs", ""),
                     "lse_fail_ratio": l.get("fail_ratio", ""),
+                    "error": res.get("_error", ""),
                 })
 
     @staticmethod

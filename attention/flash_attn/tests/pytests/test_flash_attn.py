@@ -12,6 +12,7 @@
 import sys
 import argparse
 import torch
+from pathlib import Path
 
 # ── 新架构 modules ──
 from core.data import flash_attn_inputs
@@ -48,6 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--perf_cold_thr", type=int, default=16)
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
+    parser.add_argument("--result_csv", type=str, default=None, help="精度结果 CSV 输出路径")
     args = parser.parse_args()
 
     # ── 加载用例 ──
@@ -158,12 +160,14 @@ if __name__ == "__main__":
         primary_available = primary.is_available()
         if not primary_available:
             print("[ERROR] primary backend 不可用")
+            err = "primary backend not available"
             reporter.record(name, {"attn": {"passed": False, "max_abs": float('nan'),
                                             "mean_abs": float('nan'), "fail_cnt": -1,
                                             "total": -1, "fail_ratio": float('nan')},
                                    "lse":  {"passed": False, "max_abs": float('nan'),
                                             "mean_abs": float('nan'), "fail_cnt": -1,
-                                            "total": -1, "fail_ratio": float('nan')}})
+                                            "total": -1, "fail_ratio": float('nan')}},
+                            error=err)
             if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                     and (i + 1) < len(run_cases):
                 reporter.print_interim(len(run_cases))
@@ -177,8 +181,10 @@ if __name__ == "__main__":
                 spec=flash_attn_inputs,
                 comparators=comparators if comparators else None,
             )
+            err = None
         except Exception as e:
             import traceback
+            err = f"{e}\n{traceback.format_exc()}"
             print(f"[ERROR] {name} 运行异常: {e}")
             traceback.print_exc()
             result = {"attn": {"passed": False, "max_abs": float('nan'),
@@ -188,10 +194,13 @@ if __name__ == "__main__":
                                "mean_abs": float('nan'), "fail_cnt": -1,
                                "total": -1, "fail_ratio": float('nan')}}
 
-        reporter.record(name, result)
+        reporter.record(name, result, error=err)
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))
 
     fail_cnt = reporter.print_final()
+    if args.result_csv:
+        reporter.save_csv(Path(args.result_csv))
+        print(f"[result] {args.result_csv}")
     sys.exit(0 if fail_cnt == 0 else 1)
