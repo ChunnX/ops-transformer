@@ -352,7 +352,7 @@ uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
             return ge::GRAPH_FAILED;
         }
     } else {
-        commMode == Mc2Comm::COMM_MODE_AICPU;
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
