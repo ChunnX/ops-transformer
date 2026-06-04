@@ -150,8 +150,8 @@ public:
 
         TPipe *permutePipe = GetTPipePtr();
         LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
-        constexpr uint64_t DATA_COPY_MAX_BLOCK_LEN = 65535UL;
-        uint64_t actualTileSize = (scaleUbSize < DATA_COPY_MAX_BLOCK_LEN) ? scaleUbSize : DATA_COPY_MAX_BLOCK_LEN;
+        constexpr uint64_t dataCopyMaxBlockLen = 65535UL;
+        uint64_t actualTileSize = (scaleUbSize < dataCopyMaxBlockLen) ? scaleUbSize : dataCopyMaxBlockLen;
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
                 uint32_t posBefore = rankIndex * e_ + expertIdx;
