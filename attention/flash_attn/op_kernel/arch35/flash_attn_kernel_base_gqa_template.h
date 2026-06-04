@@ -92,6 +92,10 @@ public:
     static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
     static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
     static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 静态分配的"全核 barrier" event ID（模式 0 与模式 4 ID 空间各自独立，模式 0 的 ID 10 与模式 4 的 ID 10 不冲突）
+    // 用于替代 SyncAll()。SyncAll 占用 11-14 必须避开，Matmul 高阶 API 占用 0-7 也避开。
+    // 三次 barrier (FD 前/FD 后) 在时序上严格串行，可以复用同一个 flagId。
+    static constexpr uint32_t CC_SYNC_FD = 10U;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -812,6 +816,9 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，还需要消费/重置 FA AllocEventID 预置的 MTE3_V flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
@@ -820,9 +827,18 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
-        SyncAll();
+        // 静态Tensor编程：不使用 SyncAll（其会随机分配 event ID，与静态 ID 冲突），
+        // 改用 CrossCoreSetFlag/WaitFlag 模式 0 (全 AIV 同步) + 显式分配的 flagId。
+        // SetFlag 用 PIPE_MTE3：等 FA 的最后一次 DataCopyPad(accumOutGm/lseSumFdGm) 完成后再上报；
+        // WaitFlag 用 PIPE_ALL：阻塞所有后续流水（含 MTE2），确保 FD 中 DataCopy 从 accumOutGm/lseSumFdGm
+        // 读取数据前，跨核的 MTE3 写入对当前 AIV 可见，避免读到 stale 数据。
+        CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_FD);
+        CrossCoreWaitFlag<0, PIPE_ALL>(CC_SYNC_FD);
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
+        // FD 结束后再做一次全 AIV barrier：等所有 AIV 完成 FD 输出 (MTE3 写 attentionOutGm)
+        // 后才能进入下一 section（或 FreeEventID）。
+        CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_FD);
+        CrossCoreWaitFlag<0, PIPE_ALL>(CC_SYNC_FD);
         vecFdBlock.FreeEventID();
     }
 

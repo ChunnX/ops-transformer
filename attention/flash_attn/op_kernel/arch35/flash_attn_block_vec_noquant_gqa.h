@@ -129,6 +129,9 @@ public:
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    // 静态分配的"全核 barrier" event ID（模式 0 与模式 4 ID 空间各自独立）
+    // 用于替代 SyncAll()。SyncAll 占用 11-14 必须避开，Matmul 高阶 API 占用 0-7 也避开。
+    static constexpr uint32_t CC_SYNC_CLEAR_OUTPUT = 10U;   // ClearOutput 屏障 (mode 0)
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -289,7 +292,13 @@ public:
                 InitLseOutputSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
+            // 静态Tensor编程：不使用 SyncAll（其会随机分配 event ID，与静态 ID 冲突），
+            // 使用 CrossCoreSetFlag/WaitFlag 模式 0 (全 AIV 同步) + 显式分配的 flagId 做全核 barrier。
+            // SetFlag 用 PIPE_MTE3：等 InitOutput 中的 DataCopy(GM) 完成后再上报；
+            // WaitFlag 用 PIPE_ALL：阻塞所有后续流水（含 FA 中的 MTE3 写 attentionOutGm），
+            // 确保所有 AIV 的 InitOutput 完全写完后才允许任何 AIV 进入 FA 的计算 + 写出。
+            CrossCoreSetFlag<0, PIPE_MTE3>(CC_SYNC_CLEAR_OUTPUT);
+            CrossCoreWaitFlag<0, PIPE_ALL>(CC_SYNC_CLEAR_OUTPUT);
         }
     }
 
