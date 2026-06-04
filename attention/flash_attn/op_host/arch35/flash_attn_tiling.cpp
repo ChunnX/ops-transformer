@@ -310,6 +310,14 @@ void FlashAttnTilingImpl::SetFATilingData()
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
         tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        if (faInfo_->winLeft == -1) {
+            tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+        }
+        if (faInfo_->winRight == -1) {
+            tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+        }
+    }
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
     if (faInfo_->pageAttentionFlag) {
