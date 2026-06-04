@@ -530,14 +530,14 @@ private:
         DataCopyExtParams qScaleCopyParams;
         qScaleCopyParams.blockCount = tilingData_->numQHeads;
         qScaleCopyParams.blockLen = sizeof(float);
-        qScaleCopyParams.srcStride = (QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) * sizeof(float);
+        qScaleCopyParams.srcStride = 0U;
         qScaleCopyParams.dstStride = 0U;
         qScaleCopyParams.rsv = 0U;
 
         DataCopyExtParams kScaleCopyParams;
         kScaleCopyParams.blockCount = tilingData_->numKHeads;
         kScaleCopyParams.blockLen = sizeof(float);
-        kScaleCopyParams.srcStride = (QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) * sizeof(float);
+        kScaleCopyParams.srcStride = 0U;
         kScaleCopyParams.dstStride = (tilingData_->kScaleCacheStrideHead - 1U) * sizeof(float);
         kScaleCopyParams.rsv = 0U;
 
