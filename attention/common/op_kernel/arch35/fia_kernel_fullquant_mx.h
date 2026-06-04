@@ -612,30 +612,6 @@ public:
             s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
         }
 
-        if (IsSpecialBandSparse()) {
-            curS2Start = bandS2RangeValid ? s2StartWithSparse : 0U;
-            curS2End = bandS2RangeValid ? s2EndWithSparse : 0U;
-
-            if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) {
-                headS2Split = constInfo.s2OStart > 0U;
-                if (bandS2RangeValid) {
-                    curS2Start = Max(curS2Start, constInfo.s2OStart);
-                }
-            }
-            if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) {
-                tailS2Split = constInfo.s2OEnd > 0U;
-                if (bandS2RangeValid && constInfo.s2OEnd > 0U) {
-                    curS2End = Min(curS2End, constInfo.s2OEnd);
-                }
-            }
-
-            if (bandS2RangeValid && curS2Start >= curS2End) {
-                curS2Start = 0U;
-                curS2End = 0U;
-            }
-            return;
-        }
-
         if (!bandS2RangeValid) {
             curS2Start = 0U;
             curS2End = 0U;
