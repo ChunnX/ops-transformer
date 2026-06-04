@@ -249,18 +249,18 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     OP_LOGD(nodeName, "transW2 is %s", (tilingData->transW2 ? "True" : "False"));
 }
 
-void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
+void printWorkspaceInfo(const struct WorkSpaceInfo *info, const char *nodeName)
 {
-    OP_LOGD(nodeName, "ptrA:                        %ld\n", info->ptrA);
-    OP_LOGD(nodeName, "ptrAScale:                   %ld\n", info->ptrAScale);
-    OP_LOGD(nodeName, "ptrA2:                       %ld\n", info->ptrA2);
-    OP_LOGD(nodeName, "ptrA2Scale:                  %ld\n", info->ptrA2Scale);
-    OP_LOGD(nodeName, "ptrcumsumMM:                 %ld\n", info->ptrcumsumMM);
+    OP_LOGD(nodeName, "ptrGmm1InputData:                        %ld\n", info->ptrGmm1InputData);
+    OP_LOGD(nodeName, "ptrGmm1InputScale:                   %ld\n", info->ptrGmm1InputScale);
+    OP_LOGD(nodeName, "ptrSwiGluQuantData:                       %ld\n", info->ptrSwiGluQuantData);
+    OP_LOGD(nodeName, "ptrSwiGluQuantScale:                  %ld\n", info->ptrSwiGluQuantScale);
+    OP_LOGD(nodeName, "ptrCumsumWorkSpace:                 %ld\n", info->ptrCumsumWorkSpace);
     OP_LOGD(nodeName, "expandedRowIdx:              %ld\n", info->expandedRowIdx);
     OP_LOGD(nodeName, "ptrSumBeforeRank:            %ld\n", info->ptrSumBeforeRank);
     OP_LOGD(nodeName, "ptrFlagSwiGluToGmm2:         %ld\n", info->ptrFlagSwiGluToGmm2);
     OP_LOGD(nodeName, "ptrFlagDispatchToGmm1:       %ld\n", info->ptrFlagDispatchToGmm1);
-    OP_LOGD(nodeName, "workspaceSize:               %ld\n", info->workspaceSize);
+    OP_LOGD(nodeName, "workspaceSize:               %ld\n", info->workSpaceSize);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -286,10 +286,10 @@ void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
     OP_LOGD(nodeName, "ptrTokenPerExpert: {%ld}\n", offset);
 
     offset += tokenPerExpert;
-    OP_LOGD(nodeName, "ptrA0: {%ld}\n", PEERMEM_DATA_OFFSET);
+    OP_LOGD(nodeName, "ptrInitRoutingResult: {%ld}\n", PEERMEM_DATA_OFFSET);
 
     offset += quantTokenScale;
-    OP_LOGD(nodeName, "ptrD: {%ld}\n", offset);
+    OP_LOGD(nodeName, "ptrCombineOutput: {%ld}\n", offset);
 }
 
 void printAuxiliaryTilingCtx(const MegaMoeAuxTilingContext* ctx,
@@ -998,7 +998,7 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
 }
 
 static ge::graphStatus SetWorkspace(
-    gert::TilingContext *context, WorkspaceInfo& workspaceInfo, const char *nodeName)
+    gert::TilingContext *context, WorkSpaceInfo& workSpaceInfo, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -1007,12 +1007,12 @@ static ge::graphStatus SetWorkspace(
     OP_TILING_CHECK(workspace == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workspace"),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(workspaceInfo.workspaceSize == 0LL,
+    OP_TILING_CHECK(workSpaceInfo.workSpaceSize == 0LL,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "workspaceSize",
-            std::to_string(workspaceInfo.workspaceSize).c_str(), "non-zero"),
+            std::to_string(workSpaceInfo.workSpaceSize).c_str(), "non-zero"),
         return ge::GRAPH_FAILED);
 
-    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
+    int64_t workSpaceSize = sysWorkspaceSize + workSpaceInfo.workSpaceSize + RESERVED_WORKSPACE_SIZE;
     workspace[0] = workspaceSize;
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
@@ -1607,13 +1607,13 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     context->SetTilingKey(tilingKey);
 
     // WorkspaceSize
-    WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
-    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+    WorkSpaceInfo workSpaceInfo((uint8_t*)0, tilingData);
+    OP_TILING_CHECK(SetWorkspace(context, workSpaceInfo, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     // Print Info
     PrintMegaMoeTilingData(tilingData, nodeName);
-    printWorkspaceInfo(&workspaceInfo, nodeName);
+    printWorkspaceInfo(&workSpaceInfo, nodeName);
     printPeermemInfo(tilingData, nodeName);
 
     return ge::GRAPH_SUCCESS;
