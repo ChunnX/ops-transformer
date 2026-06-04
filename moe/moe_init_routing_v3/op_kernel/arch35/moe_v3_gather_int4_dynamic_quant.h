@@ -44,7 +44,7 @@ private:
     template <bool IS_INPUT_SCALE>
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                        int64_t j);
-    __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
+    __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float quantFactor, int64_t dstIndex, int64_t j);
 
 private:
     TPipe *pipe_;
@@ -341,7 +341,7 @@ __aicore__ inline float MoeGatherOutInt4DynamicQuant<T>::ComputeMax(LocalTensor<
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::ComputeScale(LocalTensor<float> &inLocal, float scaleTemp,
+__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::ComputeScale(LocalTensor<float> &inLocal, float quantFactor,
                                                                          int64_t dstIndex, int64_t j)
 {
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
@@ -371,7 +371,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::ComputeScale(LocalTensor
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Duplicate(scaleReg, scaleTemp, maskRegLoop);
+            MicroAPI::Duplicate(scaleReg, quantFactor, maskRegLoop);
             MicroAPI::Mul(inReg, inReg, scaleReg, maskRegLoop);
             MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegLoop);
             MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegLoop);
@@ -422,12 +422,12 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutPartialXQuantEH(i
             reduceMax = (reduceMax > tileMax) ? reduceMax : tileMax;
         }
 
-        float scaleTemp = (reduceMax != 0.0f) ? (DYNAMIC_QUANT_INT4_SYM_SCALE / reduceMax) : 0.0f;
-        Duplicate<float>(scaleLocal, scaleTemp, 8);
+        float scaleOutVal = (reduceMax != 0.0f) ? (reduceMax * (1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE)) : 0.0f;
+        float quantFactor = (scaleOutVal != 0.0f) ? (1.0f / scaleOutVal) : 0.0f;
+        Duplicate<float>(scaleLocal, quantFactor, 8);
         scaleOutQueue_.EnQue(scaleLocal);
         scaleLocal = scaleOutQueue_.DeQue<float>();
 
-        float scaleOutVal = (reduceMax != 0.0f) ? (reduceMax / DYNAMIC_QUANT_INT4_SYM_SCALE) : 0.0f;
         scaleLocal.SetValue(0, scaleOutVal);
         DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});
 
@@ -437,7 +437,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutPartialXQuantEH(i
                 colsTileLength_ = lastLoopCols_;
             }
             colsTileLengthAsInt8_ = colsTileLength_ / 2;
-            ComputeScale(inLocal, scaleTemp, rowOffset + i, j);
+            ComputeScale(inLocal, quantFactor, rowOffset + i, j);
         }
         inputXInQueue_.FreeTensor(inLocal);
         scaleOutQueue_.FreeTensor(scaleLocal);
