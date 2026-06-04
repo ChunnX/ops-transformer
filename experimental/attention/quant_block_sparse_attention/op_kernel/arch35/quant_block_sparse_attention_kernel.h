@@ -187,8 +187,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMa
                 if (taskId > 0 && notLastTwoLoop) {
                     if ASCEND_IS_AIV {
                         auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
-                            this->constInfo);
+                        // this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                        //     this->constInfo);
                     }
                 }
                 if (taskId > 1 && notLast) {
@@ -207,9 +207,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMa
                     if ASCEND_IS_AIV {
                         RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
-                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                            // this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         } else {
-                            this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
+                            // this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
                         }
                     }
                 }

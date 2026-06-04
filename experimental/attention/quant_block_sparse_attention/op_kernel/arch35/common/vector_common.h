@@ -23,7 +23,6 @@
 #endif
 #include "const_def.h"
 
-using namespace AttentionCommon;
 using namespace AscendC;
 using AscendC::LocalTensor;
 

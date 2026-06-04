@@ -30,9 +30,7 @@ using namespace AscendC;
     do {                                                                                                 \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                      \
             BaseApi::BSABlockCube<__VA_ARGS__>, BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type;          \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                       \
-            BaseApi::BSABlockVecDummy<__VA_ARGS__>, BaseApi::BSABlockVec<__VA_ARGS__>>::type;            \
-        BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType> op;                             \
+        BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType> op;                             \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, /*dropMask*/nullptr, /*paddingMask*/nullptr,   \
@@ -94,7 +92,7 @@ __global__ __aicore__ void quant_block_sparse_attention(
     // TODO: 是否新增模板参数
     constexpr bool isInfer = true;
     constexpr bool HAS_ATTENTION = true;
-    BSA_OP_IMPL(QKV_DTYPE, float, bfloat16_t, bsaLayout,
+    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, bsaLayout,
         S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
         HAS_ATTENTION, isInfer, bsaIsPa);
 }

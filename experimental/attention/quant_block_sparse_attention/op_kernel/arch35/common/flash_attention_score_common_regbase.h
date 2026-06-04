@@ -68,13 +68,6 @@ constexpr uint64_t BT_PP_SIZE = 4;
 constexpr uint64_t BT_AVAL_SIZE = 16;
 constexpr uint64_t BT_BVAL_SIZE = 16;
 
-
-enum class ImplModeEnum {
-    AA_HIGH_PRECISION = 0,
-    AA_HIGH_PERFORMANCE = 1,
-    AA_INVALID_LINE_HIGH_PRECISION = 2
-};
-
 namespace BaseApi {
 struct CubeCoordInfo {
     uint32_t curBIdx;
