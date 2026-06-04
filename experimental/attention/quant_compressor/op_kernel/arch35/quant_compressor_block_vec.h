@@ -23,7 +23,7 @@
 #include "vf/vf_mul.h"
 #include "vf/vf_rms_norm.h"
 #include "vf/vf_rope.h"
-
+#include "vf/vf_dequant.h"
 
 using namespace AscendC;
 
@@ -131,6 +131,7 @@ private:
                                    const GlobalTensor<int32_t> &blockTableGm, const GlobalTensor<T> &cacheTcGm,
                                    const Vec1RunInfo &info, const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
                                    uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize);
+    template <bool IS_SCORE>
     __aicore__ inline void FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
                                              const Vec1SliceInfo &sliceInfo, const StatisticInfo &statisticInfo,
                                              uint32_t dStartIdx, uint32_t dDealSize);
@@ -145,6 +146,7 @@ private:
     __aicore__ inline void SaveToWorkSpace(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &cacheTcGm,
                                            const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo, uint32_t dStartIdx,
                                            uint32_t dDealSize);
+    template <bool IS_SCORE>
     __aicore__ inline void LoadFromWorkSpace(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &cacheTcGm,
                                              const GlobalTensor<T> &srcGm, const LocalTensor<T> &srcLocal,
                                              const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
@@ -668,13 +670,14 @@ QuantCompressorBlockVector<COMP>::OverLap(const LocalTensor<T> &dstLocal, const 
         PadAlign(dstLocal, srcLocal, sliceInfo, dStartIdx, dDealSize);
         if constexpr (COMP::coff == COFF::OVERLAP) {
             GlobalTensor<T> curCacheTcGm = cacheTcGm[info.c1v1DbIdx * cmpRatio_ * constInfo_.headDim];
-            LoadFromWorkSpace(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx, globalSeqIdx,
+            LoadFromWorkSpace<IS_SCORE>(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx, globalSeqIdx,
                               dDealSize);
         }
     }
 }
 
 template <typename COMP>
+template <bool IS_SCORE>
 __aicore__ inline void
 QuantCompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
                                                const Vec1SliceInfo &sliceInfo, const StatisticInfo &statisticInfo,
@@ -694,7 +697,11 @@ QuantCompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLoc
                          constInfo_.kBaseNum, constInfo_.mm1KvResSize);
     }
     if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
-        
+        if constexpr (IS_SCORE) {
+            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale_, wGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt, dDealSize, constInfo_.headDim, dDealSize);
+        } else {  
+            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale_, wKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt, dDealSize, constInfo_.headDim, dDealSize);
+        }
     }
 }
 
@@ -719,6 +726,7 @@ QuantCompressorBlockVector<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLocal
 }
 
 template <typename COMP>
+template <bool IS_SCORE>
 __aicore__ inline void
 QuantCompressorBlockVector<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &cacheTcGm,
                                                const GlobalTensor<T> &srcGm, const LocalTensor<T> &srcLocal,
@@ -749,6 +757,14 @@ QuantCompressorBlockVector<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dstLoc
         } else {
             AddMultiDataToUb(dstLocal[dstLocalOffset], srcGm[srcLocalOffset], copyRowCount, dDealSize,
                              srcSingleRowElemNum, coff_ * dDealSize, constInfo_.kBaseNum, constInfo_.mm1KvResSize);
+        }
+        if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+            // 使用COFF::DISABLE，反量化只会处理新搬入的左半部分
+            if constexpr (IS_SCORE) {
+                DequantVF<COFF::DISABLE>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wGateDescaleUb[dStartIdx], copyRowCount, dDealSize, constInfo_.headDim, coff_ * dDealSize);
+            } else {  
+                DequantVF<COFF::DISABLE>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wKvDescaleUb[dStartIdx], copyRowCount, dDealSize, constInfo_.headDim, coff_ * dDealSize);
+            }
         }
     } else { // 从UB中获取
         uint32_t srcSingleRowElemNum = dDealSize * coff_;
@@ -1004,7 +1020,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
 
     GlobalTensor<T> scoreDBMm1ResGm = scoreMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> scoreUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb<true>(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
@@ -1027,7 +1043,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
 
     GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb<false>(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
