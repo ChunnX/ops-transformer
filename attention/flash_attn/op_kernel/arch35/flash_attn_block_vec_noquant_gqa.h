@@ -123,9 +123,12 @@ public:
     static constexpr uint32_t FA_V_TO_MTE2_ID    = 2U;
     static constexpr uint32_t FA_MTE3_TO_MTE2_ID = 2U;
     static constexpr uint32_t FA_MTE2_TO_V_SINK  = 4U;
-    // stage1 双缓冲的 MTE3→V 反向同步（确保 UB→L1 DataCopy 完成后才能复用 buffer）
+    // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
+    // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
+    static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
+    static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -529,8 +532,12 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
+            // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
+            PipeBarrier<PIPE_ALL>();
             attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
+            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
+            PipeBarrier<PIPE_MTE2>();
+            PipeBarrier<PIPE_V>();
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -617,9 +624,16 @@ public:
                 }
             }
         }
+        if constexpr (hasAtten) {
+            // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
+            PipeBarrier<PIPE_V>();
+            PipeBarrier<PIPE_ALL>();
+        }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
+        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 MTE3 才能读 stage1OutBuf
+        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         LocalTensor<INPUT_T> mm2AL1Tensor;
@@ -1204,6 +1218,7 @@ public:
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            RunInfoX &runInfo)
     {
+        const uint32_t bufIdx = runInfo.loop & (DB - 1);
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         maskInfo.gs1dealNum = mDealSize;
@@ -1229,21 +1244,30 @@ public:
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
 
+        const uint32_t mte2ToVId =
+            (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_0 : FA_ATTEN_MASK_MTE2_V_1;
+        const uint32_t preMte2ToVId =
+            (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_1 : FA_ATTEN_MASK_MTE2_V_0;
+
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
             return;
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
+                attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[1 - runInfo.loop & (DB - 1)];
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            const uint32_t preBufIdx = 1U - bufIdx;
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
+                attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
+            PipeBarrier<PIPE_V>();
         }
     }
 
