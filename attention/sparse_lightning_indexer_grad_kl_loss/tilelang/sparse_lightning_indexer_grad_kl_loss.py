@@ -129,13 +129,13 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2],
-    workspace_idx=[8, 9, 10, 11, 12, 16],
+    out_idx=[-5, -4, -3, -2],
+    workspace_idx=[10, 11, 12, 13, 14, 19],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-    input_dtype, calc_dtype, scale_value
+    d_rope, input_dtype, calc_dtype, scale_value
 ):
     s1_block = BLOCK_M
     n_block = BLOCK_N
@@ -144,6 +144,9 @@ def tilelang_grad_kl_loss_single_kernel(
     block_num = B * s1_tile_num
     n_num = K // n_block
     d_num_query = DQuery // k_block
+    d_num_rope = ceil_div(d_rope, k_block)
+    d_num_total = d_num_query + d_num_rope
+    d_rope_last = d_rope - (d_num_rope - 1) * k_block
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
@@ -151,7 +154,9 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
+        QueryRope: T.Tensor((B, S1, N1, d_rope), input_dtype),
         GatherKey: T.Tensor((B, S1, K, DQuery), input_dtype),
+        GatherKeyRope: T.Tensor((B, S1, K, d_rope), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
         GatherKeyIndexT: T.Tensor((B, S1, DQueryIndex, K), input_dtype),
@@ -166,6 +171,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dWeight: T.Tensor((B, S1, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
+        LossOut: T.Tensor((1,), calc_dtype),
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -175,7 +181,9 @@ def tilelang_grad_kl_loss_single_kernel(
             s1_end = T.min(s1_start + s1_block, S1)
 
             # ============================================================
-            # C scope 1: Matmul1 + Matmul2
+            # C scope 1: Matmul1 (with rope) + Matmul2
+            # Matmul1: [Query||QueryRope] @ [GatherKey||GatherKeyRope]^T
+            # K dim: DQuery + d_rope, split into d_num_total chunks
             # ============================================================
             with T.Scope("C"):
                 T.barrier_all()
@@ -187,18 +195,44 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
-                        for k_idx in T.serial(d_num_query):
-                            T.copy(
-                                Query[bz, s1_row, 0:N1, k_idx * k_block:(k_idx + 1) * k_block],
-                                Q_L1,
-                            )
+                        for d_idx in T.serial(d_num_total):
+                            if d_idx < d_num_query:
+                                T.copy(
+                                    Query[bz, s1_row, 0:N1, d_idx * k_block:(d_idx + 1) * k_block],
+                                    Q_L1,
+                                )
+                            else:
+                                rope_d = d_idx - d_num_query
+                                if d_idx == d_num_total - 1:
+                                    T.copy(
+                                        QueryRope[bz, s1_row, 0:N1, rope_d * k_block:rope_d * k_block + d_rope_last],
+                                        Q_L1,
+                                    )
+                                else:
+                                    T.copy(
+                                        QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
+                                        Q_L1,
+                                    )
                             T.barrier_all()
-                            T.copy(
-                                GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
-                                GK_L1,
-                            )
+                            if d_idx < d_num_query:
+                                T.copy(
+                                    GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
+                                    GK_L1,
+                                )
+                            else:
+                                rope_d = d_idx - d_num_query
+                                if d_idx == d_num_total - 1:
+                                    T.copy(
+                                        GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:rope_d * k_block + d_rope_last],
+                                        GK_L1,
+                                    )
+                                else:
+                                    T.copy(
+                                        GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
+                                        GK_L1,
+                                    )
                             T.barrier_all()
-                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
+                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                             T.barrier_all()
                         T.copy(
                             C_L0C,
@@ -503,6 +537,66 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         T.barrier_all()
 
+                    # --- Pass 3: compute KL Loss = sum(P_reduced * (log(P_reduced) - log(softmaxI))) ---
+                    # loss_accum: 16 elements for reduce_sum, then atomic_add to LossOut
+                    loss_accum_ub = T.alloc_ub(16, calc_dtype)
+                    loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_val_ub = T.alloc_ub(n_block, calc_dtype)
+                    loss_sum_ub = T.alloc_ub(16, calc_dtype)
+                    loss_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
+                    eps_ub = T.alloc_ub(n_block, calc_dtype)
+
+                    T.tile.fill(eps_ub, 1e-10)
+                    T.barrier_all()
+                    T.tile.fill(loss_accum_ub, 0)
+                    T.barrier_all()
+
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            loss_chunk_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.barrier_all()
+                        T.tile.ln(loss_log_p_ub, loss_chunk_ub)
+                        T.barrier_all()
+
+                        T.copy(
+                            SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            loss_chunk_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.barrier_all()
+                        T.tile.ln(loss_log_si_ub, loss_chunk_ub)
+                        T.barrier_all()
+
+                        T.copy(
+                            PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
+                            loss_chunk_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
+                        T.barrier_all()
+                        T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
+                        T.barrier_all()
+
+                        for i in range(16):
+                            T.barrier_all()
+                            T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
+                            T.barrier_all()
+                        T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
+                        T.barrier_all()
+                        T.tile.add(loss_accum_ub, loss_accum_ub, loss_sum_ub)
+                        T.barrier_all()
+
+                    T.tile.atomic_add(LossOut[0:1], loss_accum_ub[0:1])
+                    T.barrier_all()
+
                 T.set_cross_flag("V", 2)
 
             # ============================================================
@@ -672,6 +766,8 @@ def sparse_lightning_indexer_grad_kl_loss(
     softmax_sum: torch.Tensor,
     scale_value: float,
     *,
+    query_rope: Optional[torch.Tensor] = None,
+    key_rope: Optional[torch.Tensor] = None,
     actual_seq_lengths_query: Optional[torch.Tensor] = None,
     actual_seq_lengths_key: Optional[torch.Tensor] = None,
     layout_query: str = "BSND",
@@ -727,9 +823,17 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Pre-transpose GatherKeyIndex for Matmul4: (B,S1,K,DQueryIndex) -> (B,S1,DQueryIndex,K)
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
+        # Gather rope key
+        d_rope = query_rope.shape[-1] if query_rope is not None else 0
+        if query_rope is not None and key_rope is not None:
+            gather_key_rope = key_rope[torch.arange(B, device=query.device).view(B, 1, 1),
+                                       sparse_indices[:, :, 0, :].clamp(min=0), 0, :].contiguous()
+        else:
+            gather_key_rope = torch.zeros(B, S1, K, d_rope, dtype=query.dtype, device=query.device)
+
         func = tilelang_grad_kl_loss_single_kernel(
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-            input_dtype_str, calc_dtype_str, scale_value,
+            d_rope, input_dtype_str, calc_dtype_str, scale_value,
         )
 
         bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
@@ -741,14 +845,16 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
         d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=query.device)
         relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
+        loss_out = torch.zeros(1, dtype=torch.float32, device=query.device)
 
         torch.npu.synchronize()
         results = func(
-            query, gather_key, query_index, gather_key_index, gather_key_index_t,
+            query, query_rope, gather_key, gather_key_rope,
+            query_index, gather_key_index, gather_key_index_t,
             weights, softmax_max, softmax_sum,
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-            d_query_index_out, d_weight_out, relu_grad_out,
+            d_query_index_out, d_weight_out, relu_grad_out, loss_out,
             d_query_index_ws,
         )
         torch.npu.synchronize()
@@ -756,6 +862,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_query_index = results[0]
         d_weight = results[1]
         relu_grad = results[2]
+        kl_loss_val = results[3]
 
         # Debug: recompute bmm1/bmm2 from original inputs for accurate reference
         # Use FP16 matmul to match NPU Cube precision
@@ -779,8 +886,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         logger.warning(f"[DEBUG] ref_bmm1 range: [{ref_bmm1.min().item():.6f}, {ref_bmm1.max().item():.6f}]")
         logger.warning(f"[DEBUG] ref_bmm2 range: [{ref_bmm2.min().item():.6f}, {ref_bmm2.max().item():.6f}]")
 
-        # KL Loss: compute in Python from bmm1_res and bmm2_res
-        kl_loss = ref_loss
+        # KL Loss: now computed in NPU kernel
+        kl_loss = kl_loss_val
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
