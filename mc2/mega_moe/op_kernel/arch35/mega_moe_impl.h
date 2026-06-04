@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_impl.h
- * \brief
+ * \brief Group-Matmul 实现：GMM1+SwiGLU+Quant 与 GMM2+Combine 的 AIC/AIV 流水
  */
 
 #ifndef MEGA_MOE_IMPL_H
@@ -34,6 +34,8 @@ using namespace AscendC;
 
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
+
+// L1/L0 分块 tile 尺寸
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M = 256;
 constexpr uint32_t L1_TILE_N = 256;
@@ -45,12 +47,18 @@ constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-// GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
+// GMM1 + SwiGLU + MX 量化 kernel。
+// AIC 侧：将 M×N×K 矩阵乘按 L1 tile（256×256×256）分块，每个 tile 内做两次 MMAD
+// （SWIGLU_N_HALF=2，对应 gate/proj 双权重块），完成后通知 AIV。
+// wave-grain 提前启动：AIC 在进入新 mLoc wave 前 spin-wait dispatch flag 到目标行数，
+// 无需等整个 expert 的 dispatch 完成。
+// AIV 侧：等待 AIC 通知后执行 SwiGLU+Quant 的 epilogue，完成后通知 AIC。
+// aivSyncCounter [in/out]：每 tile 递增，调用方用它在 expert 循环结束后 drain 通知。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& aivSyncCounter)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -182,7 +190,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 lastWaveWaited = waveIdx;
             }
 
-            if (vecSetSyncCom) {
+            if (aivSyncCounter) {
                 WaitForVector();
             }
 
@@ -214,7 +222,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             NotifyVector();
         }
 
-        vecSetSyncCom = 1;
+        aivSyncCounter = 1;
 
         if constexpr (g_coreType == AscendC::AIV) {
             Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
@@ -233,11 +241,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法 + Combine
+// GMM2 + Combine kernel。
+// AIC 侧：以 SwiGLU 量化输出为 A 矩阵、weight2 为 B 矩阵做分块矩阵乘。
+// 首个 tile 前 spin-wait SwiGluToGmm2 flag 达到所需 tile 数（确保该 expert 的 SwiGLU 已完成）。
+// 使用 ping-pong 双缓冲与 AIV combine 阶段流水。
+// AIV 侧：通过 ping-pong 接收 GMM2 输出 tile，调用 CombineTokens scatter 到各远端 rank。
+// aivSyncCounter2 [in/out]：每 tile 递增，>=2 时触发 WaitForVector 等待对应 ping-pong index。
+// pingpongIdx [in/out]：每 tile 在 0/1 间切换，交替 AIC 输出缓冲与 AIV 输入缓冲。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& aivSyncCounter2, uint32_t groupIdx,
     uint16_t& pingpongIdx, int32_t rankId)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
@@ -369,7 +383,7 @@ __aicore__ inline void GroupMatmul2(
                     }
                 }
             }
-            if (vecSetSyncCom2 >= 2) {
+            if (aivSyncCounter2 >= 2) {
                 WaitForVector(pingpongIdx);
             }
 
@@ -395,7 +409,7 @@ __aicore__ inline void GroupMatmul2(
             NotifyVector(pingpongIdx);
         }
 
-        vecSetSyncCom2++;
+        aivSyncCounter2++;
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
