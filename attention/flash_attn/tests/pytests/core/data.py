@@ -137,8 +137,4 @@ flash_attn_inputs = (
             when=lambda p: "v_range" in p)
     .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
             when=lambda p: "v_range" not in p)
-    .tensor("q_rope", layout={"BNSD": "B,N1,S1,DRope"},
-            when=lambda p: p.get("DRope", 0) > 0)
-    .tensor("k_rope", layout={"BNSD": "B,N2,S2,DRope"},
-            when=lambda p: p.get("DRope", 0) > 0)
 )
