@@ -227,20 +227,20 @@ def _generate(method, shape, dtype, device, rng, **kw):
 
 flash_attn_inputs = (
     InputSpec("flash_attn")
-    .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
+    # 全部生成 BNSD，布局转换由 NPUBackend 的 trans_bnsd_to_layout 做
+    .tensor("q", shape="B,N1,S1,D",
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "q_range" in p)
-    .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
+    .tensor("q", shape="B,N1,S1,D",
             when=lambda p: "q_range" not in p)
-    # k/v 始终按 BNSD/BSND/TND 生成；PA 转换在 NPUBackend 里做
-    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
+    .tensor("k", shape="B,N2,S2,D",
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "k_range" in p)
-    .tensor("k", layout={"BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D"},
+    .tensor("k", shape="B,N2,S2,D",
             when=lambda p: "k_range" not in p)
-    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
+    .tensor("v", shape="B,N2,S2,_V",
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "v_range" in p)
-    .tensor("v", layout={"BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V"},
+    .tensor("v", shape="B,N2,S2,_V",
             when=lambda p: "v_range" not in p)
 )
