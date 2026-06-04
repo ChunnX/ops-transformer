@@ -109,11 +109,11 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID,
         "batch_size should not be negative, but got %ld", batchSize);
     // max_seqlen_q 非负校验
-    CHECK_COND(maxSeqlenQ >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_q should not be negative, but got %ld", maxSeqlenQ);
+    CHECK_COND(maxSeqlenQ >= -1, ACLNN_ERR_PARAM_INVALID,
+        "max_seqlen_q should be >= -1, but got %ld", maxSeqlenQ);
     // max_seqlen_k 非负校验
-    CHECK_COND(maxSeqlenK >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_k should not be negative, but got %ld", maxSeqlenK);
+    CHECK_COND(maxSeqlenK >= -1, ACLNN_ERR_PARAM_INVALID,
+        "max_seqlen_k should be >= -1, but got %ld", maxSeqlenK);
     // mask_mode 校验
     CHECK_COND((maskMode == QLI_NO_MASK_MODE) || (maskMode == QLI_CAUSAL_MASK_MODE),
         ACLNN_ERR_PARAM_INVALID,
@@ -128,7 +128,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
     CHECK_COND((strcmp(layoutQOptional, "TND") == 0) || (strcmp(layoutQOptional, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
         "layout_q must be TND or BSND, but got %s", layoutQOptional);
     // layout_k 校验
-    CHECK_COND((layoutKOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
+    CHECK_COND((layoutKOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_k is null!");
     CHECK_COND((strcmp(layoutKOptional, "TND") == 0) || (strcmp(layoutKOptional, "BSND") == 0) || \
         (strcmp(layoutKOptional, "PA_BBND") == 0),
         ACLNN_ERR_PARAM_INVALID, "layout_k must be TND/BSND/PA_BBND, but got %s", layoutKOptional);
@@ -251,8 +251,8 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         CHECK_COND(cmpResidualKBatch == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
             "The batch_size of cmp_residual_k should match the valid batch size, but got %ld and %ld",
             cmpResidualKBatch, queryBatchSize);
-        return ACLNN_SUCCESS;
     }
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus ParamsCheckQliV2(
