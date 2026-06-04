@@ -625,7 +625,7 @@ QuantCompressorBlockVectorFullLoad<COMP>::AddApeToScore(const LocalTensor<T> &sc
     
 }
 
-
+template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
 QuantCompressorBlockVectorFullLoad<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
