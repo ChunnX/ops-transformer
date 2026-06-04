@@ -227,20 +227,33 @@ def _generate(method, shape, dtype, device, rng, **kw):
 
 flash_attn_inputs = (
     InputSpec("flash_attn")
-    # 全部生成 BNSD，布局转换由 NPUBackend 的 trans_bnsd_to_layout 做
-    .tensor("q", shape="B,N1,S1,D",
+    # q — 按 layout_q 生成
+    .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             method="uniform", low=-5.0, high=5.0,
             when=lambda p: "q_range" in p)
-    .tensor("q", shape="B,N1,S1,D",
+    .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             when=lambda p: "q_range" not in p)
-    .tensor("k", shape="B,N2,S2,D",
+    # k/v — 按 layout_kv 生成（PA 时生成 page 格式）
+    .tensor("k", layout={
+            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
+            "PA_BBND": "num_blocks,block_size,N2,D",
+            "PA_BNBD": "num_blocks,N2,block_size,D"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "k_range" in p)
-    .tensor("k", shape="B,N2,S2,D",
-            when=lambda p: "k_range" not in p)
-    .tensor("v", shape="B,N2,S2,_V",
+            when=lambda p: "k_range" in p, layout_override="layout_kv")
+    .tensor("k", layout={
+            "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
+            "PA_BBND": "num_blocks,block_size,N2,D",
+            "PA_BNBD": "num_blocks,N2,block_size,D"},
+            when=lambda p: "k_range" not in p, layout_override="layout_kv")
+    .tensor("v", layout={
+            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
+            "PA_BBND": "num_blocks,block_size,N2,_V",
+            "PA_BNBD": "num_blocks,N2,block_size,_V"},
             method="uniform", low=-5.0, high=5.0,
-            when=lambda p: "v_range" in p)
-    .tensor("v", shape="B,N2,S2,_V",
-            when=lambda p: "v_range" not in p)
+            when=lambda p: "v_range" in p, layout_override="layout_kv")
+    .tensor("v", layout={
+            "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
+            "PA_BBND": "num_blocks,block_size,N2,_V",
+            "PA_BNBD": "num_blocks,N2,block_size,_V"},
+            when=lambda p: "v_range" not in p, layout_override="layout_kv")
 )
