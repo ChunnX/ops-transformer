@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file infer_flash_attention_kvcache.h
+ * \file quant_block_sparse_attention_kvcache.h
  * \brief
  */
 #ifndef INFER_FLASH_ATTENTION_KVCACHE_H
@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
-#include "infer_flash_attention_comm.h"
+#include "quant_block_sparse_attention_comm.h"
 #define NUM_128 128
 using namespace matmul;
 

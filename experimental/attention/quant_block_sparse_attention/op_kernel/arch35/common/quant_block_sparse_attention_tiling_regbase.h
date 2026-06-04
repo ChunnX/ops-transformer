@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_score_tiling_regbase.h
+ * \file quant_block_sparse_attention_tiling_regbase.h
  * \brief
  */
 

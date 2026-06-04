@@ -19,7 +19,7 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_VEC_H_
 #include "quant_block_sparse_attention_block_vec_base.h"
 #include "common/util_regbase.h"
-#include "common/flash_attention_score_common_regbase.h"
+#include "common/quant_block_sparse_attention_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;

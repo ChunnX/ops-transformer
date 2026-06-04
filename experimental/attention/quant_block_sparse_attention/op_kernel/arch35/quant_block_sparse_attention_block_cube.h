@@ -32,8 +32,8 @@
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-#include "common/infer_flash_attention_comm.h"
-#include "common/flash_attention_score_common_regbase.h"
+#include "common/quant_block_sparse_attention_comm.h"
+#include "common/quant_block_sparse_attention_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;

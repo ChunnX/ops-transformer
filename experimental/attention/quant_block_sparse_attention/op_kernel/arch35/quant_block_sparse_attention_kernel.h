@@ -19,8 +19,8 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #define QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #include "quant_block_sparse_attention_kernel_base.h"
-#include "common/infer_flash_attention_comm.h"
-#include "common/infer_flash_attention_kvcache.h"
+#include "common/quant_block_sparse_attention_comm.h"
+#include "common/quant_block_sparse_attention_kvcache.h"
 
 namespace BaseApi {
 template <typename CubeBlockType>
