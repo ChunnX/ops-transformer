@@ -19,7 +19,7 @@
 #include "fa_l1_tensor.h"
 #include "gm_coord.h"
 #include "offset_calculator_v2.h"
-#include "const_def.h"
+#include "../const_def.h"
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename T>
