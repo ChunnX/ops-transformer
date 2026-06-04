@@ -51,7 +51,7 @@ public:
         this->lsePtr = GetTensorPtr(lse);
         this->inPtr = GetTensorPtr(in);
 
-        this->hDim = static_cast<uint64_t>(tdata->hDim);
+        this->hDim = tdata->hDim;
         this->sp = tdata->sp;
         this->totalLength = static_cast<uint64_t>(tdata->totalLength);
         this->updateType = tdata->updateType;
@@ -387,7 +387,7 @@ private:
                         //  curLength
     uint16_t lastLength; //  单核循环的最后一轮数据长度
     uint32_t loopCount;  //  单核循环次数
-    uint64_t hDim;       //  head dimension
+    uint32_t hDim;       //  head dimension
     uint32_t sp;
     uint32_t tileLengthAlig;
     uint32_t lastLengthAlig;
