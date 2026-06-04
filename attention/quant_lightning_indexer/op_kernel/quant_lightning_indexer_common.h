@@ -15,6 +15,14 @@
 #ifndef QUANT_LIGHTNING_INDEXER_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_COMMON_H
 using namespace AscendC;
+
+// ===================== AIC:AIV核数比值宏定义 =====================
+// CUBE与VEC核数比值（AIC:AIV Ratio）
+// 默认值：2（表示1:2比值，一个AIC对应两个AIV，arch35原始配置）
+#ifndef CVRATIO
+#define CVRATIO 2  // 默认值：1:2比值，可通过编译选项修改
+#endif
+
 namespace QLICommon {
 
 // 与tiling的layout保持一致

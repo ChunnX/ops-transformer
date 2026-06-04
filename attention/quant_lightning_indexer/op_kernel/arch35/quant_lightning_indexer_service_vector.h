@@ -325,12 +325,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto pingpong = (info.loop % 2);
     auto qScalepingpong = (info.qScaleLoop % 2);
     auto kScalepingpong = (info.kScaleLoop % 2);
-    auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, 2);
+    auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, CVRATIO);  // 使用宏定义CVRATIO
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
-    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);  // 使用宏定义CVRATIO
+    int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;  // 使用宏定义CVRATIO 
     if (curAivS1ProcNum == 0) {
         CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
@@ -402,7 +402,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     //outUB_ --->  scoreGm
-    int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
+    int64_t vec1OutGmOffset = blockId_ % CVRATIO == 0 ? curS2Idx :  // 使用宏定义CVRATIO
                             s1BaseSizePerAIV * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
@@ -423,8 +423,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
-    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);  // 使用宏定义CVRATIO
+    int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;  // 使用宏定义CVRATIO 
 
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
@@ -445,8 +445,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
 
     int32_t validS2Len = cuRealAcSeq;
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
-        uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
-        uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
+        uint32_t rowIdx = blockId_ % CVRATIO * CeilDiv(curS1ProcNum, CVRATIO) + i;  // 使用宏定义CVRATIO
+        uint32_t vecOffset = blockId_ % CVRATIO * CeilDiv(s1BaseSize_, CVRATIO) + i;  // 使用宏定义CVRATIO
         
         uint16_t zero = 0;
         int32_t neg = -1;
