@@ -515,13 +515,6 @@ public:
         return s2Cur == 0U || (curS2Start < curS2End && s2Cur >= curS2Start && s2Cur < curS2End);
     }
 
-    __aicore__ inline bool IsBandFirstS2Loop(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
-    {
-        bool isHeadS2Split =
-            (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (constInfo.s2OStart > 0U);
-        return s2Cur == 0U || (isHeadS2Split && s2Cur == curS2Start);
-    }
-
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
                                                  int64_t &nextTokenLeftUp)
     {
@@ -591,21 +584,18 @@ public:
         uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
-        bool bandS2RangeValid = !(s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 ||
-                                  s2LastToken < s2FirstToken);
-
-        if (bandS2RangeValid) {
-            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-            s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
-            s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
-        }
-
-        if (!bandS2RangeValid) {
+        // no valid token
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
         }
+        // get valid range
+        s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+        s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+
+        s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
+        s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
 
         // 4. Calc curS2Start, curS2End
         curS2Start = s2StartWithSparse;
@@ -718,9 +708,7 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.isBandGlobalOnlyS2Loop =
-            IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End);
-        if (info.isBandGlobalOnlyS2Loop) {
+        if (IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End)) {
             info.actSingleLoopS2Size = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
         }
 
@@ -734,7 +722,7 @@ public:
             if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
                 info.isChangeBatch = true;
             } else {
-                bool isFirstS2Loop = IsSpecialBandSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) :
+                bool isFirstS2Loop = IsSpecialBandSparse() ? s2Cur == 0U :
                                                              (s2Cur == curS2Start);
                 info.isChangeBatch = (info.n2Idx == 0 && isFirstS2Loop);
             }
@@ -747,7 +735,7 @@ public:
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
         if (IsSpecialBandSparse()) {
-            info.isFirstS2Loop = ((loop == 0) || IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur));
+            info.isFirstS2Loop = ((loop == 0) || s2Cur == 0U);
         } else {
             info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         }
@@ -791,11 +779,6 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
-            s2Cur = curS2Start;
-            return;
-        }
-
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
