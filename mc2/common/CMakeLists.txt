@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
-if(BUILD_OPEN_PROJECT)
+if (BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp

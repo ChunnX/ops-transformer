@@ -22,12 +22,14 @@
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if defined(HCOMM_VERSION_NUM) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
+#if __has_include("version/hcomm_version.h")
+#include "version/hcomm_version.h"
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
 #endif
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
 #endif
 
 
@@ -41,8 +43,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
-    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *expandX, const aclTensor *expertIds,
     const aclTensor *assistInfoForCombine, const aclTensor *epSendCounts, const aclTensor *expertScales,
@@ -111,8 +112,7 @@ static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, 
 
 static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
 {
-#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
-    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         CommType type = CommType::AIV;
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -178,8 +178,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlgBuf,
             zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
-    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
@@ -202,8 +201,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream)
 {
-#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
-    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
