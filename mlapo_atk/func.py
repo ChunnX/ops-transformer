@@ -533,9 +533,21 @@ class FunctionMlaPreprocessApi(BaseApi):
         """
         input_token_num = input_data.kwargs["input"].shape[0]
         # print("intput_token_num = ",input_token_num)
-        #第一次执行需要生成slotmapping
-        input_data.kwargs["slotmapping"] = torch.from_numpy(np.random.choice(192 * 128, input_token_num, replace=False).astype(np.int32)).to(torch.int32)
+        # 固定可复现的 slotmapping：用独立的 RandomState（固定 seed），不依赖全局 np 随机态，
+        # 保证 cpu/npu/pyaclnn 各进程生成完全一致的 slot，排除「随机态不对齐」这个变量。
+        _slot_rng = np.random.RandomState(2025)
+        input_data.kwargs["slotmapping"] = torch.from_numpy(
+            _slot_rng.choice(192 * 128, input_token_num, replace=False).astype(np.int32)
+        ).to(torch.int32)
         # input_data.kwargs["slotmapping"] = torch.arange(input_token_num).to(torch.int32)
+        _sm = input_data.kwargs["slotmapping"].cpu()
+        _blk = (_sm // BLOCK_SIZE).tolist()
+        print(
+            f"[nc_dim0][slot] device={self.device} token_num={input_token_num} cacheMode={int(input_data.kwargs['cacheMode'])} "
+            f"slot_min={int(_sm.min())} slot_max={int(_sm.max())} n_neg={int((_sm < 0).sum())} "
+            f"blocks(sorted)={sorted(_blk)}",
+            flush=True,
+        )
        
         CACHEMODE = input_data.kwargs["cacheMode"]
         
@@ -750,6 +762,12 @@ class FunctionMlaPreprocessApi(BaseApi):
             res3 = self.kv_cache_rope_out_cpu
             
             result = [res0, res1, res2, res3]
+            print(
+                f"[nc_dim0][golden-cpu] cacheMode={self.cacheMode} "
+                f"kvCacheOut: shape={tuple(res1.shape)} dtype={res1.dtype} nonzero={int(res1.count_nonzero())} | "
+                f"krCacheOut: shape={tuple(res3.shape)} dtype={res3.dtype} nonzero={int(res3.count_nonzero())}",
+                flush=True,
+            )
             torch.save(self.cacheMode,f"{remote_dir}/cacheMode.bin")
             torch.save(result, f"{remote_dir}/result_cpu.bin")
             # torch.save(self.cacheMode,f"{common_file_save_path}/cacheMode.bin")
@@ -766,6 +784,12 @@ class FunctionMlaPreprocessApi(BaseApi):
             res0, res1, res2, res3 = self.__npu_golden_calc_impl(en_w8a8, do_rms_norm)
             # print("res0:", res0)
             result = [res0.cpu(), res1.cpu(), res2.cpu(), res3.cpu()]
+            print(
+                f"[nc_dim0][golden-npu] cacheMode={self.cacheMode} "
+                f"kvCacheOut: shape={tuple(res1.shape)} dtype={res1.dtype} nonzero={int(res1.count_nonzero())} | "
+                f"krCacheOut: shape={tuple(res3.shape)} dtype={res3.dtype} nonzero={int(res3.count_nonzero())}",
+                flush=True,
+            )
             torch.save(result, f"{remote_dir}/result_npu.bin")
             # torch.save(result, f"{common_file_save_path}/result_npu.bin")
 
