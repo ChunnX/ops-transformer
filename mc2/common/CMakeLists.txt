@@ -24,7 +24,7 @@ if (BUILD_OPEN_PROJECT)
         utils/mc2_moe_utils.cpp
         op_host/op_tiling/mc2_tiling_utils.cpp
         op_host/op_tiling/moe_tiling_base.cpp
-        op_host/op_tiling/one_calc_two_comm_tiling.cpp
+        op_host/op_tiling/one_calc_two_comm_tiling.cpp 
     )
 
     if(UT_TEST_ALL OR OP_HOST_UT)
