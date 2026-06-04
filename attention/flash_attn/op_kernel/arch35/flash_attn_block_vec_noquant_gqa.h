@@ -112,8 +112,9 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
-    // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
+    // 与 FA_MTE3_TO_V_0/1 错开，避免 ClearOutput 与 vec1/vec2 流水争用同一 MTE3_V id
+    static constexpr uint32_t initOutputEventId = 6U;
+    // 静态 event ID 常量（避开 6/7 为跨核 mode4；initOutput 已占用 MTE3_V-6）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
     static constexpr uint32_t FA_V_TO_MTE3_0     = 0U;
@@ -125,9 +126,11 @@ public:
     // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
-    // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
+    // attenMask ping/pong：MTE2→V（0/1）与 V→MTE2（0/1），对应原 attenMaskInQue Alloc/FreeTensor
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
+    static constexpr uint32_t FA_ATTEN_MASK_V_TO_MTE2_0 = 0U;
+    static constexpr uint32_t FA_ATTEN_MASK_V_TO_MTE2_1 = 1U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -522,9 +525,13 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
-            // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
+            const uint32_t bufIdx = runInfo.loop & (DB - 1);
+            const uint32_t vToMte2Id =
+                (bufIdx == 0U) ? FA_ATTEN_MASK_V_TO_MTE2_0 : FA_ATTEN_MASK_V_TO_MTE2_1;
+            // 替代 attenMaskInQue.AllocTensor：等 V 释放该 ping/pong 槽后再 MTE2 覆写
+            WaitFlag<HardEvent::V_MTE2>(vToMte2Id);
             PipeBarrier<PIPE_ALL>();
-            attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
+            attenMaskUb = this->attenMaskBuf[bufIdx];
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
             PipeBarrier<PIPE_MTE2>();
             PipeBarrier<PIPE_V>();
@@ -615,8 +622,12 @@ public:
             }
         }
         if constexpr (hasAtten) {
-            // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
+            const uint32_t bufIdx = runInfo.loop & (DB - 1);
+            const uint32_t vToMte2Id =
+                (bufIdx == 0U) ? FA_ATTEN_MASK_V_TO_MTE2_0 : FA_ATTEN_MASK_V_TO_MTE2_1;
+            // 替代 attenMaskInQue.FreeTensor：通知 MTE2 可覆写该 ping/pong 槽
             PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE2>(vToMte2Id);
             PipeBarrier<PIPE_ALL>();
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
@@ -1183,6 +1194,37 @@ public:
         }
     }
 
+    // 进入 FD 或下一次 kernel launch 前：排干 FA 侧静态 event，避免与 FD 共享 UB 时残留 flag
+    __aicore__ inline void DrainFaPipeEventsForFd()
+    {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
+        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
+        if constexpr (hasAtten) {
+            WaitFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_0);
+            SetFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_0);
+            WaitFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_1);
+            SetFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_1);
+            WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_0);
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_0);
+            WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_1);
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_1);
+            PipeBarrier<PIPE_MTE2>();
+            PipeBarrier<PIPE_V>();
+        }
+        PipeBarrier<PIPE_MTE3>();
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void AllocEventID()
     {
         mte3ToVId[0] = FA_MTE3_TO_V_0;
@@ -1195,10 +1237,26 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
+        if constexpr (hasAtten) {
+            SetFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_0);
+            SetFlag<HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_1);
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_0);
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_1);
+        }
     }
 
     __aicore__ inline void FreeEventID()
     {
+        if constexpr (hasAtten) {
+            WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_0);
+            WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_TO_MTE2_1);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_0);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(FA_ATTEN_MASK_MTE2_V_1);
+        }
+        WaitFlag<AscendC::HardEvent::V_MTE3>(vToMte3Id[0]);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(vToMte3Id[1]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
