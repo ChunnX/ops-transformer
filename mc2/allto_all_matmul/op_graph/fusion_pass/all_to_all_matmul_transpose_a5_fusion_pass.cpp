@@ -389,7 +389,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                                x2QuantMode, commQuantMode, x1QuantDType, commQuantDType, transposeX1, transposeX2,
                                groupSize, alltoallOutFlag);
 
-    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
 
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
