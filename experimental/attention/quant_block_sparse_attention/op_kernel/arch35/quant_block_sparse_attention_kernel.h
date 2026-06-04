@@ -164,7 +164,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMa
             if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn>(
-                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr, this->pseInfo);
+                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn>(runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分

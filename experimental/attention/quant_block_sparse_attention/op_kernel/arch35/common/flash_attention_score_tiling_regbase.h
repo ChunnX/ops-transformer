@@ -36,23 +36,17 @@ public:
     float scaleValue;
     int64_t preTokens;
     int64_t nextTokens;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseBSize;
     uint32_t bandIndex;
     uint8_t layoutType;  // 1: BSH/BSND, 2: SBH, 3: BNSD
-    uint8_t pseShapeType;  // 0: (B,N2,G,S1,S2), 1: (B,N2,G,1,S2)
     uint8_t attenMaskShapeType;  // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
     uint8_t attenMaskDataType;  // 0: fp16, 1: bool(uint8)
     uint8_t attenMaskCompressMode;  // ALL: 0, NONE: 1, ANY: 2, CAUSAL: 3, BAND: 4
     uint8_t sparseType;
     uint8_t needDropMaskOp;
     uint8_t dropMaskOuter;
-    uint8_t pseEncodeType;
     uint8_t tndSoftmaxOut;
     uint8_t remain;
     uint32_t attenMaskS2Size;
-    uint32_t pseType;
     uint32_t rsv1;
     int64_t qStartIdx;
     int64_t kvStartIdx;
@@ -61,8 +55,6 @@ public:
     int64_t seed;
     int64_t offset;
     int64_t keepProbUint8;
-    int64_t pseAlibiBaseS1;
-    int64_t pseAlibiBaseS2;
 
     // PFA
     uint8_t deqScaleFlag;  // 0: uint64  1: float32
@@ -126,18 +118,10 @@ public:
     void set_preTokens(int64_t preTokensParam) {this->preTokens = preTokensParam;}
     int64_t get_nextTokens() const {return nextTokens;}
     void set_nextTokens(int64_t nextTokensParam) {this->nextTokens = nextTokensParam;}
-    int64_t get_pseS1Size() const {return pseS1Size;}
-    void set_pseS1Size(int64_t pseS1SizeParam) {this->pseS1Size = pseS1SizeParam;}
-    int64_t get_pseS2Size() const {return pseS2Size;}
-    void set_pseS2Size(int64_t pseS2SizeParam) {this->pseS2Size = pseS2SizeParam;}
-    uint32_t get_pseBSize() const {return pseBSize;}
-    void set_pseBSize(uint32_t pseBSizeParam) {this->pseBSize = pseBSizeParam;}
     uint32_t get_bandIndex() const {return bandIndex;}
     void set_bandIndex(uint32_t bandIndexParam) {this->bandIndex = bandIndexParam;}
     uint8_t get_layoutType() const {return layoutType;}
     void set_layoutType(uint8_t layoutTypeParam) {this->layoutType = layoutTypeParam;}
-    uint8_t get_pseShapeType() const {return pseShapeType;}
-    void set_pseShapeType(uint8_t pseShapeTypeParam) {this->pseShapeType = pseShapeTypeParam;}
     uint8_t get_attenMaskShapeType() const {return attenMaskShapeType;}
     void set_attenMaskShapeType(uint8_t attenMaskShapeTypeParam) {this->attenMaskShapeType = attenMaskShapeTypeParam;}
     uint8_t get_attenMaskDataType() const {return attenMaskDataType;}
@@ -150,14 +134,10 @@ public:
     void set_needDropMaskOp(uint8_t needDropMaskOpParam) {this->needDropMaskOp = needDropMaskOpParam;}
     uint8_t get_dropMaskOuter() const {return dropMaskOuter;}
     void set_dropMaskOuter(uint8_t dropMaskOuterParam) {this->dropMaskOuter = dropMaskOuterParam;}
-    uint8_t get_pseEncodeType() const {return pseEncodeType;}
-    void set_pseEncodeType(uint8_t pseEncodeTypeParam) {this->pseEncodeType = pseEncodeTypeParam;}
     uint16_t get_remain() const {return remain;}
     void set_remain(uint16_t remainParam) {this->remain = remainParam;}
     uint32_t get_attenMaskS2Size() const {return attenMaskS2Size;}
     void set_attenMaskS2Size(uint32_t attenMaskS2SizeParam) {this->attenMaskS2Size = attenMaskS2SizeParam;}
-    uint32_t get_pseType() const {return pseType;}
-    void set_pseType(uint32_t pseTypeParam) {this->pseType = pseTypeParam;}
     uint32_t get_rsv1() const {return rsv1;}
     void set_rsv1(uint32_t rsv1Param) {this->rsv1 = rsv1Param;}
     int64_t get_qStartIdx() const {return qStartIdx;}
@@ -174,10 +154,6 @@ public:
     void set_offset(int64_t offsetParam) {this->offset = offsetParam;}
     int64_t get_keepProbUint8() const {return keepProbUint8;}
     void set_keepProbUint8(int64_t keepProbUint8Param) {this->keepProbUint8 = keepProbUint8Param;}
-    int64_t get_pseAlibiBaseS1() const {return pseAlibiBaseS1;}
-    void set_pseAlibiBaseS1(int64_t pseAlibiBaseS1Param) {this->pseAlibiBaseS1 = pseAlibiBaseS1Param;}
-    int64_t get_pseAlibiBaseS2() const {return pseAlibiBaseS2;}
-    void set_pseAlibiBaseS2(int64_t pseAlibiBaseS2Param) {this->pseAlibiBaseS2 = pseAlibiBaseS2Param;}
     uint8_t get_deqScaleFlag() const {return deqScaleFlag;}
     void set_deqScaleFlag(uint8_t deqScaleFlagParam) {this->deqScaleFlag = deqScaleFlagParam;}
     uint8_t get_deqScale2Flag() const {return deqScale2Flag;}

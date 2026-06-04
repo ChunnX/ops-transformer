@@ -139,7 +139,6 @@ public:
     /* 初始化后不变的信息 */
     ConstInfo<isInfer> constInfo;
     AttenMaskInfo attenMaskInfo;
-    PseInfo pseInfo;
     /* 其他正向独有的一些信息 */
     // Unpack参数
     uint64_t s1OuterSizeAcc;
@@ -179,7 +178,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
     this->pipe = tPipe;
     // vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
-    //     attenMaskInfo, pseInfo);
+    //     attenMaskInfo);
     // vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
