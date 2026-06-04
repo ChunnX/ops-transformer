@@ -1082,6 +1082,20 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
                         f"shape={tuple(fixed.shape)}, nonzero={int(fixed.count_nonzero())}",
                         flush=True,
                     )
+        # 定位竞态发生段：q 输出(output[0]) / qRope 输出(output[2]) 不经 nc 注入，走原始路径。
+        # 若 q 也异常 → desync 在上游(mm1/mm2/einsum)；若 q 正常仅 cache 为 0 → 隔离在 cache-write 段。
+        for probe_idx in (0, 2):
+            if probe_idx < len(outs) and outs[probe_idx] is not None:
+                t = outs[probe_idx]
+                try:
+                    nz = int(t.count_nonzero())
+                    print(
+                        f"[nc_dim0][probe] q-path output[{probe_idx}]: shape={tuple(t.shape)} "
+                        f"dtype={t.dtype} nonzero={nz}",
+                        flush=True,
+                    )
+                except Exception as e:
+                    print(f"[nc_dim0][probe] q-path output[{probe_idx}] probe failed: {e}", flush=True)
         return tuple(outs)
 
 
