@@ -118,10 +118,6 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
                 oriMaskMode);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (oriMaskMode == static_cast<int64_t>(SparseModeQsmla::BAND) && oriTopk != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When ori_mask_mode is 4, ori_topk should only be 0");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
         // ori_win_left >= -1
         if (oriWinLeft < -1) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_left should be >= -1, but got %ld",
@@ -201,8 +197,8 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
     // 校验切g模板核数
     if(numHeadsQ == 128) {
         if (aicCoreNum == 1 || aivCoreNum == 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, but got %u and %u",
-                aicCoreNum, aivCoreNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, "
+                "but got %u and %u", aicCoreNum, aivCoreNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -246,13 +242,6 @@ aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqlensQOptional, const aclTe
             if (!IsTensorExistQsmla(oriTopkLengthOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk is not 0 and ori_mask_mode is 0, "
                     "ori_topk_length must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
-        if (oriMaskMode == static_cast<int64_t>(SparseModeQsmla::BAND)) {
-            if (IsTensorExistQsmla(oriTopkLengthOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and ori_mask_mode is 4, "
-                    "ori_topk_length should not be provided");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }

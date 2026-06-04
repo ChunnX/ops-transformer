@@ -120,8 +120,8 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 const int32_t *cuSeqlensOriKvPtr = static_cast<const int32_t*>(cuSeqlensOriKv_->GetData());
                 for (int i = 0; i < batchSize + 1; i++) {
                     if (cuSeqlensOriKvPtr[i] < 0) {
-                        KERNEL_LOG_ERROR("The elements in cu_seqlens_ori_kv should be >= 0, but got cu_seqlens_ori_kv[%d] = %d",
-                            i, cuSeqlensOriKvPtr[i]);
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_ori_kv should be >= 0, "
+                            "but got cu_seqlens_ori_kv[%d] = %d", i, cuSeqlensOriKvPtr[i]);
                         return false;
                     }
                 }
@@ -146,8 +146,8 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 const int32_t *cuSeqlensCmpKvPtr = static_cast<const int32_t*>(cuSeqlensCmpKv_->GetData());
                 for (int i = 0; i < batchSize + 1; i++) {
                     if (cuSeqlensCmpKvPtr[i] < 0) {
-                        KERNEL_LOG_ERROR("The elements in cu_seqlens_cmp_kv should be >= 0, but got cu_seqlens_cmp_kv[%d] = %d",
-                            i, cuSeqlensCmpKvPtr[i]);
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_cmp_kv should be >= 0, "
+                            "but got cu_seqlens_cmp_kv[%d] = %d", i, cuSeqlensCmpKvPtr[i]);
                         return false;
                     }
                 }
@@ -459,9 +459,8 @@ int64_t SparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t b
     return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
-                                                              uint32_t s1GTailSize, uint32_t oriS2TailSize,
-                                                              uint32_t cmpS2TailSize)
+void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
+                                                    uint32_t oriS2TailSize, uint32_t cmpS2TailSize)
 {
     // ori 部分 cost
     if (hasOriKv_) {
@@ -483,8 +482,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint3
     }
 }
 
-Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx,
-                                                                           const BatchCache &batchCache, bool isCmpKv)
+Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache,
+                                                                 bool isCmpKv)
 {
     // actual seq == 0
     if (!isCmpKv) {
@@ -535,8 +534,8 @@ Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, 
-                                                                BatchCache &batchCache)
+void SparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext,
+                                                     BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -569,7 +568,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriS1GCache(S1GCache &s1GCache, const 
         // 判断 ori S2 方向是否包含尾块
         uint32_t curOriTailS2Num = (s1GCache.oriS2TailSize != 0U) ? 1U : 0U;// Updated check using local var
         uint32_t curOriNormalS2Num = s1GCache.oriS1GBlock - curOriTailS2Num;
-        if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) && splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
+        if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) &&
+            splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
             s1GCache.oriS1GCost = typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK] * curOriNormalS2Num +
                 typeCost_[ORI_TAIL_BLOCK][ORI_TAIL_BLOCK] * curOriTailS2Num;
             s1GCache.oriS1GLastBlockCost = curOriTailS2Num > 0U ? typeCost_[ORI_TAIL_BLOCK][ORI_TAIL_BLOCK] :
@@ -633,48 +633,50 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &or
         oriS2FirstToken = Clip(oriS2FirstToken, static_cast<int64_t>(0),
             static_cast<int64_t>(batchCache.oriS2Size - 1U));
         oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.oriS2Size - 1U));
-        uint32_t oriS2LastTokenSize = oriS2LastToken + 1;
         // oriS2LastToken 与 topk 取最小
         uint32_t oriTopkSize = GetOriTopkLength();
-        uint32_t actOriS2LastTokenSize = isSparseOriKv_ ?
-            std::min(oriS2LastTokenSize, oriTopkSize) : oriS2LastTokenSize;
-        // 由 token 长度计算 oriS2End 和 oriS2TailSize
-        if (actOriS2LastTokenSize == 0) {
-            s1GCache.oriS2End = 0;
-            s1GCache.oriS2TailSize = 0;
-        } else {
-            // 将 token 长度转化为 token 索引，然后由 token 索引计算 s2 索引
-            uint32_t actOriS2Token = actOriS2LastTokenSize - 1 - oriS2FirstToken;
-            s1GCache.oriS2End = actOriS2Token / s2BaseSize_ + 1U;
-            s1GCache.oriS2TailSize = (actOriS2Token + 1) % s2BaseSize_;
-        }
+        uint32_t actOriS2Size = isSparseOriKv_ ?
+            std::min(static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1), oriTopkSize) :
+            static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1);
+        s1GCache.oriS2End = actOriS2Size == 0 ? 0 : (actOriS2Size - 1) / s2BaseSize_ + 1U;
+        s1GCache.oriS2TailSize = actOriS2Size % s2BaseSize_;
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange,
+void SparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cmpRevertS2TokenRange,
                                                         const BatchCache &batchCache, S1GCache &s1GCache)
 {
-    int64_t cmpS2FirstToken = cmpS2TokenRange.first;
-    int64_t cmpS2LastToken = cmpS2TokenRange.second;
+    int64_t cmpRevertS2FirstToken = cmpRevertS2TokenRange.first;
+    int64_t cmpRevertS2LastToken = cmpRevertS2TokenRange.second;
     s1GCache.cmpS2Start = s1GCache.oriS2End;
     // cmp 部分 s2 起止和 tailSize
-    if (cmpS2FirstToken >= static_cast<int64_t>(batchCache.cmpRevertS2Size) || cmpS2LastToken < 0 ||
-        cmpS2LastToken < cmpS2FirstToken) {
+    if (cmpRevertS2FirstToken >= static_cast<int64_t>(batchCache.cmpRevertS2Size) || cmpRevertS2LastToken < 0 ||
+        cmpRevertS2LastToken < cmpRevertS2FirstToken) {
         s1GCache.cmpS2End = s1GCache.cmpS2Start;
         s1GCache.cmpS2TailSize = 0;
     } else {
-        cmpS2LastToken = Clip(cmpS2LastToken, static_cast<int64_t>(0),
+        cmpRevertS2FirstToken = Clip(cmpRevertS2FirstToken, static_cast<int64_t>(0),
             static_cast<int64_t>(batchCache.cmpRevertS2Size - 1U));
-        uint64_t cmpS2LastTokenSize = (cmpS2LastToken + 1) / cmpRatio_;
+        cmpRevertS2LastToken = Clip(cmpRevertS2LastToken, static_cast<int64_t>(0),
+            static_cast<int64_t>(batchCache.cmpRevertS2Size - 1U));
+        // 如果压缩后长度为0，则直接返回
+        if ((cmpRevertS2LastToken + 1) / cmpRatio_ == 0) {
+            s1GCache.cmpS2End = s1GCache.cmpS2Start;
+            s1GCache.cmpS2TailSize = 0;
+            return;
+        }
+        // 获取压缩后的 token 索引
+        uint64_t cmpS2FirstToken = (cmpRevertS2FirstToken + 1) / cmpRatio_ == 0 ?
+            0 : (cmpRevertS2FirstToken + 1) / cmpRatio_ - 1U;
+        uint64_t cmpS2LastToken = (cmpRevertS2LastToken + 1) / cmpRatio_ - 1U;
         // cmpS2LastToken 与 topk 取最小
         uint32_t cmpTopkSize = GetCmpTopkLength();
-        uint32_t actCmpS2LastTokenSize = isSparseCmpKv_ ?
-            std::min(cmpS2LastTokenSize, static_cast<uint64_t>(cmpTopkSize)) : cmpS2LastTokenSize;
-        // 将 token 长度转化为 token 索引，然后由 token 索引计算 s2 索引
-        s1GCache.cmpS2End = (actCmpS2LastTokenSize == 0) ?
-            s1GCache.cmpS2Start : s1GCache.cmpS2Start + (actCmpS2LastTokenSize - 1) / s2BaseSize_ + 1U;
-        // 由 token 长度计算 cmpS2TailSize
-        s1GCache.cmpS2TailSize = actCmpS2LastTokenSize % s2BaseSize_;
+        uint32_t actCmpS2Size = isSparseCmpKv_ ?
+            std::min(static_cast<uint32_t>(cmpS2LastToken - cmpS2FirstToken + 1), cmpTopkSize) :
+            static_cast<uint32_t>(cmpS2LastToken - cmpS2FirstToken + 1);
+        s1GCache.cmpS2End = actCmpS2Size == 0 ?
+            s1GCache.cmpS2Start : s1GCache.cmpS2Start + (actCmpS2Size - 1) / s2BaseSize_ + 1U;
+        s1GCache.cmpS2TailSize = actCmpS2Size % s2BaseSize_;
     }
 }
 
@@ -727,9 +729,9 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
     // 计算 cmp_kv 有效负载起止
     if (hasCmpKv_) {
     	// 计算 cmp_kv 的 s2Token 起止
-        auto cmpS2TokenRange = CalcS2TokenRange(s1GIdx, batchCache, CMP_KV);
+        auto cmpRevertS2TokenRange = CalcS2TokenRange(s1GIdx, batchCache, CMP_KV);
         // 计算 cmp_kv 的 s2Block 起止
-        CalcCmpBlockRange(cmpS2TokenRange, batchCache, s1GCache);
+        CalcCmpBlockRange(cmpRevertS2TokenRange, batchCache, s1GCache);
     } else {
     	// cmp_kv s2Token 起止初始化为0
         s1GCache.cmpS2Start = s1GCache.oriS2End;
@@ -746,8 +748,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
     GatherOriAndCmpCache(s1GCache);
 }
 
-void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext,
-                                                              CostInfo &costInfo)
+void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -895,8 +896,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitCon
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitContext,
-                                                            AssignContext &assignContext)
+void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -938,8 +938,7 @@ int64_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const AssignContext &a
     return curCost;
 }
 
-void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext,
-                                                              AssignContext &assignContext)
+void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished || !supportFd) {
         return;
@@ -963,8 +962,8 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext,
-                                                            AssignContext &assignContext) {
+void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+{
     if (assignContext.isFinished) {
         return;
     }
@@ -984,7 +983,7 @@ void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitConte
 }
 
 bool SparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext,
-                                                                   const SplitResult &splitRes)
+                                                         const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -1003,8 +1002,8 @@ bool SparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &as
     return true;
 }
 
-void SparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext,
-                                                             const AssignContext &assignContext, SplitResult &result)
+void SparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext,
+                                                   SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
@@ -1026,8 +1025,8 @@ void SparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext &splitCont
     result.numOfFdHead++;
 }
 
-void SparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext,
-                                                                   AssignContext &assignContext, SplitResult &result)
+void SparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext, AssignContext &assignContext,
+                                                         SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] =
@@ -1069,7 +1068,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &spl
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext,
-                                                              SplitResult &result)
+                                                    SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     const SplitInfo &splitInfo = splitContext.splitInfo;
