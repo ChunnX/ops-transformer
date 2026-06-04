@@ -82,7 +82,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3GatherOutMxFp4<T>::InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, 
+__aicore__ inline void MoeV3GatherOutMxFp4<T>::InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData,
                                                                TPipe *tPipe)
 {
     pipe_ = tPipe;

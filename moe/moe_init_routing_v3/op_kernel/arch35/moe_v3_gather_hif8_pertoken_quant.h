@@ -44,7 +44,7 @@ private:
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                        int32_t expertIdx, int64_t j);
     __aicore__ inline void ComputeQuant(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
-    __aicore__ inline void InitBasicParams(GM_ADDR sortedExpertIdx, 
+    __aicore__ inline void InitBasicParams(GM_ADDR sortedExpertIdx,
                                            const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
@@ -56,8 +56,8 @@ private:
 
     GlobalTensor<T> inputXGm_;
     GlobalTensor<float> expandedScaleGm_;
-    GlobalTensor<float> quantTempGm_;   
-    GlobalTensor<int32_t> expandedRowIdxGm_;    
+    GlobalTensor<float> quantTempGm_;
+    GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> expandedExpertIdxGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
     GlobalTensor<hifloat8_t> expandedXGm_;
@@ -117,7 +117,7 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Compute()
     __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleLocal.GetPhyAddr();
     __local_mem__ hifloat8_t *outUbAddr = (__local_mem__ hifloat8_t *)outLocal.GetPhyAddr();
     __local_mem__ T *inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
-    
+
     uint16_t repeatTimes = Ceil(cols_, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg;
     __VEC_SCOPE__
@@ -194,7 +194,7 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::CopyOutXQuant(int64_t p
 }
 
 template <typename T>
-__aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, 
+__aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal,
                                                             int32_t srcIdx, int32_t expertIdx, int64_t j)
 {
     DataCopyExtParams intriParamsT{1, static_cast<uint32_t>(colsTileLength_ * sizeof(T)), 0, 0, 0};
@@ -211,7 +211,7 @@ __aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor
     inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
     uint32_t sreg;
     uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
-    
+
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> inReg, scaleReg;
@@ -287,17 +287,17 @@ template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::CopyOutPartialXQuant(int64_t progress)
 {
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();   
+    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
 
     for (int64_t i = 0; i < currentLoopRows_; i++) {
         LocalTensor<float> inLocal = inputXInQueue_.AllocTensor<float>();
         LocalTensor<float> scaleLocal = scaleOutQueue_.AllocTensor<float>();
-        
+
         int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
         int32_t srcIdx = indicesLocal.GetValue(i);
         int32_t expertIdx = indicesLocal.GetValue(currentLoopRowsAlign_ + i) - expertStart_;// hif8 pertoken专家id与tokenid的间隔相差currentLoopRowsAlign_这么长
 
-        uint32_t tmp = 0xFF7FFFFF;	 
+        uint32_t tmp = 0xFF7FFFFF;
         float reduceMax = *((float *)&tmp); // 初始化reduceMax为float最大值
         for (int64_t j = 0; j < colLoops_; j++) {
             colsTileLength_ = perLoopCols_;
@@ -330,8 +330,7 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::CopyOutPartialXQuant(in
 
 template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::InitBasicParams(GM_ADDR sortedExpertIdx,
-                                                                          const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                                                          TPipe *tPipe)
+    const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -378,9 +377,11 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::InitBasicParams(GM_ADDR
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
+__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM_ADDR sortedExpertIdx,
+                                                              GM_ADDR expandedRowIdx,
                                                               GM_ADDR expandedX, GM_ADDR expandedScale,
-                                                              const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                                              const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                              TPipe *tPipe)
 {
     InitBasicParams(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);

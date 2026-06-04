@@ -372,7 +372,8 @@ __aicore__ inline float MoeGatherOutDynamicQuant<T, QuantT>::ComputeMax(LocalTen
 
 template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(LocalTensor<float> &inLocal,
-                                                                            LocalTensor<int8_t> &outLocal, float scaleTemp)
+                                                                           LocalTensor<int8_t> &outLocal,
+                                                                           float scaleTemp)
 {
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
     __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
@@ -408,7 +409,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(Local
 
 template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt8(LocalTensor<float> &inLocal,
-                                                                            LocalTensor<int8_t> &outLocal, float scaleTemp)
+                                                                           LocalTensor<int8_t> &outLocal,
+                                                                           float scaleTemp)
 {
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
     __local_mem__ int8_t *outUbAddr = (__local_mem__ int8_t *)outLocal.GetPhyAddr();
