@@ -15,11 +15,6 @@
 
 using namespace optiling;
 
-constexpr uint32_t KERNEL_STATUS_OK = 0;
-constexpr uint32_t KERNEL_STATUS_PARAM_INVALID = 1;
-constexpr uint32_t COST_WEIGHT_M = 6U;
-constexpr uint32_t COST_WEIGHT_S2 = 10U;
-
 namespace aicpu {
 uint32_t LightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {

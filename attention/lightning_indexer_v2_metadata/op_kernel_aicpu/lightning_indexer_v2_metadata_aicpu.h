@@ -28,6 +28,8 @@
 
 namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr uint32_t COST_WEIGHT_M = 6U;
+constexpr uint32_t COST_WEIGHT_S2 = 10U;
 
 enum BlockType : uint32_t {
     NORMAL_BLOCK = 0,

@@ -23,10 +23,12 @@
 extern "C" {
 #endif
 
-int64_t LI_NO_MASK_MODE = 0;
-int64_t LI_CAUSAL_MASK_MODE = 3;
-int64_t LI_CMP_RATIO_LOWER_BOUND = 1;
-int64_t LI_CMP_RATIO_UPPER_BOUND = 128;
+namespace {
+
+inline constexpr int64_t LI_NO_MASK_MODE = 0;
+inline constexpr int64_t LI_CAUSAL_MASK_MODE = 3;
+inline constexpr int64_t LI_CMP_RATIO_LOWER_BOUND = 1;
+inline constexpr int64_t LI_CMP_RATIO_UPPER_BOUND = 128;
 
 inline bool IsTensorExistLiV2(const aclTensor *tensor)
 {
@@ -91,30 +93,30 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
 {
     // num_heads_q 校验
     CHECK_COND(numHeadsQ >= 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_q should not be negative, but got %d", numHeadsQ);
+        "num_heads_q should not be negative, but got %ld", numHeadsQ);
     // num_heads_k 校验
     CHECK_COND(numHeadsK >= 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_kv should not be negative, but got %d", numHeadsK);
+        "num_heads_kv should not be negative, but got %ld", numHeadsK);
     // topk 校验
     CHECK_COND(topk >= 0, ACLNN_ERR_PARAM_INVALID,
-        "topk should not be negative, but got %d", topk);
+        "topk should not be negative, but got %ld", topk);
     // batch_size 非负校验
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID,
-        "batch_size should not be negative, but got %d", batchSize);
+        "batch_size should not be negative, but got %ld", batchSize);
     // max_seqlen_q 校验
     CHECK_COND(maxSeqlenQ >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_q should not be negative, but got %d", maxSeqlenQ);
+        "max_seqlen_q should not be negative, but got %ld", maxSeqlenQ);
     // max_seqlen_k 校验
     CHECK_COND(maxSeqlenK >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_k should not be negative, but got %d", maxSeqlenK);
+        "max_seqlen_k should not be negative, but got %ld", maxSeqlenK);
     // mask_mode 校验
     CHECK_COND((maskMode == LI_NO_MASK_MODE) || (maskMode == LI_CAUSAL_MASK_MODE),
         ACLNN_ERR_PARAM_INVALID,
-        "mask_mode should be %d/%d, but got %d", LI_NO_MASK_MODE, LI_CAUSAL_MASK_MODE, maskMode);
+        "mask_mode should be %ld/%ld, but got %ld", LI_NO_MASK_MODE, LI_CAUSAL_MASK_MODE, maskMode);
     // cmp_ratio 校验
     CHECK_COND((cmpRatio >= LI_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= LI_CMP_RATIO_UPPER_BOUND),
         ACLNN_ERR_PARAM_INVALID,
-        "cmp_ratio should be between [%d, %d], but got %d",
+        "cmp_ratio should be between [%ld, %ld], but got %ld",
         LI_CMP_RATIO_LOWER_BOUND, LI_CMP_RATIO_UPPER_BOUND, cmpRatio);
     // layout_q 校验
     CHECK_COND((strcmp(layoutQOptional, "TND") == 0) || (strcmp(layoutQOptional, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
@@ -223,9 +225,9 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of metadata must be int32, but got %d", static_cast<int32_t>(dataType));
         // 校验 metadata 元素数
-        if (metadata->GetViewShape().GetDim(0) != optiling::LI_V2_META_SIZE) {
+        if (metadata->GetViewShape().GetDim(0) != optiling::LI_V2_METADATA_TOTAL_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::LI_V2_META_SIZE, metadata->GetViewShape().GetDim(0));
+                optiling::LI_V2_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -263,6 +265,7 @@ aclnnStatus ParamsCheckLiV2(
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
+}
 }
 
 #ifdef __cplusplus

@@ -23,7 +23,7 @@ namespace optiling {
 // Constants
 inline constexpr uint32_t AIC_CORE_MAX_NUM = 36;
 inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
-constexpr uint32_t LI_V2_META_SIZE = 1024;
+constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 1024;
 using LI_V2_METADATA_T = int32_t;
 
 inline constexpr uint32_t LI_V2_METADATA_SIZE = 8;
@@ -73,7 +73,7 @@ namespace detail {
     };
 };
 
-static_assert(LI_V2_META_SIZE * sizeof(LI_V2_METADATA_T) >= sizeof(detail::liV2MetaData));
+static_assert(LI_V2_METADATA_TOTAL_SIZE * sizeof(LI_V2_METADATA_T) >= sizeof(detail::liV2MetaData));
 };
 
 #endif

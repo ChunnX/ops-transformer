@@ -65,7 +65,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     if (cuSeqlensQOptional != nullptr) {
         cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
         if (cuSeqlensQOptionalContiguous == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is none");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
@@ -73,7 +73,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     if (cuSeqlensKOptional != nullptr) {
         cuSeqlensKOptionalContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
         if (cuSeqlensKOptionalContiguous == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_k contiguous is none");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
@@ -81,7 +81,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     if (sequsedQOptional != nullptr) {
         sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
         if (sequsedQOptionalContiguous == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is none");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
@@ -89,7 +89,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     if (sequsedKOptional != nullptr) {
         sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
         if (sequsedKOptionalContiguous == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_k contiguous is none");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
@@ -97,7 +97,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     if (cmpResidualKOptional != nullptr) {
         cmpResidualLKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
         if (cmpResidualLKOptionalContiguous == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cmp_residual_k contiguous is none");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cmp_residual_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
