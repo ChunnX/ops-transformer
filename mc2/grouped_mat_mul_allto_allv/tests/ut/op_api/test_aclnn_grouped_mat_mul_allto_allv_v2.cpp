@@ -403,7 +403,7 @@ TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestMmWeightInvalid)
 TEST_F(L2GroupedMatMulAlltoAllvV2Test, TestSecondApiDirect)
 {
     aclnnStatus aclRet = aclnnGroupedMatMulAlltoAllvV2(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 } // GroupedMatMulAlltoAllvV2UT

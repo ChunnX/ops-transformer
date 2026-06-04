@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：
-    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/量化介绍.md)，兼容`aclnnQuantGroupedMatMulAlltoAllv`支持的功能。
+    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/量化介绍.md)。
 
 - 计算公式：
     - 路由专家：
@@ -31,7 +31,11 @@
         $$
         mmY = (mmX @  mmWeight) * mmXScaleOptional * mmWeightScaleOptional
         $$
+相较于`aclnnQuantGroupedMatMulAlltoAllv`接口，该接口变更如下：
 
+- 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 ## 函数原型
 
 该算子分为两段式接口，必须先调用`aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantGroupedMatMulAlltoAllvV2`接口执行计算。

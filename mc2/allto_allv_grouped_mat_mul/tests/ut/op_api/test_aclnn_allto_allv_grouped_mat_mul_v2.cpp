@@ -392,7 +392,7 @@ TEST_F(L2AlltoAllvGroupedMatMulV2Test, TestSendCountsEmpty)
 TEST_F(L2AlltoAllvGroupedMatMulV2Test, TestSecondApiDirect)
 {
     aclnnStatus aclRet = aclnnAlltoAllvGroupedMatMulV2(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 // mmWeight not null but mmX null - triggers mm consistency check
