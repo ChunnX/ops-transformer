@@ -741,12 +741,7 @@ public:
         }
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
-        if (IsSpecialBandSparse()) {
-            info.isLastS2Loop = ((s2Cur >= curS2Start && s2Cur < curS2End) && (s2Cur + 1 == curS2End)) ||
-                                (s2Cur == 0U && curS2Start >= curS2End);
-        } else {
-            info.isLastS2Loop = (s2Cur + 1 == curS2End);
-        }
+        info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
         if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
