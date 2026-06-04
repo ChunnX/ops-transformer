@@ -59,10 +59,10 @@ struct AttenMaskInfo {
     int64_t attenMaskS1Offset;
 };
 
-template <bool isInfer = false, bool hasRope = false>
+template <bool isInfer = false>
 __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
     int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size, int64_t s2BaseSize, 
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     if (s1Size == 0 || s2Size == 0) {
         return;
@@ -108,10 +108,10 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
     }
 }
 
-template <bool hasAtten, bool isInfer = false, bool hasRope = false, bool isMxfp8FullQuant = false>
+template <bool hasAtten, bool isInfer = false, bool isMxfp8FullQuant = false>
 __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_t deltaPre,
                                                int64_t s1Offset, const RunInfo<isInfer> &runInfo, 
-                                               ConstInfo<isInfer, hasRope> &constInfo,
+                                               ConstInfo<isInfer> &constInfo,
                                                AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
@@ -168,9 +168,9 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
     }
 }
 
-template <bool hasAtten, bool enableKVPrefix, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isInfer = false, bool hasRope = false>
+template <bool hasAtten, bool enableKVPrefix, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isInfer = false>
 __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &runInfo, 
-    ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
+    ConstInfo<isInfer> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
         int64_t bOffset = 0;
@@ -188,12 +188,6 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
         if constexpr(isInfer) { 
             if (constInfo.isGqa) { 
                 s1Offset = s1Offset % constInfo.s1Size; 
-            } else if (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
-                if (constInfo.layoutType == (uint32_t)LayOutTypeEnum::LAYOUT_BNSD) {
-                    s1Offset = attenMaskInfo.attenMaskS1Offset;
-                } else {
-                    s1Offset = s1Offset / constInfo.gSize;
-                }
             }
         }
         int64_t s2Offset = 0;
@@ -207,13 +201,7 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
             s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
         }
         if constexpr (isInfer) {
-            if (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
-                if (constInfo.layoutType != (uint32_t)LayOutTypeEnum::LAYOUT_BNSD) {
-                    s1Offset += (runInfo.nextTokensOfMlaPerBatch < 0) ? -runInfo.nextTokensOfMlaPerBatch : 0;
-                }
-            } else {
-                s1Offset += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
-            }
+            s1Offset += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
             s1Offset += runInfo.queryLeftPaddingSize;
             s2Offset += runInfo.kvLeftPaddingSize;
         }
@@ -343,8 +331,8 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 }
 #endif
                                       
-template <bool hasAtten, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool enableKVPrefix = false, bool isMxfp8FullQuant = false>
-__aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+template <bool hasAtten, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool enableKVPrefix = false, bool isMxfp8FullQuant = false>
+__aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
                                                       AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten == true) {
@@ -438,16 +426,6 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 s1Offset = s1Offset % constInfo.s1Size;
             }
         }
-        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
-            if (constInfo.layoutType == (uint32_t)LayOutTypeEnum::LAYOUT_BNSD) {
-                s1Offset = attenMaskInfo.attenMaskS1Offset;
-            } else {
-                if (runInfo.nextTokensPerBatch < 0) {
-                    s1Offset -= runInfo.nextTokensPerBatch;
-                }
-                s1Offset = (s1Offset + runInfo.vecCoreOffset) / constInfo.gSize;
-            }
-        }
         int64_t s2Offset = 0;
         if constexpr (enableKVPrefix) {
             if ((runInfo.s2LoopCount + runInfo.s2StartIdx / constInfo.s2BaseSize) < constInfo.prefixLoopCount) {
@@ -465,30 +443,20 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             deltaCausalOrNext = s1Offset - s2Offset;
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
-            if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
-                deltaCausalOrNext = runInfo.nextTokensOfMlaPerBatch + s1Offset - s2Offset;
-            }
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
-            if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
-                deltaPre = -runInfo.preTokensOfMlaPerBatch + s1Offset - s2Offset - 1;
-                deltaCausalOrNext = runInfo.nextTokensOfMlaPerBatch + s1Offset - s2Offset;
-                attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
-                    constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, 0);
-            } else {
-                if constexpr (isInfer) {
-                    /* 推理的S1循环会跳过无效行，训练的不会；原因是推理在最开始存在无效行场景下会对
-                    整个输出进行初始化为0，所以可以跳过无效行，训练由于还需要对max、sum赋值成特殊值，没有跳过无效行，
-                    直接计算。RIGHT_DOWN_CAUSAL_MODE中不需要做这个转换时因为推理的runInfo.actualS1Size已经减掉了无效
-                    的行。*/
-                    if (runInfo.nextTokensPerBatch < 0) {
-                        s1Offset -= runInfo.nextTokensPerBatch;
-                    }
+            if constexpr (isInfer) {
+                /* 推理的S1循环会跳过无效行，训练的不会；原因是推理在最开始存在无效行场景下会对
+                整个输出进行初始化为0，所以可以跳过无效行，训练由于还需要对max、sum赋值成特殊值，没有跳过无效行，
+                直接计算。RIGHT_DOWN_CAUSAL_MODE中不需要做这个转换时因为推理的runInfo.actualS1Size已经减掉了无效
+                的行。*/
+                if (runInfo.nextTokensPerBatch < 0) {
+                    s1Offset -= runInfo.nextTokensPerBatch;
                 }
-                deltaPre = s1Offset - s2Offset - runInfo.preTokensPerBatch - 1;
-                deltaCausalOrNext = s1Offset - s2Offset + runInfo.nextTokensPerBatch;
-                attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
-                    constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
             }
+            deltaPre = s1Offset - s2Offset - runInfo.preTokensPerBatch - 1;
+            deltaCausalOrNext = s1Offset - s2Offset + runInfo.nextTokensPerBatch;
+            attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
+                constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
             if ((constInfo.s1Size + ((__gm__ int64_t *)attenMaskInfo.prefixNAddr)[runInfo.boIdx]) >
@@ -502,34 +470,30 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
         } else {
             return 0;
         }
-        GetAttenMaskComputeMode<hasAtten, isInfer, hasRope, isMxfp8FullQuant>(deltaCausalOrNext, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
+        GetAttenMaskComputeMode<hasAtten, isInfer, isMxfp8FullQuant>(deltaCausalOrNext, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
         int64_t ret = 0;
-        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
-            ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, constInfo.s2BaseSize,
-                attenMaskInfo.attenMaskS2Size, 0);
-        } else {
-            uint32_t s2BaseSize = constInfo.s2BaseSize;
-            if constexpr (isMxfp8FullQuant) {
-                s2BaseSize /= 2;
-            }
-            ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize,
-                attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
+
+        uint32_t s2BaseSize = constInfo.s2BaseSize;
+        if constexpr (isMxfp8FullQuant) {
+            s2BaseSize /= 2;
         }
+        ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize,
+            attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         return ret;
     }
 }
 
-template <bool hasAtten, bool enableKVPrefix = false, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
-__aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+template <bool hasAtten, bool enableKVPrefix = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
+__aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
     AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
 {
-    auto result = ComputeAttenMaskInnerOffset<hasAtten, hasRope, isInfer, dTemplateType, enableKVPrefix, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
+    auto result = ComputeAttenMaskInnerOffset<hasAtten, isInfer, dTemplateType, enableKVPrefix, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
     return result;
 }
 
-template <bool hasAtten, bool hasRope = false, bool isInfer = false>
+template <bool hasAtten, bool isInfer = false>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
-                                       RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo,
+                                       RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, AttenMaskInfo &attenMaskInfo,
                                        bool isPre = false)
 {
     if constexpr (hasAtten == true) {
@@ -542,10 +506,10 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     }
 }
 
-template <bool hasAtten, bool enableKVPrefix = false, bool hasRope = false, bool isInfer = false>
+template <bool hasAtten, bool enableKVPrefix = false, bool isInfer = false>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
                                        TQue<QuePosition::VECIN, 1> &attenMaskInQuePre, GlobalTensor<uint8_t> &srcTensor,
-                                       RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
+                                       RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
@@ -598,15 +562,15 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     }
 }
 
-template <bool hasAtten, bool hasRope = false, bool isInfer = false, bool isMxfp8FullQuant = false>
+template <bool hasAtten, bool isInfer = false, bool isMxfp8FullQuant = false>
 __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
                                          GlobalTensor<uint8_t> &srcTensor,
-                                         RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+                                         RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
                                          AttenMaskInfo &attenMaskInfo, bool needAtten, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
         if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
             int32_t s2RealSize = runInfo.s2RealSize;
             if constexpr (isMxfp8FullQuant) {

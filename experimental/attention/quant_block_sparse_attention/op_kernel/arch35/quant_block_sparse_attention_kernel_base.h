@@ -32,7 +32,7 @@
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-
+#include "common/flash_attention_score_tiling_regbase.h"
 #include "common/infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
