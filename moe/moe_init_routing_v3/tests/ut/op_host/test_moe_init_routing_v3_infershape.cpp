@@ -1559,14 +1559,17 @@ constexpr int64_t QUANT_MODE_UNQUANT = -1LL;
 constexpr int64_t QUANT_MODE_DYNAMIC = 1LL;
 constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2LL;
 constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
+constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
 // arch35可选rowIdxType
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0LL;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1LL;
 // quantModeMap
 const static std::unordered_map<int64_t, ge::DataType> QUANT_DST_TYPE_MAP = {
     {QUANT_MODE_UNQUANT, ge::DT_INT8},
+    {QUANT_MODE_DYNAMIC, ge::DT_INT8},
     {QUANT_MODE_MXFP8_E5M2, ge::DT_FLOAT8_E5M2},
-    {QUANT_MODE_MXFP8_E4M3FN, ge::DT_FLOAT8_E4M3FN}};
+    {QUANT_MODE_MXFP8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
+    {QUANT_MODE_INT4_DYNAMIC, ge::DT_INT4}};
 } // namespace
 
 using ShapeList = std::initializer_list<int64_t>;
@@ -1659,6 +1662,24 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_mxquant_6)
                                  {16, 32}, ROW_IDX_TYPE_GATHER, {-1, -1}, {-1}, {128, 2}, {-1, -1});
 }
 
+// INT4动态量化+scale为(1,H)
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_1)
+{
+    RunSuccessTestcaseInferShape({32, 7168}, ge::DT_FLOAT, {32, 8}, {1, 7168}, 256, EXPERT_CAPACITY, 32,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_INT4_DYNAMIC, {16, 32}, ROW_IDX_TYPE_GATHER, {256, 7168}, {256},
+                                 {16}, {256});
+}
+
+// INT4动态量化+动态shape
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_2)
+{
+    RunSuccessTestcaseInferShape({-1, -1}, ge::DT_BF16, {-1, -1}, {-1, -1}, -1, EXPERT_CAPACITY, 32,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_INT4_DYNAMIC, {16, 32}, ROW_IDX_TYPE_GATHER, {-1, -1}, {-1},
+                                 {16}, {-1});
+}
+
 void RunTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode, ge::graphStatus expectRet, ge::DataType expectOutDtype0,
                               ge::DataType expectOutDtype3)
 {
@@ -1742,6 +1763,30 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_4)
     RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_MXFP8_E4M3FN);
 }
 
+// FP32+INT4动态量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_int4_dynamic_1)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT, QUANT_MODE_INT4_DYNAMIC);
+}
+
+// BF16+INT4动态量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_int4_dynamic_2)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_INT4_DYNAMIC);
+}
+
+// FP16动态量化仍输出INT8
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_dynamic_int8_1)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_DYNAMIC);
+}
+
+// FP32动态量化仍输出INT8
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_dynamic_int8_2)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT, QUANT_MODE_DYNAMIC);
+}
+
 // 失败用例：FP32+E5M2量化
 TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_5)
 {
@@ -1756,4 +1801,16 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_6)
     int64_t quantMode = QUANT_MODE_MXFP8_E4M3FN;
     RunTestcaseInferDataType(ge::DT_INT8, quantMode, ge::GRAPH_FAILED, QUANT_DST_TYPE_MAP.at(quantMode),
                              ge::DT_FLOAT8_E8M0);
+}
+
+// 失败用例：FP16+INT4动态量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_int4_dynamic_3)
+{
+    RunTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_INT4_DYNAMIC, ge::GRAPH_FAILED, ge::DT_INT4, ge::DT_FLOAT);
+}
+
+// 失败用例：INT8+INT4动态量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_int4_dynamic_4)
+{
+    RunTestcaseInferDataType(ge::DT_INT8, QUANT_MODE_INT4_DYNAMIC, ge::GRAPH_FAILED, ge::DT_INT4, ge::DT_FLOAT);
 }
