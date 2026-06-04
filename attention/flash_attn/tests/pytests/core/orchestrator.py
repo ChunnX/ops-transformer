@@ -48,10 +48,10 @@ def run_case(params: dict,
                                cpu_out.float(), dev_out.float(),
                                except_label="CPU", comp_label=primary.name)
 
-    # LSE 对比
+    # LSE 对比（仅当用例要求 return_softmax_lse 时才比）
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if "lse" in primary_out and "lse" in golden_out:
+    if params.get("return_softmax_lse", 0) and "lse" in primary_out and "lse" in golden_out:
         dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
             dev_lse = dev_lse.cpu().float()
