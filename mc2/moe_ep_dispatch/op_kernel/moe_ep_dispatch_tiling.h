@@ -16,35 +16,36 @@
 #ifndef MOE_EP_DISPATCH_TILING_H
 #define MOE_EP_DISPATCH_TILING_H
 
-#include "../../common/op_kernel/mc2_common_def.h"
-#include "../../common/op_kernel/mc2_moe_context.h"
+// #include "../../common/op_kernel/mc2_common_def.h"
+#include <cstdint>
+#include "kernel_tiling/kernel_tiling.h"
 
 struct MoeEpCommonTilingData {
-    uint32_t epWorldSize        = 0;
-    uint32_t epRankId           = 0;
-    uint32_t numExperts         = 0;
-    uint32_t numLocalExperts    = 0;
-    uint32_t numTokens          = 0;
-    uint32_t hidden             = 0;
-    uint32_t topK               = 0;
-    uint32_t numMaxTokensPerRank = 0;
-    uint32_t perSlotBytes       = 0;
-    uint32_t expertAlignment    = 1;
+    uint32_t epWorldSize;
+    uint32_t epRankId;
+    uint32_t numExperts;
+    uint32_t numLocalExperts;
+    uint32_t numTokens;
+    uint32_t hidden;
+    uint32_t topK;
+    uint32_t numMaxTokensPerRank;
+    uint32_t perSlotBytes;
+    uint32_t expertAlignment;
 };
 
 struct MoeEpDispatchInfo {
     MoeEpCommonTilingData cfg;
-    uint32_t doCpuSync          = 1;
-    uint32_t isCached           = 0;
-    uint32_t networkMode        = 0;
-    uint32_t numScaleupRanks    = 0;
-    uint32_t numScaleoutRanks   = 0;
-    uint32_t numAivStage1       = 0;
-    uint32_t numAivStage2       = 0;
-    uint32_t aivNum             = 0;
-    uint64_t hostPinnedCounterAddr = 0;
-    uint64_t totalWinSizeEp     = 0;
-    uint64_t totalUbSize        = 0;
+    uint32_t doCpuSync;
+    uint32_t isCached;
+    uint32_t networkMode;
+    uint32_t numScaleupRanks;
+    uint32_t numScaleoutRanks;
+    uint32_t numAivStage1;
+    uint32_t numAivStage2;
+    uint32_t aivNum;
+    uint64_t hostPinnedCounterAddr;
+    uint64_t totalWinSizeEp;
+    uint64_t totalUbSize;
 };
 
 struct MoeEpDispatchTilingData {
