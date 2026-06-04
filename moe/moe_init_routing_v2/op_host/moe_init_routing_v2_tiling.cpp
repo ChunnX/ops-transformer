@@ -928,7 +928,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingForMoeInitRoutingV2(gert::TilingContext *
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingParseContext *context)
 {
     OP_LOGD(context, "TilingPrepareForMoeInitRountingV2 enter.");
-
+    
     auto compileInfo = context->GetCompiledInfo<MoeInitRoutingV2CompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();
@@ -940,7 +940,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingPa
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "aivNum",
                                               std::to_string(compileInfo->aivNum).c_str(),
                                               "TilingPrepareForMoeInitRoutingV2 failed to get core num"),
-               
         return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
@@ -951,7 +950,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingPa
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "ubSize",
                                               std::to_string(compileInfo->ubSize).c_str(),
                                               "TilingPrepareForMoeInitRoutingV2 failed to get ub size"),
-               
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
