@@ -67,6 +67,7 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
         this->constInfo.blockSize = this->sharedParams.blockSize;
         this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
+        this->constInfo.paBlockStride = this->sharedParams.paBlockStride;
     }
 
     this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
@@ -99,7 +100,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
     if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d\n", this->aicIdx, actualCoreNums);
+        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d paBlockStride=%u combineDim=%u\n",
+            this->aicIdx, actualCoreNums, this->constInfo.paBlockStride, this->constInfo.combineDim);
     }
     if (this->aicIdx >= actualCoreNums) {
         if (this->aicIdx == 0) {

@@ -26,6 +26,7 @@ COMMON = {
     "layout_sparse_indices": ["B_N_Qb_Kb"],
     "quant_mode": [1],
     "mask_mode": [3],
+    "pa_block_padding_bytes": [32],
     "S1EQS2": [False],
 }
 

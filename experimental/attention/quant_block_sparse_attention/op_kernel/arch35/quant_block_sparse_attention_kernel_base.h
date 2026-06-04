@@ -288,7 +288,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         workspace += (totalOffset + mm2Offset * 3);
     }
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        prefix, attenMask, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum, workspace, singleCoreOffset,
+        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum,
+        workspace, singleCoreOffset,
         this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
@@ -392,6 +393,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.s2Size = sharedParams.s2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
+    constInfo.combineDim = (constInfo.dSize + constInfo.dSizeV + sizeof(float) + 31U) / 32U * 32U;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     if constexpr (hasRope) {
         constInfo.dSizeRope = sharedParams.dSizeRope;

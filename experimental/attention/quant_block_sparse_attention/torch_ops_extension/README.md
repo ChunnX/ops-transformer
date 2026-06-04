@@ -55,8 +55,8 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attention(
     query, key, value,                       # FP8_E4M3FN
     q_descale, k_descale, v_descale, p_scale,      # FLOAT32
     sparse_indices, sparse_seq_len, atten_mask,
-    softmax_scale, sparse_q_block_size, sparse_kv_block_size,
-    layout_kv="PA_BSND", layout_sparse_indices="BNQQbKb",
+    softmax_scale, sparse_q_block_size, sparse_kv_block_size, paBlockStride,
+    layout_kv="PA_BNSD", layout_sparse_indices="B_N_Qb_Kb",
     block_table=block_table,                 # 可选：PagedAttention
     return_softmax_lse=False,
 )
@@ -79,6 +79,8 @@ bash test_run.sh
 ## 接口与 IR
 
 - 入参/属性/输出与算子原型 `op_host/quant_block_sparse_attention_def.cpp` 一一对应。
+- `paBlockStride` 为组合 `PA_BNSD` cache 的物理块外步长，单位为 FP8 元素数；eager 模式会校验其等于
+  `key.stride(0)`，显式参数同时用于 `torch.compile` converter。
 - `EXEC_NPU_CMD_V1` 实参按 IR 声明顺序传入（输入→属性→输出）；Python schema 为便于调用将必选张量前置，
   C++ 实现内部已按 IR 顺序重排。
 - FP8 量化：q/k per-token-per-head、v per-head、p per-tensor 静态（用户传入）。

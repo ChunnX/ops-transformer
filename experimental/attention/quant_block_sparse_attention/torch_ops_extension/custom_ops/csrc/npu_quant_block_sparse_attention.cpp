@@ -61,7 +61,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
     const at::Tensor &q_descale, const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
-    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size, int64_t paBlockStride,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
@@ -70,6 +70,10 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
+    TORCH_CHECK(paBlockStride > 0, "paBlockStride should be greater than 0, but got ", paBlockStride);
+    TORCH_CHECK(key.stride(0) == paBlockStride,
+        "paBlockStride should equal key.stride(0), but got paBlockStride=", paBlockStride,
+        " and key.stride(0)=", key.stride(0));
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs =
@@ -90,7 +94,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
         query, key, value, q_descale, k_descale, v_descale, p_scale,
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         sparse_indices, sparse_seq_len, block_table, atten_mask, metadata,
-        max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size, sparse_kv_block_size,
+        max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size, sparse_kv_block_size, paBlockStride,
         layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr, quant_mode, mask_mode, return_softmax_lse,
         attention_out, softmax_lse);
 
@@ -102,7 +106,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_meta(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
     const at::Tensor &q_descale, const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
-    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size, int64_t paBlockStride,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
@@ -110,6 +114,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_meta(
     c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
+    (void)paBlockStride;
     return construct_bsa_output_tensors(query, value, return_softmax_lse);
 }
 }

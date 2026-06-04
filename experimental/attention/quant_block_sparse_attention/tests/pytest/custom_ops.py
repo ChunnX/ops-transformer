@@ -75,6 +75,24 @@ def _load_python_package(root):
         _LOAD_ERRORS.append(f"{init_file}: {error}")
 
 
+def _load_converter(root):
+    converter_file = root / "custom_ops" / "converter" / "npu_quant_block_sparse_attention.py"
+    if not converter_file.exists():
+        return
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "_bsa_quant_block_sparse_attention_converter",
+            converter_file,
+        )
+        if spec is None or spec.loader is None:
+            return
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    except Exception as error:  # pragma: no cover - depends on local extension environment
+        _LOAD_ERRORS.append(f"{converter_file}: {error}")
+
+
 def _load_custom_ops():
     lib_paths = [
         Path("/home/dyx/vendors/custom_transformer/op_api/lib"),
@@ -82,12 +100,17 @@ def _load_custom_ops():
     ]
     _prepend_env_path("LD_LIBRARY_PATH", [path for path in lib_paths if path.exists()])
     if has_quant_block_sparse_attention_op():
+        for root in _candidate_roots():
+            if root.exists():
+                _load_converter(root)
+                break
         return
     for root in _candidate_roots():
         if not root.exists():
             continue
         _load_shared_libraries(root)
         if has_quant_block_sparse_attention_op():
+            _load_converter(root)
             return
         _load_python_package(root)
         if has_quant_block_sparse_attention_op():

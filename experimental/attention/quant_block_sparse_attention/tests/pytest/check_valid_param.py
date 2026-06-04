@@ -44,6 +44,7 @@ def check_valid_param(params):
     params.setdefault("sparse_pattern", "sequential")
     params.setdefault("scale_pattern", "ones")
     params.setdefault("block_table_pattern", "sequential")
+    params.setdefault("pa_block_padding_bytes", 32)
     params.setdefault("p_scale_value", 1.0)
     params["sparse_count"] = params.get("sparse_count") or math.ceil(params["S2"] / params["sparse_kv_block_size"])
     params["softmax_scale"] = params.get("softmax_scale") or (1.0 / math.sqrt(params["D"]))
@@ -53,6 +54,12 @@ def check_valid_param(params):
 
     for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count"):
         _require_positive(params, key)
+
+    pa_block_padding_bytes = params["pa_block_padding_bytes"]
+    if not isinstance(pa_block_padding_bytes, int) or pa_block_padding_bytes < 0:
+        raise ValueError(f"pa_block_padding_bytes should be a non-negative int, got {pa_block_padding_bytes}")
+    if pa_block_padding_bytes % 32 != 0:
+        raise ValueError(f"pa_block_padding_bytes should be 32-byte aligned, got {pa_block_padding_bytes}")
 
     if params["layout_q"] not in ("BSND", "TND"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")

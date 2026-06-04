@@ -343,6 +343,8 @@ struct RunInfo<false> {
     uint32_t blockSize; \
     uint32_t paLayoutType; \
     uint32_t paBlockNumSum; \
+    uint32_t paBlockStride; \
+    uint32_t combineDim; \
     uint32_t transposeLayout; \
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
@@ -511,6 +513,7 @@ struct CVSharedParams<true, true> {
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     uint32_t paLayoutType;
+    uint32_t paBlockStride;
 
     // prefix
     bool isActualSharedPrefixLenNull;

@@ -17,6 +17,7 @@ import random
 import torch
 
 import check_valid_param
+import combined_kv_cache
 
 
 DATA_RANGE_LEFT = -1.0
@@ -58,9 +59,13 @@ def _normalize_params(params):
     normalized.setdefault("sparse_pattern", "sequential")
     normalized.setdefault("scale_pattern", "ones")
     normalized.setdefault("block_table_pattern", "sequential")
+    normalized.setdefault("pa_block_padding_bytes", 32)
     normalized.setdefault("p_scale_value", 1.0)
     normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
-    for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "seed"):
+    for key in (
+        "B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size",
+        "sparse_count", "seed", "pa_block_padding_bytes"
+    ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
             normalized[key] = int(normalized[key])
     normalized["sparse_count"] = normalized.get("sparse_count") or math.ceil(
@@ -104,26 +109,14 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _pack_pa(dense_tensor, block_size, pattern, rng, block_table=None):
-    batch, seq_len, head_num, head_dim = dense_tensor.shape
+def _make_block_table(batch, seq_len, block_size, pattern, rng):
     block_num_per_batch = math.ceil(seq_len / block_size)
-    create_table = block_table is None
-    if create_table:
-        block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
-    pa_tensor = torch.zeros((batch * block_num_per_batch, block_size, head_num, head_dim), dtype=torch.float32)
-
+    block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
     for batch_idx in range(batch):
-        if create_table:
-            physical_ids = _physical_ids(batch_idx * block_num_per_batch, block_num_per_batch, pattern, rng)
-        else:
-            physical_ids = [int(block_table[batch_idx, block_idx].item()) for block_idx in range(block_num_per_batch)]
+        physical_ids = _physical_ids(batch_idx * block_num_per_batch, block_num_per_batch, pattern, rng)
         for block_idx, physical_block in enumerate(physical_ids):
             block_table[batch_idx, block_idx] = int(physical_block)
-            start = block_idx * block_size
-            end = min(start + block_size, seq_len)
-            pa_tensor[physical_block, :end - start] = dense_tensor[batch_idx, start:end].to(torch.float32)
-
-    return pa_tensor.to(_fp8_dtype()), block_table
+    return block_table
 
 
 def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len):
@@ -245,7 +238,7 @@ def _make_scale_tensor(shape, pattern):
     return values.reshape(shape)
 
 
-def _make_scales(case, cu_seqlens_q, cu_seqlens_kv):
+def _make_scales(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths):
     layout_q = case["layout_q"]
     if layout_q == "BSND":
         q_shape = (case["B"], case["S1"], case["N1"])
@@ -256,12 +249,19 @@ def _make_scales(case, cu_seqlens_q, cu_seqlens_kv):
 
     q_scale = _make_scale_tensor(q_shape, case["scale_pattern"])
     k_scale = _make_scale_tensor(k_shape, case["scale_pattern"])
+    if layout_q == "BSND":
+        dense_k_scale = k_scale
+    else:
+        dense_k_scale = torch.zeros((case["B"], case["S2"], case["N2"]), dtype=torch.float32)
+        for batch_idx, kv_len in enumerate(kv_lengths):
+            start = int(cu_seqlens_kv[batch_idx].item())
+            dense_k_scale[batch_idx, :kv_len] = k_scale[start:start + kv_len]
     if case["scale_pattern"] == "ones":
         v_scale = torch.ones((case["N2"],), dtype=torch.float32)
     else:
         v_scale = torch.linspace(0.5, 1.75, steps=case["N2"], dtype=torch.float32)
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
-    return q_scale, k_scale, v_scale, p_scale
+    return q_scale, k_scale, dense_k_scale, v_scale, p_scale
 
 
 def _mask_positions(case, q_idx, positions, q_len, kv_len):
@@ -386,9 +386,14 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     dense_key = _rand_fp8((batch, s2, n2, head_dim), generator)
     dense_value = _rand_fp8((batch, s2, n2, head_dim), generator)
-    key, block_table = _pack_pa(dense_key, sparse_kv_block_size, case["block_table_pattern"], rng)
-    value, _ = _pack_pa(dense_value, sparse_kv_block_size, case["block_table_pattern"], rng, block_table)
-    q_scale, k_scale, v_scale, p_scale = _make_scales(case, cu_seqlens_q, cu_seqlens_kv)
+    block_table = _make_block_table(batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng)
+    q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_scales(
+        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths)
+    kv_cache_storage, kv_cache_meta = combined_kv_cache.pack_combined_kv_cache(
+        dense_key, dense_value, dense_k_scale, block_table, sparse_kv_block_size,
+        case["pa_block_padding_bytes"], case["layout_kv"])
+    combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
+    case["pa_block_stride"] = kv_cache_meta["pa_block_stride"]
     atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
     sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
 
@@ -424,13 +429,13 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_kv": max_seqlen_kv,
             "layout_q": case["layout_q"],
             "layout_kv": case["layout_kv"],
+            "pa_block_stride": kv_cache_meta["pa_block_stride"],
         },
         "input": {
             "query": query,
-            "key": key,
-            "value": value,
+            "kv_cache_storage": kv_cache_storage,
+            "kv_cache_meta": kv_cache_meta,
             "q_descale": q_scale,
-            "k_descale": k_scale,
             "v_descale": v_scale,
             "p_scale": p_scale,
             "cu_seqlens_q": cu_seqlens_q_input,
@@ -447,6 +452,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
+            "pa_block_stride": kv_cache_meta["pa_block_stride"],
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
