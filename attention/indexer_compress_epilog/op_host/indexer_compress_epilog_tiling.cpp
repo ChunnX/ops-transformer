@@ -93,17 +93,26 @@ ge::graphStatus IndexerCompressEpilogTiling::GetAttr()
 ge::graphStatus IndexerCompressEpilogTiling::GetShapeAttrsInfoInner()
 {
     auto shapeX = context_->GetInputShape(INPUT_X_IDX);
-    OPS_LOG_E_IF_NULL(context_, shapeX, return ge::GRAPH_FAILED);
-    auto xStorageShape = shapeX->GetStorageShape();
-    d_ = xStorageShape.GetDim(xStorageShape.GetDimNum() - 1);
-    
+    OP_CHECK_NULL_WITH_CONTEXT(context, shapeX);
     auto shapeSlotMapping = context_->GetInputShape(INPUT_SLOT_MAPPING_IDX);
-    OPS_LOG_E_IF_NULL(context_, shapeSlotMapping, return ge::GRAPH_FAILED);
-    auto slotMappingStorageShape = shapeSlotMapping->GetStorageShape();
-    bs_ = slotMappingStorageShape.GetDim(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, shapeSlotMapping);
+    auto xStorageShape = shapeX->GetStorageShape();
+    auto slotMappingShape = shapeX->GetStorageShape();
+    uint32_t xDims = xStorageShape.GetDims();
+    uint32_t slotMappingDims = slotMappingShape.GetDims();
+    OPS_CHECK(xDims - 1 != slotMappingDims,
+        OP_LOGE(context_->GetNodeName(), "slotMappingDims should equal xDims - 1"), return ge::GRAPH_FAILED);
+    int64_t bs = 1;
+    for (uint32_t i = 0; i < slotMappingDims; i++) {
+        int64_t temp = xStorageShape.GetDim(i);
+        OPS_CHECK(temp != slotMappingShape.GetDim(i), OP_LOGE(context_->GetNodeName(),
+            "slotMappingShape should equal xStorageShape in dim %d", i), return ge::GRAPH_FAILED);
+        bs *= temp;
+    }
+    d_ = xStorageShape.GetDim(xDims - 1);
+    bs_ = bs;
 
     scaleCol_ = CeilDiv(d_, PER_BLOCK_FP16);
-
     OPS_ERR_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OPS_LOG_E(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);

@@ -13,10 +13,10 @@
  * \brief
  */
 
-#include "indexer_compress_epilog_multi_row.h"
-#include "indexer_compress_epilog_single_row.h"
-#include "indexer_compress_epilog_multi_row_mx_fp8.h"
-#include "indexer_compress_epilog_single_row_mx_fp8.h"
+#include "arch35/indexer_compress_epilog_multi_row.h"
+#include "arch35/indexer_compress_epilog_single_row.h"
+#include "arch35/indexer_compress_epilog_multi_row_mx_fp8.h"
+#include "arch35/indexer_compress_epilog_single_row_mx_fp8.h"
 
 #define SINGLE_ROW_NORMAL_QUANT 10001
 #define SINGLE_ROW_MXFP8_QUANT 10000
