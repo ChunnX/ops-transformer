@@ -382,7 +382,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorDim()
 ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
 {
     auto expandXStorageShape = context_->GetInputShape(EXPAND_X_INDEX);
-
     auto quantExpandXOutStorageShape = context_->GetOutputShape(QUANT_EXPAND_X_OUT_INDEX);
     OP_TILING_CHECK(
         (expandXStorageShape->GetStorageShape().GetDim(0) != quantExpandXOutStorageShape->GetStorageShape().GetDim(0)),
@@ -395,6 +394,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
         return ge::GRAPH_FAILED);
 
     //============================ todo xuxn ============================//
+    auto contextStorageShape = context_->GetInputShape(CONTEXT_INDEX);
     OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName_, "contextShape is null."), return ge::GRAPH_FAILED);
  	    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
  	        OP_LOGE(nodeName_, "contextShape dims must be 1, but current dim num is %lu.",

@@ -15,18 +15,20 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+#include "adv_api/hcomm/hcomm.h"
+#include "kernel_tiling/kernel_tiling.h"
+
 #if __has_include("../common/op_kernel/mc2_kernel_utils.h")
 #include "../common/op_kernel/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-#include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
 #include "../../../common/op_kernel/mc2_moe_context.h"
@@ -46,7 +48,12 @@ struct WriteWithNotifySQEInfoParams {
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
 using namespace AscendC;
+using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
+ 	 
+#define TemplateMC2TypeClass \
+    typename XType, \
+    typename YType
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
@@ -360,21 +367,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
 
         //非本卡通信：统一敲doorbell
-        Handle handleId;
         for(uint32_t tokenIndex = 0; tokenIndex < curTokenNum; ++tokenIndex) {
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
             GM_ADDR rankGM = (GM_ADDR)(GetWinAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             uint32_t currRankId = sendRankId > moeDistributeCombineSetupInfo_->epRankId ? sendRankId - 1 : sendRankId;
-            handleId = hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
-            //hcomm_.Commit(handleId);
-            //hcomm_.Wait(handleId);
+            hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
+    
         }
-        hcomm_.Commit(handleId);
-        hcomm_.Wait(handleId);
+        hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
+        hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
     }
-
+    SyncAll<true>();
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 }
 
