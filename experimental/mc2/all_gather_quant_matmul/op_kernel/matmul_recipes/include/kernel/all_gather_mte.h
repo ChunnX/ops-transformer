@@ -287,6 +287,11 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::ReadDataBlock(uint64
     if (remoteRankId_ == mteComm_.curRankId_) {
         return;
     }
+    // ── 安全守卫：当 sendCoreNumPerRank 不能被 kDim_*mDim_ 整除时，
+    //     多余的核会得到无效的 kBlockIdx_/mBlockIdx_，跳过来防止数据踩踏
+    if (kBlockIdx_ >= kDim_ || mBlockIdx_ >= mDim_) {
+        return;
+    }
 
     LocalTensor<int8_t> xTmpTensor = xInQueue_.AllocTensor<int8_t>();
 
@@ -571,14 +576,7 @@ template <AllGatherTemplateTypeClass>
 __aicore__ inline void AllGatherMte<AllGatherTemplateType>::ExecuteAllGather(
     GM_ADDR allGatherDataAddr, GM_ADDR allGatherScalesAddr)
 {
-    // ── 安全守卫：当 sendCoreNumPerRank 不能被 kDim_*mDim_ 整除时，
-    //     多余的核会得到无效的 kBlockIdx_/mBlockIdx_，跳过来防止数据踩踏
-    if (kBlockIdx_ >= kDim_ || mBlockIdx_ >= mDim_) {
-        return;
-    }
-
     // ── 绑定远端和本端 win 区 GM Tensor ──
-
     // 远端 win 区数据地址：remoteRankId_ 对应的数据 slot
     GM_ADDR remoteWinGm = mteComm_.GetWinDataAddrGm(remoteRankId_, mteComm_.winFlag_);
     GM_ADDR remoteDataGm = remoteWinGm + remoteRankId_ * xSize_;
