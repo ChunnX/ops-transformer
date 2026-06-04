@@ -134,12 +134,13 @@ bool GroupedMatmulSwigluQuantV2BaseTiling::IsCapable()
         return false;
     }
 
-    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
-    if (!(wShape->GetDimNum() == ND_WEIGHT_DIM_LIMIT ||
-          wShape->GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM ||
-          wShape->GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
-          wShape->GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
+    auto wSShape = wShape->GetStorageShape();
+    if (!(wSShape.GetDimNum() == ND_WEIGHT_DIM_LIMIT ||
+          wSShape.GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM ||
+          wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
+          wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
         return false;
     }
 
@@ -161,7 +162,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     auto groupListShape = context_->GetDynamicInputShape(GROUPLIST_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, groupListShape);
 
-    auto wDimNum = wShape->GetDimNum();
+    auto wDimNum = wShape->GetStorageShape().GetDimNum();
     if (wDimNum == ND_WEIGHT_DIM_LIMIT || wDimNum == NZ_WEIGHT_DIM_LIMIT) {
         isSingleTensor_ = 1;
     } else {
@@ -200,11 +201,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "CompileInfo is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    m_ = xShape->GetDim(0);
-    k_ = xShape->GetDim(1);
-    auto wScaleDimNum = wScaleShape->GetDimNum();
+    m_ = xShape->GetStorageShape().GetDim(0);
+    k_ = xShape->GetStorageShape().GetDim(1);
+    auto wScaleDimNum = wScaleShape->GetStorageShape().GetDimNum();
     isWeightTrans_ = false;
-    if (wShape->GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wShape->GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+    if (wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
         isNz_ = true;
     }
     const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
@@ -212,20 +213,17 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
                     (reinterpret_cast<const int64_t*>(tuningConfigPtr->GetData()))[0] : 0;
 
     if (isA4W4_) {
-        n_ = wScaleShape->GetDim(wScaleDimNum - DIM_1);
+        n_ = wScaleShape->GetStorageShape().GetDim(wScaleDimNum - DIM_1);
     } else {
-        if (wShape->GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
-            // ND SingleTensor [E, K, N]
-            n_ = wShape->GetDim(DIM_2);
-        } else if (wShape->GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
-            // NZ SingleTensor [E, N // 64, K // 16, 16, 64]
-            n_ = wShape->GetDim(DIM_1) * wShape->GetDim(DIM_4);
-        } else if (wShape->GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
-            // ND MultiTensor [K, N]
-            n_ = wShape->GetDim(DIM_1);
-        } else if (wShape->GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
-            // NZ MultiTensor [N // 64, K // 16, 16, 64]
-            n_ = wShape->GetDim(DIM_0) * wShape->GetDim(DIM_3);
+        auto wSShape = wShape->GetStorageShape();
+        if (wSShape.GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
+            n_ = wSShape.GetDim(DIM_2);
+        } else if (wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
+            n_ = wSShape.GetDim(DIM_1) * wSShape.GetDim(DIM_4);
+        } else if (wSShape.GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
+            n_ = wSShape.GetDim(DIM_1);
+        } else if (wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+            n_ = wSShape.GetDim(DIM_0) * wSShape.GetDim(DIM_3);
         }
     }
 
@@ -233,12 +231,12 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     isWeightTrans_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
 
     if (dequantMode == 1) { // perGroup量化模式：单tensor场景[E, KGroupCount, N]，多tensor场景[KGroupCount, N]
-        quantGroupNum_ = wScaleShape->GetDim(wScaleDimNum - DIM_2);
+        quantGroupNum_ = wScaleShape->GetStorageShape().GetDim(wScaleDimNum - DIM_2);
     } else { // perChannel量化模式
         quantGroupNum_ = 1;
     }
 
-    groupNum_ = groupListShape->GetDim(0);
+    groupNum_ = groupListShape->GetStorageShape().GetDim(0);
 
     if (isA8W4MSD_ || isA4W4_) {
         maxProcessRowNum_ = CalMaxRowInUbA8W4(compileInfoPtr->ubSize_, n_);

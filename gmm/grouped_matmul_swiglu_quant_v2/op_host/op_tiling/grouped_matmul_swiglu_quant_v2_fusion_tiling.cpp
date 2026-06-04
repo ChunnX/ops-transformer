@@ -40,10 +40,11 @@ bool GroupedMatmulSwigluQuantV2FusionTiling::IsCapable()
         return false;
     }
 
-    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
-    if (!(wShape->GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
-          wShape->GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
+    auto wSShape = wShape->GetStorageShape();
+    if (!(wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
+          wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
         return false;
     }
     return true;
@@ -55,10 +56,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
     auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
-    auto groupListShape = context_->GetDynamicInputShape(GROUPLIST_INDEX, 0);
+auto groupListShape = context_->GetDynamicInputShape(GROUPLIST_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, groupListShape);
-    groupNum_ = groupListShape->GetDim(0);
-    auto wDimNum = wShape->GetDimNum();
+    groupNum_ = groupListShape->GetStorageShape().GetDim(0);
+    auto wDimNum = wShape->GetStorageShape().GetDimNum();
     if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
         isSingleTensor_ = 1;
     } else {
@@ -72,13 +73,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
         OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
         return ge::GRAPH_FAILED);
 
-    m_ = xShape->GetDim(0);
-    k_ = xShape->GetDim(1);
+    m_ = xShape->GetStorageShape().GetDim(0);
+    k_ = xShape->GetStorageShape().GetDim(1);
+    auto wSShape = wShape->GetStorageShape();
     if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
-        n_ = wShape->GetDim(DIM_1) * wShape->GetDim(DIM_4);
+        n_ = wSShape.GetDim(DIM_1) * wSShape.GetDim(DIM_4);
     } else {
         // 4D multi tensor: [N/32, K/16, 16, 32] -> N = dim0 * dim3
-        n_ = wShape->GetDim(0) * wShape->GetDim(3);
+        n_ = wSShape.GetDim(0) * wSShape.GetDim(3);
     }
     if (n_ < MIN_UB_FACTOR_DIM_X_N) {
         ubFactorDimx_ = 0x4;
