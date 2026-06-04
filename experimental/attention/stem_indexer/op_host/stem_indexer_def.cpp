@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file stem_indexer_def.cpp
@@ -20,140 +20,61 @@ class StemIndexer : public OpDef {
 public:
     explicit StemIndexer(const char *name) : OpDef(name)
     {
-        this->Input("query")
+        this->Input("qflat").ParamType(REQUIRED).DataType({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("kflat").ParamType(REQUIRED).DataType({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("vbias").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("q_seq_lens")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8})
-            .Format({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        this->Input("weights")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("query_dequant_scale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key_dequant_scale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        this->Input("actual_seq_lengths_query")
-            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("actual_seq_lengths_key")
-            .ParamType(OPTIONAL)
+        this->Input("kv_seq_lens")
+            .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("block_table")
-            .ParamType(OPTIONAL)
+        this->Input("num_prompt_tokens")
+            .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("sparse_indices").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
-        this->Output("sparse_values").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
-        this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: per-token-head
-        this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: per-token-head
-        this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_key").AttrType(OPTIONAL).String("PA_BSND");
-        this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048);  // 2048: 默认值，筛选前2048
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);      // 3: 默认值，只计算下三角
-        this->Attr("pre_tokens").AttrType(OPTIONAL).Int(9223372036854775807);  // 9223372036854775807: 默认值，int64的最大值
-        this->Attr("next_tokens").AttrType(OPTIONAL).Int(9223372036854775807); // 9223372036854775807: 默认值，int64的最大值
-        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);          // 1: 压缩率
-        this->Attr("return_values").AttrType(OPTIONAL).Bool(false); // 是否返回sparse_values
-        this->Attr("key_stride0").AttrType(OPTIONAL).Int(0);  
- 	    this->Attr("key_dequant_scale_stride0").AttrType(OPTIONAL).Int(0);  
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
+        this->Output("sparse_indices")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Output("sparse_seq_len")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+
+        this->Attr("causal").AttrType(OPTIONAL).Bool(true);
+        this->Attr("stem_block_size").AttrType(OPTIONAL).Int(128);
+        this->Attr("stem_stride").AttrType(OPTIONAL).Int(16);
+        this->Attr("alpha").AttrType(OPTIONAL).Float(1.0f);
+        this->Attr("initial_blocks").AttrType(OPTIONAL).Int(4);
+        this->Attr("window_size").AttrType(OPTIONAL).Int(4);
+        this->Attr("k_block_num_rate_medium").AttrType(OPTIONAL).Float(0.2f);
+        this->Attr("k_block_num_bias_medium").AttrType(OPTIONAL).Int(30);
+        this->Attr("k_block_num_rate_large").AttrType(OPTIONAL).Float(0.1f);
+        this->Attr("k_block_num_bias_large").AttrType(OPTIONAL).Int(30);
+
+        OpAICoreConfig aicoreConfig;
+        aicoreConfig.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend910b", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
-
-        OpAICoreConfig aicore_config_95;
-        aicore_config_95.Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("weights")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("query_dequant_scale")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("key_dequant_scale")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("actual_seq_lengths_query")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("actual_seq_lengths_key")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("metadata")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Output("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        aicore_config_95.Output("sparse_values")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
-        aicore_config_95.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("opFile.value", "stem_indexer")
-            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend910b", aicoreConfig);
+        this->AICore().AddConfig("ascend910_93", aicoreConfig);
+        this->AICore().AddConfig("ascend950", aicoreConfig);
     }
 };
-OP_ADD(QuantLightningIndexer);
-}  // namespace ops
+
+OP_ADD(StemIndexer);
+} // namespace ops
