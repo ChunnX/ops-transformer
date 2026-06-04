@@ -493,13 +493,14 @@ public:
                 return TASK_DEAL_MODE::SKIP;
             }
 
+            if (SkipForS1OutSplit()) {
+                return TASK_DEAL_MODE::SKIP_S1OUT;
+            }
+
             if (s2Cur == curS2Start) {
                 mloop++;
             }
 
-            if (SkipForS1OutSplit()) {
-                return TASK_DEAL_MODE::SKIP_S1OUT;
-            }
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
