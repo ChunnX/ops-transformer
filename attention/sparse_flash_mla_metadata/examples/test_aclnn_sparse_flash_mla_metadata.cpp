@@ -32,6 +32,7 @@
 // 参考 sparse_flash_mla_metadata.h
 constexpr uint32_t AIC_CORE_MAX_NUM = 36;
 constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 1024;
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
@@ -170,7 +171,7 @@ aclnnStatus CreateTensor(aclDataType dataType, const std::vector<int64_t> &shape
     // 调用aclCreateTensor接口创建aclTensor
     tensor.data = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
         shape.data(), shape.size(), tensor.deviceAddr);
-
+    CHECK_LOG_RET(tensor.data != nullptr, ACL_ERROR_FAILURE, "aclCreateTensor failed");
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(tensor.deviceAddr, size, tensor.hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
@@ -224,7 +225,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsQ = 64;
     context.numHeadsKv = 1;
     context.headDim = 512;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
+    ret = CreateTensor(aclDataType::ACL_INT32, { SMLA_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
     context.oriTopk = 0;
     context.cmpTopk = 0;
@@ -235,6 +236,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.oriWinRight = 0;
     context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
     context.layoutKvOptional = (char *)malloc(sizeof(char) * 16);
+    CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
+    CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
     strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BNBD
     context.hasOriKv = true;

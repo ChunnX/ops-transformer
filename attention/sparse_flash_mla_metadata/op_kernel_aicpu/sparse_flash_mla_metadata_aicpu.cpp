@@ -21,13 +21,6 @@
 
 using namespace optiling;
 
-constexpr uint32_t KERNEL_STATUS_OK = 0;
-constexpr uint32_t KERNEL_STATUS_PARAM_INVALID = 1;
-constexpr uint32_t COST_WEIGHT_M = 6U;
-constexpr uint32_t COST_WEIGHT_S2 = 10U;
-constexpr bool ORI_KV = false;
-constexpr bool CMP_KV = true;
-
 namespace aicpu {
 uint32_t SparseFlashMlaMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
@@ -124,15 +117,15 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriMaskMode()
     if (oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
         oriPreToken_ = INT64_MAX;
         oriNextToken_ = INT64_MAX;
-        oriAttentionMode_ = 0;
+        oriAttentionMode_ = NO_MASK;
     } else if (oriMaskMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
         oriPreToken_ = INT64_MAX;
         oriNextToken_ = 0;
-        oriAttentionMode_ = 1;
+        oriAttentionMode_ = HAS_MASK;
     } else {  //SparseMode = 4
         oriPreToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
         oriNextToken_ = 0;
-        oriAttentionMode_ = 1;
+        oriAttentionMode_ = HAS_MASK;
     }
 }
 
@@ -141,15 +134,15 @@ void SparseFlashMlaMetadataCpuKernel::CalcCmpMaskMode()
     if (cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
         cmpPreToken_ = INT64_MAX;
         cmpNextToken_ = INT64_MAX;
-        cmpAttentionMode_ = 0;
+        cmpAttentionMode_ = NO_MASK;
     } else if (cmpMaskMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
         cmpPreToken_ = INT64_MAX;
         cmpNextToken_ = 0;
-        cmpAttentionMode_ = 1;
+        cmpAttentionMode_ = HAS_MASK;
     } else {  //SparseMode = 4
         cmpPreToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
         cmpNextToken_ = 0;
-        cmpAttentionMode_ = 1;
+        cmpAttentionMode_ = HAS_MASK;
     }
 }
 
@@ -176,15 +169,13 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    if (numHeadsQ_ == 128) {
-    	isSplitG_ = true;
-    }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
         mBaseSize_ = 64U;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
-        if (isSplitG_) {
+        if (numHeadsQ_ == 128) {
+            isSplitG_ = true;
             mBaseSize_ = groupSize_;
             aicCoreNum_ /= 2;
             aivCoreNum_ /= 2;
@@ -366,8 +357,8 @@ int64_t SparseFlashMlaMetadataCpuKernel::OriCalcCost(uint32_t basicM, uint32_t b
 {
     uint32_t oriAlignCoefM = 16U;
     uint32_t oriAlignCoefS2 = 64U;
-    uint32_t oriAlignBasicM = (basicM + oriAlignCoefM - 1U) >> 4U;
-    uint32_t oriAlignBasicS2 = (basicS2 + oriAlignCoefS2 - 1U) >> 6U;
+    uint32_t oriAlignBasicM = (basicM + oriAlignCoefM - 1U) / oriAlignCoefM;
+    uint32_t oriAlignBasicS2 = (basicS2 + oriAlignCoefS2 - 1U) / oriAlignCoefS2;
     return static_cast<int64_t>(COST_WEIGHT_M * oriAlignBasicM + COST_WEIGHT_S2 * oriAlignBasicS2);
 }
 
@@ -375,8 +366,8 @@ int64_t SparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t b
 {
     uint32_t cmpAlignCoefM = 16U;
     uint32_t cmpAlignCoefS2 = 64U;
-    uint32_t cmpAlignBasicM = (basicM + cmpAlignCoefM - 1U) >> 4U;
-    uint32_t cmpAlignBasicS2 = (basicS2 + cmpAlignCoefS2 - 1U) >> 6U;
+    uint32_t cmpAlignBasicM = (basicM + cmpAlignCoefM - 1U) / cmpAlignCoefM;
+    uint32_t cmpAlignBasicS2 = (basicS2 + cmpAlignCoefS2 - 1U) / cmpAlignCoefS2;
     return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 

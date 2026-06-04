@@ -27,6 +27,12 @@
 
 namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr uint32_t COST_WEIGHT_M = 6U;
+constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr bool ORI_KV = false;
+constexpr bool CMP_KV = true;
+constexpr uint32_t NO_MASK = 0;
+constexpr uint32_t HAS_MASK = 1;
 
 enum BlockType : uint32_t {
     ORI_NORMAL_BLOCK = 0,
@@ -318,9 +324,9 @@ private:
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
     int32_t cmpTopK_ = 0;
-    int32_t cmpRatio_ = -1;
-    int32_t oriMaskMode_ = 4;
-    int32_t cmpMaskMode_ = 3;
+    int32_t cmpRatio_ = 1;
+    int32_t oriMaskMode_ = static_cast<int32_t>(SparseMode::BAND);
+    int32_t cmpMaskMode_ = static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
     int64_t winLeft_ = 127;
     int64_t winRight_ = 0;
     std::string layoutQuery_ = "BSND";
@@ -341,8 +347,8 @@ private:
     uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
     bool supportFd = false;
-    uint32_t oriAttentionMode_ = 1;
-    uint32_t cmpAttentionMode_ = 1;
+    uint32_t oriAttentionMode_ = HAS_MASK;
+    uint32_t cmpAttentionMode_ = HAS_MASK;
     BlockCost<int64_t> typeCost_ = {};
     bool isSplitG_ = false;
     bool isSparseOriKv_ = false;
