@@ -124,10 +124,10 @@ private:
     int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo);
 
 private:
-    bool enablePerblockQuant_ = false;
-    bool enablePertensorQuant_ = false;
-    bool enableIFAMLAFullQuant_ = false;
-    bool enableMxfp8FullQuant_ = false;
+    bool enableQKVPerblockQuant_ = false;
+    bool enableQKVPertensorQuant_ = false;
+    bool enableQPerTokenHeadKVPerTensor_ = false;
+    bool enableQKVMxfp8FullQuant_ = false;
 };
 
 } // namespace optiling
