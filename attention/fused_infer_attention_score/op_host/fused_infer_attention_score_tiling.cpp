@@ -1422,8 +1422,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.innerPrecise = innerPrecise;
     if (faInfo.pagedCacheFlag) {
         constexpr int64_t HEAD_SIZE_ALIGN_16 = 16;
-        bool isHeadSizeAligned = (inputLayoutStr == "TND") &&
-            (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
+        bool isHeadSizeAligned = (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
         if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U &&
             isHeadSizeAligned) {
             faInfo.kvcacheNzFlag = true;
