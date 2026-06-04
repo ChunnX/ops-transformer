@@ -173,18 +173,33 @@ static ge::graphStatus ValidateDtype(gert::TilingContext *context)
 
 // ==================== shape validation ====================
 
+static gert::Shape GetTensorShape(gert::TilingContext *context, size_t idx)
+{
+    auto *shapeRef = context->GetInputShape(idx);
+    if (shapeRef == nullptr) {
+        return gert::Shape();
+    }
+
+    bool isView = context->InputIsView(idx);
+    if (isView) {
+        return shapeRef->GetShape();
+    } else {
+        return EnsureNotScalar(shapeRef->GetStorageShape());
+    }
+}
+
 static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTokens, int64_t numHead,
                                      int64_t kHeadSize, int64_t vHeadSize, int64_t numBlocks, int64_t blockSize)
 {
-    auto sValue = context->GetInputShape(INPUT_VALUE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sValue);
-    auto valueShape = EnsureNotScalar(sValue->GetStorageShape());
+    auto valueShape = GetTensorShape(context, INPUT_VALUE_IDX);
+    OP_CHECK_IF((valueShape.GetDimNum() == 0), OP_LOGE(context, "value shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((valueShape.GetDim(DIM_HEAD) != numHead), OP_LOGE(context, "value numHead mismatch"),
                 return ge::GRAPH_FAILED);
 
-    auto sKc = context->GetInputShape(INPUT_KEY_CACHE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sKc);
-    auto kcShape = EnsureNotScalar(sKc->GetStorageShape());
+    auto kcShape = GetTensorShape(context, INPUT_KEY_CACHE_IDX);
+    OP_CHECK_IF((kcShape.GetDimNum() == 0), OP_LOGE(context, "key_cache shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((kcShape.GetDimNum() != KEY_CACHE_DIM_NUM), OP_LOGE(context, "key_cache must be 4D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "key_cache numHead mismatch"),
@@ -192,9 +207,9 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
     OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD_SIZE) != kHeadSize), OP_LOGE(context, "key_cache kHeadSize mismatch"),
                 return ge::GRAPH_FAILED);
 
-    auto sVc = context->GetInputShape(INPUT_VALUE_CACHE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sVc);
-    auto vcShape = EnsureNotScalar(sVc->GetStorageShape());
+    auto vcShape = GetTensorShape(context, INPUT_VALUE_CACHE_IDX);
+    OP_CHECK_IF((vcShape.GetDimNum() == 0), OP_LOGE(context, "value_cache shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((vcShape.GetDimNum() != VALUE_CACHE_DIM_NUM), OP_LOGE(context, "value_cache must be 4D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "value_cache numHead mismatch"),
@@ -202,22 +217,22 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
     OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD_SIZE) != vHeadSize), OP_LOGE(context, "value_cache vHeadSize mismatch"),
                 return ge::GRAPH_FAILED);
 
-    auto sSm = context->GetInputShape(INPUT_SLOT_MAPPING_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sSm);
-    auto smShape = EnsureNotScalar(sSm->GetStorageShape());
+    auto smShape = GetTensorShape(context, INPUT_SLOT_MAPPING_IDX);
+    OP_CHECK_IF((smShape.GetDimNum() == 0), OP_LOGE(context, "slot_mapping shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((smShape.GetDim(DIM_SLOT_TOKEN) != numTokens), OP_LOGE(context, "slot_mapping shape[0] != numTokens"),
                 return ge::GRAPH_FAILED);
 
-    auto sKs = context->GetInputShape(INPUT_KEY_SCALE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sKs);
-    auto ksShape = EnsureNotScalar(sKs->GetStorageShape());
+    auto ksShape = GetTensorShape(context, INPUT_KEY_SCALE_IDX);
+    OP_CHECK_IF((ksShape.GetDimNum() == 0), OP_LOGE(context, "key_scale shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((ksShape.GetDimNum() != KEY_SCALE_DIM_NUM || ksShape.GetDim(DIM_SCALE_TOKEN) != numTokens ||
                  ksShape.GetDim(DIM_SCALE_HEAD) != numHead),
                 OP_LOGE(context, "key_scale shape invalid"), return ge::GRAPH_FAILED);
 
-    auto sKsc = context->GetInputShape(INPUT_KEY_SCALE_CACHE_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, sKsc);
-    auto kscShape = EnsureNotScalar(sKsc->GetStorageShape());
+    auto kscShape = GetTensorShape(context, INPUT_KEY_SCALE_CACHE_IDX);
+    OP_CHECK_IF((kscShape.GetDimNum() == 0), OP_LOGE(context, "key_scale_cache shape is invalid"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         (kscShape.GetDimNum() != KEY_SCALE_CACHE_DIM_NUM || kscShape.GetDim(DIM_SCALE_CACHE_BLOCK) != numBlocks ||
          kscShape.GetDim(DIM_SCALE_CACHE_HEAD) != numHead || kscShape.GetDim(DIM_SCALE_CACHE_BLOCK_SIZE) != blockSize ||
