@@ -821,17 +821,6 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                AscendC::PipeBarrier<PIPE_MTE3>();
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
         // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
         // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
