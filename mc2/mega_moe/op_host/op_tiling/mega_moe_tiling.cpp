@@ -28,9 +28,9 @@
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
 #include "mega_moe.h"
-#include "../../op_kernel/mega_moe_tiling.h"
-#include "../../op_kernel/mega_moe_tiling_key.h"
-#include "../../op_kernel/mega_moe_workspace_info.h"
+#include "../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../op_kernel/arch35/mega_moe_workspace_info.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -328,9 +328,9 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return 2LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return 3LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return 9LL;
         default: return -1LL;
     }
     return -1LL;
@@ -340,9 +340,9 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return ge::DT_FLOAT8_E5M2;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return ge::DT_FLOAT4_E2M1;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return ge::DT_FLOAT8_E5M2;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return ge::DT_FLOAT4_E2M1;
         default: return ge::DT_UNDEFINED;
     }
     return ge::DT_UNDEFINED;
@@ -351,16 +351,16 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
 {
     auto attrs = context->GetAttrs();
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
 
     int64_t opQuantMode;
-    if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
+    if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E5M2;
+    } else if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E4M3FN;
     } else {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E2M1;
     }
 
     return opQuantMode;
@@ -413,13 +413,13 @@ static ge::graphStatus CheckInitTilingData(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN &&
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E2M1,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatch_quant_out_type",
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E2M1,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatch_quant_out_dtype",
             std::to_string(quantMode).c_str(),
-            (std::string("E5M2(") + std::to_string(DISPATCH_QUANT_OUT_TYPE_E5M2) +
-             "), E4M3FN(" + std::to_string(DISPATCH_QUANT_OUT_TYPE_E4M3FN) +
-             ") or E2M1(" + std::to_string(DISPATCH_QUANT_OUT_TYPE_E2M1) + ")").c_str()),
+            (std::string("E5M2(") + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E5M2) +
+             "), E4M3FN(" + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E4M3FN) +
+             ") or E2M1(" + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E2M1) + ")").c_str()),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
@@ -803,10 +803,10 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    auto globalBs = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE(nodeName, "moeExpertNumPtr is nullptr."), return ge::GRAPH_FAILED);
@@ -818,14 +818,14 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE(nodeName, "maxRecvTokenNumPtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
         OP_LOGE(nodeName, "dispatchQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dispatchQuantOutTypePtr == nullptr,
-        OP_LOGE(nodeName, "dispatchQuantOutTypePtr is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr,
+        OP_LOGE(nodeName, "dispatchQuantOutDtypePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(combineQuantModePtr == nullptr,
         OP_LOGE(nodeName, "combineQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr,
         OP_LOGE(nodeName, "commAlgPtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBs == nullptr,
-        OP_LOGE(nodeName, "globalBs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
+        OP_LOGE(nodeName, "numMaxTokensPerRankPtr is nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -836,7 +836,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     auto yDesc = context->GetOutputDesc(config.yIndex);
     
     OP_CHECK_NULL_WITH_CONTEXT(context, xStorageShape);
@@ -904,17 +904,17 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             DISPATCH_QUANT_MODE_MXFP, dispatchQuantMode),
         return ge::GRAPH_FAILED);
 
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
-    OP_TILING_CHECK(dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
+    OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
-            "but now is %ld.", dispatchQuantOutType),
+            "Invalid dispatchQuantOutDtype, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
+            "but now is %ld.", dispatchQuantOutDtype),
         return ge::GRAPH_FAILED);
 
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
     OP_TILING_CHECK(refWeightDataType == ge::DT_UNDEFINED,
@@ -937,12 +937,14 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "Invalid commAlg(%s), expecting default value("").", commAlgPtr),
         return ge::GRAPH_FAILED);
 
-    auto globalBsPtr = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
-    int64_t globalBs = static_cast<int64_t>(*globalBsPtr);
-    if (globalBs != 0) {
-        OP_TILING_CHECK(globalBs < 0 || bs * epWorldSize > globalBs || globalBs % epWorldSize != 0,
-            OP_LOGE(nodeName, "globalBs(%ld) either be 0 or (maxBs * EP and mod(globalBs, EP(%ld)) == 0).",
-                globalBs, epWorldSize),
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    if (numMaxTokensPerRank != 0) {
+        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank ||
+                        numMaxTokensPerRank % epWorldSize != 0,
+            OP_LOGE(nodeName,
+                "numMaxTokensPerRank(%ld) either be 0 or (maxBs * EP and mod(numMaxTokensPerRank, EP(%ld)) == 0).",
+                numMaxTokensPerRank, epWorldSize),
             return ge::GRAPH_FAILED);
     }
 
@@ -1016,10 +1018,10 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
 
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1047,7 +1049,7 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
 static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     OP_TILING_CHECK(weightOneStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight1",
@@ -1060,7 +1062,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     OP_LOGD(nodeName, "weightOne dim1 = %ld", weightOneDim1);
     OP_LOGD(nodeName, "weightOne dim2 = %ld", weightOneDim2);
 
-    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weightTwoIndex, 0);
+    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightTwoStorageShape);
     OP_TILING_CHECK(weightTwoStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight2",
@@ -1101,7 +1103,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
 
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     int64_t h = xStorageShape->GetStorageShape().GetDim(1);
@@ -1143,7 +1145,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
 static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
-    auto weightScalesOneStorageShape = context->GetDynamicInputShape(config.weightScalesOneIndex, 0);
+    auto weightScalesOneStorageShape = context->GetDynamicInputShape(config.weightScales1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesOneStorageShape);
     OP_TILING_CHECK(weightScalesOneStorageShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight_scales1",
@@ -1158,7 +1160,7 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     OP_LOGD(nodeName, "weightScalesOne dim2 = %ld", weightScalesOneDim2);
     OP_LOGD(nodeName, "weightScalesOne dim3 = %ld", weightScalesOneDim3);
 
-    auto weightScalesTwoStorageShape = context->GetDynamicInputShape(config.weightScalesTwoIndex, 0);
+    auto weightScalesTwoStorageShape = context->GetDynamicInputShape(config.weightScales2Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesTwoStorageShape);
     OP_TILING_CHECK(weightScalesTwoStorageShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
         OP_LOGE(nodeName, "weightScalesTwoStorageShape dims must be 4, but current dim num is %zu.",
@@ -1279,10 +1281,10 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
     
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1356,10 +1358,10 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
     
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1453,7 +1455,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "topK only support 6/8, but now topK is %ld.", topkIdsDim1),
         return ge::GRAPH_FAILED);
 
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t weightOneDim0 = weightOneStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(weightOneDim0 < MIN_EXPERT_PER_RANK || weightOneDim0 > MAX_EXPERT_PER_RANK,
@@ -1482,7 +1484,7 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
 
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
     int64_t hiddenDim = weightOneStorageShape->GetStorageShape().GetDim(1);
