@@ -34,17 +34,28 @@ constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
+template<typename Q_T, typename W_T = void>
+struct LightningIndexerV2TypeTraits {
+    using weightsType = Q_T;
+};
+
+template<typename Q_T>
+struct LightningIndexerV2TypeTraits<Q_T, float> {
+    using weightsType = float;
+};
+
 template <typename LIT>
 class LightningIndexerV2ServiceVector {
 public:
     // =================================类型定义区=================================
-    static constexpr bool DT_W_FLAG = true;
+    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     using SCORE_T = typename LIT::scoreType;
     using QK_T = typename LIT::queryKeyType;
-    using W_T = float;
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T,
+                                          typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;

@@ -64,7 +64,7 @@ public:
                                 __gm__ uint8_t *workspace, const LIV2TilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
-    static constexpr bool DT_W_FLAG = true;
+    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using OUT_T = typename LIT::outputType;
@@ -72,7 +72,8 @@ public:
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
-    using W_T = float;
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T,
+                                          typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     using MM1_OUT_T = float;
 

@@ -414,7 +414,7 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
                         "they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
-            bSize_ = bSizeQuery;
+            bSize_ = bSizeQuery - 1;
         } else {
             if (bSizeQuery == bSizeKey + 1) {
                 batchSupperFlag_ = 1;
@@ -651,6 +651,8 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
 
     liInfo.inputQType = inputQType_;
     liInfo.inputKType = inputKType_;
+    liInfo.inputWType = weightsType_;
+    liInfo.weightTypeFlag = (weightsType_ == ge::DT_FLOAT) ? 1 : 0;
     liInfo.outputType = outputType_;
 
     liInfo.blockSize = blockSize_;
@@ -769,7 +771,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t pageAttentionFlag = static_cast<uint32_t>(tilingInfo->pageAttentionFlag);
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
-    uint32_t weightTypeFlag = 0;
+    uint32_t weightTypeFlag = tilingInfo->weightTypeFlag;
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);

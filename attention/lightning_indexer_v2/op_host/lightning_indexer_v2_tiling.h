@@ -169,7 +169,9 @@ public:
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;
+    ge::DataType inputWType = ge::DT_FLOAT;
     ge::DataType outputType = ge::DT_INT32;
+    uint32_t weightTypeFlag = 1;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
     DataLayout inputKLayout = DataLayout::BnBsND;
