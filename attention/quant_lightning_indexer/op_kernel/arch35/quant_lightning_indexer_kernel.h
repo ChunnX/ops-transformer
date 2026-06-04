@@ -249,7 +249,7 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig));
     validS2Len = Max(validS2Len, 1);
     tempLoopInfo.validS2Len = validS2Len;
-    return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    return ((uint32_t)validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
 
 template <typename QLIT> 
@@ -470,8 +470,10 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
     bool isEnd = (bN2LoopIdx == splitCoreInfo.bN2End) && (gS1LoopIdx == splitCoreInfo.gS1End);
     uint32_t s2BlockNum;
     if (constInfo.attenMaskFlag) {
+        // Causal 场景：GetS2BaseBlockNumOnMask 计算 validS2Len
         s2BlockNum = GetS2BaseBlockNumOnMask(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
     } else {
+        // 非 causal 场景：validS2Len = actS2Size
         tempLoopInfo.validS2Len = tempLoopInfo.actS2Size;
         s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
@@ -636,12 +638,24 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             uint32_t kScaleLoop = 0;
-            for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
-                if ((s2LoopIdx - splitCoreInfo.s2Start) % 16 == 0) {
-                    ++kScaleLoop;
+            
+            // 短路分支：validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS 时直接输出连续索引
+            const uint32_t INIT_BLOCKS = 4;
+            const uint32_t WINDOW_BLOCKS = 4;
+            if (tempLoopInfo.validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS) {
+                // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
+                vectorService.ProcessDirectOutput(runInfo, tempLoopInfo.validS2Len);
+            } else {
+                // 正常 TopK 流程：减去 WINDOW_BLOCKS
+                tempLoopInfo.validS2Len = tempLoopInfo.validS2Len - WINDOW_BLOCKS;
+                
+                for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
+                    if ((s2LoopIdx - splitCoreInfo.s2Start) % 16 == 0) {
+                        ++kScaleLoop;
+                    }
+                    ProcessBaseBlock(gloop, s2LoopIdx, runInfo, qScaleLoop, kScaleLoop);
+                    ++gloop;
                 }
-                ProcessBaseBlock(gloop, s2LoopIdx, runInfo, qScaleLoop, kScaleLoop);
-                ++gloop;
             }
             ++qScaleLoop;
             splitCoreInfo.s2Start = 0;
@@ -671,9 +685,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
-        }
+        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
 
