@@ -141,6 +141,4 @@ flash_attn_inputs = (
             when=lambda p: p.get("DRope", 0) > 0)
     .tensor("k_rope", layout={"BNSD": "B,N2,S2,DRope"},
             when=lambda p: p.get("DRope", 0) > 0)
-    .tensor("block_table", shape="B,max_blocks", dtype=torch.int32, method="zeros",
-            when=lambda p: str(p.get("layout_kv", "")).startswith("PA_"))
 )

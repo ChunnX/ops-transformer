@@ -58,13 +58,19 @@ def normalize_params(raw: dict) -> dict:
         if "seqused_kv" not in c:
             c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
 
-        seqused_kv = c.get("seqused_kv")
-        block_size = c.get("block_size", 128)
-        b_val = c.get("B", 1)
-        if layout_q == "TND":
-            b_val = len(c["cu_seqlens_q"]) - 1
+        seqused_kv = c["seqused_kv"]
+        block_size = c["block_size"]
+        bt_shape = c.get("block_table_shape", [])
 
-        max_blk = (max(seqused_kv) + block_size - 1) // block_size
+        if bt_shape:
+            b_val = bt_shape[0]
+            max_blk = bt_shape[1]
+        else:
+            b_val = c.get("B", 1)
+            if layout_q == "TND":
+                b_val = len(c["cu_seqlens_q"]) - 1
+            max_blk = (max(seqused_kv) + block_size - 1) // block_size
+
         block_table = torch.full((b_val, max_blk), -1, dtype=torch.int32)
         block_idx = 0
         for i in range(b_val):
@@ -74,7 +80,7 @@ def normalize_params(raw: dict) -> dict:
                 block_table[i][j] = block_idx
                 block_idx += 1
         c["block_table"] = block_table
-        c["actual_b"] = block_table.shape[0]
+        c["actual_b"] = b_val
     return c
 
 
