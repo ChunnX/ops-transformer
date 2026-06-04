@@ -57,6 +57,7 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     b   = params["B"]
     n2  = params.get("N2", params["N1"])
     d   = params["D"]
+    s2  = params["S2"]  # 用 S2，不是 max(seqused_kv)
     seq_kv = params["seqused_kv"]
     bs  = params.get("block_size", 128)
     bt  = params.get("block_table")
@@ -65,10 +66,9 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
 
     if isinstance(bt, torch.Tensor):
         bt = bt.cpu().numpy()
+    result = torch.zeros(b, n2, s2, d, dtype=torch.float32)
 
     if layout == "PA_BBND":
-        # (num_blocks, block_size, N2, D)
-        result = torch.zeros(b, n2, max(seq_kv), d, dtype=torch.float32)
         for bi in range(b):
             slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
             nblk = (slen + bs - 1) // bs
@@ -83,8 +83,6 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                     result[bi, :, start:end, :] = t[blk_id, :cnt, :, :].permute(1, 0, 2).float()
 
     elif layout == "PA_BNBD":
-        # (num_blocks, N2, block_size, D)
-        result = torch.zeros(b, n2, max(seq_kv), d, dtype=torch.float32)
         for bi in range(b):
             slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
             nblk = (slen + bs - 1) // bs
@@ -98,7 +96,7 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                 if cnt > 0:
                     result[bi, :, start:end, :] = t[blk_id, :, :cnt, :].float()
 
-    else:  # PA_NZ or unknown
+    else:
         return t.clone().float()
 
     return result
