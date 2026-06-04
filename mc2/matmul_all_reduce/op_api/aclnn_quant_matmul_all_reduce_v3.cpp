@@ -17,6 +17,7 @@
 #include "aclnnInner_matmul_all_reduce.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -116,11 +117,11 @@ static bool CheckDtypeValid(
 static bool CheckAttr(const char* reduceOp, int64_t streamMode)
 {
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV3", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV3", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
     }
     return true;
@@ -159,10 +160,9 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnQuantMatmulAllReduceV3", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -192,11 +192,10 @@ static bool CheckShape(
                                       dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
         !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
           dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected dequantScale be [1] or [n] or [1,n], last dim of dequantScale should be %ld or 1, "
-            "but got dequantScale shape: %s.",
-            output->GetViewShape().GetDim(x1Len - 1), op::ToString(dequantScale->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnQuantMatmulAllReduceV3", "dequantScale",
+            op::ToString(dequantScale->GetViewShape()).GetString(),
+            std::string("[1] or [n] or [1,n], last dim should be " +
+                std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
         return false;
     }
 
@@ -210,9 +209,9 @@ static bool CheckShape(
             x1M *= x1->GetViewShape().GetDim(dim);
         }
         if (!(pertokenScaleLen == DIM_LEN_ONE && pertokenScale->GetViewShape().GetDim(0) == x1M)) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID, "Expected pertokenScale be [%ld], but got pertokenScale shape: %s.", x1M,
-                op::ToString(pertokenScale->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("aclnnQuantMatmulAllReduceV3", "pertokenScale",
+                op::ToString(pertokenScale->GetViewShape()).GetString(),
+                std::string("[" + std::to_string(x1M) + "]").c_str());
             return false;
         }
     }
@@ -220,7 +219,7 @@ static bool CheckShape(
     // commQuantScale1、commQuantScale2必须同时存在，且shape为[1，n]或[n]
     if ((commQuantScale1Optional != nullptr && commQuantScale2Optional == nullptr) ||
         (commQuantScale1Optional == nullptr && commQuantScale2Optional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_quantScale_1 and comm_quant_scale_2 should both not be nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2");
         return false;
     }
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
@@ -231,12 +230,10 @@ static bool CheckShape(
         const size_t commQuantScale1OptionalLen = commQuantScale1Optional->GetViewShape().GetDimNum();
         const size_t commQuantScale2OptionalLen = commQuantScale2Optional->GetViewShape().GetDimNum();
         if (commQuantScale1OptionalLen != commQuantScale2OptionalLen) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 have the same shape, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
-                op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
-                op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
+                (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
+                 std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
+                "expected both to have same shape");
             return false;
         }
         uint64_t commQuantScale1Dim0 = commQuantScale1Optional->GetViewShape().GetDim(0);
@@ -252,12 +249,10 @@ static bool CheckShape(
                commQuantScale2Dim0 == x2Dim1)) &&
             (!(commQuantScale1OptionalLen == TWO_DIMS && commQuantScale1Dim0 == 1 && commQuantScale2Dim0 == 1 &&
                commQuantScale1Dim1 == x2Dim1 && commQuantScale2Dim1 == x2Dim1))) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 be [n] or [1,n], last dim should be %ld, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
-                x2Dim1, op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
-                op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
+                (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
+                 std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
+                std::string("expected [n] or [1,n], last dim should be " + std::to_string(x2Dim1)).c_str());
             return false;
         }
     }
@@ -337,7 +332,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduce, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "dequantScale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
@@ -353,7 +348,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     auto tempX2 = x2;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
+            OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "x2");
             return ACLNN_ERR_INNER_NULLPTR;
         }
         tempX2 = CopyTensor(x2);
@@ -399,7 +394,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV3 ret %d", ret);
 
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduce, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceV3", "QuantMatmulAllReduce, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
 

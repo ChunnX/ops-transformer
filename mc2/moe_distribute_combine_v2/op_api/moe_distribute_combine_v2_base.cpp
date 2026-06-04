@@ -17,6 +17,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
@@ -79,7 +80,7 @@ bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
     OP_CHECK_NULL(assistInfoForCombine, return false);
 
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "groupEp Name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombine", "groupEp");
         return false;
     }
     return true;
@@ -93,11 +94,15 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
+            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupTp",
+            std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::string("groupTp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
