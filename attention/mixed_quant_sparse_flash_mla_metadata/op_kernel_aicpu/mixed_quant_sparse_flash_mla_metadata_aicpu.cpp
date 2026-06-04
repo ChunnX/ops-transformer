@@ -88,6 +88,94 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("Output metadata data is nullptr");
         return false;
     }
+    int32_t batchSize = GetQueryBatchSize();
+    // 校验 cu_seqlens_q 元素非负
+    if (layoutQuery_ == "TND") {
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+            for (int i = 0; i < batchSize + 1; i++) {
+                if (cuSeqlensQPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
+                        i, cuSeqlensQPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
+    // 校验 seqused_q 元素非负
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        const int32_t *sequsedQPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            if (sequsedQPtr[i] < 0) {
+                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d",
+                    i, sequsedQPtr[i]);
+                return false;
+            }
+        }
+    }
+    if (hasOriKv_) {
+        // 校验 cu_seqlens_ori_kv 元素非负
+        if (layoutKv_ == "TND") {
+            if (cuSeqlensOriKv_ != nullptr && cuSeqlensOriKv_->GetData() != nullptr) {
+                const int32_t *cuSeqlensOriKvPtr = static_cast<const int32_t*>(cuSeqlensOriKv_->GetData());
+                for (int i = 0; i < batchSize + 1; i++) {
+                    if (cuSeqlensOriKvPtr[i] < 0) {
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_ori_kv should be >= 0, but got cu_seqlens_ori_kv[%d] = %d",
+                            i, cuSeqlensOriKvPtr[i]);
+                        return false;
+                    }
+                }
+            }
+        }
+        // 校验 seqused_ori_kv 元素非负
+        if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
+            const int32_t *sequsedOriKvPtr = static_cast<const int32_t*>(sequsedOriKv_->GetData());
+            for (int i = 0; i < batchSize; i++) {
+                if (sequsedOriKvPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in seqused_ori_kv should be >= 0, but got seqused_ori_kv[%d] = %d",
+                        i, sequsedOriKvPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
+    if (hasCmpKv_) {
+        if (layoutKv_ == "TND") {
+            // 校验 cu_seqlens_cmp_kv 元素非负
+            if (cuSeqlensCmpKv_ != nullptr && cuSeqlensCmpKv_->GetData() != nullptr) {
+                const int32_t *cuSeqlensCmpKvPtr = static_cast<const int32_t*>(cuSeqlensCmpKv_->GetData());
+                for (int i = 0; i < batchSize + 1; i++) {
+                    if (cuSeqlensCmpKvPtr[i] < 0) {
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_cmp_kv should be >= 0, but got cu_seqlens_cmp_kv[%d] = %d",
+                            i, cuSeqlensCmpKvPtr[i]);
+                        return false;
+                    }
+                }
+            }
+        }
+        // 校验 seqused_cmp_kv 元素非负
+        if (sequsedCmpKv_ != nullptr && sequsedCmpKv_->GetData() != nullptr) {
+            const int32_t *sequsedCmpKvPtr = static_cast<const int32_t*>(sequsedCmpKv_->GetData());
+            for (int i = 0; i < batchSize; i++) {
+                if (sequsedCmpKvPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in seqused_cmp_kv should be >= 0, but got seqused_cmp_kv[%d] = %d",
+                        i, sequsedCmpKvPtr[i]);
+                    return false;
+                }
+            }
+        }
+        // 校验 cmp_residual_kv 元素非负
+        if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+            const int32_t *cmpResidualKvPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+            for (int i = 0; i < batchSize; i++) {
+                if (cmpResidualKvPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be >= 0, but got cmp_residual_kv[%d] = %d",
+                        i, cmpResidualKvPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
     return true;
 }
 
