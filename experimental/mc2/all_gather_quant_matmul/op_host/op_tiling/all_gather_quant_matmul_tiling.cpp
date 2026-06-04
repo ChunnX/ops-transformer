@@ -26,6 +26,7 @@ namespace MC2Tiling {
 using namespace AscendC;
 using namespace ge;
 
+constexpr uint32_t DEFAULT_RANK_NUM = 2;
 constexpr uint32_t AIV_TYPE = 3;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 6;
 
@@ -44,43 +45,22 @@ constexpr size_t Z_INDEX = 1;
 constexpr size_t GROUP_INDEX = 0;
 constexpr size_t RANK_SIZE_INDEX = 1;
 constexpr size_t TRANSPOSE_X2_INDEX = 2;
-constexpr size_t DTYPE_INDEX = 3;
-constexpr size_t RESIDUAL_NORM_MODE_INDEX = 4;
-constexpr size_t OPTIONAL_OUTPUT_INDEX = 5;
-constexpr size_t DIM_ZERO = 0;
-constexpr size_t DIM_ONE = 1;
-constexpr size_t DIM_TWO = 2;
-constexpr size_t NUM_THREE = 3;
-constexpr size_t NUM_FOUR = 4;
-constexpr size_t TWO_DIMS = 2;
-constexpr size_t FOUR_DIMS = 4;
-
-constexpr size_t TWO_BYTES = 2;
-constexpr size_t FOUR_BYTES = 4;
+constexpr size_t OPTIONAL_OUTPUT_INDEX = 3;
 
 constexpr uint64_t BASE_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
-constexpr uint64_t MTE_BLOCK_BYTES = 512UL;
 constexpr uint32_t MTE_K_SPLIT_NUM = 2UL;
-constexpr uint64_t UB_ALIGN = 32UL;
-constexpr uint64_t MAX_K_VALUE = 5120UL;
-constexpr uint64_t MAX_M_VALUE = 128UL;
-constexpr uint32_t MTE_M_CORE_NUM = 2UL;
 
 // tilingKey
 constexpr uint32_t TILE_K_M = 65;
-constexpr uint32_t INIT_TILINGKEY = 10000UL;
-constexpr uint64_t TILINGKEY_SMOOTH_SCALE = 1UL;
-constexpr uint64_t TILINGKEY_OPTIONAL_OUTPUT = 10UL;
-constexpr uint64_t TILINGKEY_TILE_K = 100UL;
-
+constexpr uint64_t TILE_K_HARD_SYNC_MODE = 0;
+constexpr uint64_t NO_TILE_K_SYNC_MODE = 1;
 // matmul tiling 切分
 constexpr int32_t SINGLE_CORE_M = 128;
 constexpr int32_t SINGLE_CORE_N = 256;
-constexpr int32_t SINGLE_CORE_K = 512;
+constexpr int32_t TILE_K_NUM = 512;
 
-// addRmsNorm 参数设置
-constexpr float EPSILON = 1e-6;
-
+constexpr int32_t MXFP_DIVISOR_SIZE = 64;
+constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
 
 /**
  * @brief all_gather_quant_matmul算子的tiling函数
@@ -141,7 +121,7 @@ static ge::graphStatus AllGatherQuantMatmulTilingFunc(gert::TilingContext *conte
         OP_LOGE(nodeName, "mc2CcTiling failed"), return ge::GRAPH_FAILED);
 
     // 4. Matmul tiling — M_total = per-rank M * rankSize (allgather后全量)
-    int64_t rankNum = 2;
+    int64_t rankNum = DEFAULT_RANK_NUM;
     const int64_t *rankSizePtr = attrs->GetAttrPointer<int64_t>(RANK_SIZE_INDEX);
     if (rankSizePtr != nullptr) {
         rankNum = *rankSizePtr;
@@ -165,7 +145,7 @@ static ge::graphStatus AllGatherQuantMatmulTilingFunc(gert::TilingContext *conte
     tilingData->allGatherTiling.aivNum = aicNum;
     tilingData->allGatherTiling.aicNum = aicNum;
     tilingData->allGatherTiling.sendCoreNumPerRank = aicNum / rankNum;
-    tilingData->allGatherTiling.mteTileK = k / 512;
+    tilingData->allGatherTiling.mteTileK = k / TILE_K_NUM;
     tilingData->allGatherTiling.mteKSplitNum = mteKSplitNum;
     tilingData->allGatherTiling.mteMSplitNum = tilingData->allGatherTiling.sendCoreNumPerRank / mteKSplitNum;
     tilingData->allGatherTiling.mteKSplitSize = k / mteKSplitNum;
@@ -173,7 +153,7 @@ static ge::graphStatus AllGatherQuantMatmulTilingFunc(gert::TilingContext *conte
     tilingData->allGatherTiling.mteMSplitLargeBlockNum = m % tilingData->allGatherTiling.mteMSplitNum;
     tilingData->allGatherTiling.xNums = m * k;
     tilingData->allGatherTiling.xSize = m * k;
-    tilingData->allGatherTiling.scaleSize = m * CeilDiv<uint64_t>(k, (uint64_t)64) * 2;
+    tilingData->allGatherTiling.scaleSize = m * CeilDiv<uint64_t>(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     tilingData->allGatherTiling.singleCoreM = tilingData->qbmmTilingData.baseM;
 
     OP_LOGD(nodeName, "AllGather tiling: sendCorePerRank=%u mteMSplitNum=%u mteKSplitNum=%u isNonTileK=%d",
@@ -191,7 +171,7 @@ static ge::graphStatus AllGatherQuantMatmulTilingFunc(gert::TilingContext *conte
         tilingData->allGatherTiling.mteMSplitLargeBlockNum,
         isNonTileK);
 
-    context->SetTilingKey(isNonTileK ? 1 : 0);
+    context->SetTilingKey(isNonTileK ? NO_TILE_K_SYNC_MODE : TILE_K_HARD_SYNC_MODE);
 
     // 7. Workspace
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
