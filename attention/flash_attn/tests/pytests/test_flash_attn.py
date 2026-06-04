@@ -98,15 +98,20 @@ if __name__ == "__main__":
         import csv as csv_mod
         perf_csv = out / "perf.csv"
         with open(perf_csv, "w", newline="") as f:
-            w = csv_mod.DictWriter(f, ["case","avg_us","min_us","max_us","mode"])
+            w = csv_mod.DictWriter(f, ["case","avg_us","min_us","max_us","mode","error"])
             w.writeheader()
             for name in run_cases:
                 s = stats.get(_case_key(normalize_params(all_cases[name])))
                 if not s: continue
-                w.writerow(dict(case=name, avg_us="" if s["mode"]=="CRASH" else s["avg_us"],
-                               min_us="" if s["mode"]=="CRASH" else s["min_us"],
-                               max_us="" if s["mode"]=="CRASH" else s["max_us"],
-                               mode=s["mode"]))
+                is_crash = s["mode"] == "CRASH"
+                w.writerow(dict(
+                    case=name,
+                    avg_us="" if is_crash else s["avg_us"],
+                    min_us="" if is_crash else s["min_us"],
+                    max_us="" if is_crash else s["max_us"],
+                    mode=s["mode"],
+                    error="kernel crashed, no duration data" if is_crash else "",
+                ))
         print(f"[perf] {perf_csv}")
         if crashed:
             print(f"\n[perf] {len(crashed)} cases crashed:")
