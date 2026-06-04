@@ -115,7 +115,7 @@ namespace SplitFuse {
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
             keyBnStride = fATilingData->keyStrides.bnStride;
-            printf("======= [regular kernel] keyBnStride = %lu\n", keyBnStride);
+            valueBnStride = fATilingData->valueStrides.bnStride;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -951,7 +951,7 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady,
-                            keyBnStride);
+                            valueBnStride);
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -969,7 +969,7 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady,
-                            keyBnStride);
+                            valueBnStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
@@ -1067,6 +1067,7 @@ namespace SplitFuse {
         uint64_t strideK;
         uint64_t strideV;
         uint64_t keyBnStride;
+        uint64_t valueBnStride;
         uint32_t embedRound;
         uint32_t embedRoundV;
         uint32_t groupSize;
