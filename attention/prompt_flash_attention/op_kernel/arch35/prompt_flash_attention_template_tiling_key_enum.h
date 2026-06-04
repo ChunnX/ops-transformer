@@ -214,10 +214,10 @@ static constexpr ConfigParams ConfigValue[] ={
 #define AntiquantMode_PER_CHANNEL 0
 #define AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN 2
 #define AntiquantMode_K_PER_TOKEN 6 // 表示其他伪量化类型
-#define PerBlock 17
-#define FULLQUANT_MODE_PER_TOKEN_HEAD 18
-#define FULLQUANT_MODE_MXFP8_PREFILL 19
-#define FULLQUANT_MODE_MXFP8_DECODE 20
+#define FULLQUANT_MODE_QKV_PERBLOCK 17
+#define FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR 18
+#define FULLQUANT_MODE_QKV_MXFP8_PREFILL 19
+#define FULLQUANT_MODE_QKV_MXFP8_DECODE 20
 #define FullQuantMode 30
 #define NoQuantMode 31
 
