@@ -56,7 +56,7 @@ extern "C" {
  * @param [in] activationOutDtype: 计算可选输入，int。GMM2的x数据类型，默认值为DT_UNDEFINED。
  * @param [in] transposeWeight1: 计算可选输入，bool。是否转置weight1，默认值为false。
  * @param [in] transposeWeight2: 计算可选输入，bool。是否转置weight2，默认值为false。
- * @param [in] weight1Interleave: 计算可选输入，int。weight1交错模式，默认值为0。
+ * @param [in] weight1Interleave: 计算可选输入，int。weight1交织粒度大小，默认值为0标识不交织。
  * @param [out] yOut: 计算输出，Tensor，必选输出，数据类型bfloat16，仅支持2维，数据格式支持ND。
  *                    计算输出结果，与输入x shape相同。
  * @param [out] expertTokenNumsOut: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。

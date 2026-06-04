@@ -351,7 +351,7 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
 {
     auto attrs = context->GetAttrs();
-    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
 
     int64_t opQuantMode;
@@ -803,7 +803,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
@@ -836,7 +836,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     auto yDesc = context->GetOutputDesc(config.yIndex);
     
     OP_CHECK_NULL_WITH_CONTEXT(context, xStorageShape);
@@ -904,7 +904,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             DISPATCH_QUANT_MODE_MXFP, dispatchQuantMode),
         return ge::GRAPH_FAILED);
 
-    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
     OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
                     dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
@@ -914,7 +914,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             "but now is %ld.", dispatchQuantOutDtype),
         return ge::GRAPH_FAILED);
 
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
     OP_TILING_CHECK(refWeightDataType == ge::DT_UNDEFINED,
@@ -1018,10 +1018,10 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
 
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1049,7 +1049,7 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
 static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     OP_TILING_CHECK(weightOneStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight1",
@@ -1062,7 +1062,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     OP_LOGD(nodeName, "weightOne dim1 = %ld", weightOneDim1);
     OP_LOGD(nodeName, "weightOne dim2 = %ld", weightOneDim2);
 
-    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weightTwoIndex, 0);
+    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightTwoStorageShape);
     OP_TILING_CHECK(weightTwoStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight2",
@@ -1103,7 +1103,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
 
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     int64_t h = xStorageShape->GetStorageShape().GetDim(1);
@@ -1145,7 +1145,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
 static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
-    auto weightScalesOneStorageShape = context->GetDynamicInputShape(config.weightScalesOneIndex, 0);
+    auto weightScalesOneStorageShape = context->GetDynamicInputShape(config.weightScales1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesOneStorageShape);
     OP_TILING_CHECK(weightScalesOneStorageShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "weight_scales1",
@@ -1160,7 +1160,7 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     OP_LOGD(nodeName, "weightScalesOne dim2 = %ld", weightScalesOneDim2);
     OP_LOGD(nodeName, "weightScalesOne dim3 = %ld", weightScalesOneDim3);
 
-    auto weightScalesTwoStorageShape = context->GetDynamicInputShape(config.weightScalesTwoIndex, 0);
+    auto weightScalesTwoStorageShape = context->GetDynamicInputShape(config.weightScales2Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesTwoStorageShape);
     OP_TILING_CHECK(weightScalesTwoStorageShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
         OP_LOGE(nodeName, "weightScalesTwoStorageShape dims must be 4, but current dim num is %zu.",
@@ -1281,10 +1281,10 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
     
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1358,10 +1358,10 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
     auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
     
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
-    auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -1455,7 +1455,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "topK only support 6/8, but now topK is %ld.", topkIdsDim1),
         return ge::GRAPH_FAILED);
 
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t weightOneDim0 = weightOneStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(weightOneDim0 < MIN_EXPERT_PER_RANK || weightOneDim0 > MAX_EXPERT_PER_RANK,
@@ -1484,7 +1484,7 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
 
-    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
     int64_t hiddenDim = weightOneStorageShape->GetStorageShape().GetDim(1);

@@ -52,7 +52,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
-    
+
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);
