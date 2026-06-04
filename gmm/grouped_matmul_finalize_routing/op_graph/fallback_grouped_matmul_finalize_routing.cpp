@@ -165,27 +165,38 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     return out;
 }
 
-static void PrepareAclTensor(const OpExecuteContext *host_api_ctx, const aclTensor *&tensor, size_t index,
-                                    bool enableTranspose, bool enableNZ)
+static bool PrepareAclTensor(const OpExecuteContext *host_api_ctx, const aclTensor *&tensor, size_t index,
+                             bool enableTranspose, bool enableNZ, bool required)
 {
+    const gert::Tensor *geTensor = nullptr;
     if (index == INDEX_INPUT_X || index == INDEX_INPUT_WEIGHT) {
-        tensor = GeTensor2AclTensor(host_api_ctx->GetInputTensor(index), enableTranspose, index, enableNZ);
+        geTensor = host_api_ctx->GetInputTensor(index);
     } else {
-        tensor = GeTensor2AclTensor(host_api_ctx->GetOptionalInputTensor(index), enableTranspose, index, enableNZ);
+        geTensor = host_api_ctx->GetOptionalInputTensor(index);
     }
+    if (geTensor == nullptr) {
+        tensor = nullptr;
+        OP_CHECK_IF(required,
+                    OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Required tensor %zu is nullptr.", index),
+                    return false);
+        return true;
+    }
+    tensor = GeTensor2AclTensor(geTensor, enableTranspose, index, enableNZ);
     if (tensor == nullptr) {
         OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "PrepareAclTensor failed");
+        return false;
     }
-    return;
+    return true;
 }
 
-static void PrepareOutputTensor(const OpExecuteContext *host_api_ctx, const gert::Tensor *&tensor, size_t index)
+static bool PrepareOutputTensor(const OpExecuteContext *host_api_ctx, const gert::Tensor *&tensor, size_t index)
 {
     tensor = host_api_ctx->GetOutputTensor(index);
     if (tensor == nullptr) {
         OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "PrepareOutputTensor failed");
+        return false;
     }
-    return;
+    return true;
 }
 
 static graphStatus GroupedMatmulFinalizeRoutingExecuteFunc(OpExecuteContext *host_api_ctx)
@@ -207,37 +218,59 @@ static graphStatus GroupedMatmulFinalizeRoutingExecuteFunc(OpExecuteContext *hos
     OP_CHECK_IF(groupListTypeGe == nullptr, OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "The groupListTypeGe is null"), return GRAPH_FAILED);
 
     const aclTensor *aclTensorX = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorX, INDEX_INPUT_X, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorX, INDEX_INPUT_X, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input x failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorWeight = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorWeight, INDEX_INPUT_WEIGHT, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorWeight, INDEX_INPUT_WEIGHT, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input weight failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorWeightScale = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorWeightScale, INDEX_INPUT_WEIGHT_SCALE, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorWeightScale, INDEX_INPUT_WEIGHT_SCALE, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input scale failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorBias = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorBias, INDEX_INPUT_BIAS, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorBias, INDEX_INPUT_BIAS, false, false, false),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input bias failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorXScale = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorXScale, INDEX_INPUT_X_SCALE, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorXScale, INDEX_INPUT_X_SCALE, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input pertokenScale failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorGroupList = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorGroupList, INDEX_INPUT_GROUP_LIST, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorGroupList, INDEX_INPUT_GROUP_LIST, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input groupList failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorSharedInput = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorSharedInput, INDEX_INPUT_SHARED_INPUT, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorSharedInput, INDEX_INPUT_SHARED_INPUT, false, false, false),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input sharedInput failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorLogit = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorLogit, INDEX_INPUT_LOGIT, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorLogit, INDEX_INPUT_LOGIT, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input logit failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorRowIndex = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorRowIndex, INDEX_INPUT_ROW_INDEX, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorRowIndex, INDEX_INPUT_ROW_INDEX, false, false, true),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input rowIndex failed."),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorOffset = nullptr;
-    PrepareAclTensor(host_api_ctx, aclTensorOffset, INDEX_INPUT_OFFSET, false, false);
+    OP_CHECK_IF(!PrepareAclTensor(host_api_ctx, aclTensorOffset, INDEX_INPUT_OFFSET, false, false, false),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare input offset failed."),
+                return GRAPH_FAILED);
 
     const gert::Tensor *geTensorY = nullptr;
-    PrepareOutputTensor(host_api_ctx, geTensorY, INDEX_OUTPUT_Y);
+    OP_CHECK_IF(!PrepareOutputTensor(host_api_ctx, geTensorY, INDEX_OUTPUT_Y),
+                OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback", "Prepare output y failed."),
+                return GRAPH_FAILED);
 
     aclTensor *aclTensorAntiQuantScaleOptional = nullptr;
     aclTensor *aclTensorAntiQunatOffsetOptional = nullptr;

@@ -287,8 +287,9 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, MNConfig& mnConfig)
 {
-    mnConfig.workSpaceOffset = MM_BASE_BLOCK_OFFSET * \
-                                   (coreIdx + (cubeCount % tiling->parallNum) * tiling->coreNum);
+    mnConfig.workSpaceOffset = static_cast<uint64_t>(MM_BASE_BLOCK_OFFSET) *
+                                   (static_cast<uint64_t>(coreIdx) +
+                                    static_cast<uint64_t>(cubeCount % tiling->parallNum) * tiling->coreNum);
     if ASCEND_IS_AIC {
         uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;
         uint32_t curSingleN = mnConfig.singleN;
@@ -303,9 +304,11 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
         GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> xSlice;
         uint64_t xOffset;
         if (isA8W4MSDPreNZ) {
-            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * 64;
+            xOffset = (static_cast<uint64_t>(mnConfig.offsetM) +
+                       static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM) * 64;
         } else {
-            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+            xOffset = (static_cast<uint64_t>(mnConfig.offsetM) +
+                       static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM) * tiling->k;
         }
         uint64_t weightOffset = 0;
         if (isSingleTensor == 0) {
@@ -366,8 +369,9 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
     uint32_t curCubeSingleN = mnConfig.singleN;
     if (mnConfig.nIdx == mnConfig.blockDimN - 1) { curCubeSingleN = tiling->n - mnConfig.nIdx * mnConfig.singleN; }
     uint32_t curCubeSingleM = mnConfig.singleM / 2; // 2: 2 lines int4 to 1 line int8
-    uint32_t mGlobalOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * curCubeSingleM; // 2: 2 lines int4 to 1 line int8
-    uint64_t outOffset = mGlobalOffset * tiling->n + mnConfig.nIdx * mnConfig.singleN;
+    uint64_t mGlobalOffset = static_cast<uint64_t>(mnConfig.offsetM) / 2 +
+                             static_cast<uint64_t>(mnConfig.mIdx) * curCubeSingleM;
+    uint64_t outOffset = mGlobalOffset * tiling->n + static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
      // 2: 2 lines int4 to 1 line int8
     if (mnConfig.mIdx == mnConfig.blockDimM - 1) { curCubeSingleM = mnConfig.m / 2 - mnConfig.mIdx * curCubeSingleM; }
     uint32_t vecBaseM = tiling->ubCalSize / (Ceil(mnConfig.baseN, uint32_t(8)) * 8);  //  8: num int32_t in 32B ub block  32*256/256
@@ -377,12 +381,13 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
     uint64_t offsetOffset;
     if (isSingleTensor == 0) {
         biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD>(groupIdx, biasTensorPtr));
-        scaleOffset = mnConfig.nIdx * mnConfig.singleN;
+        scaleOffset = static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
         if (withOffset == WITH_OFFSET) {
             offsetGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OFFSET_A8W4MSD>(groupIdx, offsetTensorPtr));
         }
     } else {
-        scaleOffset = groupIdx * tiling->n + mnConfig.nIdx * mnConfig.singleN;
+        scaleOffset = static_cast<uint64_t>(groupIdx) * tiling->n +
+                      static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
     }
     offsetOffset = scaleOffset;
     uint32_t taskRation = GetTaskRation();
@@ -396,17 +401,19 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
         }
 
         uint32_t curVecBaseM = vecBaseM;
-        uint64_t mmOutOffset = mnConfig.workSpaceOffset + offsetN * mnConfig.baseM;
+        uint64_t mmOutOffset = mnConfig.workSpaceOffset + static_cast<uint64_t>(offsetN) * mnConfig.baseM;
         for (uint32_t offsetM = 0; offsetM < curCubeSingleM; offsetM += vecBaseM) {
             vecCount++;
             if (taskRation != 0 && vecCount % taskRation != subBlockIdx) { continue; }
             if (unlikely(offsetM + vecBaseM >= curCubeSingleM)) { curVecBaseM = curCubeSingleM - offsetM; }
             LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
             if constexpr (mmType::BT::format == CubeFormat::ND) {
-                DataCopyPad2DA8W4ND(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
+                DataCopyPad2DA8W4ND(mmOutLocal,
+                    mmOutGm[mmOutOffset + static_cast<uint64_t>(offsetM) * 2 * curVecBaseN],
                     curVecBaseM, curVecBaseN, curVecBaseN * 2);   // 2: 2 lines int4 to 1 line int8
             } else {
-                DataCopyPad2DA8W4(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
+                DataCopyPad2DA8W4(mmOutLocal,
+                    mmOutGm[mmOutOffset + static_cast<uint64_t>(offsetM) * 2 * curVecBaseN],
                     curVecBaseM, curVecBaseN, curVecBaseN * 2);   // 2: 2 lines int4 to 1 line int8
             }
             uint32_t targetAddr;
@@ -414,7 +421,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
                 alignBaseN = (alignBaseN + HALF_ALIGN - 1) / HALF_ALIGN * HALF_ALIGN;
             }
             targetAddr = curVecBaseM * alignBaseN;
-            uint64_t lowBitAddr = mmOutOffset + (offsetM * 2 + 1) * curVecBaseN;
+            uint64_t lowBitAddr = mmOutOffset + (static_cast<uint64_t>(offsetM) * 2 + 1) * curVecBaseN;
             if constexpr (mmType::BT::format == CubeFormat::ND) {
                 DataCopyPad2DA8W4ND(mmOutLocal[targetAddr],
                     mmOutGm[lowBitAddr],
@@ -427,7 +434,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
             vecInQueue.EnQue(mmOutLocal);
             ComputeDequantAndActivate(mnConfig, curVecBaseM, alignBaseN, curVecBaseN, offsetM);
             LocalTensor<DTYPE_OUT> yLocal = vecOutQueue.DeQue<DTYPE_OUT>();
-            DataCopyPad2DA8W4(yGm[outOffset + offsetM * tiling->n + offsetN], yLocal,
+            DataCopyPad2DA8W4(yGm[outOffset + static_cast<uint64_t>(offsetM) * tiling->n + offsetN], yLocal,
                         curVecBaseM, curVecBaseN, alignBaseN, tiling->n);
             vecOutQueue.FreeTensor(yLocal);
         }

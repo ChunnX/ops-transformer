@@ -69,7 +69,7 @@ protected:
     const GMMBaseParams* __restrict gmmBaseParams;
     const TCubeTiling* __restrict mmTilingData;
 
-    uint32_t blockIdx;
+    uint32_t blockIndex_;
     uint32_t coreIdx;
     uint32_t groupNum;
     uint32_t coreNum;
@@ -96,8 +96,8 @@ protected:
 template <typename ComputeType>
  __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::Init(const GMMBaseParams* __restrict gmmBaseParamsIn,
     const TCubeTiling* __restrict mmTilingDataIn, TILING_TYPE* gmmArrayAddrIn, GM_ADDR groupList, GM_ADDR tiling) {
-    blockIdx = GetBlockIdx();
-    coreIdx = blockIdx;
+    blockIndex_ = GetBlockIdx();
+    coreIdx = blockIndex_;
     int64_t coreRation = GetTaskRation();
     if (coreRation > 1) {
         coreIdx /= coreRation;

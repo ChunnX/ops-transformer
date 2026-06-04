@@ -56,6 +56,9 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
             OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
             return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
+            return ge::GRAPH_FAILED);
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);

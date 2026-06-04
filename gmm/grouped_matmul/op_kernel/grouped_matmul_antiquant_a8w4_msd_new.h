@@ -281,9 +281,11 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     }
     if ASCEND_IS_AIC {
         if (isA8W4MSDPreNZ) {
-            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * 64;
+            xOffset = (static_cast<uint64_t>(mnConfig.offsetM) +
+                       static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM) * 64;
         } else {
-            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+            xOffset = (static_cast<uint64_t>(mnConfig.offsetM) +
+                       static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM) * tiling->k;
         }
         if (isSingleTensor == 0) {
             weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD_NEW>(groupIdx, weightTensorPtr));
@@ -294,9 +296,10 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
             }
         } else {
             if constexpr (mmType::BT::format == CubeFormat::NZ) {
-                weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
+                weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k +
+                               static_cast<uint64_t>(tailN) * tiling->k;
             } else {
-                weightOffset = groupIdx * tiling->n * tiling->k + tailN;
+                weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN;
             }
         }
 
@@ -320,7 +323,9 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     }
     for (int nId = 0; nId <  (curSingleN + mnConfig.baseN - 1) / mnConfig.baseN; nId++) {
         for (int kId = 0; kId < tiling->k / 256; kId++) {
-            mnConfig.workSpaceOffset = MM_BASE_BLOCK_OFFSET_NEW * (coreIdx + (cubeId % tiling->parallNum) * tiling->coreNum);
+            mnConfig.workSpaceOffset = static_cast<uint64_t>(MM_BASE_BLOCK_OFFSET_NEW) *
+                                       (static_cast<uint64_t>(coreIdx) +
+                                        static_cast<uint64_t>(cubeId % tiling->parallNum) * tiling->coreNum);
             uint64_t workspaceOffset = mnConfig.workSpaceOffset;
             if ASCEND_IS_AIC {
                 if (cubeId >= tiling->parallNum) {
@@ -352,8 +357,9 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t grou
         curVecBaseN = curSingleN - tailN; 
     }
     uint32_t curCubeSingleM = mnConfig.singleM / 2;
-    uint32_t mGlobalOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * curCubeSingleM;
-    uint32_t nGlobalOffset = mnConfig.nIdx * mnConfig.singleN;
+    uint64_t mGlobalOffset = static_cast<uint64_t>(mnConfig.offsetM) / 2 +
+                             static_cast<uint64_t>(mnConfig.mIdx) * curCubeSingleM;
+    uint64_t nGlobalOffset = static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
     if (mnConfig.mIdx == mnConfig.blockDimM - 1) { 
         curCubeSingleM = mnConfig.m / 2 - mnConfig.mIdx * curCubeSingleM; 
     }
@@ -366,7 +372,8 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t grou
     } else {
         vecBaseM = vecBaseM / 2 + subBlockIdx;
     }
-    uint64_t outOffset = mGlobalOffset * tiling->n + nGlobalOffset + tailN + subBlockIdx * vec0offsetM * tiling->n;
+    uint64_t outOffset = mGlobalOffset * tiling->n + nGlobalOffset + tailN +
+                         static_cast<uint64_t>(subBlockIdx) * vec0offsetM * tiling->n;
     uint64_t scaleOffset;
     uint64_t dequantScaleOffset;
     if (isSingleTensor == 0) {

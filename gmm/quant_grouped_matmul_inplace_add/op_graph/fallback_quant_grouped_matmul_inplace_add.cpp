@@ -109,6 +109,8 @@ static graphStatus PrepareAclTensor(const OpExecuteContext *host_api_ctx, const 
     } else {
         tensor = GeTensor2AclTensor(host_api_ctx->GetOptionalInputTensor(INDEX_INPUT_SCALE1), enableTranspose, index);
     }
+    OP_CHECK_IF(tensor == nullptr, OP_LOGE("QuantGroupedMatmulInplaceAdd aclnnfallback", "PrepareAclTensor failed."),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -121,28 +123,37 @@ static graphStatus QuantGroupedMatmulInplaceAddExecuteFunc(OpExecuteContext *hos
     const int64_t *groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_GROUP_LIST_TYPE);
     OP_CHECK_IF(groupListTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupListTypeGe is null"), return GRAPH_FAILED);
 
-    const aclTensor *aclTensorX1;
-    PrepareAclTensor(host_api_ctx, aclTensorX1, INDEX_INPUT_X1, true);
+    const aclTensor *aclTensorX1 = nullptr;
+    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorX1, INDEX_INPUT_X1, true) != GRAPH_SUCCESS,
+                OP_LOGE("aclnnfallback", "PrepareAclTensor x1 failed"), return GRAPH_FAILED);
 
-    const aclTensor *aclTensorX2;
-    PrepareAclTensor(host_api_ctx, aclTensorX2, INDEX_INPUT_X2, false);
+    const aclTensor *aclTensorX2 = nullptr;
+    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorX2, INDEX_INPUT_X2, false) != GRAPH_SUCCESS,
+                OP_LOGE("aclnnfallback", "PrepareAclTensor x2 failed"), return GRAPH_FAILED);
 
-    const aclTensor *aclTensorScale2;
-    PrepareAclTensor(host_api_ctx, aclTensorScale2, INDEX_INPUT_SCALE2, false);
+    const aclTensor *aclTensorScale2 = nullptr;
+    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorScale2, INDEX_INPUT_SCALE2, false) != GRAPH_SUCCESS,
+                OP_LOGE("aclnnfallback", "PrepareAclTensor scale2 failed"), return GRAPH_FAILED);
 
     auto scale1Tensor = host_api_ctx->GetOptionalInputTensor(INDEX_INPUT_SCALE1);
-    const aclTensor *aclTensorScale1;
+    const aclTensor *aclTensorScale1 = nullptr;
 
     if (scale1Tensor != nullptr && scale1Tensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) {
-        PrepareAclTensor(host_api_ctx, aclTensorScale1, INDEX_INPUT_SCALE1, true);
+        OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorScale1, INDEX_INPUT_SCALE1, true) != GRAPH_SUCCESS,
+                    OP_LOGE("aclnnfallback", "PrepareAclTensor scale1 failed"), return GRAPH_FAILED);
     } else if (scale1Tensor != nullptr && scale1Tensor->GetDataType() == ge::DataType::DT_FLOAT) {
         aclTensorScale1 = ConvertType(scale1Tensor);
+        OP_CHECK_IF(aclTensorScale1 == nullptr, OP_LOGE("aclnnfallback", "scale1 convert failed"), return GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scale1Tensor == nullptr, OP_LOGE("aclnnfallback", "scale1 nullptr"), return GRAPH_FAILED);
+        OP_LOGE("aclnnfallback", "scale1 dtype is invalid");
+        return GRAPH_FAILED;
     }
 
     auto groupListTensor = host_api_ctx->GetInputTensor(INDEX_INPUT_GROUP_LIST);
     auto inputYTensor = host_api_ctx->GetInputTensor(INDEX_INPUT_Y);
+    OP_CHECK_IF(groupListTensor == nullptr, OP_LOGE("aclnnfallback", "groupListTensor nullptr"), return GRAPH_FAILED);
+    OP_CHECK_IF(inputYTensor == nullptr, OP_LOGE("aclnnfallback", "inputYTensor nullptr"), return GRAPH_FAILED);
 
     int64_t groupsize = 0;
 

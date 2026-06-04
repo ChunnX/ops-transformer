@@ -458,7 +458,8 @@ __aicore__ inline void GMMA8W4MSDL1OptCompute<mmType>::VectorCompute(uint32_t gr
 {
     uint32_t curCubeSingleN = (mnConfig.nIdx == mnConfig.blockDimN - 1) ? tiling->n - mnConfig.nIdx * mnConfig.singleN : mnConfig.singleN;
     uint32_t curCubeSingleM = mnConfig.singleM / 2;
-    uint32_t mGlobalOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * curCubeSingleM; // 2: 2 lines int4 to 1 line int8
+    uint64_t mGlobalOffset = static_cast<uint64_t>(mnConfig.offsetM) / 2UL +
+                              static_cast<uint64_t>(mnConfig.mIdx) * curCubeSingleM;
      // 2: 2 lines int4 to 1 line int8
     if (mnConfig.mIdx == mnConfig.blockDimM - 1) {
         curCubeSingleM = mnConfig.m / 2 - mnConfig.mIdx * curCubeSingleM;
@@ -466,7 +467,8 @@ __aicore__ inline void GMMA8W4MSDL1OptCompute<mmType>::VectorCompute(uint32_t gr
     uint32_t vecBaseM = tiling->ubCalSize / (Ceil(mnConfig.baseN, uint32_t(8)) * 8);  //  8: num int32_t in 32B ub block  32*256/256
     vecBaseM = vecBaseM < curCubeSingleM ? vecBaseM : curCubeSingleM;
     uint32_t curVecBaseN = mnConfig.baseN;
-    uint64_t scaleOffset = (static_cast<uint64_t>(groupIdx)) * tiling->n + mnConfig.nIdx * mnConfig.singleN;
+    uint64_t scaleOffset = static_cast<uint64_t>(groupIdx) * tiling->n +
+                           static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
     uint64_t offsetOffset = scaleOffset;
     uint32_t taskRation = GetTaskRation();
     for (uint32_t offsetN = 0; offsetN < curCubeSingleN; offsetN += mnConfig.baseN) {
@@ -495,7 +497,7 @@ __aicore__ inline void GMMA8W4MSDL1OptCompute<mmType>::VectorCompute(uint32_t gr
                 alignBaseN = (alignBaseN + HALF_ALIGN - uint32_t(1)) / HALF_ALIGN * HALF_ALIGN;
             }
             VectorAtomicParams vecAParams{curVecBaseM, curVecBaseN, alignBaseN, offsetM, mGlobalOffset,
-                mGlobalOffset + offsetM, mnConfig.nIdx * mnConfig.singleN + offsetN};
+                mGlobalOffset + offsetM, static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN + offsetN};
             VectorProcess(vecAParams, mnConfig, mnConfig.workSpaceOffset, mmOutLocal);
         }
         scaleInQueue.FreeTensor(scaleInUb);

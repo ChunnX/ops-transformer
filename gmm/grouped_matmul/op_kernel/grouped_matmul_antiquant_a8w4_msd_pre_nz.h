@@ -81,7 +81,7 @@ private:
     uint32_t vectorBaseSize{A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K};
     uint32_t vectorBlockSizeAlign{DATA_BLOCK_SIZE_32_NZ};
     uint32_t totalGroup{0};
-    uint32_t blockDim{0};
+    uint32_t coreBlockDim{0};
     uint32_t coreId{0};
     uint32_t currentNum{0};
     uint32_t startNum{0};
@@ -123,7 +123,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     Duplicate(maskTensor, static_cast<int16_t>(0x0F0F), MASK);
 
     startNum = GetBlockIdx();
-    blockDim = GetBlockNum() * GetTaskRation();
+    coreBlockDim = GetBlockNum() * GetTaskRation();
 }
 
 __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
@@ -214,7 +214,10 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
     uint32_t mIdx = 0;
     uint32_t kIdx = 0;
     uint32_t totalTaskNum = mDim * kDim;
-    for(uint32_t taskIdx = startNum; taskIdx < totalTaskNum; taskIdx += blockDim) {
+    if (coreBlockDim == 0) {
+        return;
+    }
+    for(uint32_t taskIdx = startNum; taskIdx < totalTaskNum; taskIdx += coreBlockDim) {
         uint32_t curVecBaseM = A8W4PRE_VECTOR_BASE_M;
         uint32_t curVecBaseK = A8W4PRE_VECTOR_BASE_K;
         mIdx = taskIdx / kDim;

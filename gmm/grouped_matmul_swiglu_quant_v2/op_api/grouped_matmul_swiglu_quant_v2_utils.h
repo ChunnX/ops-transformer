@@ -218,7 +218,7 @@ protected:
         return false;
     }
 
-    void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
+    bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
                                                    std::vector<aclTensor *> &newTensorList,
                                                    aclOpExecutor *executor) const
     {
@@ -236,12 +236,16 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
-    void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+    bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                     aclOpExecutor *executor) const
     {
         op::Shape shape;
@@ -262,10 +266,14 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2)); // 2:the second last dim.
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             tensor->SetStorageShape(storageShape);
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
     static void CheckOptionalTensorListEmpty(const aclTensorList *&tensorList)
@@ -372,10 +380,20 @@ protected:
             CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
             std::vector<aclTensor *> scaleTensorList;
             std::vector<aclTensor *> weightTensorList;
-            CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr);
+            if (!CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr)) {
+                return false;
+            }
             gmmDsqParams_.weightScale = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
-            CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+            if (gmmDsqParams_.weightScale == nullptr) {
+                return false;
+            }
+            if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                return false;
+            }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+            if (gmmDsqParams_.weight == nullptr) {
+                return false;
+            }
             uniqueExecutor.ReleaseTo(executor_);
         }
 
@@ -406,8 +424,13 @@ protected:
             aclOpExecutor *executorPtr = uniqueExecutor.get();
             CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
             std::vector<aclTensor *> weightTensorList;
-            CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+            if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                return false;
+            }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+            if (gmmDsqParams_.weight == nullptr) {
+                return false;
+            }
             uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
