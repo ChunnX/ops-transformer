@@ -125,7 +125,7 @@ class GeneralizedSFAQuant:
             )
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
-                cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G]
+                cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
                 for i_S1 in range(cur_act_q):
                     milestones = [
                         int(cur_act_q * pct / 100) for pct in range(10, 101, 10)
@@ -190,7 +190,7 @@ class GeneralizedSFAQuant:
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_max_value = 16.0
                     score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
-                    score_max = cur_sinks.clone()
+                    score_max = cur_sinks.clone() if cur_sinks is not None else torch.ones((G,)).to(torch.float) * (-torch.inf)
                     acc_o = torch.zeros((G, self.D)).to(torch.float32)
                     sumexp = torch.zeros((G,)).to(torch.float32)
 
@@ -803,6 +803,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     topk_value_mode = params.get("topk_value_mode", 1)
     return_softmax_lse = params.get("return_softmax_lse", False)
     qkv_quant_mode = params.get("qkv_quant_mode", False)
+    isSink = params.get("isSink", False)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
@@ -845,10 +846,13 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # D维度固定512，已对齐128，无需padding
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
 
-    # generate sinks tensor
-    sinks = torch.tensor(
-        np.random.uniform(DATA_RANGE_LEFT / 10, DATA_RANGE_RIGHT / 10, (N1))
-    ).to(torch.float)
+    # generate sinks tensor (only when isSink=True)
+    if isSink:
+        sinks = torch.tensor(
+            np.random.uniform(DATA_RANGE_LEFT / 10, DATA_RANGE_RIGHT / 10, (N1))
+        ).to(torch.float)
+    else:
+        sinks = None
 
     # generate ori_kv tensor
     ori_k_bnsd, ori_k_in_pa_shape, ori_block_table, ori_kv_descale = gen_ori_kv(

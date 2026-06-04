@@ -65,6 +65,7 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        "isSink": params.get("isSink", [False]),
     }
 
     param_names = list(param_values.keys())
