@@ -10,7 +10,7 @@
 
 /*!
  * \file block_epilogue_swiglu_mx_quant.h
- * \brief
+ * \brief SwiGLU + MX per-group 量化 epilogue：GMM1 block-MMAD 输出的激活与量化
  */
 
 #ifndef BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
@@ -24,6 +24,7 @@
 #endif
 #include "mega_moe_base.h"
 
+// epilogue 量化模式与数据类型枚举
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
     DEFAULT = 0x0U,
@@ -42,12 +43,14 @@ enum class QuantDtype : uint8_t {
 } // namespace SwigluQuantMsg
 
 namespace {
-// constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
+// BlockCoord tuple 索引
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
+
+// MX-scale 计算所需的 BF16/FP8/FP4 指数常量
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -93,6 +96,14 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                   \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_
 
+// SwiGLU + MX per-group 量化 epilogue，运行在 AIV 核上。
+// 每个 tile 的处理流程：
+//   1. VFDoSwigluForMX:  silu(gate) * proj → bf16
+//   2. ComputeMaxExp:    提取 per-group 最大指数（bf16 exp 位）
+//   3. ComputeScale:     由最大指数推导 MX-scale 与 half-scale
+//   4. ComputeDataForQuantTargetFp8/Fp4:  scale + cast 到目标量化格式
+//   5. CopyOutputFromUb2Gm / CopyScaleFromUb2Gm:  写回 GM
+//   6. AtomicAdd flag，通知 GMM2 该 tile 已完成
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 class BlockEpilogueSwigluMxQuant {
 public:
@@ -100,6 +111,7 @@ public:
     {
     }
 
+    // 初始化参数：输出/scale/flag/bias 的 GM 地址
     struct Arguments {
         GM_ADDR yGmAddr{nullptr};
         GM_ADDR yScaleGmAddr{nullptr};
@@ -112,7 +124,6 @@ public:
         Arguments() = default;
     };
 
-    // params
     using Params = Arguments;
 
     using DataTypeOut = DataTypeOut_;
@@ -120,23 +131,27 @@ public:
     using DataTypeX1Scale = DataTypeX1Scale_;
     using DataTypeX2Scale = DataTypeX2Scale_;
 
-    // shape
+    // block-MMAD scheduler 所用的 shape 类型
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BaseOffset = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
-    // y, yScale, x2Scale, x1Scale, bias
-    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;  // {y, yScale, x2Scale, x1Scale, bias}
 
 public:
     __aicore__ inline void Init(Params const &params);
+
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
+
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
+
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
+
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
     __aicore__ inline void VFDoSwigluForMX(uint16_t mSize);
+
     __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN);
 
     template <SwigluQuantMsg::QuantMode quantMode>
@@ -166,12 +181,13 @@ private:
     __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
     __aicore__ inline void AddFlagFromUb2Gm(AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag);
-    // GM ADDR
+
+    // GM 输出 tensor
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
     __gm__ int32_t* groupFlagListGmAddr_;
 
-    // UB ADDR
+    // UB 临时 tensor
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, MAX_SINGLE_MN * sizeof(DataTypeIn),
                                                      MAX_SINGLE_MN};
@@ -187,7 +203,7 @@ private:
     int64_t scaleN_;
     int64_t scaleBlockN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
-    uint32_t singleM_; // cur singleShapeM
+    uint32_t singleM_;
     uint32_t singleN_;
     bool isBiasEpilogue_ = false;
     int64_t UBBlockSize_ = 0;
@@ -199,6 +215,7 @@ private:
 };
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+// 分配 UB 缓冲区，根据 DataTypeOut 设定 fpEmax_
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
@@ -492,7 +509,6 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
     return;
 }
 
-
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp4(
@@ -685,6 +701,7 @@ __aicore__ inline auto BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+// 执行单个 tile 的 SwiGLU + 量化：SwiGLU → MaxExp → Scale → Quant → CopyOut → Flag
 __aicore__ inline void
 BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
                                                                                    const BlockCoord &blockCoord)
