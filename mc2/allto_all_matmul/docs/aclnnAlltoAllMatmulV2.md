@@ -139,7 +139,7 @@ aclnnStatus aclnnAlltoAllMatmulV2(
     <td>commMode</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入"default"、"ai_cpu"或"ccu"。</td>
+    <td>支持输入""、"ai_cpu"或"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -327,7 +327,10 @@ aclnnStatus aclnnAlltoAllMatmulV2(
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AI\_CPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：
+      - 支持CCU通信和AI\_CPU通信。
+      - CCU通信不支持跨机场景。
+      - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
 ## 调用示例
 
