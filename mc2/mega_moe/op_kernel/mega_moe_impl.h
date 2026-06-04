@@ -419,6 +419,89 @@ struct Gmm2A8W4Policy {
     static constexpr bool IS_GMM1 = false;
 };
 
+template <typename Policy, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+    typename ElementMxScaleB>
+struct A8W4CommonHelper {
+    static constexpr uint32_t C0_SIZE_A = AuxGetC0Size<ElementA>();
+    static constexpr uint32_t C0_SIZE_B = 32U;
+    static constexpr uint32_t C0_SIZE_C = AuxGetC0Size<ElementC>();
+    static constexpr uint32_t C0_SIZE_SCALE = 2U;
+
+    using DispatchPolicy = Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using BlockPrologue = Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::ZNLayoutPtn;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
+    using LayoutScaleB = AscendC::Te::ScaleBDNLayoutPtn;
+
+    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE_B>>;
+    using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<C0_SIZE_SCALE>>;
+    using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<C0_SIZE_SCALE>>;
+    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
+
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, AscendC::Std::tuple<ElementA, ElementMxScaleA>, AscendC::Std::tuple<MakeLayoutA, MakeLayoutScaleA>,
+        AscendC::Std::tuple<ElementB, ElementMxScaleB>, AscendC::Std::tuple<MakeLayoutB, MakeLayoutScaleB>, ElementC,
+        MakeLayoutC, void, void>;
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using LayoutAType = decltype(MakeLayoutA{}(uint32_t {}, uint32_t {}));
+    using LayoutBType = decltype(MakeLayoutB{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t {}, uint32_t {}));
+    using LayoutCType = decltype(MakeLayoutC{}(uint32_t {}, uint32_t {}));
+
+    struct ProblemConfig {
+        uint32_t m = 0;
+        uint32_t n = 0;
+        uint32_t k = 0;
+        uint32_t outputN = 0;
+        uint32_t blockNum = 0;
+        uint32_t blockIdx = 0;
+        uint32_t subBlockIdx = 0;
+        uint32_t scaleK = 0;
+        typename BlockMmad::L1Params l1Params{.kL1 = L1_TILE_K, .scaleKL1 = 4096};
+    };
+
+    struct LayoutBundle {
+        LayoutAType a;
+        LayoutBType b;
+        LayoutScaleAType scaleA;
+        LayoutScaleBType scaleB;
+        LayoutCType c;
+    };
+
+    __aicore__ static inline ProblemConfig BuildProblemConfig(const ProblemShape& problemShape)
+    {
+        ProblemConfig config;
+        config.m = Get<M_VALUE>(problemShape);
+        if constexpr (Policy::IS_GMM1) {
+            config.n = Get<N_VALUE>(problemShape);
+            config.k = Get<K_VALUE>(problemShape);
+        } else {
+            config.n = Get<K_VALUE>(problemShape);
+            config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+        }
+        config.outputN = Policy::IS_GMM1 ? config.n / SWIGLU_N_HALF : config.n;
+        config.blockNum = GetBlockNum();
+        config.blockIdx = GetBlockIdx() / GetTaskRation();
+        config.subBlockIdx = GetSubBlockIdx();
+        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        return config;
+    }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig& config)
+    {
+        return LayoutBundle{
+            MakeLayoutA{}(config.m, config.k),
+            MakeLayoutB{}(config.k, config.n),
+            MakeLayoutScaleA{}(config.m, config.scaleK),
+            MakeLayoutScaleB{}(config.scaleK, config.n),
+            MakeLayoutC{}(config.m, config.n)};
+    }
+};
+
 template <typename Policy>
 __aicore__ inline void WaitA8W4InputReady(
     const Params& params, const GMMAddrInfo& gmmAddrInfo, uint32_t m, uint32_t n, uint32_t k)
@@ -603,122 +686,78 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
+    using Helper = A8W4CommonHelper<Policy, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>;
+    using BlockMmad = typename Helper::BlockMmad;
+    using BlockPrologue = typename Helper::BlockPrologue;
+    using MakeLayoutC = typename Helper::MakeLayoutC;
+
     (void)pingpongIdx;
     (void)groupIdx;
     (void)rankId;
     (void)swigluQuantOp;
 
-    uint32_t m = Get<M_VALUE>(problemShape);
-    uint32_t n = 0;
-    uint32_t k = 0;
-    // GMM1 and GMM2 interpret problemShape differently; normalize to matmul m/n/k.
-    if constexpr (Policy::IS_GMM1) {
-        n = Get<N_VALUE>(problemShape);
-        k = Get<K_VALUE>(problemShape);
-    } else {
-        n = Get<K_VALUE>(problemShape);
-        k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
-    }
-    uint32_t outputN = Policy::IS_GMM1 ? n / SWIGLU_N_HALF : n;
+    auto config = Helper::BuildProblemConfig(problemShape);
 
     if constexpr (Policy::IS_GMM1) {
-        swigluQuantOp.UpdateNextProblem({m, outputN, k, 0});
+        swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
     }
 
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t subBlockIdx = GetSubBlockIdx();
-
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = 32U;
-    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-    constexpr uint32_t c0SizeScale = 2U;
-
-    using DispatchPolicy = Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
-    using BlockPrologue = Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>;
-    using LayoutA = AscendC::Te::NDExtLayoutPtn;
-    using LayoutB = AscendC::Te::ZNLayoutPtn;
-    using LayoutC = AscendC::Te::NDExtLayoutPtn;
-    using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
-    using LayoutScaleB = AscendC::Te::ScaleBDNLayoutPtn;
-
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-    using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<c0SizeScale>>;
-    using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<c0SizeScale>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-    auto layoutA = MakeLayoutA{}(m, k);
-    auto layoutB = MakeLayoutB{}(k, n);
-    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutC = MakeLayoutC{}(m, n);
-
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, AscendC::Std::tuple<ElementA, ElementMxScaleA>, AscendC::Std::tuple<MakeLayoutA, MakeLayoutScaleA>,
-        AscendC::Std::tuple<ElementB, ElementMxScaleB>, AscendC::Std::tuple<MakeLayoutB, MakeLayoutScaleB>, ElementC,
-        MakeLayoutC, void, void>;
-
+    auto layouts = Helper::BuildLayouts(config);
     auto l0cOutGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(
-        Policy::IS_GMM1 ? gmmAddrInfo.gmm1OutGlobal : gmmAddrInfo.gmm2OutGlobal)), layoutC);
-
+        Policy::IS_GMM1 ? gmmAddrInfo.gmm1OutGlobal : gmmAddrInfo.gmm2OutGlobal)), layouts.c);
     auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
     auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
     auto gmScaleA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
+        layouts.scaleA);
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
+        layouts.scaleB);
 
     BlockScheduler scheduler(
-        {m, outputN, k},
+        {config.m, config.outputN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+    uint32_t startLoopIdx =
+        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
     // Bail out on empty experts before constructing objects with cross-core side effects.
     if (startLoopIdx >= tileNum) {
-        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
         return;
     }
-
-    typename BlockMmad::L1Params l1Params{
-        .kL1 = L1_TILE_K,
-        .scaleKL1 = 4096
-    };
 
     if constexpr (g_coreType == AscendC::AIC) {
         // AIC: BlockMmad compute; waits for upstream stage on first tile.
         BlockMmad blockMmad{};
         typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{m, outputN, k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, l1Params);
+        typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+        blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         RunA8W4Aic<Policy>(
-            blockMmad, scheduler, gmA, gmScaleA, gmScaleB, l0cOutGm, params, gmmAddrInfo, m, n, k, outputN,
-            scaleK, startLoopIdx, tileNum, blockNum);
+            blockMmad, scheduler, gmA, gmScaleA, gmScaleB, l0cOutGm, params, gmmAddrInfo, config.m, config.n,
+            config.k, config.outputN, config.scaleK, startLoopIdx, tileNum, config.blockNum);
     } else {
-        if (subBlockIdx == 0) {
+        if (config.subBlockIdx == 0) {
             // AIV sub-block 0: B prologue, prefetch weight into L1.
             BlockPrologue blockPrologue;
             RunA8W4AivPrologue<Policy>(
-                blockPrologue, scheduler, gmB, k, n, outputN, l1Params.kL1, startLoopIdx, tileNum, blockNum);
+                blockPrologue, scheduler, gmB, config.k, config.n, config.outputN, config.l1Params.kL1,
+                startLoopIdx, tileNum, config.blockNum);
         } else {
             // AIV sub-block 1: GM→UB copyout; GMM1 runs SwiGLU Quant, GMM2 runs combine.
             if constexpr (Policy::IS_GMM1) {
                 RunA8W4AivGmm1PostProcess<ElementC, MakeLayoutC>(
-                    swigluQuantOp, scheduler, l0cOutGm, outputN, startLoopIdx, tileNum, blockNum);
+                    swigluQuantOp, scheduler, l0cOutGm, config.outputN, startLoopIdx, tileNum,
+                    config.blockNum);
             } else {
                 RunA8W4AivGmm2PostProcess<ElementC, MakeLayoutC>(
-                    scheduler, l0cOutGm, params, n, groupIdx, rankId, startLoopIdx, tileNum, blockNum);
+                    scheduler, l0cOutGm, params, config.n, groupIdx, rankId, startLoopIdx, tileNum,
+                    config.blockNum);
             }
         }
     }
-
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
 template <typename Policy, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
