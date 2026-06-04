@@ -43,6 +43,7 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
     gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
     gert::Shape *sparseValuesShape = context->GetOutputShape(1);
+    gert::Shape *indiceLenShape = context->GetOutputShape(2);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -82,6 +83,19 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
         sparseValuesShape->SetDim(0, 0);
     }
 
+    if (indiceLenShape != nullptr) {
+        if (inputLayoutQueryPtrStr == "BSND") {
+            indiceLenShape->SetDimNum(DIM_NUM_3);
+            indiceLenShape->SetDim(0, queryShape->GetDim(0));
+            indiceLenShape->SetDim(1, queryShape->GetDim(1));
+            indiceLenShape->SetDim(2, keyHeadNum);
+        } else {
+            indiceLenShape->SetDimNum(2);
+            indiceLenShape->SetDim(0, queryShape->GetDim(0));
+            indiceLenShape->SetDim(1, keyHeadNum);
+        }
+    }
+
     OP_LOGD(context->GetNodeName(), "QuantLightningIndexer InferShape end.");
     return ge::GRAPH_SUCCESS;
 }
@@ -96,6 +110,9 @@ static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeCon
     // default index data type is int32
     ge::DataType outputType = ge::DT_INT32;
     context->SetOutputDataType(0, outputType);
+    if (context->GetOutputsSize() > 2) {
+        context->SetOutputDataType(2, outputType);
+    }
     OP_LOGD(context->GetNodeName(), "QuantLightningIndexer InferDataType end.");
     return GRAPH_SUCCESS;
 }

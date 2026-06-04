@@ -67,6 +67,7 @@ public:
             .AutoContiguous();
         this->Output("sparse_indices").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
         this->Output("sparse_values").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
+        this->Output("indice_len").ParamType(OPTIONAL).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
         this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: per-token-head
         this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: per-token-head
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
@@ -142,6 +143,10 @@ public:
         aicore_config_95.Output("sparse_values")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_95.Output("indice_len")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
