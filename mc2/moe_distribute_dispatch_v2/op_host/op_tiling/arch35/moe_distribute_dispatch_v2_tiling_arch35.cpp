@@ -137,7 +137,8 @@ inline ge::graphStatus CheckTpAttrs(const char *nodeName, const int64_t tpWorldS
     const int64_t tpRankId, const char *groupTpPtr, std::string &groupTp)
 {
     OP_TILING_CHECK((tpWorldSize < 0) || (tpWorldSize > MAX_TP_WORLD_SIZE),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize", MAX_TP_WORLD_SIZE, tpWorldSize), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize", std::to_string(tpWorldSize).c_str(),
+            (std::string("[0,") + std::to_string(MAX_TP_WORLD_SIZE) + "]").c_str()), return ge::GRAPH_FAILED);
     if (tpWorldSize > 1) {
         OP_TILING_CHECK((tpRankId < 0) || (tpRankId >= tpWorldSize),
             OP_LOGE(nodeName, "The valid range of tpRankId is [0, %ld), but acutually got tpRankId=%ld.",
@@ -149,7 +150,7 @@ inline ge::graphStatus CheckTpAttrs(const char *nodeName, const int64_t tpWorldS
             MAX_GROUP_NAME_LENGTH, len), return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(tpRankId != 0,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId", tpRankId),
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId", std::to_string(tpRankId).c_str(), "0"),
             return ge::GRAPH_FAILED);
     }
     groupTp = std::string(groupTpPtr);
@@ -167,10 +168,12 @@ inline ge::graphStatus CheckEpAttrs(const char *nodeName, const int64_t epWorldS
             MAX_GROUP_NAME_LENGTH, len), return ge::GRAPH_FAILED);
     if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
         OP_TILING_CHECK((epWorldSize <= 0) || (epWorldSize > MAX_EP_WORLD_SIZE_V1),
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", MAX_EP_WORLD_SIZE_V1, epWorldSize), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
+                (std::string("[1,") + std::to_string(MAX_EP_WORLD_SIZE_V1) + "]").c_str()), return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE_V2) || (epWorldSize > MAX_EP_WORLD_SIZE_V2),
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", MIN_EP_WORLD_SIZE_V2, MAX_EP_WORLD_SIZE_V2, epWorldSize), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
+                (std::string("[") + std::to_string(MIN_EP_WORLD_SIZE_V2) + "," + std::to_string(MAX_EP_WORLD_SIZE_V2) + "]").c_str()), return ge::GRAPH_FAILED);
     }
     OP_TILING_CHECK((epRankId < 0) || (epRankId >= epWorldSize),
         OP_LOGE(nodeName, "The valid range of epRankId is [0, %ld), but acutually got epRankId=%ld.",
@@ -187,14 +190,15 @@ inline ge::graphStatus CheckQuantAndExpertAttrs(const char *nodeName, const int6
         OP_LOGE(nodeName, "The valid range of quantMode is [0, %ld), but actually got quantMode=%ld.",
         static_cast<int64_t>(QuantModeA5::BUTT), quantMode), return ge::GRAPH_FAILED);
     if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
-        OP_TILING_CHECK(sharedExpertNum != 1, OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", sharedExpertNum),
+        OP_TILING_CHECK(sharedExpertNum != 1, OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(), "1"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((sharedExpertNum < MIN_SHARED_EXPERT_NUM_V2) || (sharedExpertNum > MAX_SHARED_EXPERT_NUM_V2),
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", MIN_SHARED_EXPERT_NUM_V2, MAX_SHARED_EXPERT_NUM_V2, sharedExpertNum), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
+                (std::string("[") + std::to_string(MIN_SHARED_EXPERT_NUM_V2) + "," + std::to_string(MAX_SHARED_EXPERT_NUM_V2) + "]").c_str()), return ge::GRAPH_FAILED);
     }
     OP_TILING_CHECK((expertTokenNumsType != 0) && (expertTokenNumsType != 1),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertTokenNumsType", expertTokenNumsType), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertTokenNumsType", std::to_string(expertTokenNumsType).c_str(), "0 or 1"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -202,7 +206,7 @@ inline ge::graphStatus CheckSharedExpertAttrs(const char *nodeName, const int64_
     const int64_t sharedExpertRankNum, const int64_t epWorldSize)
 {
     OP_TILING_CHECK(expertShard != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", expertShard), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", std::to_string(expertShard).c_str(), "0"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
         OP_LOGE(nodeName,
             "The valid range of sharedExpertRankNum is [0, %ld), but actually got sharedExpertRankNum=%ld.",
@@ -214,10 +218,12 @@ inline ge::graphStatus CheckMoeExpertAttrs(const char *nodeName, const int64_t m
 {
     if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
         OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > MAX_MOE_EXPERT_NUM_V1),
-                OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", MAX_MOE_EXPERT_NUM_V1, moeExpertNum), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", std::to_string(moeExpertNum).c_str(),
+                    (std::string("(0,") + std::to_string(MAX_MOE_EXPERT_NUM_V1) + "]").c_str()), return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > MAX_MOE_EXPERT_NUM_V2),
-                OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", MAX_MOE_EXPERT_NUM_V2, moeExpertNum), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(nodeName, "moeExpertNum", std::to_string(moeExpertNum).c_str(),
+                    (std::string("(0,") + std::to_string(MAX_MOE_EXPERT_NUM_V2) + "]").c_str()), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
