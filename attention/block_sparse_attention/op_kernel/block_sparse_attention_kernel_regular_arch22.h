@@ -56,7 +56,7 @@ namespace BlockSparse {
 
         using ElementP = typename BlockMmadPV::ElementA;
         using LayoutP = typename BlockMmadPV::LayoutA;
-    
+
         using ElementV = typename BlockMmadPV::ElementB;
         using LayoutV = typename BlockMmadPV::LayoutB;
 
@@ -84,7 +84,7 @@ namespace BlockSparse {
         static constexpr uint32_t SPARSE_IDX_OFFSET = BASIC_BLOCK * 4 + MASK_IDX_OFFSET;
         static constexpr uint32_t SELECT_NUM_IDX_OFFSET = BASIC_BLOCK * 4 + SPARSE_IDX_OFFSET;
         static constexpr uint32_t SYNC_OFFSET = BASIC_BLOCK * 4 + SELECT_NUM_IDX_OFFSET;
-        
+
         __aicore__ inline
         BlockSparseAttentionKernel() {}
 
@@ -170,7 +170,7 @@ namespace BlockSparse {
                                 (PRE_COL_TILE - actDealtColCurLoop32) / 32, 0),
                             AscendC::DataCopyPadExtParams<uint8_t>(
                                 true, 0, (actDealtColCurLoop32 - actDealtColCurLoop), 0));
-                        
+
                         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
                         AscendC::Cast(
@@ -277,7 +277,7 @@ namespace BlockSparse {
             maxQBlockNum = blockSparseAttentionTilingData->maxQBlockNum;
             avgRowPerSubCore = blockSparseAttentionTilingData->avgRowNumPerSubCore;
             preActivateSubCoreNum = blockSparseAttentionTilingData->preActivateSubCoreNum;
-            
+
             uint32_t qBlockX = blockSparseAttentionTilingData->blockShapeX;
             uint32_t qBlockY = blockSparseAttentionTilingData->blockShapeY;
             uint32_t qBlockNum = totalQBlocks / qBlockX;
@@ -322,7 +322,7 @@ namespace BlockSparse {
             AscendC::GlobalTensor<ElementOTmp> gOUpdate;
             gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize +
                 smOnlineOutSize + mm2OutSize));
-            
+
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
 #ifdef __DAV_C220_VEC__
@@ -351,7 +351,7 @@ namespace BlockSparse {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID5);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID6);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
-            
+
             static constexpr uint32_t L1_QK_SIZE =
                 BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K * sizeof(ElementQ) +
                 BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K * sizeof(ElementK) * 2;
@@ -393,30 +393,30 @@ namespace BlockSparse {
             uint64_t strideKVB = 0;  // BNSD batch stride for KV
             uint64_t strideKVN = 0;  // BNSD head stride for KV
             uint64_t strideKVS = 0;  // BNSD seq stride for KV
-            
+
             if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                 // BNSD: [B, N, S, D]
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
-                strideQOB = qHeads * maxQSeqlen * embed;  // batch stride
+                strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
                 strideQON = maxQSeqlen * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
                 strideQO = qHeads * embed;
             }
-            
+
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
-                strideKVB = kvHeads * maxKvSeqlen * embed;  // batch stride
+                strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
                 strideKVN = maxKvSeqlen * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
                 strideKV = kvHeads * embed;
             }
-            
+
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
             uint32_t groupSize = qHeads / kvHeads;
 
@@ -451,20 +451,20 @@ namespace BlockSparse {
                     ++curBatch;
                     preTotalTaskNum = curTotalTaskNum;
                     preTotalQBlockNum = curTotalQBlockNum;
-                    
+
                     // Update offsets based on layout (compile-time optimization)
                     if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                         // BNSD: [B, N, S, D], offset = batch * strideB
                         qBOffset = curBatch * strideQOB;
                         oBOffset = curBatch * strideQOB;
-                        lseBOffset = curBatch * qHeads * maxQSeqlen;
+                        lseBOffset = static_cast<uint64_t>(curBatch) * qHeads * maxQSeqlen;
                     } else {
                         // TND
                         qBOffset += qSeqlen * strideQO;
                         oBOffset += qSeqlen * strideQO;
                         lseBOffset += qSeqlen * qHeads;
                     }
-                    
+
                     if constexpr (!PAGED_CACHE_FLAG) {
                         if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                             // BNSD: [B, N, S, D], offset = batch * strideB
@@ -503,7 +503,7 @@ namespace BlockSparse {
                 uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
                 uint32_t xBlockNum = qSeqlen / qBlockX;
                 uint32_t xTailNum = qSeqlen - xBlockNum * qBlockX;
-                
+
                 uint32_t kvHeadIdx = qNBlockIdx / qNBlockNumPerGroup;
                 uint32_t qHeadIdx = kvHeadIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
 
@@ -529,7 +529,7 @@ namespace BlockSparse {
                     gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
                     gmOffsetO = oBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
                     // LSE format: [B, N, S] - strideN = maxQSeqlen
-                    gmOffsetLse = lseBOffset + qHeadIdx * maxQSeqlen + qSeqOffset;
+                    gmOffsetLse = lseBOffset + static_cast<uint64_t>(qHeadIdx) * maxQSeqlen + qSeqOffset;
                 } else {
                     // TND: [T, N, D]
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
@@ -538,7 +538,7 @@ namespace BlockSparse {
                     // LSE format: [T, N] - same as Q/O but without D dimension
                     gmOffsetLse = lseBOffset + qSeqOffset * qHeads + qHeadIdx;
                 }
-                
+
                 if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD: [B, N, S, D]
                     // offset = batch * strideB + head * strideN
                     // seq offset will be handled in blockMmadQK/blockMmadPV based on selectIdx
@@ -791,4 +791,3 @@ namespace BlockSparse {
 } // namespace BlockSparse
 
 #endif // BLOCK_SPARSE_ATTENTION_KERNEL_H
-
