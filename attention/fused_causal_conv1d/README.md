@@ -474,8 +474,10 @@
         - initialStateIdx[i] <= blockIdxFirstScheduledToken[i]+1
         - initialStateIdx[i] <= blockIdxLastScheduledToken[i]
         - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
-  - num_accepted_tokens分为None和非None，非None情况下长度为batch，每个元素取值不超过当前batch的token个数且大于0。
-  - Pangu V2 模式（conv_mode = 1）下，运行 numComputedTokens 不能为 None。
+        - blockIdxLastScheduledToken[i] < maxNumBlocks
+  - num_accepted_tokens分为None和非None，非None情况下长度为batch，每个元素取值不超过当前batch的token数-1且大于0。
+  - cache_indices的取值范围为[0, conv_states.dim[0]-1],且元素均不能相等。
+  - Pangu V2 模式（conv_mode = 1）下，运行num_computed_tokens不能为 None。
   - 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
   - 算子输入不支持有±inf和nan的情况。
   
