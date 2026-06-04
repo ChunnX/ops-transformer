@@ -125,7 +125,6 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
-include(cmake/third_party/ops-tensor.cmake)
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
