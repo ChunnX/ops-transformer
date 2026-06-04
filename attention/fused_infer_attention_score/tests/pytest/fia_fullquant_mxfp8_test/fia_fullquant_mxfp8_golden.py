@@ -69,6 +69,11 @@ KV_CACHE_LAYOUT = "PA_NZ"
 
 ENABLE_LSE = False
 
+# 数据生成范围: Q/K/V 均匀分布 [-DATA_RANGE_*, DATA_RANGE_*]
+DATA_RANGE_Q = 1.0
+DATA_RANGE_K = 1.0
+DATA_RANGE_V = 1.0
+
 # e8m0fnu 最小正数: 2^(-127)，用于替换 scale 中的 0 和非有限值
 # e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
 E8M0_MIN_POSITIVE = 2**(-127)
@@ -591,13 +596,13 @@ def generate_data():
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = torch.randn(B, N_q, max_sq, D, dtype=torch.float16)
+    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None

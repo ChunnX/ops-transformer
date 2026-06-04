@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import concurrent.futures
+import itertools
 
 import pytest
 import torch
@@ -20,8 +21,17 @@ import fia_fullquant_mxfp8_golden as golden
 import fia_fullquant_mxfp8_paramset as paramset
 import result_compare_method
 
-CASES = paramset.CASES
-CASE_IDS = [case["name"] for case in CASES]
+CASE_IDS = [case["name"] for case in paramset.CASES]
+
+param_combinations = []
+for params in paramset.ENABLED_PARAMS:
+    expanded = dict(params)
+    for key, default_vals in paramset.TEST_PARAMS_DEFAULTS.items():
+        if key not in expanded:
+            expanded[key] = default_vals
+    param_values = [expanded[name] for name in paramset.PARAM_NAMES]
+    for combo in itertools.product(*param_values):
+        param_combinations.append(dict(zip(paramset.PARAM_NAMES, combo)))
 
 
 def _apply_params(params):
@@ -37,6 +47,12 @@ def _apply_params(params):
     golden.SPARSE_MODE = params["sparse_mode"]
     golden.Q_SCALE_LAYOUT = params["q_scale_layout"]
     golden.P_SCALE = params["p_scale"]
+    if "data_range_q" in params:
+        golden.DATA_RANGE_Q = params["data_range_q"]
+    if "data_range_k" in params:
+        golden.DATA_RANGE_K = params["data_range_k"]
+    if "data_range_v" in params:
+        golden.DATA_RANGE_V = params["data_range_v"]
 
 
 def _execute_test(params):
@@ -72,7 +88,7 @@ def _execute_test(params):
 
 
 @pytest.mark.ci
-@pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("params", paramset.CASES, ids=CASE_IDS)
 def test_fia_fullquant_mxfp8(params):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_execute_test, params)

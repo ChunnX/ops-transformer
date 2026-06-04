@@ -10,6 +10,20 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+PARAM_NAMES = [
+    "B", "N_q", "N_kv", "D",
+    "actual_seq_q", "actual_seq_kv",
+    "enable_pa", "kv_cache_layout", "block_size",
+    "sparse_mode", "q_scale_layout", "p_scale",
+    "data_range_q", "data_range_k", "data_range_v",
+]
+
+TEST_PARAMS_DEFAULTS = {
+    "data_range_q": [1.0],
+    "data_range_k": [1.0],
+    "data_range_v": [1.0],
+}
+
 TEST_PARAMS = {
     "PA_NZ_QS4_KVS31_Nq1_Nkv1_D128_SP3_Decode": {
         "B": [1],
@@ -145,16 +159,13 @@ ENABLED_PARAMS = list(TEST_PARAMS.values())
 def _expand_paramset_to_cases():
     import itertools
 
-    PARAM_NAMES = [
-        "B", "N_q", "N_kv", "D",
-        "actual_seq_q", "actual_seq_kv",
-        "enable_pa", "kv_cache_layout", "block_size",
-        "sparse_mode", "q_scale_layout", "p_scale",
-    ]
-
     cases = []
     for name, params in TEST_PARAMS.items():
-        param_values = [params[n] for n in PARAM_NAMES]
+        expanded = dict(params)
+        for key, default_vals in TEST_PARAMS_DEFAULTS.items():
+            if key not in expanded:
+                expanded[key] = default_vals
+        param_values = [expanded[n] for n in PARAM_NAMES]
         for combo in itertools.product(*param_values):
             case = {"name": name}
             for key, val in zip(PARAM_NAMES, combo):
