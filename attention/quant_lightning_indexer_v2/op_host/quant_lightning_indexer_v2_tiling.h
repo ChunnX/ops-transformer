@@ -51,13 +51,14 @@ constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX = 3;
 constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
 constexpr uint32_t CU_SEQLENS_Q_INDEX = 5;
 constexpr uint32_t CU_SEQLENS_K_INDEX = 6;
-constexpr uint32_t SEQUSED_Q_INDEX = 7;
-constexpr uint32_t SEQUSED_K_INDEX = 8;
+constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 7;
+constexpr uint32_t ACTUAL_SEQ_K_INDEX = 8;
+constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
 constexpr uint32_t BLOCK_TABLE_INDEX = 10;
 constexpr uint32_t METADATA_INDEX = 12;
 constexpr uint32_t quant_lightning_indexer = 0;
 
-// Attributes Index V2
+// Attributes Index
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 1;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
@@ -92,8 +93,8 @@ constexpr uint32_t METADATA_LIMIT = 1024;
 // constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
 // constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
 
-// constexpr uint32_t V1_OP_VERSION = 1;
-// constexpr uint32_t V2_OP_VERSION = 2;;
+constexpr uint32_t V1_OP_VERSION = 1;
+constexpr uint32_t V2_OP_VERSION = 2;
 
 // constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
 //                                             sizeof(V2_OP_NAME)});
@@ -112,7 +113,6 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
-TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 END_TILING_DATA_DEF
 // REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLITilingData)
@@ -133,6 +133,7 @@ struct QLIParaInfo {
     TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
     TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
     TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
+    TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
@@ -148,7 +149,6 @@ struct QLIParaInfo {
     const int32_t *returnValue = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
-    const int32_t *batchSupperFlag = nullptr;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
 };
@@ -180,7 +180,6 @@ public:
     int32_t returnValue = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
-    bool batchSupperFlag = false;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
     // DType
@@ -201,7 +200,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+    ge::graphStatus GetCuSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
                                         const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -249,7 +248,7 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
-    bool batchSupperFlag_ = false;
+
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BSND;

@@ -120,6 +120,7 @@ protected:
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
+    GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -135,7 +136,8 @@ protected:
     __aicore__ inline void InitTilingData(const QLITilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK);
+                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                            __gm__ uint8_t *cmpResidualK);
     // ================================Split Core================================
     __aicore__ inline void SplitCoreByAICPU(uint32_t curCoreIdx, GlobalTensor<uint32_t> &metadataGm);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2SizeOrig);
@@ -150,7 +152,9 @@ protected:
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                            GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen, uint32_t cmpRatio);                                              
+                                            GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                            GlobalTensor<uint32_t> &cmpResidualKGm,
+                                            uint32_t defaultSeqLen, uint32_t cmpRatio);                                              
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo);
@@ -169,11 +173,9 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.kCacheBlockSize = tilingData->blockSize;
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
     constInfo.sparseCount = tilingData->sparseCount;
-    // TODO
-    constInfo.cmpRatio = 1;
+    constInfo.cmpRatio = 1;  // 1: 默认值 后续从tilingData获取
     constInfo.keyStride = tilingData->keyStride0;
     constInfo.keyScaleStride = tilingData->keyDequantScaleStride0;
-    constInfo.batchSupperFlag = tilingData->batchSupperFlag;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -204,12 +206,12 @@ template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
                                                           __gm__ uint8_t *cuSeqlensK,
                                                           __gm__ uint8_t *sequsedQ,
-                                                          __gm__ uint8_t *sequsedK)
+                                                          __gm__ uint8_t *sequsedK,
+                                                          __gm__ uint8_t *cmpResidualK)
 {
     // k为TND q一定为TND，key为PA_BSND cuSeqlensQ的维度为B+1
-    constInfo.actualLenDims = constInfo.batchSize;
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
-        constInfo.actualLenQDims = (constInfo.batchSupperFlag) ? constInfo.batchSize + 1 : constInfo.batchSize;
+        constInfo.actualLenQDims = constInfo.batchSize + 1;
         actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ, constInfo.actualLenQDims);
     } else {
         if (sequsedQ == nullptr) {
@@ -220,6 +222,7 @@ __aicore__ inline void QLIPreload<QLIT>::InitActualSeqLen(__gm__ uint8_t *cuSeql
         }
     }
     if (K_LAYOUT_T == LI_LAYOUT::TND) {
+        constInfo.actualLenDims = constInfo.batchSize + 1;
         actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensK, constInfo.actualLenDims);
     } else {
         if (sequsedK == nullptr) {
@@ -228,6 +231,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitActualSeqLen(__gm__ uint8_t *cuSeql
             actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK, constInfo.actualLenDims);
         }
     }
+    // cmpResidualK获取
+    cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK, constInfo.batchSize);
 }
 
 template <typename QLIT>
@@ -235,7 +240,9 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLen(uint32_t bIdx, uint
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen)
 {
-    bIdx = (constInfo.batchSupperFlag)? bIdx + 1 : bIdx; // 如果为B+1情况，则向后移动一位
+    if (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        bIdx = bIdx + 1; // 如果为B+1情况，则向后移动一位
+    }
     if (actualLenDims == 0) {
         return defaultSeqLen;
     } else if (isAccumSeq && bIdx > 0) {
@@ -248,24 +255,32 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLen(uint32_t bIdx, uint
 template <typename QLIT>
 __aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                             GlobalTensor<uint32_t> &cmpResidualKGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
+    uint32_t cmpResidualK = cmpResidualKGm.GetValue(bIdx);
+    if (K_LAYOUT_T == LI_LAYOUT::TND) {
+        bIdx = bIdx + 1; // 如果为B+1情况，则向后移动一位
+    }
     if (actualLenDims == 0) {
-        return defaultSeqLen * cmpRatio;
+        return defaultSeqLen * cmpRatio + cmpResidualK;
     } else if (isAccumSeq && bIdx > 0) {
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+        return (actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1)) * cmpRatio + cmpResidualK;
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return (actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio + cmpResidualK;
     }
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
+__aicore__ inline void QLIPreload<QLIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
+                                                             uint32_t &actS2SizeOrig)
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
+    // 压缩前的actS2Size
     actS2SizeOrig =
-        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio); // 压缩前的actS2Size
+        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, cmpResidualKGm,
+                           constInfo.kSeqSize, constInfo.cmpRatio);
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;   // 真实使用的压缩后S2长度    
 }
 
@@ -277,8 +292,10 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
         return 0;
     }
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
-    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);    // 压缩前的validS2LenBase
-    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);  
+    // 压缩前的validS2LenBase
+    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);
+    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase +
+                          static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);  
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
     validS2Len = Max(validS2Len, 1);
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
@@ -366,8 +383,8 @@ __aicore__ inline void QLIPreload<QLIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_LAYOUT::TND) {
-            uint32_t tSizeIdx = (constInfo.batchSupperFlag) ? constInfo.batchSize : constInfo.batchSize - 1;
-            uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
+            uint32_t tSizeIdx = constInfo.batchSize;
+            uint32_t tBaseIdx = bIdx;
             uint32_t tSize = actualSeqLengthsGmQ.GetValue(tSizeIdx);
             uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(tBaseIdx);
             uint32_t s1Count = tempLoopInfo.actS1Size;
@@ -409,7 +426,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
     }
 
     InitTilingData(tiling);
-    InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK);
+    InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
 
     // 获取分核信息
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -539,8 +556,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-            uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
+            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(runInfo.bIdx); // TND为B+1
         } else {  // BSND
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
@@ -556,8 +572,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
-        actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
+        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx); //actualSeqLengthsGm中为压缩后的值 
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
