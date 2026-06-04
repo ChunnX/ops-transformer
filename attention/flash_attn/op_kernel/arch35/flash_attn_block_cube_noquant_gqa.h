@@ -374,16 +374,19 @@ public:
         }
 
         // L0C：4buff (各64KB) 或 DB (各128KB) —— 裸 LocalTensor 构造
+        // 注意 L0C 的 TPosition 标准是 CO1（对应 common/op_kernel/buffer.h::BufferInfo<L0C>::Position），
+        // 不是 C1 — 之前用 C1 会让 LocalTensor 指向错误的物理区域，导致 fixpipe 读到的 L0C 数据有缺失，
+        // 表现为部分 m-block(尤其是 m=0 和 S2-split 的尾 m)精度异常。
         if constexpr (L0C_IS_4BUFF) {
             constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_4) * (uint32_t)KB_TO_BYTES;
-            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::C1, 0U, l0cSlotSize);
-            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::C1, l0cSlotSize, l0cSlotSize);
-            l0CSlot[2] = LocalTensor<uint8_t>(TPosition::C1, 2U * l0cSlotSize, l0cSlotSize);
-            l0CSlot[3] = LocalTensor<uint8_t>(TPosition::C1, 3U * l0cSlotSize, l0cSlotSize);
+            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::CO1, 0U, l0cSlotSize);
+            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::CO1, l0cSlotSize, l0cSlotSize);
+            l0CSlot[2] = LocalTensor<uint8_t>(TPosition::CO1, 2U * l0cSlotSize, l0cSlotSize);
+            l0CSlot[3] = LocalTensor<uint8_t>(TPosition::CO1, 3U * l0cSlotSize, l0cSlotSize);
         } else {
             constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_2) * (uint32_t)KB_TO_BYTES;
-            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::C1, 0U, l0cSlotSize);
-            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::C1, l0cSlotSize, l0cSlotSize);
+            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::CO1, 0U, l0cSlotSize);
+            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::CO1, l0cSlotSize, l0cSlotSize);
         }
     }
 
