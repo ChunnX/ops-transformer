@@ -118,6 +118,29 @@ def _mla_kv_cache_dim0_nc_empty(shape, dtype, device="npu"):
     return view, buf
 
 
+def _mla_kv_cache_dim0_nc_view_nz(t_nd: torch.Tensor):
+    """把 ND cache（[BLOCK_NUM, BLOCK_SIZE, 1, X]）转成「FRACTAL_NZ + 首轴(blockNum)非连续」的
+    npu 张量，等价于父类 npu_cast_to_nz 再叠加 dim0 N× 非连续。
+
+    流程：reshape→transdata_nd2nz→format_cast(29) 得到连续 NZ 张量 [BLOCK_NUM, C1, 128, 16]；
+    再开 N×BLOCK_NUM 的 NZ buffer，as_strided 首轴步长为 N×hidden，copy_ 填入（空洞保持 0）。
+    返回 (非连续 NZ view, 底层 buffer)。buffer 需被持有以防回收。
+    """
+    N = MLA_KV_CACHE_NC_DIM0_STRIDE
+    nz = transdata_nd2nz(t_nd.reshape((BLOCK_NUM, BLOCK_SIZE, -1))).contiguous().npu()
+    nz = torch_npu.npu_format_cast(nz, 29)  # FRACTAL_NZ, 连续 [BLOCK_NUM, ...]
+    b0 = nz.shape[0]
+    rest = tuple(nz.shape[1:])
+    hidden = 1
+    for s in rest:
+        hidden *= int(s)
+    buf = torch.zeros((N * b0,) + rest, dtype=nz.dtype, device=nz.device)
+    buf = torch_npu.npu_format_cast(buf, 29)
+    view = buf.as_strided(size=nz.shape, stride=(N * hidden,) + tuple(buf.stride()[1:]))
+    view.copy_(nz)  # 仅填充逻辑 block，间隔空洞保持 0
+    return view, buf
+
+
 def round_up(val: int, align: int) -> int:
     if align == 0:
         return 0
@@ -918,78 +941,106 @@ class aclnnMlaPreprocessApi(AclnnBaseApi):
 
 @register("function_pyaclnn_mla_preprocess_kv_cache_nc_dim0")
 class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
-    """仅 PyACLNN 路径：将 kvCache / kvCacheRope 首轴(dim0/block 维)变为非连续视图。
+    """仅 PyACLNN 路径：将 kvCache / kvCacheRope 首轴(dim0/block 维)变为非连续。
 
-    适用于 cacheMode 0/1（ND cache）。cacheMode 2/3 走 NZ，父类会 reshape+转 NZ，不构造本场景。
+    覆盖 cacheMode 0/1（ND cache）与 2/3（NZ cache），统一思路：
+      - 让逻辑 shape 不变（过 aclnn InferShape）；
+      - 底层 storage 首轴放大 N 倍、dim0 stride = N×hidden（kernel 按 2b 写不越界）；
+      - 回读 view[b]=buf[N*b]，与「连续 golden（ND 直接、NZ 经 transdata_nd2nz）」对齐。
 
-    实现（参考 FIA 非连续 KV 范式）：直接把 kvCache/kvCacheRope 替换为首轴非连续的
-    torch tensor（as_strided，dim0 stride = N×hidden），然后交给默认的
-    super().init_by_input_data 处理——由框架读取该 tensor 的原生 stride/storage 构造
-    aclTensor。不重写 get_storage_shape、不手动 aclCreateTensor。
+    Input：
+      - ND：直接把 kwargs 里的 kvCache/kvCacheRope 换成首轴非连续 torch view，交给 super 构造；
+      - NZ：父类会先把 kwargs 转成连续 NZ，故在 super 之后用「NZ + 首轴非连续」的手动 acl 张量
+            替换 input_args 里的 kvCache/kvCacheRope。
+    Output：两种格式都在 super 之后注入「逻辑 shape 不变 / 底层 N× / dim0 N× stride」的张量，
+            ND 用 ACL_FORMAT_ND、NZ 用 ACL_FORMAT_FRACTAL_NZ。
     """
 
     def __init__(self, task_result: TaskResult, backend):
         super().__init__(task_result, backend)
 
+    # 输入张量顺序：... wuk(18), kvCache(19), kvCacheRope(20), ...
+    IDX_KV_CACHE_IN = 19
+    IDX_KV_CACHE_ROPE_IN = 20
     # 输出顺序：qOut(0), kvCacheOut(1), qRopeOut(2), krCacheOut(3)
     IDX_KV_CACHE_OUT = 1
     IDX_KR_CACHE_OUT = 3
 
     def init_by_input_data(self, input_data: InputDataset):
         cm = int(input_data.kwargs["cacheMode"])
-        is_nc = cm in (0, 1)
-        if is_nc:
+        is_nd = cm in (0, 1)
+        is_nz = cm in (2, 3)
+        out_fmt = AclFormat.ACL_FORMAT_FRACTAL_NZ if is_nz else AclFormat.ACL_FORMAT_ND
+
+        # ND：super 之前直接替换 kwargs 为首轴非连续 torch view（父类不会动 ND cache）
+        if is_nd:
             for name in ("kvCache", "kvCacheRope"):
                 t = input_data.kwargs[name]
                 view, buf_shape = _mla_kv_cache_dim0_nc_view(t)
                 input_data.kwargs[name] = view
-                msg = (
-                    f"[nc_dim0] {name}: view_shape={tuple(view.shape)}, "
+                print(
+                    f"[nc_dim0][ND] {name}: view_shape={tuple(view.shape)}, "
                     f"view_strides={tuple(view.stride())}, storage_shape={tuple(buf_shape)}, "
-                    f"is_contiguous={view.is_contiguous()}"
+                    f"is_contiguous={view.is_contiguous()}",
+                    flush=True,
                 )
-                logging.info(msg)
-                print(msg, flush=True)  # 强制刷到 stdout，避免远端 logger 路由导致看不到
-                if view.shape[0] > 1:
-                    addr0 = view[0].data_ptr()
-                    addr1 = view[1].data_ptr()
-                    diff_msg = (
-                        f"[nc_dim0] {name}: block0_addr={addr0}, block1_addr={addr1}, "
-                        f"addr_diff={addr1 - addr0} bytes (连续应为 "
-                        f"{view[0].numel() * view.element_size()})"
-                    )
-                    logging.info(diff_msg)
-                    print(diff_msg, flush=True)
+
+        # NZ：先抓原始 ND 数据，super 之后再注入「NZ + 首轴非连续」input
+        nz_in_src = {}
+        if is_nz:
+            for name in ("kvCache", "kvCacheRope"):
+                nz_in_src[name] = input_data.kwargs[name]
 
         input_args, output_packages = super().init_by_input_data(input_data)
 
-        if is_nc:
-            # ATK 默认给 output 另开一块「逻辑 shape」大小的连续 buffer（convert_output_data
-            # 里 torch.zeros(output_shape)）。但 kernel 按 input 的 2× stride 往物理行 2b 写，
-            # 连续 [192] buffer 会让高块越界、低块错位。这里把两个 cache output 换成和 input
-            # 镜像的「逻辑 [192] / 底层 N×192 / 2× stride」张量：逻辑 shape 不变(过 InferShape)，
-            # 底层 N× buffer 保证写不越界，回读后 view[b]=buf[N*b] 与连续 golden 对齐。
-            # 持有 buffer/view 防止被回收。
-            self._nc_out_keepalive = []
-            n_out = len(output_packages)
-            for out_idx in (self.IDX_KV_CACHE_OUT, self.IDX_KR_CACHE_OUT):
-                if out_idx >= n_out:
-                    print(f"[nc_dim0][WARN] output index {out_idx} >= n_out={n_out}, skip", flush=True)
-                    continue
-                od = self.task_result.output_info_list[out_idx]
-                out_dtype = getattr(torch, str(od.dtype).replace("torch.", ""))
-                view, buf = _mla_kv_cache_dim0_nc_empty(od.shape, out_dtype, device="npu")
-                acl_struct = self.torch_tensor_to_acl(view, AclFormat.ACL_FORMAT_ND)
-                self._nc_out_keepalive.append((view, buf, acl_struct))
-                output_packages[out_idx] = acl_struct
-                # input_args 末尾就是 output_packages（按顺序 extend 进去的）
-                input_args[len(input_args) - n_out + out_idx] = acl_struct
+        # 持有所有手动构造的 view/buf，防止被回收（device 内存被 acl 张量引用）
+        self._nc_out_keepalive = []
+        self._nc_in_keepalive = []
+
+        # NZ input 注入：替换 input_args 里 kvCache/kvCacheRope（父类已转成连续 NZ）
+        if is_nz:
+            n_in = len(input_args)
+            for in_idx, name in ((self.IDX_KV_CACHE_IN, "kvCache"),
+                                 (self.IDX_KV_CACHE_ROPE_IN, "kvCacheRope")):
+                view, buf = _mla_kv_cache_dim0_nc_view_nz(nz_in_src[name])
+                acl_struct = self.torch_tensor_to_acl(view, AclFormat.ACL_FORMAT_FRACTAL_NZ)
+                self._nc_in_keepalive.append((view, buf, acl_struct))
+                input_args[in_idx] = acl_struct
                 print(
-                    f"[nc_dim0] inject nc output[{out_idx}]: logical_shape={tuple(view.shape)}, "
-                    f"storage_shape={tuple(buf.shape)}, dim0_stride={view.stride()[0]}, "
-                    f"dtype={out_dtype}",
+                    f"[nc_dim0][NZ] inject nc input[{in_idx}] {name}: nz_shape={tuple(view.shape)}, "
+                    f"storage_shape={tuple(buf.shape)}, dim0_stride={view.stride()[0]}",
                     flush=True,
                 )
+
+        # Output 注入（ND/NZ 通用）：output_info_list 里的 shape 即 golden 的逻辑 shape
+        # （NZ 已是 transdata_nd2nz 后的 [BLOCK_NUM, C1, 128, 16]）。
+        n_out = len(output_packages)
+        for out_idx in (self.IDX_KV_CACHE_OUT, self.IDX_KR_CACHE_OUT):
+            if out_idx >= n_out:
+                print(f"[nc_dim0][WARN] output index {out_idx} >= n_out={n_out}, skip", flush=True)
+                continue
+            od = self.task_result.output_info_list[out_idx]
+            out_dtype = getattr(torch, str(od.dtype).replace("torch.", ""))
+            view, buf = _mla_kv_cache_dim0_nc_empty(od.shape, out_dtype, device="npu")
+            if is_nz:
+                buf = torch_npu.npu_format_cast(buf, 29)
+                hidden = 1
+                for s in tuple(int(x) for x in od.shape)[1:]:
+                    hidden *= s
+                view = buf.as_strided(
+                    size=tuple(int(x) for x in od.shape),
+                    stride=(MLA_KV_CACHE_NC_DIM0_STRIDE * hidden,) + tuple(buf.stride()[1:]),
+                )
+            acl_struct = self.torch_tensor_to_acl(view, out_fmt)
+            self._nc_out_keepalive.append((view, buf, acl_struct))
+            output_packages[out_idx] = acl_struct
+            # input_args 末尾就是 output_packages（按顺序 extend 进去的）
+            input_args[len(input_args) - n_out + out_idx] = acl_struct
+            print(
+                f"[nc_dim0] inject nc output[{out_idx}] fmt={out_fmt}: logical_shape={tuple(view.shape)}, "
+                f"storage_shape={tuple(buf.shape)}, dim0_stride={view.stride()[0]}, dtype={out_dtype}",
+                flush=True,
+            )
 
         return input_args, output_packages
 
