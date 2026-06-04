@@ -109,13 +109,13 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
 
 __aicore__ inline void NotifyVectorToCopyIn(uint16_t value = 0)
 {
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPO_FLAG + FLAG_ID_MAX_PER_V + value);
-    // CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPO_FLAG + value);
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + FLAG_ID_MAX_PER_V + value);
+    // CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
 __aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
 {
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPO_FLAG + value);
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
