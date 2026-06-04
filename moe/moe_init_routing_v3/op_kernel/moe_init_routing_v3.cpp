@@ -274,7 +274,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe countSortPipe;
             MoeV3CutOriginT<DTYPE_X> op;
             op.Init(
-                x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
                 &countSortPipe);
             op.Process();
             countSortPipe.Destroy();

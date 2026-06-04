@@ -757,7 +757,7 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
     int64_t fullLoadUB = EstimateCountingSortFullLoadUB(
         filterPerCoreTokens, coreEntries, expertCountStride, filterNeedCoreNum, actualExpertNum);
 
-    countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024) ? 1 : 0;
+    countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024) ? 1 : 0; // 增加全载模板约束条件，非量化等等
     int64_t filterChunkSize = (countingSortFullLoad_ == 1) ? 0 : COUNTING_SORT_FILTER_CHUNK_SIZE;
 
     if (countingSortFullLoad_ == 1) {
@@ -1051,8 +1051,7 @@ uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
         uint64_t sortMode = 3;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(dropPadMode_) * DROP_MODE_TILINGKEY_BASE);
+                                     static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE);
     } else {
         return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
