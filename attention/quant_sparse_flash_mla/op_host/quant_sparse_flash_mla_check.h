@@ -497,7 +497,7 @@ private:
     ge::graphStatus CheckFeatureAntiquantShape() const;
     ge::graphStatus CheckFeatureAntiquantLayout() const;
     ge::graphStatus CheckFeatureAntiquantDtype() const;
-    ge::graphStatus CheckFeatureAntiquantAttr() const;
+    ge::graphStatus CheckFeatureQuantModeAndDtype() const;
     ge::graphStatus CheckFeatureAntiquantPa() const;
     ge::graphStatus CheckFeatureAntiquant() const;
     ge::graphStatus CheckFeature() const;
@@ -533,7 +533,7 @@ private:
     uint32_t cmpBlockSize_ = 0;
     uint32_t oriBlockTable_ = 0;
     uint32_t cmpBlockTable_ = 0;
-    int64_t kv_quant_mode_ = 0;
+    int64_t qkv_quant_mode_ = 0;
 
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;

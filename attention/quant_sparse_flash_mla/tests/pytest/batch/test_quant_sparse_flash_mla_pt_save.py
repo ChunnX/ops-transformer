@@ -39,6 +39,8 @@ for _, params in enumerate(ENABLED_PARAMS):
             value = torch.bfloat16
         elif value == 'torch.float8_e4m3fn':
             value = torch.float8_e4m3fn
+        elif value == 'torch.uint8':
+            value = torch.uint8
         elif value == "FALSE":
             value = False
         elif value == "TRUE":
@@ -57,7 +59,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
         "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", \
-        "ori_win_left", "ori_win_right", "qkv_quant_mode", "tile_size", "template_run_mode", \
+        "ori_win_left", "ori_win_right", "qkv_quant_mode", "template_run_mode", \
         "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
         "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
         "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"
@@ -86,7 +88,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["ori_win_left"]],
         [normalized_params["ori_win_right"]],
         [normalized_params["qkv_quant_mode"]],
-        [normalized_params["tile_size"]],
         normalized_params["template_run_mode"],
         [normalized_params["actlen_mode"]],
         [normalized_params["S1EQS2"]],

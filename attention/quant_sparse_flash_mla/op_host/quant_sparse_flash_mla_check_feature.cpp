@@ -100,18 +100,29 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureQuantModeAndDtype() const
 {
-    // 1 for fp8_e4m3fn per-tile and 10 for hif8 per-tensor
-    OP_CHECK_IF(*opParamInfo_.qkvQuantMode != 1 && *opParamInfo_.qkvQuantMode != 10,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 10, but got %ld",
+    // qkv_quant_mode=1: q, ori_kv, cmp_kv are all HIFLOAT8
+    OP_CHECK_IF(*opParamInfo_.qkvQuantMode != 1,
+        OP_LOGE(opName_, "qkv_quant_mode only support 1, but got %ld",
         *opParamInfo_.qkvQuantMode),
         return ge::GRAPH_FAILED);
 
-    if (*opParamInfo_.qkvQuantMode == 1) {
-        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() != ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
-            OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got %s.",
-            QSMLADataTypeToSerialString(opParamInfo_.oriKv.desc->GetDataType()).c_str()),
+    // qkv_quant_mode=1 下，Q、ori_kv 和 cmp_kv 数据类型都必须是 HIFLOAT8
+    OP_CHECK_IF(qType_ != ge::DT_HIFLOAT8,
+        OP_LOGE(opName_, "when qkv_quant_mode=1, query dtype must be DT_HIFLOAT8, but got %s.",
+        QSMLADataTypeToSerialString(qType_).c_str()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() != ge::DT_HIFLOAT8,
+        OP_LOGE(opName_, "when qkv_quant_mode=1, oriKv dtype must be DT_HIFLOAT8, but got %s.",
+        QSMLADataTypeToSerialString(opParamInfo_.oriKv.desc->GetDataType()).c_str()),
+        return ge::GRAPH_FAILED);
+
+    if (opParamInfo_.cmpKv.desc != nullptr) {
+        OP_CHECK_IF(opParamInfo_.cmpKv.desc->GetDataType() != ge::DT_HIFLOAT8,
+            OP_LOGE(opName_, "when qkv_quant_mode=1, cmpKv dtype must be DT_HIFLOAT8, but got %s.",
+            QSMLADataTypeToSerialString(opParamInfo_.cmpKv.desc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -137,7 +148,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquant() const
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureAntiquantAttr() ||
+    if (ge::GRAPH_SUCCESS != CheckFeatureQuantModeAndDtype() ||
         ge::GRAPH_SUCCESS != CheckFeatureAntiquantShape() ||
         ge::GRAPH_SUCCESS != CheckFeatureAntiquantLayout() ||
         ge::GRAPH_SUCCESS != CheckFeatureAntiquantDtype() ||

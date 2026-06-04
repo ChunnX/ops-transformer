@@ -62,7 +62,6 @@ for params in ENABLED_PARAMS:
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
         "qkv_quant_mode": params.get("qkv_quant_mode"),
-        "tile_size": params.get("tile_size"),
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
