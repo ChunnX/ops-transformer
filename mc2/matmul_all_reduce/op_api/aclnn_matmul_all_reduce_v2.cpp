@@ -19,6 +19,7 @@
 #include "common/utils/hccl_util.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -103,7 +104,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
-        OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceV2, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulAllReduceV2", "MatmulAllReduceV2, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};

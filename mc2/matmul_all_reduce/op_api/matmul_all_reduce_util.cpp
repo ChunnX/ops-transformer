@@ -17,6 +17,7 @@
 #include "opdev/platform.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -51,7 +52,7 @@ bool MatmulAllReduceCheckFormat(const aclTensor* x2)
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
     OP_LOGI("MatmulAllReduce, is Weigth NZ: %d", isWeightNZ);
     if (isWeightNZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "non-quantization scenarios unsupport weigth NZ");
+        OP_LOGE_FOR_INVALID_FORMAT("MatmulAllReduce", "x2", "FRACTAL_NZ", "ND");
         return false;
     }
     return true;
@@ -82,9 +83,8 @@ bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* te
     bool isTransposeX2 = IsTransposeLastTwoDims(tensor);
     // x2非连续时仅支持转置场景
     if (!isTransposeX2 && !MC2Aclnn::IsTensorContiguous(tensor)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The %s without transpose in MatmulAllReduce must be contiguous, but it is non-contiguous.",
-                tensorName);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MatmulAllReduce", tensorName, "non-contiguous",
+            "without transpose must be contiguous");
         return false;
     }
     return true;
@@ -171,11 +171,11 @@ bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 {
     bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
     if (!flag) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
+        OP_LOGE_FOR_INVALID_VALUE("MatmulAllReduce", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("MatmulAllReduce", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
     }
     return true;
@@ -196,10 +196,10 @@ bool MatmulAllReduceCheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1_len = x1->GetViewShape().GetDimNum();
     if (x1->GetViewShape().GetDim(x1_len - 1) != x2->GetViewShape().GetDim(0)) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("last dim should equal first dim of x2, but x2 shape is " +
+                std::string(op::ToString(x2->GetViewShape()).GetString())).c_str());
         return false;
     }
 
@@ -367,9 +367,9 @@ bool QuantMatmulAllReduceCheckPertokenScaleShape(
             x1_m *= x1->GetViewShape().GetDim(dim);
         }
         if (pertokenScaleLen != DIM_LEN_ONE || static_cast<size_t>(pertokenScale->GetViewShape().GetDim(0)) != x1_m) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID, "Expected pertokenScale be [%zu], but got pertokenScale shape: %s.", x1_m,
-                op::ToString(pertokenScale->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "pertokenScale",
+                op::ToString(pertokenScale->GetViewShape()).GetString(),
+                std::string("[" + std::to_string(x1_m) + "]").c_str());
             return false;
         }
     }
@@ -399,10 +399,9 @@ bool QuantMatmulAllReduceCheckShape(
         return false;
     }
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
     // output的最后一维与x2的最后一维相同
@@ -412,8 +411,8 @@ bool QuantMatmulAllReduceCheckShape(
 
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
-            op::ToString(output->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "output",
+            op::ToString(output->GetViewShape()).GetString(), "non-empty tensor");
         return false;
     }
     
@@ -436,11 +435,10 @@ bool QuantMatmulAllReduceCheckShape(
                                       dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
         !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
           dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected dequantScale be [1] or [n] or [1,n], last dim of dequantScale should be %ld or 1, \
-                but got dequantScale shape: %s.",
-            output->GetViewShape().GetDim(x1Len - 1), op::ToString(dequantScale->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "dequantScale",
+            op::ToString(dequantScale->GetViewShape()).GetString(),
+            std::string("[1] or [n] or [1,n], last dim should be " +
+                std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
         return false;
     }
     if (!QuantMatmulAllReduceCheckPertokenScaleShape(pertokenScale, x1, x1Len)) {
@@ -530,7 +528,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 &&
         QuantMatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
+            OP_LOGE_WITH_INVALID_INPUT("MatmulAllReduce", "x2");
             return ACLNN_ERR_INNER_NULLPTR;
         }
         tempX2 = QuantMatmulAllReduceCopyTensor(x2);

@@ -13,6 +13,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
@@ -42,22 +43,22 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, c
     OP_CHECK_NULL(gmmWeight, return false);
     OP_CHECK_NULL(gmmY, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
+            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "should be null");
         return false;
     }
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "group");
         return false;
     }
     if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) && (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))){
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, left: %u, right: %u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is nullptr: %u",
-        (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))), (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))), mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
+            "mmXOptional/mmWeightOptional/mmYOptional", "mixed null/non-null", "should all be null or all not be null");
         return false;
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "Optional output flag does not match optional output ptr!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
+            "permuteOutFlag", "mismatched", "Optional output flag does not match optional output ptr");
         return false;
     }
     return true;
@@ -74,7 +75,8 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
               permuteOutFlag, gmmY, mmYOptional, permuteOutOptional), ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "group", "too long",
+            ("group name length must be less than " + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -84,11 +86,11 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
 static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntArray* recvCounts)
 {
     if (sendCounts == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "sendCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (recvCounts == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "recvCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
     uint64_t recvSize = 0U;  // recvCounts的大小
@@ -96,11 +98,11 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "recvCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sendSize == 0U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "sendCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

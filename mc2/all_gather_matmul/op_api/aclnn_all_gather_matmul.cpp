@@ -21,6 +21,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
@@ -78,7 +79,8 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
 }
 static bool CheckAttr(int64_t streamMode) {
   if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+    OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulGetWorkspaceSize", "streamMode",
+        std::to_string(streamMode).c_str(), "1");
     return false;
   }
   return true;
@@ -98,37 +100,38 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
   OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
   OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x1 should not be transposed, but it is transposed.");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
+        "The x1 should not be transposed, but it is transposed.");
     return false;
   });
   auto kVal1 = x1->GetViewShape().GetDim(1);
   auto kVal2 = x2->GetViewShape().GetDim(0);
   OP_API_CHECK((kVal1 != kVal2), {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-    "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kVal1, kVal2);
+    OP_LOGE_FOR_INVALID_SHAPE("aclnnAllGatherMatmulGetWorkspaceSize", "x1/x2",
+        (std::string("k=") + std::to_string(kVal1) + "/" + std::to_string(kVal2)).c_str(), "equal k values");
     return false;
   });
 
   if (IsGatherOut(gatherOut)) {
     auto kVal3 = gatherOut->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 != kVal3), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-      "The k-axis of x1 and gatherOut should be same, but x1's k-axis is: %ld and gatherOut's k-axis is: %ld.",
-      kVal1, kVal3);
+      OP_LOGE_FOR_INVALID_SHAPE("aclnnAllGatherMatmulGetWorkspaceSize", "x1/gatherOut",
+          (std::string("k=") + std::to_string(kVal1) + "/" + std::to_string(kVal3)).c_str(), "equal k values");
       return false;
     });
   }
 
   OP_API_CHECK((kVal1 < KVALUE_MIN || kVal1 >= KVALUE_MAX), {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis should be in range[256, 65535), but it is: %ld.", kVal1);
+    OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulGetWorkspaceSize", "k-axis",
+        std::to_string(kVal1).c_str(), "[256, 65535)");
     return false;
   });
 
   auto nVal1 = x2->GetViewShape().GetDim(1);
   auto nVal2 = output->GetViewShape().GetDim(1);
   OP_API_CHECK((nVal1 != nVal2), {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-    "The n-axis of x2 and output should be same, but x2's n-axis is: %ld and output's n-axis is: %ld.", nVal1, nVal2);
+    OP_LOGE_FOR_INVALID_SHAPE("aclnnAllGatherMatmulGetWorkspaceSize", "x2/output",
+        (std::string("n=") + std::to_string(nVal1) + "/" + std::to_string(nVal2)).c_str(), "equal n values");
     return false;
   });
 
@@ -138,7 +141,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 static bool CheckNotEmptyTensor(const aclTensor* x1) {
   auto kValue = x1->GetViewShape().GetDim(1);
   OP_API_CHECK((kValue == 0), {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X1 is empty tensor with zero dimK, which is unsupported. ");
+    OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
     return false;
   });
   return true;
@@ -195,8 +198,8 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   // 【A2】校验非连续入参合法性
   if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
     OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-              "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x2",
+          "non-contiguous", "x2 without transpose must be contiguous.");
       return ACLNN_ERR_PARAM_INVALID;});
   }
   bool isGatherOut = IsGatherOut(gatherOut);
@@ -227,7 +230,7 @@ aclnnStatus aclnnAllGatherMatmul(void *workspace, uint64_t workspaceSize, aclOpE
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   auto ret = aclnnInnerAllGatherMatmul(workspace, workspaceSize, executor, stream);
   if (ret != 0) {
-    OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
+    OP_LOGE_LIBOPAPI_REPORT("aclnnAllGatherMatmul", "This is an error in launch aicore");
     return ACLNN_ERR_INNER;
   }
 
