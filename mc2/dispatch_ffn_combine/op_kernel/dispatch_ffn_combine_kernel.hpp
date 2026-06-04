@@ -48,6 +48,8 @@
 // directory so it can share all sort/expert-token/srcToDst helpers.
 #include "moe_init_routing_v2/moe_init_routing_v2.cpp"
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
+
+using namespace Mc2Tiling;
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
 
@@ -143,8 +145,8 @@ public:
         float swigluLimit;
         GM_ADDR contextGM{nullptr};
         union {
-            optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
-            optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+            MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+            MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
         };
         //--------------
 
@@ -163,7 +165,7 @@ public:
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                 GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
-                optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
+                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),
@@ -228,7 +230,7 @@ public:
                 GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                 GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
-                optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
+                MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),

@@ -3,7 +3,7 @@
 #define ASCENDC_DISPATCH_FFN_COMBINE_INIT_ROUTING_QUANT_TILING_H
 #include "moe_init_routing_v2_tiling.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 
 const static int64_t ATTR_QUANT_MODE = 6;
 const static int64_t TILING_KEY_BASE = 10000;
@@ -426,5 +426,6 @@ inline void MoeInitRoutingQuantV2TilingBase::Tiling4GatherOutCompute() {
     Tiling4GatherDynamicQuant();
   }
 }
-}
+
+} // namespace Mc2Tiling
 #endif

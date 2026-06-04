@@ -3,7 +3,8 @@
 #include "tiling_base.h"
 
 
-namespace optiling {
+namespace Mc2Tiling {
+
 const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
 const static int64_t TILING_KEY_DROPLESS_SORT_MULTI_CORE = 10002;
 const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_ONE_CORE = 10011;
@@ -52,6 +53,9 @@ inline static int64_t GetPerOrLastValue(int64_t x, int64_t y) {
 }
 
 template <class T>
+#if defined(__CCE_AICORE__) || defined(__AICORE__)
+__aicore__
+#endif
 constexpr T CeilDiv(const T dividend, const T divisor)
 {
     return (dividend + divisor - 1) / divisor;
@@ -554,4 +558,4 @@ bool MoeInitRoutingV2TilingBase::IsFullLoad()
     return remainUbAfterSort > 0;
 }
 
-}
+} // namespace Mc2Tiling

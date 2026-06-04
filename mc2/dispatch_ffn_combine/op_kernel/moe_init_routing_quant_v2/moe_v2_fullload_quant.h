@@ -19,7 +19,8 @@
 
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 template <typename T>
 class MoeV2FullLoadQuant : public MoeV2FullLoadQuantBase {
  public:

@@ -39,6 +39,7 @@
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
+using namespace Mc2Tiling;
 
 #define HCCL_BUFFSIZE "HCCL_BUFFSIZE"
 
@@ -57,7 +58,7 @@ constexpr uint64_t MB_SIZE = 1024 * 1024UL;
 
 }  // namespace
 
-namespace optiling {
+namespace Mc2Tiling {
 
 static int32_t CeilDev(int32_t num, int32_t div)
 {
@@ -233,7 +234,7 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     }
 
     uint32_t expertPerRank;
-    if (listLen == 1 && w1Tensor->GetStorageShape().GetDim(0) == 3) {
+    if (listLen == 1 && w1Tensor->GetStorageShape().GetDimNum() >= 3) {
         expertPerRank = w1Tensor->GetStorageShape().GetDim(0);
     } else {
         expertPerRank = listLen;
@@ -391,7 +392,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
                         return ge::GRAPH_FAILED);
         tilingData->common = infoCommon;
 
-        optiling::MoeInitRoutingQuantV2TilingBase moeInitRoutingQuantV2TilingBase;
+        MoeInitRoutingQuantV2TilingBase moeInitRoutingQuantV2TilingBase;
         int64_t quantModeRouting = 1;
         moeInitRoutingQuantV2TilingBase.DoTiling(infoCommon.M, infoCommon.K, infoCommon.topK, expertCapacity, expertNum, activeNum,
             dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
@@ -406,7 +407,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
                         return ge::GRAPH_FAILED);
         tilingData->common = infoCommon;
 
-        optiling::MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
+        MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
         int64_t quantModeRouting = 0;
         moeInitRoutingV2TilingBase.DoTiling(infoCommon.M, infoCommon.K, infoCommon.topK, expertCapacity, expertNum, activeNum,
             dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
@@ -466,4 +467,4 @@ ge::graphStatus TilingParseForDispatchFFNCombine(gert::TilingParseContext *conte
 IMPL_OP_OPTILING(DispatchFFNCombine)
     .Tiling(DispatchFFNCombineTilingFunc)
     .TilingParse<DispatchFFNCombineCompileInfo>(TilingParseForDispatchFFNCombine);
-}  // namespace optiling
+}  // namespace Mc2Tiling

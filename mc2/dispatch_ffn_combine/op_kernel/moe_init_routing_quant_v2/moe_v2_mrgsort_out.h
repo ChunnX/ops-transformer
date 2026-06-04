@@ -20,7 +20,8 @@
 
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 class MoeV2MrgsortOut {
  public:
   __aicore__ inline MoeV2MrgsortOut(){};

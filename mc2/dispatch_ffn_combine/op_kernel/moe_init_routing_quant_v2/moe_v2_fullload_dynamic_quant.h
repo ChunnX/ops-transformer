@@ -19,7 +19,8 @@
 #include "moe_v2_sort_base.h"
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 template <typename T>
 class MoeV2FullLoadDynamicQuant : public MoeV2SortBase {
  public:

@@ -13,6 +13,12 @@ namespace Catlass::Gemm::Tile {
 
         static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);   // int64, 32/8=4
 
+        template <class T>
+        __aicore__ static constexpr T CeilDiv(const T dividend, const T divisor)
+        {
+            return (dividend + divisor - 1) / divisor;
+        }
+
         // Methods  
 
         CATLASS_DEVICE
@@ -25,7 +31,7 @@ namespace Catlass::Gemm::Tile {
             LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
         {
             uint32_t blockCount = 1;
-            uint32_t blockLen = CeilDiv<ELE_NUM_PER_C0>(layoutSrc.shape(0));
+            uint32_t blockLen = CeilDiv(layoutSrc.shape(0), ELE_NUM_PER_C0);
 
             AscendC::DataCopyParams repeatParams;
 

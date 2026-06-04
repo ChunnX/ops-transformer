@@ -25,7 +25,7 @@
 
 #include <cstdint>
 
-namespace optiling {
+namespace Mc2Tiling {
 
 struct DispatchFFNCombineConfig {
     // ----------------------------------------------------------------
@@ -99,6 +99,6 @@ struct DispatchFFNCombineConfig {
     uint32_t attrWeight1InterleaveIndex     = 14U;
 };
 
-}  // namespace optiling
+}  // namespace Mc2Tiling
 
 #endif  // OP_HOST_OP_TILING_DISPATCH_FFN_COMBINE_H

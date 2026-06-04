@@ -17,7 +17,8 @@
 
 #include "moe_v2_common.h"
 #include "kernel_operator.h"
-using namespace optiling;
+using namespace Mc2Tiling;
+
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;

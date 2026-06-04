@@ -19,7 +19,8 @@
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 
 constexpr int64_t EXPERT_ID_VALUE_NUM = 2;
 

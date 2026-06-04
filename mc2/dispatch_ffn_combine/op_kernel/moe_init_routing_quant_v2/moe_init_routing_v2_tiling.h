@@ -5,7 +5,7 @@
 #include "../moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 #include <cmath>
 
-namespace optiling {
+namespace Mc2Tiling {
 
 // Quant-specific inner types wrapping the canonical Moe* definitions
 // from moe_init_routing_v2_tiling.h
@@ -351,5 +351,5 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute() {
   }
 }
 
-}
+} // namespace Mc2Tiling
 #endif

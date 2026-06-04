@@ -61,6 +61,7 @@ using namespace AscendC;
 
 using namespace Catlass;
 using namespace AscendC::HcclContextDef;
+using namespace Mc2Tiling;
 
 namespace DispatchFFNCombineImpl {
 // Template parameter pack used by the unified DispatchFFNCombine class.
@@ -123,8 +124,8 @@ private:
     int32_t listLen;
     float activationClamp;
 
-    optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
-    optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+    MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+    MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
     uint64_t initRoutingQuantTilingKey;
 };
 

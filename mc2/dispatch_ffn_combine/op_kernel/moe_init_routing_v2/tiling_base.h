@@ -1,5 +1,5 @@
 #pragma once
-namespace optiling {
+namespace Mc2Tiling {
 struct AiCoreParams {
     uint64_t ubSize;
     uint64_t blockDim;
@@ -63,4 +63,4 @@ public:
     AiCoreParams aicoreParams_{0, 0, 0, 0, 0, 0, 0};
 };
 
-}
+} // namespace Mc2Tiling

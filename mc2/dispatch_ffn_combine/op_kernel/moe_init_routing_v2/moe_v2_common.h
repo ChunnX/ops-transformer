@@ -19,7 +19,8 @@
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 constexpr int64_t SPLIT_N = 0;
 constexpr int64_t SPLIT_K = 1;
 constexpr float MIN_FP32 = -3.4e38f;

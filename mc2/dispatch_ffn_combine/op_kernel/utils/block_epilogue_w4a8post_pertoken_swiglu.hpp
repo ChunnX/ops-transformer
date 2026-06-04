@@ -288,8 +288,9 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[ubListId]);
             AscendC::Add(ubCFp32, ubCFp32, ubweighAux, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[ubListId]);
-            dcci(gmPerTokenScale1.GetPhyAddr(loopIdx), 0);
+
             // Get per-token scale value from the loopIdx-th row of gmPerTokenScale
+            dcci(gmPerTokenScale1.GetPhyAddr(loopIdx), 0);
             ElementPerTokenScale perTokenScale = gmPerTokenScale1(loopIdx);
 
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);  // S is scalar operation, ensure line 320 synchronization

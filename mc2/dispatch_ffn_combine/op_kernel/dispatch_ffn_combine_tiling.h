@@ -19,6 +19,8 @@
 #ifndef ASCENDC_DISPATCH_FFN_COMBINE_TILING_H
 #define ASCENDC_DISPATCH_FFN_COMBINE_TILING_H
 
+using namespace Mc2Tiling;
+
 #define DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT 0
 #define DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR 1
 
@@ -73,11 +75,11 @@ struct DispatchFFNCombineInfoCommon {
 
 struct DispatchFFNCombineTilingDataQuant {
     DispatchFFNCombineInfoCommon common;
-    optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+    MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
 };
 
 struct DispatchFFNCombineTilingDataNonQuant {
     DispatchFFNCombineInfoCommon common;
-    optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+    MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 };
 #endif

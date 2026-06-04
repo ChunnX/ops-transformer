@@ -29,7 +29,8 @@
 
 using namespace AscendC;
 using namespace MoeInitRoutingQuantV2;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 
 template <class DTYPE_X = bfloat16_t>
 __aicore__ inline  void moe_init_routing_quant_v2(

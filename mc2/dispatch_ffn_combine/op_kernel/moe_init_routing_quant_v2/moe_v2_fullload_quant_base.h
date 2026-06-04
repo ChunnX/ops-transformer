@@ -19,7 +19,8 @@
 
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
+
 class MoeV2FullLoadQuantBase {
  public:
   __aicore__ inline MoeV2FullLoadQuantBase(){};
