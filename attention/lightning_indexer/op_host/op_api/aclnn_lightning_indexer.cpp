@@ -102,14 +102,14 @@ aclnnStatus aclnnLightningIndexerGetWorkspaceSize(
         aclOpExecutor **executor)
 {
     if (query == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Query pointer is null, cannot get data type!");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnLightningIndexer", "query");
         return ge::GRAPH_FAILED;
     }
     DataType queryDataType = query->GetDataType();
     aclDataType queryAclDataType = ToAclDataType(queryDataType);
     if (returnValues) {
         if (sparseValuesOut == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sparseValuesOut cannot be nullptr.");
+            OP_LOGE_WITH_INVALID_INPUT("aclnnLightningIndexer", "sparseValuesOut");
             return ge::GRAPH_FAILED;
         }
     }

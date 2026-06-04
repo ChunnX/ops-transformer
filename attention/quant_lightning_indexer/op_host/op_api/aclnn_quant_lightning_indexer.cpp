@@ -66,7 +66,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     if (query == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Query pointer is null, cannot get data type!");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantLightningIndexer", "query");
         return ge::GRAPH_FAILED;
     }
 
