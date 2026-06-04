@@ -54,29 +54,29 @@ struct TempLoopInfo {
     bool isNeedLD = false;     // 该基本块是否需要LD
 };
 
-template <typename QLIT>
-class QLIPreload {
+template <typename SIT>
+class SIPreload {
 public:
-    __aicore__ inline QLIPreload(){};
+    __aicore__ inline SIPreload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-                                __gm__ uint8_t *workspace, const QLITilingData *__restrict tiling, TPipe *tPipe);
+                                __gm__ uint8_t *workspace, const SITilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
-    using Q_T = typename QLIT::queryType;
-    using K_T = typename QLIT::keyType;
-    using OUT_T = typename QLIT::outputType;
-    static constexpr bool PAGE_ATTENTION = QLIT::pageAttention;
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIT::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
+    using Q_T = typename SIT::queryType;
+    using K_T = typename SIT::keyType;
+    using OUT_T = typename SIT::outputType;
+    static constexpr bool PAGE_ATTENTION = SIT::pageAttention;
+    static constexpr LI_LAYOUT Q_LAYOUT_T = SIT::layout;
+    static constexpr LI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
-    using SCORE_T = typename QLIT::scoreType;
+    using SCORE_T = typename SIT::scoreType;
 
-    QLIMatmul<QLIT> matmulService;
-    QLIVector<QLIT> vectorService;
+    QLIMatmul<SIT> matmulService;
+    QLIVector<SIT> vectorService;
 
     // =================================常量区=================================
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
@@ -128,7 +128,7 @@ protected:
     QLICommon::LdSplitCoreInfo ldInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const QLITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const SITilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     // ================================Split Core================================
@@ -153,8 +153,8 @@ protected:
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__restrict tilingData)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::InitTilingData(const SITilingData *__restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -185,8 +185,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.s1BaseSize = (constInfo.mBaseSize + constInfo.gSize - 1) / constInfo.gSize;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::InitBuffers()
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
         vectorService.InitBuffers(pipe);
@@ -195,8 +195,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitBuffers()
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
                                                           __gm__ uint8_t *actualSeqLengthsK)
 {
     if (actualSeqLengthsQ == nullptr) {
@@ -213,8 +213,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitActualSeqLen(__gm__ uint8_t *actual
     }
 }
 
-template <typename QLIT>
-__aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen)
 {
@@ -228,8 +228,8 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLen(uint32_t bIdx, uint
     }
 }
 
-template <typename QLIT>
-__aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
@@ -242,8 +242,8 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetActualSeqLenKey(uint32_t bIdx, u
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
@@ -252,8 +252,8 @@ __aicore__ inline void QLIPreload<QLIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;   // 真实使用的压缩后S2长度    
 }
 
-template <typename QLIT>
-__aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                      uint32_t actS2SizeOrig)
 {
     if (actS2SizeOrig / constInfo.cmpRatio == 0) {
@@ -267,8 +267,8 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm)
 {
     uint32_t liCoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, LI_CORE_ENABLE_INDEX);
     uint32_t bN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_BN2_START_INDEX);
@@ -378,8 +378,8 @@ __aicore__ inline void QLIPreload<QLIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, 
         }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_LAYOUT::TND) {
@@ -407,13 +407,13 @@ __aicore__ inline void QLIPreload<QLIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
                                               __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
                                               __gm__ uint8_t *blockTable, __gm__ uint8_t *metadata,
                                               __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                              const QLITilingData *__restrict tiling, TPipe *tPipe)
+                                              const SITilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
@@ -468,16 +468,16 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
     InitBuffers();
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::GetBN2Idx(uint32_t bN2Idx)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::GetBN2Idx(uint32_t bN2Idx)
 {
     tempLoopInfo.bN2Idx = bN2Idx;
     tempLoopInfo.bIdx = bN2Idx / constInfo.kHeadNum;
     tempLoopInfo.n2Idx = bN2Idx % constInfo.kHeadNum;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx)
 {
     tempLoopInfo.gS1Idx = gS1LoopIdx;
     tempLoopInfo.actMBaseSize = constInfo.mBaseSize;
@@ -501,8 +501,8 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
     GetBN2Idx(bN2LoopIdx);
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
@@ -527,8 +527,8 @@ __aicore__ inline void QLIPreload<QLIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
@@ -598,8 +598,8 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.indiceOutOffset = indiceOutCoreOffset;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::Process()
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::Process()
 {
     if (isUsedCoreEqZero) {
         // 没有计算任务，直接清理输出
@@ -612,8 +612,8 @@ __aicore__ inline void QLIPreload<QLIT>::Process()
     ProcessDecode();
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::ProcessInvalid()
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
@@ -631,8 +631,8 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessInvalid()
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::ProcessMain()
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::ProcessMain()
 {
     if(!splitCoreInfo.isCoreEnable){
         return;
@@ -679,8 +679,8 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QLICommon::RunInfo runInfo)
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QLICommon::RunInfo runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {
@@ -693,8 +693,8 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
     }
 }
 
- template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::ProcessDecode()
+ template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::ProcessDecode()
 {
     if ASCEND_IS_AIV {
         vectorService.InitLDBuffers(pipe, ldInfo);
