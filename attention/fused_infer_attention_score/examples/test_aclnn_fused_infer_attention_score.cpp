@@ -103,7 +103,7 @@ int main() {
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    std::vector<int64_t> queryShape = {1, 2, 1, 16}; // BNSD
+    std::vector<int64_t> queryShape = {1, 2, 1, 17}; // BNSD
     std::vector<int64_t> keyShape = {1, 2, 2, 16};   // BNSD
     std::vector<int64_t> valueShape = {1, 2, 2, 16}; // BNSD
     std::vector<int64_t> attenShape = {1, 1, 1, 2};  // B 1 S1 S2
