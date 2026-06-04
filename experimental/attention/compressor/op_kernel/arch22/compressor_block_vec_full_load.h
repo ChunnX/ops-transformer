@@ -1427,4 +1427,4 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec()
 }
 
 } // namespace Compressor
-#endif // COMPRESSOR_BLOCK_VECTOR_PREF_H
+#endif // COMPRESSOR_BLOCK_VEC_FULL_LOAD_H
