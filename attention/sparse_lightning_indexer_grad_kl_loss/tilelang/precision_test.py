@@ -56,18 +56,15 @@ def run_precision_test():
     scale_value = 1.0 / math.sqrt(DQuery)
 
     # Compute correct softmax_max/sum from actual query/key (full FlashAttention)
-    # bmm1_full = query @ key^T, shape (B, S1, N1, S2)
-    # softmax_max[g] = max_k(bmm1_full[g,k] * scale)
-    # softmax_sum[g] = sum_k(exp(bmm1_full[g,k]*scale - softmax_max[g]))
+    # Use NPU matmul for speed
     with torch.no_grad():
-        q_fp32 = query.float()  # (B, S1, N1, DQuery)
-        k_fp32 = key.float().squeeze(2)  # (B, S2, DQuery) for MQA
-        bmm1_full = torch.matmul(q_fp32, k_fp32.transpose(-1, -2))  # (B, S1, N1, S2)
-        bmm1_scaled = bmm1_full * scale_value
+        k_mqa = key.squeeze(2)  # (B, S2, DQuery) for MQA
+        bmm1_full = torch.matmul(query, k_mqa.transpose(-1, -2))  # (B, S1, N1, S2) on NPU
+        bmm1_scaled = bmm1_full.float() * scale_value
         sm_max_val = bmm1_scaled.max(dim=-1).values  # (B, S1, N1)
         sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)  # (B, S1, N1)
-        softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(torch.float32).npu()
-        softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(torch.float32).npu()
+        softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+        softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
     print(f"  softmax_max range: [{softmax_max.min().item():.6f}, {softmax_max.max().item():.6f}]")
     print(f"  softmax_sum range: [{softmax_sum.min().item():.6f}, {softmax_sum.max().item():.6f}]")
 

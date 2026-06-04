@@ -130,7 +130,7 @@ def check_param_valid(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2],
-    workspace_idx=[7, 8, 9, 10, 11, 15],
+    workspace_idx=[8, 9, 10, 11, 12, 16],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -154,6 +154,7 @@ def tilelang_grad_kl_loss_single_kernel(
         GatherKey: T.Tensor((B, S1, K, DQuery), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        GatherKeyIndexT: T.Tensor((B, S1, DQueryIndex, K), input_dtype),
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
@@ -505,16 +506,17 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("V", 2)
 
             # ============================================================
-            # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex -> dQueryIndex)
-            # dQueryIndex = reluGrad @ GatherKeyIndex (NO transpose)
-            # reluGrad: (Nidx1, K), GatherKeyIndex: (K, DQueryIndex)
-            # = (Nidx1, DQueryIndex)
+            # C scope 2: Matmul4 (reluGrad @ GatherKeyIndexT^T -> dQueryIndex)
+            # dQueryIndex = reluGrad @ GatherKeyIndex
+            #            = reluGrad @ (GatherKeyIndexT)^T  (use transpose_B=True)
+            # GatherKeyIndexT: (B, S1, DQueryIndex, K)
+            # reluGrad: (Nidx1, K), (GatherKeyIndexT)^T: (K, DQueryIndex)
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(2)
 
                 RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-                GKI4_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                GKIT_L1 = T.alloc_L1((k_block, n_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
@@ -527,11 +529,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
-                                GKI4_L1,
+                                GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
+                                GKIT_L1,
                             )
                             T.barrier_all()
-                            T.gemm_v0(RG_L1, GKI4_L1, DQ_L0C, transpose_B=False, init=(n_idx == 0))
+                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                             T.barrier_all()
                         T.copy(
                             DQ_L0C,
@@ -722,6 +724,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
         )
 
+        # Pre-transpose GatherKeyIndex for Matmul4: (B,S1,K,DQueryIndex) -> (B,S1,DQueryIndex,K)
+        gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
+
         func = tilelang_grad_kl_loss_single_kernel(
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
             input_dtype_str, calc_dtype_str, scale_value,
@@ -739,7 +744,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         torch.npu.synchronize()
         results = func(
-            query, gather_key, query_index, gather_key_index,
+            query, gather_key, query_index, gather_key_index, gather_key_index_t,
             weights, softmax_max, softmax_sum,
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
