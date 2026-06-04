@@ -25,6 +25,8 @@ __global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     REGISTER_TILING_DEFAULT(MoeEpCombineTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpCombineTilingData);
 
+    printf("enter moe_ep_combine\r\n");
+    return;
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpCombineTilingData, tilingData, tilingGM);
     KernelMoeEpCombine<HAS_TOPK_WEIGHTS> op;

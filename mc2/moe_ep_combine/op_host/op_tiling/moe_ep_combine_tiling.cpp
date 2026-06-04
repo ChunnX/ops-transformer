@@ -20,13 +20,14 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 
-constexpr uint32_t X_INDEX = 0U;
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 1U;
-constexpr uint32_t RECV_SRC_METADATA_INDEX = 2U;
-constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 3U;
-constexpr uint32_t TOPK_WEIGHTS_INDEX = 4U;
-constexpr uint32_t BIAS_0_INDEX = 5U;
-constexpr uint32_t BIAS_1_INDEX = 6U;
+constexpr uint32_t CONTEXT_INDEX = 0U;
+constexpr uint32_t X_INDEX = 1U;
+constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 2U;
+constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
+constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 4U;
+constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
+constexpr uint32_t BIAS_0_INDEX = 6U;
+constexpr uint32_t BIAS_1_INDEX = 7U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;

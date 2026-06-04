@@ -22,11 +22,13 @@ class MoeEpCombineOpBuilder(OpBuilder):
         return ['ops/csrc/moe_ep_combine.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_ep_combine(Tensor context, Tensor x, Tensor dst_buffer_slot_idx, "
+        return ("npu_moe_ep_combine("
+               "Tensor context, Tensor x, Tensor dst_buffer_slot_idx, "
                "Tensor recv_src_metadata, Tensor num_recv_tokens_per_rank, Tensor? topk_weights, "
-               "Tensor? bias_0, Tensor? bias_1, int ep_world_size, int ep_rank_id, "
-               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size) "
-               "-> (Tensor, Tensor?)"
+               "Tensor? bias_0, Tensor? bias_1, "
+               "int ep_world_size, int ep_rank_id, "
+               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size"
+               ") -> (Tensor, Tensor?)")
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")

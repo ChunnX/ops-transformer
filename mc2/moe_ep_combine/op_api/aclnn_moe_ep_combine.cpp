@@ -46,11 +46,11 @@ aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTens
                                          aclOpExecutor **executor)
 {
     OP_LOGD("MoeEpCombine", "Begin to do MoeEpCombineGetWorkspaceSize");
-    CHECK_RET(CheckNotNull(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank, combinedX),
-              ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, biasOptional0,
-                          biasOptional1),
-              ACLNN_ERR_PARAM_INVALID);
+    auto retNotNull = CheckNotNull(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank, combinedX);
+    CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
+    auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, biasOptional0,
+                          biasOptional1);
+    CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
 
     return aclnnInnerMoeEpCombineGetWorkspaceSize(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank,
                                                   topkWeightsOptional, biasOptional0, biasOptional1, epWorldSize,
@@ -81,7 +81,9 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 aclnnStatus aclnnMoeEpCombine(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     return aclnnInnerMoeEpCombine(workspace, workspaceSize, executor, stream);
 }
 
