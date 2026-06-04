@@ -150,9 +150,6 @@ public:
 
         TPipe *permutePipe = GetTPipePtr();
         LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
-        // DataCopyParams 的 blockLen 参数为 uint16_t，最大值为 65535。
-        // 当 realLength > 65535 时会发生截断，导致数据拷贝量错误。
-        // 因此，每 tile 的实际拷贝长度不能超过 DATA_COPY_MAX_BLOCK_LEN。
         constexpr uint64_t DATA_COPY_MAX_BLOCK_LEN = 65535UL;
         uint64_t actualTileSize = (scaleUbSize < DATA_COPY_MAX_BLOCK_LEN) ? scaleUbSize : DATA_COPY_MAX_BLOCK_LEN;
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
