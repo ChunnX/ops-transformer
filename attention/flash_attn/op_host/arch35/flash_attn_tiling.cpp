@@ -132,10 +132,20 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    // config (1-bit), D=128 fixed
-    //   config=0: sOuterFactor=64, sInnerFactor=128
-    //   config=1: sOuterFactor=32, sInnerFactor=256
-    tilingKeyInfo_.config = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
+    uint32_t sOuterConfig = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
+    uint32_t dConfig = 0;
+
+    if (faInfo_->qkHeadDim == 64) {
+        dConfig = 0;
+    } else if (faInfo_->qkHeadDim == 128) {
+        dConfig = 2;
+    } else if (faInfo_->qkHeadDim == 256) {
+        dConfig = 4;
+    } else {
+        OP_LOGE(faInfo_->opName, "Invalid qkHeadDim %ld, only support [64, 128, 256].", faInfo_->qkHeadDim);
+    }
+
+    tilingKeyInfo_.config = dConfig + sOuterConfig;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -159,7 +169,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
     } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+    } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     }
 }
@@ -274,7 +284,7 @@ void FlashAttnTilingImpl::ComputeTilingData()
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
         } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }

@@ -35,10 +35,10 @@ extern "C" {
  *                                  BSND: shape=(B, S_kv, N_kv, D)
  *                                  TND:  shape=(T_kv, N_kv, D)
  *                                  PA_ND: shape=(NumBlocks, BlockSize, N_kv, D)，分页注意力格式
- *                                  PA_Nz: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
+ *                                  PA_NZ: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
  * @param v                   [IN]  value tensor。数据类型与q一致，layout由layoutKv决定，shape同k。
  * @param blockTableOptional  [IN]  可选。分页KV缓存的块映射表，数据类型INT32。
- *                                  shape=(B, MaxBlocksPerSeq)，与layoutKv=PA_ND/PA_Nz配合使用。
+ *                                  shape=(B, MaxBlocksPerSeq)，与layoutKv=PA_ND/PA_NZ配合使用。
  * @param cuSeqlensQOptional  [IN]  可选。query的累积序列长度（前缀和），数据类型INT32。
  *                                  shape=(B+1,)，cu_seqlens_q[i+1]-cu_seqlens_q[i]为第i个sample的q序列长度。
  *                                  TND layout变长场景时有效。与seqused_q互斥。
@@ -60,7 +60,7 @@ extern "C" {
  * @param winLeft             [IN]  ATTR可选。左侧注意力窗口大小（maskMode=4时的winLefts）。数据类型INT。
  * @param winRight            [IN]  ATTR可选。右侧注意力窗口大小（maskMode=4时的winRight）。数据类型INT。
  * @param layoutQ             [IN]  ATTR可选。query的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
- * @param layoutKv            [IN]  ATTR可选。key/value的数据布局，支持"BSND"/"TND"/"PA_ND"/"PA_Nz"。
+ * @param layoutKv            [IN]  ATTR可选。key/value的数据布局，支持"BSND"/"TND"/"PA_ND"/"PA_NZ"。
  * @param layoutOut           [IN]  ATTR可选。输出的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
  * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。INT类型，1表示输出，0表示不输出。
  *                                  训练正向传播时置1，推理时置0。

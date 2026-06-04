@@ -240,6 +240,15 @@ public:
             workspace = workspace + constInfo.coreNum * 3 * vec2ResultSize * sizeof(T);
         }
 
+        if constexpr (!bmm2Write2Ub) {
+            int64_t bmm2ResBlock = constInfo.dSizeV;
+            if constexpr (splitD) {
+                bmm2ResBlock = (int64_t)dVTemplateType;
+            }
+            int64_t mm2ResultSize = (mBaseSize) * bmm2ResBlock;  // 使用cube计算的总大小, Gm上的数据按照实际的dSize存储
+            bmm2SubBlockOffset = constInfo.subBlockIdx * mm2ResultSize >> 1;  // mBaseSize一定可以被2整除
+        }
+
         if (learnableSink != nullptr) {
             sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
@@ -1119,7 +1128,7 @@ public:
         }
         tPipe->InitBuffer(SharedBuffer2[0], 1, 8192);
         tPipe->InitBuffer(SharedBuffer2[1], 1, 8192);
-        tPipe->InitBuffer(SharedBuffer3, 32768);
+        tPipe->InitBuffer(SharedBuffer3, 65536);
         tPipe->InitBuffer(SharedBuffer1[0], 1, 33024);
         tPipe->InitBuffer(SharedBuffer1[1], 1, 33024);
         if constexpr (s2BaseSize == 256) {    // mBaseSize = 128
