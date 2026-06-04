@@ -36,7 +36,6 @@ constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP16 = 0xFBFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
-constexpr int64_t pse1NS1S2 = 2;
 constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
 
 constexpr int64_t attenMaskBN2GS1S2 = 0;
@@ -88,81 +87,13 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
 }
 
-template <typename INPUT_T>
-__aicore__ constexpr bool IsFp8OnlyWithAttenMask(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
-                  !IsSameType<INPUT_T, hifloat8_t>::value) {
-        return false;
-    }
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
-        return true;
-    }
+__aicore__ constexpr bool IsDn() {
     return false;
 }
 
-template <typename INPUT_T>
-__aicore__ constexpr bool IsInt8OnlyWithAttenMask(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
-        return false;
-    }
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
-        return true;
-    }
-    return false;
-}
-
-__aicore__ constexpr bool ContainOptionalInput(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && !hasAtten && !hasDrop) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-__aicore__ constexpr bool IsDn(
-    bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
-    regbaseutil::DTemplateType dTemplateType, bool isInfer, bool isHiFp8) {
-    if (!isInfer && isHiFp8) {
-        return false;
-    }
-    if (((!isFp32 && !ContainOptionalInput(pseMode, hasAtten, hasDrop)) ||
-        (isValidFp8 && !hasDrop && pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE)) && !isS1Base64 &&
-        (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256) {
-        return true;
-    }
-    return false;
-}
-
-template <typename INPUT_T>
-__aicore__ constexpr bool UbOutCondition(
-    bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS2Base64) {
-    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) || IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
-        return true;
-    }
-    if (!ContainOptionalInput(pseMode, hasAtten, hasDrop)) {
-        if (!isS2Base64 || isFp32) {
-            return true;
-        }
-    }
-    return false;
-}
-
-__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition, bool isNdS2Size256, bool isMlaFullQuant, bool isMlaNoQuant = false) {
-    if (isMlaNoQuant) {
-        return TPosition::VECCALC;
-    }
-    if ((uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned128 ||
-        (ubOutCondition && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned192) ||
-        (ubOutCondition && isMlaFullQuant) ||
-        isNdS2Size256) {
-        return TPosition::VECCALC;
-    } else {
-        return TPosition::GM;
-    }
+// TODO: 判断逻辑重写
+__aicore__ constexpr TPosition GetC2Position() {
+    return TPosition::VECCALC;
 }
 }
 #endif // FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
