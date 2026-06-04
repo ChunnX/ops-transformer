@@ -717,10 +717,10 @@ def qli_output_single(params):
     actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu() \
                              if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
     cu_seqlens_query = (torch.tensor(cu_seqlens_q).to(actual_seq_dtype).npu() 
-                    if (layout_query != "TND" and cu_seqlens_q is not None) 
+                    if (layout_query == "TND" and cu_seqlens_q is not None) 
                     else None)
     cu_seqlens_key = (torch.tensor(cu_seqlens_k).to(actual_seq_dtype).npu() 
-                    if (layout_key != "TND" and cu_seqlens_k is not None) 
+                    if (layout_key == "TND" and cu_seqlens_k is not None) 
                     else None)
 
     if cmp_ratio == 1:

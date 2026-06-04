@@ -24,7 +24,7 @@ enum class LI_LAYOUT : uint32_t {
     PA_BSND = 2
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
+template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T, const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
 struct QLIType {
     using queryType = Q_T;
@@ -104,7 +104,6 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;             // 压缩率
-    bool batchSupperFlag = false;      // Qactual_se长度是否为B+1
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
@@ -132,7 +131,7 @@ struct LdSplitCoreInfo {
         uint32_t mStart = 0U;
         uint32_t mNum = 0U;
         uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
-    };
+};
 
 template <typename T1, typename T2>
 __aicore__ inline T1 Align(T1 num, T2 rnd)
