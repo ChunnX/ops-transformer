@@ -165,6 +165,20 @@ if __name__ == "__main__":
         print(f"{'='*66}")
 
         primary_available = primary.is_available()
+
+        n1 = params.get("N1", 1)
+        n2 = params.get("N2", n1)
+        if not (n1 >= n2 and n1 % n2 == 0):
+            print(f"  跳过: N1={n1}, N2={n2} 不满足 N1>=N2 且 N1%N2==0")
+            reporter.record(name, {"attn": {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+                                            "fail_cnt": 0, "total": 0, "fail_ratio": 0.0},
+                                   "lse":  {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+                                            "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}},
+                            error="skipped: N1<N2 or N1%N2!=0")
+            if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
+                    and (i + 1) < len(run_cases):
+                reporter.print_interim(len(run_cases))
+            continue
         if not primary_available:
             print("[ERROR] primary backend 不可用")
             err = "primary backend not available"
