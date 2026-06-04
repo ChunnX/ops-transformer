@@ -1,0 +1,1774 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A5 FIA MXFullQuant 特殊 BAND 模式改动说明</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #1f2937;
+      --muted: #64748b;
+      --line: #d9dee7;
+      --accent: #0f766e;
+      --accent-soft: #d9f4ef;
+      --warn: #b45309;
+      --warn-soft: #fff4d6;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
+      --code-bg: #101827;
+      --code-ink: #dbeafe;
+      --blue-soft: #e8f1ff;
+      --blue: #1d4ed8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.62;
+    }
+
+    header {
+      background: #111827;
+      color: #f8fafc;
+      padding: 34px 28px 28px;
+      border-bottom: 4px solid var(--accent);
+    }
+
+    header .wrap,
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 18px 0 10px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    main {
+      padding: 24px 20px 48px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 16px 0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .subtle {
+      color: var(--muted);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #111827;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .chip.accent {
+      background: var(--accent-soft);
+      color: #075e55;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0;
+    }
+
+    .warning {
+      border-left: 4px solid var(--warn);
+      background: var(--warn-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0;
+    }
+
+    .danger {
+      border-left: 4px solid var(--danger);
+      background: var(--danger-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f1f5f9;
+      text-align: left;
+      font-weight: 650;
+    }
+
+    code {
+      font-family: Consolas, "SFMono-Regular", Menlo, monospace;
+      background: #eef2f7;
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: #0f172a;
+    }
+
+    pre {
+      margin: 12px 0 0;
+      overflow: auto;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .step {
+      position: relative;
+      min-height: 108px;
+      padding: 12px;
+      background: var(--blue-soft);
+      border: 1px solid #c7dbff;
+      border-radius: 8px;
+    }
+
+    .step .num {
+      display: inline-flex;
+      width: 24px;
+      height: 24px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--blue);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .label {
+      font-weight: 700;
+      color: #0f766e;
+    }
+
+    .mini {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 12px 0;
+      background: #ffffff;
+    }
+
+    .lane-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      background: #eef2f7;
+      border-right: 1px solid var(--line);
+      font-weight: 700;
+      color: #334155;
+    }
+
+    .lane-body {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .lane-node {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      background: #f8fafc;
+      min-height: 78px;
+    }
+
+    .lane-node strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #0f172a;
+    }
+
+    .state-machine {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .state {
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 116px;
+    }
+
+    .state strong {
+      color: #1e40af;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .matrix-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 14px;
+      margin: 12px 0;
+    }
+
+    .mask-matrix {
+      display: grid;
+      grid-template-columns: 92px repeat(12, 42px);
+      gap: 4px;
+      width: max-content;
+      align-items: center;
+    }
+
+    .cell {
+      min-height: 34px;
+      border-radius: 5px;
+      border: 1px solid #d1d5db;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      background: #f8fafc;
+    }
+
+    .cell.head {
+      background: #e2e8f0;
+      font-weight: 700;
+    }
+
+    .cell.global {
+      background: #ccfbf1;
+      border-color: #5eead4;
+      color: #115e59;
+      font-weight: 700;
+    }
+
+    .cell.local {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+      font-weight: 700;
+    }
+
+    .cell.masked {
+      background: #f1f5f9;
+      color: #94a3b8;
+    }
+
+    .cell.invalid {
+      background: #fee2e2;
+      border-color: #fecaca;
+      color: #991b1b;
+      font-weight: 700;
+    }
+
+    .formula-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .formula-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 12px;
+    }
+
+    .case-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .case-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #ffffff;
+    }
+
+    .case-axis {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+      font-size: 13px;
+    }
+
+    .case-bar {
+      height: 22px;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      display: grid;
+      background: #f1f5f9;
+    }
+
+    .case-bar.equal {
+      grid-template-columns: 1fr;
+    }
+
+    .case-bar.kv-long {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .case-bar.q-long {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .case-bar.s2 {
+      grid-template-columns: 1fr 3fr 2fr;
+    }
+
+    .case-bar.valid-start {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .seg-valid {
+      background: #0f766e;
+    }
+
+    .seg-extra {
+      background: #93c5fd;
+    }
+
+    .seg-gap {
+      background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 8px, #f8fafc 8px, #f8fafc 16px);
+    }
+
+    .seg-invalid {
+      background: #fecaca;
+    }
+
+    .decision-table td:first-child {
+      white-space: nowrap;
+      font-weight: 650;
+    }
+
+    .diagram {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    .axis {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar {
+      height: 30px;
+      display: grid;
+      grid-template-columns: 4fr 16fr 8fr;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #e5e7eb;
+    }
+
+    .bar .global {
+      background: #0f766e;
+    }
+
+    .bar .gap {
+      background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 8px, #f8fafc 8px, #f8fafc 16px);
+    }
+
+    .bar .local {
+      background: #2563eb;
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 6px;
+      vertical-align: -1px;
+    }
+
+    .swatch.global {
+      background: #0f766e;
+    }
+
+    .swatch.local {
+      background: #2563eb;
+    }
+
+    .swatch.gap {
+      background: #d1d5db;
+    }
+
+    .call-chain {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .call-node {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+      min-height: 110px;
+    }
+
+    .call-node::after {
+      content: ">";
+      position: absolute;
+      right: -9px;
+      top: 42%;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #1f2937;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 18px;
+      text-align: center;
+      z-index: 1;
+    }
+
+    .call-node:last-child::after {
+      display: none;
+    }
+
+    .call-node strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .split-visual {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .split-row {
+      display: grid;
+      grid-template-columns: 104px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .split-bar {
+      display: grid;
+      height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f1f5f9;
+    }
+
+    .split-bar.valid-start {
+      grid-template-columns: 1fr 3fr;
+    }
+
+    .split-bar.cores {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+    }
+
+    .split-bar.s2 {
+      grid-template-columns: 1fr 3fr 2fr;
+    }
+
+    .seg-skip {
+      background: #fecaca;
+    }
+
+    .seg-core-a {
+      background: #bae6fd;
+    }
+
+    .seg-core-b {
+      background: #bbf7d0;
+    }
+
+    .seg-core-c {
+      background: #fde68a;
+    }
+
+    .seg-core-d {
+      background: #ddd6fe;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    .field-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+    }
+
+    .field-card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .runtime-pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .runtime-step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 12px;
+    }
+
+    .runtime-step .tag {
+      display: inline-block;
+      margin-bottom: 8px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mask-flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    .mask-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+    }
+
+    .mask-box h3 {
+      margin-top: 0;
+    }
+
+    .case-note {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .grid,
+      .grid.two,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline-item {
+        grid-template-columns: 1fr;
+      }
+
+      .swimlane {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-title {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .lane-body,
+      .state-machine,
+      .formula-grid,
+      .case-grid,
+      .call-chain,
+      .field-grid,
+      .runtime-pipeline,
+      .mask-flow {
+        grid-template-columns: 1fr;
+      }
+
+      .call-node::after {
+        display: none;
+      }
+
+      header {
+        padding: 26px 18px 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>A5 FIA MXFullQuant 特殊 BAND 模式改动说明</h1>
+      <p class="subtle">面向 <code>arch35/fia_kernel_fullquant_mx.h</code> 的 DN + BAND + global/local sparse 实现梳理</p>
+      <div class="chips">
+        <span class="chip accent">global window = KV 前 4 列</span>
+        <span class="chip">local window = 原 BAND pre/next 语义</span>
+        <span class="chip">S2 union 调度</span>
+        <span class="chip">gap 跳过</span>
+        <span class="chip">global-only tile 收缩</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 功能目标</h2>
+      <p>
+        当前特殊 BAND 模式是在原有 <code>sparseMode == BAND</code> 的 local window 基础上，额外把 KV 的前 4 个 token
+        作为 global window 纳入 attention 计算。最终有效 S2 范围可以理解为：
+      </p>
+      <pre><code>valid_s2 = local_band_s2_range UNION global_prefix_s2_range
+
+global_prefix_s2_range = [0, min(4, actual_seq_kv))
+local_band_s2_range    = 原 BAND 根据 preTokens / nextTokens 算出的范围</code></pre>
+      <div class="warning">
+        <strong>当前实现边界：</strong>
+        global 前 4 列是在 local BAND 行有效的基础上叠加的。若当前 S1 block 的 local BAND 已整体判空，
+        kernel 会直接跳过该 S1 block，不会单独用 global prefix 把整行重新激活。这一点与当前
+        <code>actual_seq_q=4096, actual_seq_kv=2048</code> 场景的修复保持一致。
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 触发条件与行为变化</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>触发条件</strong>
+          <p><code>USE_DN && HAS_MASK && sparseMode == BAND</code></p>
+          <p class="mini">判断函数在 <code>IsBandGlobalLocalSparse()</code>。</p>
+        </div>
+        <div class="card">
+          <strong>global 固定大小</strong>
+          <p><code>BAND_GLOBAL_WINDOW_SIZE = 4U</code></p>
+          <p class="mini">kernel 和 vector 侧各有一个同名常量。</p>
+        </div>
+        <div class="card">
+          <strong>local 窗口来源</strong>
+          <p>继续使用原 BAND 的 <code>preTokens</code> / <code>nextTokens</code>。</p>
+          <p class="mini">例如最近 1024 通常配置 <code>preTokens=1023</code>、<code>nextTokens=0</code>。</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>项目</th>
+            <th>原普通 BAND</th>
+            <th>当前特殊 BAND</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>S2 有效范围</td>
+            <td>单段 local BAND 范围</td>
+            <td>local BAND 范围 + KV 前 4 列 global 范围</td>
+          </tr>
+          <tr>
+            <td>S2 调度</td>
+            <td>连续 <code>[curS2Start, curS2End)</code></td>
+            <td>支持 <code>global段 + local段</code>，中间 gap 直接跳过</td>
+          </tr>
+          <tr>
+            <td>global-only 块</td>
+            <td>不存在</td>
+            <td>只计算前 4 列，避免整块 512 列被计算</td>
+          </tr>
+          <tr>
+            <td>mask 行为</td>
+            <td>由原 BAND pre/next 共同裁剪</td>
+            <td>block0 内会恢复 global 前 4 列为可见</td>
+          </tr>
+          <tr>
+            <td>整行无效</td>
+            <td>local 范围为空则跳过</td>
+            <td>当前仍以 local 有效性作为 S1 block 是否参与的前提</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3. 涉及文件总览</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>文件</th>
+            <th>新增/修改内容</th>
+            <th>关键位置</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>attention/common/op_kernel/arch35/fia_kernel_fullquant_mx.h</code></td>
+            <td>特殊 BAND 触发、global/local 两段 S2 range、gap 跳转、global-only tile 长度收缩。</td>
+            <td>line 54, 109-113, 493-511, 622-690, 804-812, 866-871</td>
+          </tr>
+          <tr>
+            <td><code>attention/common/op_kernel/arch35/fia_public_define_arch35.h</code></td>
+            <td><code>RunInfoX</code> 增加 <code>isBandGlobalOnlyS2Loop</code> 标记。</td>
+            <td>line 78</td>
+          </tr>
+          <tr>
+            <td><code>attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h</code></td>
+            <td>vector mask 侧处理 global-only tile、恢复 block0 前 4 列、调整 RowInvalid。</td>
+            <td>line 73, 778-783, 1043-1045, 1100-1102, 1150-1153</td>
+          </tr>
+          <tr>
+            <td><code>attention/common/op_host/split_core_v2.cpp</code></td>
+            <td>BAND prefill 简单分核，按有效行均分，不做 S2 方向拆分。</td>
+            <td>line 722-773</td>
+          </tr>
+          <tr>
+            <td><code>attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_fullquant_mxfp8_golden.py</code></td>
+            <td>golden mask 增加 <code>GLOBAL_WINDOW_SIZE</code>，BAND 时 global token 不受 pre mask 屏蔽。</td>
+            <td>line 51, 587-627</td>
+          </tr>
+          <tr>
+            <td><code>attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/run_batch_test.py</code></td>
+            <td>case 可配置 <code>global_window_size</code>，未配置时继承模块默认值。</td>
+            <td>line 165</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3.1 改动调用关系图</h2>
+      <p>
+        下面这张图按“谁先决定、谁保存状态、谁真正消费”的顺序串起当前改动。特殊 BAND 的本质是：
+        host 只切 S1G 行范围，kernel 每换一行重新计算两段 S2 区间，最后由 cube/vector 共同消费压缩后的
+        <code>RunInfoX</code>。
+      </p>
+      <div class="call-chain">
+        <div class="call-node">
+          <strong><code>SplitCore()</code></strong>
+          <p class="mini">识别 <code>SparseMode::BAND</code>，用旧 <code>CalcS2Range()</code> 扫描 local 有效行。</p>
+          <p class="mini">输出 <code>bN2End/mEnd/s2End</code>，其中 <code>s2End=0</code>。</p>
+        </div>
+        <div class="call-node">
+          <strong><code>GetTaskDealMode()</code></strong>
+          <p class="mini">当 <code>bN2/gS1</code> 改变时重算当前行的 S2 范围。</p>
+          <p class="mini">在 gap 中返回 <code>NOT_START</code>。</p>
+        </div>
+        <div class="call-node">
+          <strong><code>CalcCurS2StartEndWithSparse()</code></strong>
+          <p class="mini">先算 local BAND，local 有效后再叠加 global 前 4 token。</p>
+          <p class="mini">保存 <code>global/local/cur/next</code> 几组区间。</p>
+        </div>
+        <div class="call-node">
+          <strong><code>CalcParams()</code></strong>
+          <p class="mini">生成 <code>RunInfoX</code>，判断 <code>isBandGlobalOnlyS2Loop</code>。</p>
+          <p class="mini">global-only 时把 S2 实际长度收缩到 4。</p>
+        </div>
+        <div class="call-node">
+          <strong><code>ProcessVec*</code></strong>
+          <p class="mini">mask 侧跳过 global-only，混合 block0 恢复前 4 列。</p>
+          <p class="mini"><code>RowInvalid()</code> 继续保护整行无效。</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>层次</th>
+            <th>新增状态</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>host</td>
+            <td><code>validStart/validPerBN2</code></td>
+            <td>只把 local BAND 有效的 S1G 行分给 core，避免把明显无效行作为主要任务分出去。</td>
+          </tr>
+          <tr>
+            <td>kernel scheduler</td>
+            <td><code>globalS2Start/globalS2End</code>、<code>localS2Start/localS2End</code>、<code>nextS2Start</code></td>
+            <td>表达两段 S2 sparse，并在两段中间的空洞上直接跳转。</td>
+          </tr>
+          <tr>
+            <td>RunInfo</td>
+            <td><code>isBandGlobalOnlyS2Loop</code></td>
+            <td>告诉后续 cube/vector：当前 tile 只有 global 前缀，不应按完整 <code>s2BaseSize</code> 或原 BAND mask 处理。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>4. 完整计算流程</h2>
+      <div class="flow">
+        <div class="step">
+          <span class="num">1</span>
+          <strong>Host 分核</strong>
+          <p class="mini">BAND prefill 按有效 S1G 行均分，不做 S2 split。</p>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <strong>加载 batch 长度</strong>
+          <p class="mini">kernel 获取 <code>actSeqLensQ/KV</code>。</p>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <strong>计算 local BAND</strong>
+          <p class="mini">由 <code>pre/next</code> 转成 left-up 坐标。</p>
+        </div>
+        <div class="step">
+          <span class="num">4</span>
+          <strong>叠加 global</strong>
+          <p class="mini">加入 KV 前 4 列所在 S2 block。</p>
+        </div>
+        <div class="step">
+          <span class="num">5</span>
+          <strong>调度跳 gap</strong>
+          <p class="mini">只对 global/local union 内的 S2 block 建任务。</p>
+        </div>
+        <div class="step">
+          <span class="num">6</span>
+          <strong>Vec mask 修正</strong>
+          <p class="mini">global-only 跳 mask；混合块恢复前 4 列。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4.1 数据流泳道图</h2>
+      <p>
+        下面这张图把本功能拆成 host、kernel scheduler、cube、vector、golden 五条链路。它强调一个核心事实：
+        host 不表达两段 S2；两段 S2 的 union、gap 跳过、global-only 收缩都发生在 kernel 内部。
+      </p>
+      <div class="swimlane">
+        <div class="lane-title">Host Tiling</div>
+        <div class="lane-body">
+          <div class="lane-node"><strong>识别 BAND</strong><span class="mini">进入 BAND prefill 简单分核路径。</span></div>
+          <div class="lane-node"><strong>扫描有效行</strong><span class="mini">用旧 BAND local range 找到 <code>validStart</code>。</span></div>
+          <div class="lane-node"><strong>按行均分</strong><span class="mini">把有效 S1G 行映射到 core。</span></div>
+          <div class="lane-node"><strong>不拆 S2</strong><span class="mini"><code>s2End[i]=0</code>，不做 S2 tail split。</span></div>
+          <div class="lane-node"><strong>输出 metadata</strong><span class="mini">写入 <code>FAMetadata</code>。</span></div>
+        </div>
+      </div>
+      <div class="swimlane">
+        <div class="lane-title">Kernel Scheduler</div>
+        <div class="lane-body">
+          <div class="lane-node"><strong>读长度</strong><span class="mini">按 batch 取 <code>actSeqLensQ/KV</code>。</span></div>
+          <div class="lane-node"><strong>算 local</strong><span class="mini">由 BAND pre/next 得到 local S2 range。</span></div>
+          <div class="lane-node"><strong>加 global</strong><span class="mini">KV 前 4 token 映射为 global S2 range。</span></div>
+          <div class="lane-node"><strong>做 union</strong><span class="mini">得到 <code>global段 + local段</code>。</span></div>
+          <div class="lane-node"><strong>跳 gap</strong><span class="mini"><code>nextS2Start</code> 跳到下一段。</span></div>
+        </div>
+      </div>
+      <div class="swimlane">
+        <div class="lane-title">Cube BMM</div>
+        <div class="lane-body">
+          <div class="lane-node"><strong>BMM1</strong><span class="mini">按 <code>s2Idx</code> 拷 K。</span></div>
+          <div class="lane-node"><strong>global-only</strong><span class="mini">S2 长度被收缩到 4。</span></div>
+          <div class="lane-node"><strong>Matmul</strong><span class="mini">只计算有效 S2 tile。</span></div>
+          <div class="lane-node"><strong>BMM2</strong><span class="mini">只消费已生成的 P。</span></div>
+          <div class="lane-node"><strong>无 gap 计算</strong><span class="mini">gap 不进入 cube 任务。</span></div>
+        </div>
+      </div>
+      <div class="swimlane">
+        <div class="lane-title">Vector</div>
+        <div class="lane-body">
+          <div class="lane-node"><strong>mask copy</strong><span class="mini">沿用原 BAND 压缩 mask。</span></div>
+          <div class="lane-node"><strong>global-only</strong><span class="mini">直接跳过 mask。</span></div>
+          <div class="lane-node"><strong>混合 block0</strong><span class="mini">恢复前 4 列 keep。</span></div>
+          <div class="lane-node"><strong>softmax update</strong><span class="mini">global/local 共用同一轮 mloop 累积。</span></div>
+          <div class="lane-node"><strong>RowInvalid</strong><span class="mini">保留 next 方向整行无效。</span></div>
+        </div>
+      </div>
+      <div class="swimlane">
+        <div class="lane-title">Golden/Test</div>
+        <div class="lane-body">
+          <div class="lane-node"><strong>默认值</strong><span class="mini"><code>GLOBAL_WINDOW_SIZE=4</code>。</span></div>
+          <div class="lane-node"><strong>next mask</strong><span class="mini">不被 global 覆盖。</span></div>
+          <div class="lane-node"><strong>pre mask</strong><span class="mini">前 4 列从 pre mask 中恢复。</span></div>
+          <div class="lane-node"><strong>padding</strong><span class="mini">Q/K padding 仍然生效。</span></div>
+          <div class="lane-node"><strong>case 覆盖</strong><span class="mini">等长、KV 长、Q 长。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. Host 分核实现</h2>
+      <p>
+        当前 host 侧在 <code>SplitCore()</code> 中为 BAND prefill 增加了简单分核路径：按有效 S1G 行均分，
+        不做 S2 方向拆分。每个 core 的结束元数据写入 <code>bN2End/mEnd/s2End</code>，其中
+        <code>s2End[i] = 0U</code> 表示不在 host 侧做 S2 tail 裁剪，S2 的真实 sparse 范围由 kernel 侧按行计算。
+      </p>
+      <pre><code>// split_core_v2.cpp
+if (mode == SparseMode::BAND && s1Size0 >= param.mBaseSize) {
+    ...
+    auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
+    if (s2Range.second > s2Range.first) {
+        validStart = s1GIdx;
+        break;
+    }
+    ...
+    result.s2End[i] = 0U;
+}</code></pre>
+      <div class="note">
+        <strong>为什么 host 不拆 S2：</strong>
+        特殊 BAND 的 S2 是两段 union，host 元数据只有一个 <code>s2End</code>，不适合直接表达两段区间。
+        当前方案把 S2 两段调度放在 kernel 内部处理，host 只负责把 S1G 行范围分给 core。
+      </div>
+    </section>
+
+    <section>
+      <h2>5.1 Host 有效行切分图</h2>
+      <p>
+        host 的 BAND 简单分核仍然以 local BAND 是否有效作为“这行是否值得分核”的判断标准。它先从
+        <code>s1GIdx=0</code> 开始调用 <code>CalcS2Range()</code>，找到第一个 <code>s2End &gt; s2Start</code>
+        的行，记为 <code>validStart</code>。后续只把 <code>[validStart, s1GBaseNum)</code> 这些有效行均分给 core。
+      </p>
+      <div class="split-visual">
+        <div class="split-row">
+          <strong>S1G 行</strong>
+          <div class="split-bar valid-start">
+            <div class="seg-skip" title="local range invalid"></div>
+            <div class="seg-valid" title="local range valid"></div>
+          </div>
+        </div>
+        <div class="split-row">
+          <strong>core 均分</strong>
+          <div class="split-bar cores">
+            <div class="seg-core-a"></div>
+            <div class="seg-core-b"></div>
+            <div class="seg-core-c"></div>
+            <div class="seg-core-d"></div>
+          </div>
+        </div>
+        <div class="split-row">
+          <strong>S2 表达</strong>
+          <div class="split-bar s2">
+            <div class="seg-valid" title="global prefix"></div>
+            <div class="seg-gap" title="gap is not represented by host"></div>
+            <div class="seg-valid" title="local band"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:#fecaca"></span>local 无效行，host 不作为有效负载均分</span>
+          <span><span class="swatch global"></span>有效 S1G 行</span>
+          <span><span class="swatch gap"></span>S2 两段信息不在 host 中完整表达</span>
+        </div>
+      </div>
+      <div class="note">
+        <strong>边界如何叠加：</strong>
+        core 的 <code>bN2End/mEnd/s2End</code> 只给出这个 core 的外层任务边界。
+        到 kernel 内部后，<code>CalcCurS2StartEndWithSparse()</code> 再把 <code>global/local</code>
+        两段分别用 <code>clipStart/clipEnd</code> 裁剪。也就是说，core 边界不是替代 sparse range，
+        而是叠加在 sparse range 外面的一层裁剪。
+      </div>
+    </section>
+
+    <section>
+      <h2>6. Kernel S2 Range 计算</h2>
+      <h3>6.1 原 BAND local 范围</h3>
+      <p>
+        在 <code>CalcCurS2StartEndWithSparse()</code> 中，先按原 BAND 计算 local 范围：
+      </p>
+      <pre><code>s2FirstToken = s1FirstToken - preTokenLeftUp;
+s2LastToken  = s1LastToken  + nextTokenLeftUp;
+
+localS2RangeValid = !(s2FirstToken >= actSeqLensKv ||
+                      s2LastToken < 0 ||
+                      s2LastToken < s2FirstToken);</code></pre>
+      <p>
+        当前实现如果 <code>localS2RangeValid == false</code>，会直接设置 <code>curS2Start=0</code>、
+        <code>curS2End=0</code> 并返回。这保证了 <code>S1 &gt; S2</code> 场景中前面整行无效的 Q block 不会被 global prefix 误激活。
+      </p>
+
+      <h3>6.2 叠加 global 前缀</h3>
+      <p>
+        当 local 有效且命中特殊 BAND 条件时，kernel 额外构造 global 范围：
+      </p>
+      <pre><code>globalTokenEnd = min(4, actSeqLensKv);
+globalS2Start  = 0;
+globalS2End    = ceil(globalTokenEnd / s2BaseSize);</code></pre>
+      <p>
+        local 和 global 都会经过 core 边界裁剪：
+      </p>
+      <pre><code>ClipSparseS2Range(globalS2Start, globalS2End, clipStart, clipEnd);
+ClipSparseS2Range(localS2Start,  localS2End,  clipStart, clipEnd);</code></pre>
+
+      <div class="diagram">
+        <div class="axis">
+          <strong>S2 轴</strong>
+          <div class="bar">
+            <div class="global" title="global prefix"></div>
+            <div class="gap" title="gap skipped"></div>
+            <div class="local" title="local band"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><span class="swatch global"></span>global 前 4 列</span>
+          <span><span class="swatch gap"></span>gap，调度跳过</span>
+          <span><span class="swatch local"></span>local BAND 窗口</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6.3 公式和区间图解</h2>
+      <p>
+        特殊 BAND 的核心不是重新定义一个新的 sparseMode，而是在原 BAND local 区间的计算结果上追加一个
+        global prefix 区间。下面用公式和图形把这两个区间的来源拆开。
+      </p>
+      <div class="formula-grid">
+        <div class="formula-card">
+          <h3>local BAND 区间</h3>
+          <pre><code>preLeftUp  = actQ - actKV + preTokens
+nextLeftUp = actKV - actQ + nextTokens
+
+s2FirstToken = s1FirstToken - preLeftUp
+s2LastToken  = s1LastToken  + nextLeftUp</code></pre>
+          <p class="mini">
+            若 <code>s2FirstToken >= actKV</code>、<code>s2LastToken < 0</code> 或
+            <code>s2LastToken < s2FirstToken</code>，当前 S1 block 的 local BAND 为空。
+          </p>
+        </div>
+        <div class="formula-card">
+          <h3>global prefix 区间</h3>
+          <pre><code>globalTokenStart = 0
+globalTokenEnd   = min(4, actKV)
+
+globalS2Start = 0
+globalS2End   = ceil(globalTokenEnd / s2BaseSize)</code></pre>
+          <p class="mini">
+            当前代码中，global prefix 只在 local BAND 有效时叠加。local 为空时该 S1 block 直接跳过。
+          </p>
+        </div>
+      </div>
+      <table class="decision-table">
+        <thead>
+          <tr>
+            <th>判断点</th>
+            <th>代码结果</th>
+            <th>设计意图</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>localS2RangeValid == false</code></td>
+            <td><code>curS2Start=0; curS2End=0; return;</code></td>
+            <td>整行 local 无效时跳过计算，避免 Q&gt;KV 前置无效行产生非 0 输出。</td>
+          </tr>
+          <tr>
+            <td><code>localS2RangeValid == true</code></td>
+            <td>计算 local block 区间，并可继续叠加 global。</td>
+            <td>保留原 BAND 的有效行语义。</td>
+          </tr>
+          <tr>
+            <td><code>actKV &gt; 0 && BAND_GLOBAL_WINDOW_SIZE &gt; 0</code></td>
+            <td>构造 <code>[0, ceil(4 / s2BaseSize))</code>。</td>
+            <td>把 KV 前 4 列作为 global window。</td>
+          </tr>
+          <tr>
+            <td>global/local 均被 core 边界裁空</td>
+            <td><code>curS2Start=0; curS2End=0; return;</code></td>
+            <td>当前 core 在该行没有有效 S2 任务。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6.4 Mask 矩阵图解</h2>
+      <p>
+        下面的矩阵是一个抽象示意：横向是 KV token，纵向是 Q token。绿色表示 global 前 4 列，
+        蓝色表示 local BAND 可见区域，灰色表示被 mask，红色表示整行无效。它表达的是“global 只恢复 pre/local-left
+        方向的屏蔽，不负责恢复 local 已判空的整行”。
+      </p>
+      <div class="matrix-wrap">
+        <div class="mask-matrix" aria-label="special band mask matrix">
+          <div class="cell head">Q\KV</div>
+          <div class="cell head">0</div><div class="cell head">1</div><div class="cell head">2</div><div class="cell head">3</div>
+          <div class="cell head">4</div><div class="cell head">5</div><div class="cell head">...</div><div class="cell head">L-3</div>
+          <div class="cell head">L-2</div><div class="cell head">L-1</div><div class="cell head">gap</div><div class="cell head">tail</div>
+
+          <div class="cell head">无效 Q 行</div>
+          <div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div>
+          <div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div>
+          <div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div><div class="cell invalid">X</div>
+
+          <div class="cell head">早期有效行</div>
+          <div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div>
+          <div class="cell local">L</div><div class="cell local">L</div><div class="cell masked">-</div><div class="cell masked">-</div>
+          <div class="cell masked">-</div><div class="cell masked">-</div><div class="cell masked">-</div><div class="cell masked">-</div>
+
+          <div class="cell head">中间有效行</div>
+          <div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div>
+          <div class="cell masked">-</div><div class="cell masked">-</div><div class="cell masked">-</div><div class="cell local">L</div>
+          <div class="cell local">L</div><div class="cell local">L</div><div class="cell masked">-</div><div class="cell masked">-</div>
+
+          <div class="cell head">尾部有效行</div>
+          <div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div><div class="cell global">G</div>
+          <div class="cell masked">-</div><div class="cell masked">-</div><div class="cell masked">-</div><div class="cell masked">-</div>
+          <div class="cell local">L</div><div class="cell local">L</div><div class="cell local">L</div><div class="cell masked">-</div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch global"></span>G: global 前 4 列</span>
+        <span><span class="swatch local"></span>L: local BAND 可见窗口</span>
+        <span><span class="swatch gap"></span>-: 被 mask 或 gap 跳过</span>
+        <span><span class="swatch" style="background:#fecaca"></span>X: 整行无效</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. Scheduler 如何跳过 gap</h2>
+      <p>
+        新增了三组调度状态：
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>globalS2Start/globalS2End</code></td>
+            <td>global 前缀所在的 S2 block 区间。</td>
+          </tr>
+          <tr>
+            <td><code>localS2Start/localS2End</code></td>
+            <td>原 BAND local window 所在的 S2 block 区间。</td>
+          </tr>
+          <tr>
+            <td><code>nextS2Start</code></td>
+            <td>当前 <code>s2Cur</code> 落在 gap 时，下一次应该跳到的有效 S2 block。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        在 <code>GetTaskDealMode()</code> 中，如果 <code>s2Cur</code> 不在 global/local 任一段内，
+        会返回 <code>NOT_START</code>，并把 <code>nextS2Start</code> 设置为下一段起点：
+      </p>
+      <pre><code>if (IsBandGlobalLocalSparse() &amp;&amp; !IsCurS2InSparseRange(s2Cur)) {
+    nextS2Start = GetNextSparseS2Start(s2Cur);
+    return TASK_DEAL_MODE::NOT_START;
+}</code></pre>
+      <p>
+        随后 <code>UpdateAxisInfo()</code> 使用 <code>nextS2Start</code> 更新 <code>s2Cur</code>，实现 gap 跳过：
+      </p>
+      <pre><code>if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+    s2Cur = nextS2Start;
+    return;
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>7.1 Scheduler 状态机图</h2>
+      <p>
+        特殊 BAND 没有新增 <code>TASK_DEAL_MODE</code> 枚举，而是复用了 <code>NOT_START</code> 来完成“跳到下一段有效 S2”。
+        下面是当前调度逻辑的状态图。
+      </p>
+      <div class="state-machine">
+        <div class="state">
+          <strong>输入坐标</strong>
+          <p><code>(bN2Cur, gS1Cur, s2Cur)</code></p>
+          <p class="mini">从 core metadata 的 start 坐标开始，按 S2、S1G、BN2 顺序推进。</p>
+        </div>
+        <div class="state">
+          <strong>重算 range</strong>
+          <p>当 batch/head/行变化时，调用 <code>CalcCurS2StartEndWithSparse()</code>。</p>
+          <p class="mini">生成 global/local 两段区间。</p>
+        </div>
+        <div class="state">
+          <strong>区间判断</strong>
+          <p><code>s2Cur</code> 不在 union 内时，设置 <code>nextS2Start</code>。</p>
+          <p class="mini">返回 <code>NOT_START</code>，不创建任务。</p>
+        </div>
+        <div class="state">
+          <strong>创建任务</strong>
+          <p><code>s2Cur</code> 在 union 内时返回 <code>CREATE_TASK</code>。</p>
+          <p class="mini">进入 BMM1、Vec1、BMM2、Vec2 流水。</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>条件</th>
+            <th>返回模式</th>
+            <th>坐标如何更新</th>
+            <th>是否产生计算</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>curS2Start >= curS2End</code></td>
+            <td><code>SKIP</code></td>
+            <td>推进到下一行或下一 BN2。</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td><code>s2Cur < curS2Start</code></td>
+            <td><code>NOT_START</code></td>
+            <td><code>s2Cur = nextS2Start</code>。</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td><code>s2Cur</code> 在 gap 内</td>
+            <td><code>NOT_START</code></td>
+            <td><code>nextS2Start = global/local 下一段起点</code>。</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td><code>s2Cur</code> 在 global/local union 内</td>
+            <td><code>CREATE_TASK</code></td>
+            <td>正常 <code>s2Cur++</code>。</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td><code>s2Cur >= curS2End</code></td>
+            <td><code>S2_END</code></td>
+            <td>当前 S1G 行结束，切到下一行。</td>
+            <td>否</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>8. RunInfo 新增标记与 global-only 收缩</h2>
+      <p>
+        <code>RunInfoX</code> 新增 <code>isBandGlobalOnlyS2Loop</code>，表示当前 S2 block 只属于 global 段，
+        不属于 local 段。
+      </p>
+      <pre><code>bool isBandGlobalOnlyS2Loop = false;</code></pre>
+      <p>
+        在 <code>CalcParams()</code> 中，如果当前任务是 global-only，则把本轮 S2 实际处理长度收缩到
+        <code>min(4, actS2Size)</code>：
+      </p>
+      <pre><code>if (info.isBandGlobalOnlyS2Loop) {
+    uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast&lt;uint32_t&gt;(info.actS2Size));
+    info.actSingleLoopS2Size = globalTokenEnd - info.s2Idx;
+}</code></pre>
+      <div class="note">
+        <strong>效果：</strong>
+        BMM1 拷 K、BMM2 拷 V、Vec softmax 都依赖 <code>runInfo.actSingleLoopS2Size</code>。
+        因此 global-only 的 block0 不会计算整个 512 列，只处理真实 global 的 4 列。
+      </div>
+    </section>
+
+    <section>
+      <h2>8.1 RunInfo 生命周期</h2>
+      <p>
+        <code>RunInfoX</code> 是 scheduler 到 cube/vector 的任务描述。特殊 BAND 没有新增一套任务类型，
+        而是在现有 <code>RunInfoX</code> 中补了一个标记，并复用原有坐标字段来约束数据搬运、mask 和 softmax。
+      </p>
+      <div class="runtime-pipeline">
+        <div class="runtime-step">
+          <span class="tag">1. scheduler</span>
+          <strong>确定任务坐标</strong>
+          <p class="mini"><code>bN2Cur/gS1Cur/s2Cur</code> 来自 core 起止边界和 S2 内层循环。</p>
+        </div>
+        <div class="runtime-step">
+          <span class="tag">2. range</span>
+          <strong>生成两段 sparse</strong>
+          <p class="mini"><code>global/local/cur/next</code> 几组 S2 区间在当前行缓存。</p>
+        </div>
+        <div class="runtime-step">
+          <span class="tag">3. CalcParams</span>
+          <strong>写入 RunInfo</strong>
+          <p class="mini">把 block 坐标转成 token 偏移，并判断是否 global-only。</p>
+        </div>
+        <div class="runtime-step">
+          <span class="tag">4. consume</span>
+          <strong>后续模块消费</strong>
+          <p class="mini">BMM 用坐标搬 K/V，Vec 用标记修 mask，RowInvalid 用 left-up 边界清行。</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        <div class="field-card">
+          <strong><code>bIdx/n2Idx/realN2Idx</code></strong>
+          <p class="mini">由 <code>bN2Cur</code> 拆出来，定位 batch、N2、真实 N2。它决定读取哪一个 batch 的
+            <code>actSeqLensQ/KV</code>，也决定 K/V tensor-list 切 batch 时是否要换基地址。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>gS1Idx/s1Idx</code></strong>
+          <p class="mini"><code>gS1Idx = gS1Cur * mBaseSize</code>，是带 G 后的 M 方向起点；
+            <code>s1Idx</code> 是真实 Q token 起点。local BAND 的 token 窗口就是以它为基准推导。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>s2Idx</code></strong>
+          <p class="mini"><code>s2Idx = s2Cur * s2BaseSize</code>，直接控制 BMM1 拷 K、BMM2 拷 V 的列偏移。
+            对 global-only 来说，它必须落在 block0，随后长度被收缩到 4。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>actS1Size/actS2Size</code></strong>
+          <p class="mini">当前 batch 的真实 Q/KV 长度。它们参与 local range 越界判断、S1/S2 tail 裁剪，以及
+            <code>min(4, actS2Size)</code> 的 global 长度保护。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>actMSize</code></strong>
+          <p class="mini">当前 S1G tile 在 M 方向的真实处理长度。尾块不满 <code>mBaseSize</code> 时会缩短，
+            后续 Vec 的 M 方向循环和 RowInvalid 都依赖它。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>actSingleLoopS2Size</code></strong>
+          <p class="mini">当前 S2 tile 的真实列数。普通 tile 是 <code>s2BaseSize</code> 或 KV tail；
+            global-only tile 被改成 <code>globalTokenEnd - s2Idx</code>。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>isFirstS2Loop/isLastS2Loop</code></strong>
+          <p class="mini">控制 softmax streaming 的初始化和收尾。gap 被跳过时不会产生任务，所以 global 段之后的
+            local 段仍然接在同一行的 softmax 累积链路上。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>isS2SplitCore</code></strong>
+          <p class="mini">表示是否处在 S2 跨 core 切分场景。当前 BAND 简单分核把 <code>s2End=0</code>，
+            S2 sparse 主要由 kernel 内部 range 管理。</p>
+        </div>
+        <div class="field-card">
+          <strong><code>preTokensLeftUp/nextTokensLeftUp</code></strong>
+          <p class="mini">由 <code>GetPreNextTokenLeftUp()</code> 计算。local BAND、RowInvalid、DN mask 的
+            pre/next 方向判断都要用它。</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>RunInfo 字段</th>
+            <th>写入位置</th>
+            <th>特殊 BAND 中的关键影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>isBandGlobalOnlyS2Loop</code></td>
+            <td><code>CalcParams()</code></td>
+            <td>global block 与 local block 不重叠时置 true，触发 S2 长度收缩和 mask 跳过。</td>
+          </tr>
+          <tr>
+            <td><code>actSingleLoopS2Size</code></td>
+            <td><code>CalcParams()</code></td>
+            <td>global-only 时只让前 4 列进入 BMM/Vec，避免 block0 的剩余列被误算。</td>
+          </tr>
+          <tr>
+            <td><code>preTokensLeftUp/nextTokensLeftUp</code></td>
+            <td><code>CalcParams()</code></td>
+            <td>传给 vector 侧做 mask/RowInvalid，保证 global 只解除 pre-left 屏蔽，不解除 next/causal 整行无效。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>9. Vector Mask 与 RowInvalid</h2>
+      <h3>9.1 global-only tile</h3>
+      <p>
+        对 global-only tile，vector mask copy 直接标记为跳过 mask：
+      </p>
+      <pre><code>if (runInfo.isBandGlobalOnlyS2Loop) {
+    isSkipMask = true;
+    return;
+}</code></pre>
+      <p>
+        因为此时实际只计算 global 前 4 列，旧 BAND pre-mask 不应该再把它们遮掉。
+      </p>
+
+      <h3>9.2 block0 混合 global/local</h3>
+      <p>
+        当 block0 同时含 global 和 local 时，旧 BAND mask merge 后，前 4 列会被恢复为可见：
+      </p>
+      <pre><code>if (constInfo.sparseMode == static_cast&lt;uint32_t&gt;(BAND) &amp;&amp;
+    runInfo.s2Idx == 0U &amp;&amp; subLoop == 0U &amp;&amp; isSkipMaskForNext) {
+    uint32_t globalKeepSize = Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) *
+                              (maskInfo.gs1dealNum &gt;&gt; 1);
+    Duplicate(attenMaskUb, static_cast&lt;uint8_t&gt;(1U), globalKeepSize);
+}</code></pre>
+
+      <h3>9.3 RowInvalid</h3>
+      <p>
+        <code>RowInvalid()</code> 中，DN + BAND 下把 <code>s1LastValidToken</code> 放宽到
+        <code>actS1Size</code>，避免 pre/local-left 边界把已经有 global 可看的行清掉。
+        但 <code>s1FirstValidToken</code> 仍由 <code>nextTokensLeftUp</code> 控制，因此 next/causal 方向的整行无效仍然保留。
+      </p>
+      <pre><code>s1FirstValidToken = min(max(-nextTokensLeftUp, 0), actS1Size);
+s1LastValidToken  = min(max(preTokensLeftUp + actS2Size, 0), actS1Size);
+
+if (USE_DN &amp;&amp; sparseMode == BAND &amp;&amp; actS2Size &gt; 0) {
+    s1LastValidToken = actS1Size;
+}</code></pre>
+      <h3>9.4 Mask 处理决策图</h3>
+      <p>
+        vector 侧的改动可以按下面三种 tile 来理解。核心原则是：global 前 4 列要可见，但不能把 padding、
+        next/causal 方向的整行无效也恢复出来。
+      </p>
+      <div class="mask-flow">
+        <div class="mask-box">
+          <h3>global-only tile</h3>
+          <pre><code>isBandGlobalOnlyS2Loop == true</code></pre>
+          <p class="mini">
+            直接跳过 atten mask copy。因为这一轮真实 S2 长度已经被收缩到前 4 列，再套旧 BAND pre-mask
+            会把本来要保留的 global 列屏蔽掉。
+          </p>
+        </div>
+        <div class="mask-box">
+          <h3>block0 混合 tile</h3>
+          <pre><code>s2Idx == 0 &amp;&amp; local overlaps block0</code></pre>
+          <p class="mini">
+            先走原 DN/BAND mask merge，再用 <code>Duplicate(..., 1, globalKeepSize)</code>
+            把前 4 列恢复为 keep。
+          </p>
+        </div>
+        <div class="mask-box">
+          <h3>local-only tile</h3>
+          <pre><code>s2Idx in local range only</code></pre>
+          <p class="mini">
+            完全沿用原 BAND mask 和 softmax 更新逻辑；global 改动不影响该 tile 的 mask 语义。
+          </p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>保护点</th>
+            <th>代码位置</th>
+            <th>为什么需要</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>local 为空直接跳过</td>
+            <td><code>CalcCurS2StartEndWithSparse()</code></td>
+            <td>避免 <code>actual_seq_q &gt; actual_seq_kv</code> 前置无效行被 global 前 4 列激活。</td>
+          </tr>
+          <tr>
+            <td>global-only 缩列</td>
+            <td><code>CalcParams()</code></td>
+            <td>避免 block0 里除前 4 token 外的列参与 BMM/softmax。</td>
+          </tr>
+          <tr>
+            <td>RowInvalid 保留 next 边界</td>
+            <td><code>RowInvalid()</code></td>
+            <td>global 只修复 pre-left，不改变 next/causal 和 padding 的无效行判断。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>10. Golden 与测试侧对齐</h2>
+      <p>
+        Python golden 中新增 <code>GLOBAL_WINDOW_SIZE = 4</code>，并在 BAND mask 构造时，让 global 前缀绕过
+        <code>pre_mask</code>：
+      </p>
+      <pre><code>if sparse_mode == 4:
+    delta = k_lens_acl - q_lens_acl
+    next_mask = k_range &gt; (q_range + delta + next_tokens)
+    pre_mask  = k_range &lt; (q_range + delta - pre_tokens)
+    if global_window_size &gt; 0:
+        global_keep = k_range &lt; global_window_size
+        pre_mask = pre_mask &amp; (~global_keep)
+    return next_mask | pre_mask | q_padding_mask | k_padding_mask</code></pre>
+      <p>
+        <code>run_batch_test.py</code> 中 case 可显式设置 <code>global_window_size</code>；若未设置，
+        继承 golden 模块默认值。
+      </p>
+    </section>
+
+    <section>
+      <h2>11. 典型 Case 行为</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>现象</th>
+            <th>当前实现处理方式</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>actual_seq_q=2048, actual_seq_kv=2048</code></td>
+            <td>等长 prefill，无前置整行无效。</td>
+            <td>local BAND 有效，叠加 global 前 4 列；gap 可跳过。</td>
+          </tr>
+          <tr>
+            <td><code>actual_seq_q=2048, actual_seq_kv=4096</code></td>
+            <td>KV 更长，local 范围整体有效。</td>
+            <td>local 有效，global 前 4 列加入 union，精度已反馈通过。</td>
+          </tr>
+          <tr>
+            <td><code>actual_seq_q=4096, actual_seq_kv=2048</code></td>
+            <td>Q 更长，前面存在整行无效区域。</td>
+            <td>当前实现 local 判空即跳过；global 不单独激活这些行，避免 golden 为 0 的区域出现 NPU 非 0。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>11.1 Case 可视化对照</h3>
+      <p>
+        这三组 case 的关键差异不是 global 前 4 列本身，而是 local BAND 对当前 Q 行是否仍然有效。
+        当前实现把 local 有效性作为前提，所以 Q 大于 KV 时的前置无效行会被整体跳过。
+      </p>
+      <div class="case-grid">
+        <div class="case-card">
+          <h3>Q=2048, KV=2048</h3>
+          <div class="case-axis">
+            <span>Q</span>
+            <div class="case-bar equal"><div class="seg-valid"></div></div>
+          </div>
+          <div class="case-axis">
+            <span>KV</span>
+            <div class="case-bar equal"><div class="seg-valid"></div></div>
+          </div>
+          <div class="case-axis">
+            <span>S2</span>
+            <div class="case-bar s2">
+              <div class="seg-valid"></div>
+              <div class="seg-gap"></div>
+              <div class="seg-valid"></div>
+            </div>
+          </div>
+          <div class="case-note">
+            等长 prefill 下，local BAND 对有效 Q 行成立；kernel 在 local 基础上加入 global 前 4 列，gap 可跳过。
+          </div>
+        </div>
+        <div class="case-card">
+          <h3>Q=2048, KV=4096</h3>
+          <div class="case-axis">
+            <span>Q</span>
+            <div class="case-bar equal"><div class="seg-valid"></div></div>
+          </div>
+          <div class="case-axis">
+            <span>KV</span>
+            <div class="case-bar kv-long">
+              <div class="seg-valid"></div>
+              <div class="seg-extra"></div>
+            </div>
+          </div>
+          <div class="case-axis">
+            <span>S2</span>
+            <div class="case-bar s2">
+              <div class="seg-valid"></div>
+              <div class="seg-gap"></div>
+              <div class="seg-valid"></div>
+            </div>
+          </div>
+          <div class="case-note">
+            KV 更长时 <code>delta = KV - Q</code> 为正，local 窗口整体后移但仍有效；global 与 local union 正常参与。
+          </div>
+        </div>
+        <div class="case-card">
+          <h3>Q=4096, KV=2048</h3>
+          <div class="case-axis">
+            <span>Q</span>
+            <div class="case-bar q-long">
+              <div class="seg-skip"></div>
+              <div class="seg-valid"></div>
+            </div>
+          </div>
+          <div class="case-axis">
+            <span>KV</span>
+            <div class="case-bar equal"><div class="seg-valid"></div></div>
+          </div>
+          <div class="case-axis">
+            <span>S2</span>
+            <div class="case-bar valid-start">
+              <div class="seg-skip"></div>
+              <div class="seg-valid"></div>
+            </div>
+          </div>
+          <div class="case-note">
+            Q 更长时前置 Q 行的 local BAND 为空，当前代码直接 <code>curS2Start=curS2End=0</code>。
+            global 不单独激活这些行，因此 golden 为 0 的区域不会出现 NPU 非 0。
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch global"></span>有效区间或参与计算的 S2 段</span>
+        <span><span class="swatch" style="background:#93c5fd"></span>KV 额外长度</span>
+        <span><span class="swatch gap"></span>gap，调度跳过</span>
+        <span><span class="swatch" style="background:#fecaca"></span>local 无效，跳过</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>12. 当前实现的注意点</h2>
+      <div class="warning">
+        <strong>普通 BAND 影响：</strong>
+        当前触发条件是 <code>USE_DN && HAS_MASK && sparseMode == BAND</code>，没有单独的运行时开关。
+        因此 DN + mask + BAND 默认都会走特殊 BAND 逻辑。若后续需要同时保留普通 BAND，建议在 tiling/constInfo
+        中增加 <code>bandGlobalWindowSize</code>，只有大于 0 时才启用本逻辑。
+      </div>
+      <div class="warning">
+        <strong>global 的激活边界：</strong>
+        当前代码中 local BAND 范围为空时会直接跳过当前 S1 block。也就是说 global 前 4 列不会作为独立兜底窗口
+        去激活 local 已判空的整行。这是当前通过 <code>Q &gt; KV</code> 无效行 case 的关键策略。
+      </div>
+      <div class="note">
+        <strong>性能侧收益：</strong>
+        host 不拆 S2，kernel 内部跳 gap；global-only tile 只算 4 列。这避免了把
+        <code>[globalEnd, localStart)</code> 中间空洞全部跑一遍。
+      </div>
+    </section>
+  </main>
+</body>
+</html>

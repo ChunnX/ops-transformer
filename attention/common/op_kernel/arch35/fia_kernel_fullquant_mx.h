@@ -52,6 +52,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
     static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
+    static constexpr uint32_t BAND_TOKEN_SEGMENT_ALIGN_SIZE = 64U;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -110,7 +111,12 @@ public:
     uint32_t globalS2End = 0;
     uint32_t localS2Start = 0;
     uint32_t localS2End = 0;
+    uint32_t globalTokenStart = 0;
+    uint32_t globalTokenEnd = 0;
+    uint32_t localTokenStart = 0;
+    uint32_t localTokenEnd = 0;
     uint32_t nextS2Start = 0;
+    uint32_t bandSegmentIdx = 0;
     uint32_t prevBIdx = 0;
     uint32_t prevBN2Idx = 0;
     uint32_t prevGS1Idx = 0;
@@ -495,7 +501,14 @@ public:
             return TASK_DEAL_MODE::NOT_START;
         }
 
-        if (s2Cur == curS2Start) {
+        if (IsBandGlobalLocalSparse() && !HasBandTokenSegment(s2Cur, bandSegmentIdx)) {
+            nextS2Start = GetNextSparseS2Start(s2Cur);
+            bandSegmentIdx = 0U;
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
+        bool isFirstS2Task = IsBandGlobalLocalSparse() ? IsFirstBandTokenSegment(s2Cur) : (s2Cur == curS2Start);
+        if (isFirstS2Task) {
             mloop++;
         }
 
@@ -522,7 +535,12 @@ public:
         globalS2End = 0U;
         localS2Start = 0U;
         localS2End = 0U;
+        globalTokenStart = 0U;
+        globalTokenEnd = 0U;
+        localTokenStart = 0U;
+        localTokenEnd = 0U;
         nextS2Start = 0U;
+        bandSegmentIdx = 0U;
     }
 
     __aicore__ inline void ClipSparseS2Range(uint32_t &s2Start, uint32_t &s2End, uint32_t clipStart,
@@ -540,6 +558,174 @@ public:
     {
         return (IsValidS2Range(globalS2Start, globalS2End) && s2Cur >= globalS2Start && s2Cur < globalS2End) ||
                (IsValidS2Range(localS2Start, localS2End) && s2Cur >= localS2Start && s2Cur < localS2End);
+    }
+
+    __aicore__ inline bool IsValidTokenRange(uint32_t tokenStart, uint32_t tokenEnd)
+    {
+        return tokenStart < tokenEnd;
+    }
+
+    __aicore__ inline void ClipSparseTokenRange(uint32_t &tokenStart, uint32_t &tokenEnd, uint32_t clipStart,
+                                                uint32_t clipEnd)
+    {
+        tokenStart = Max(tokenStart, clipStart);
+        tokenEnd = Min(tokenEnd, clipEnd);
+        if (tokenStart >= tokenEnd) {
+            tokenStart = 0U;
+            tokenEnd = 0U;
+        }
+    }
+
+    __aicore__ inline bool GetRangeIntersection(uint32_t leftStart, uint32_t leftEnd, uint32_t rightStart,
+                                                uint32_t rightEnd, uint32_t &intersectStart,
+                                                uint32_t &intersectEnd)
+    {
+        if (!IsValidTokenRange(leftStart, leftEnd) || !IsValidTokenRange(rightStart, rightEnd)) {
+            intersectStart = 0U;
+            intersectEnd = 0U;
+            return false;
+        }
+        intersectStart = Max(leftStart, rightStart);
+        intersectEnd = Min(leftEnd, rightEnd);
+        if (!IsValidTokenRange(intersectStart, intersectEnd)) {
+            intersectStart = 0U;
+            intersectEnd = 0U;
+            return false;
+        }
+        return true;
+    }
+
+    __aicore__ inline uint32_t AlignUpBandTokenSegment(uint32_t value)
+    {
+        return (value + BAND_TOKEN_SEGMENT_ALIGN_SIZE - 1U) / BAND_TOKEN_SEGMENT_ALIGN_SIZE *
+               BAND_TOKEN_SEGMENT_ALIGN_SIZE;
+    }
+
+    __aicore__ inline uint32_t AlignDownBandTokenSegment(uint32_t value)
+    {
+        return value / BAND_TOKEN_SEGMENT_ALIGN_SIZE * BAND_TOKEN_SEGMENT_ALIGN_SIZE;
+    }
+
+    __aicore__ inline bool TryGetBandTokenSegment(uint32_t rangeStart, uint32_t rangeEnd, bool rangeGlobalOnly,
+                                                  uint32_t targetSegmentIdx, uint32_t &curSegmentIdx,
+                                                  uint32_t &segStart, uint32_t &segEnd, bool &isGlobalOnly)
+    {
+        if (!IsValidTokenRange(rangeStart, rangeEnd)) {
+            return false;
+        }
+        if (curSegmentIdx == targetSegmentIdx) {
+            segStart = rangeStart;
+            segEnd = rangeEnd;
+            isGlobalOnly = rangeGlobalOnly;
+            return true;
+        }
+        curSegmentIdx++;
+        return false;
+    }
+
+    __aicore__ inline bool GetSplitBandTokenSegment(uint32_t rangeStart, uint32_t rangeEnd, bool rangeGlobalOnly,
+                                                    uint32_t targetSegmentIdx, uint32_t &curSegmentIdx,
+                                                    uint32_t &segStart, uint32_t &segEnd, bool &isGlobalOnly)
+    {
+        if (!IsValidTokenRange(rangeStart, rangeEnd)) {
+            return false;
+        }
+
+        uint32_t curStart = rangeStart;
+        uint32_t headEnd = Min(AlignUpBandTokenSegment(curStart), rangeEnd);
+        if (curStart < headEnd) {
+            if (TryGetBandTokenSegment(curStart, headEnd, rangeGlobalOnly, targetSegmentIdx, curSegmentIdx,
+                                       segStart, segEnd, isGlobalOnly)) {
+                return true;
+            }
+            curStart = headEnd;
+        }
+
+        uint32_t bodyEnd = AlignDownBandTokenSegment(rangeEnd);
+        if (curStart < bodyEnd) {
+            if (TryGetBandTokenSegment(curStart, bodyEnd, rangeGlobalOnly, targetSegmentIdx, curSegmentIdx,
+                                       segStart, segEnd, isGlobalOnly)) {
+                return true;
+            }
+            curStart = bodyEnd;
+        }
+
+        if (curStart < rangeEnd) {
+            if (TryGetBandTokenSegment(curStart, rangeEnd, rangeGlobalOnly, targetSegmentIdx, curSegmentIdx,
+                                       segStart, segEnd, isGlobalOnly)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline bool GetBandTokenSegment(uint32_t s2Cur, uint32_t targetSegmentIdx, uint32_t &segStart,
+                                               uint32_t &segEnd, bool &isGlobalOnly)
+    {
+        uint32_t blockStart = s2Cur * s2BaseSize;
+        uint32_t blockEnd = Min(blockStart + s2BaseSize, static_cast<uint32_t>(actSeqLensKv));
+        uint32_t globalStart = 0U;
+        uint32_t globalEnd = 0U;
+        uint32_t localStart = 0U;
+        uint32_t localEnd = 0U;
+        bool hasGlobal = GetRangeIntersection(globalTokenStart, globalTokenEnd, blockStart, blockEnd, globalStart,
+                                              globalEnd);
+        bool hasLocal = GetRangeIntersection(localTokenStart, localTokenEnd, blockStart, blockEnd, localStart,
+                                             localEnd);
+        uint32_t curSegmentIdx = 0U;
+
+        if (hasGlobal && hasLocal) {
+            if (globalStart <= localStart) {
+                if (globalEnd >= localStart) {
+                    return GetSplitBandTokenSegment(globalStart, Max(globalEnd, localEnd), false, targetSegmentIdx,
+                                                    curSegmentIdx, segStart, segEnd, isGlobalOnly);
+                }
+                if (GetSplitBandTokenSegment(globalStart, globalEnd, true, targetSegmentIdx, curSegmentIdx,
+                                             segStart, segEnd, isGlobalOnly)) {
+                    return true;
+                }
+                return GetSplitBandTokenSegment(localStart, localEnd, false, targetSegmentIdx, curSegmentIdx,
+                                                segStart, segEnd, isGlobalOnly);
+            }
+            if (localEnd >= globalStart) {
+                return GetSplitBandTokenSegment(localStart, Max(localEnd, globalEnd), false, targetSegmentIdx,
+                                                curSegmentIdx, segStart, segEnd, isGlobalOnly);
+            }
+            if (GetSplitBandTokenSegment(localStart, localEnd, false, targetSegmentIdx, curSegmentIdx, segStart,
+                                         segEnd, isGlobalOnly)) {
+                return true;
+            }
+            return GetSplitBandTokenSegment(globalStart, globalEnd, true, targetSegmentIdx, curSegmentIdx,
+                                            segStart, segEnd, isGlobalOnly);
+        }
+
+        if (hasGlobal) {
+            return GetSplitBandTokenSegment(globalStart, globalEnd, true, targetSegmentIdx, curSegmentIdx, segStart,
+                                            segEnd, isGlobalOnly);
+        }
+        if (hasLocal) {
+            return GetSplitBandTokenSegment(localStart, localEnd, false, targetSegmentIdx, curSegmentIdx, segStart,
+                                            segEnd, isGlobalOnly);
+        }
+        return false;
+    }
+
+    __aicore__ inline bool HasBandTokenSegment(uint32_t s2Cur, uint32_t targetSegmentIdx)
+    {
+        uint32_t segStart = 0U;
+        uint32_t segEnd = 0U;
+        bool isGlobalOnly = false;
+        return GetBandTokenSegment(s2Cur, targetSegmentIdx, segStart, segEnd, isGlobalOnly);
+    }
+
+    __aicore__ inline bool IsFirstBandTokenSegment(uint32_t s2Cur)
+    {
+        return s2Cur == curS2Start && bandSegmentIdx == 0U;
+    }
+
+    __aicore__ inline bool IsLastBandTokenSegment(uint32_t s2Cur)
+    {
+        return !HasBandTokenSegment(s2Cur, bandSegmentIdx + 1U) && (s2Cur + 1U == curS2End);
     }
 
     __aicore__ inline uint32_t GetNextSparseS2Start(uint32_t s2Cur)
@@ -635,6 +821,8 @@ public:
         if (localS2RangeValid) {
             s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
             s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+            localTokenStart = static_cast<uint32_t>(s2FirstToken);
+            localTokenEnd = static_cast<uint32_t>(s2LastToken) + 1U;
             s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
             s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
         }
@@ -652,6 +840,8 @@ public:
             }
             if (actSeqLensKv > 0U && BAND_GLOBAL_WINDOW_SIZE > 0U) {
                 uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(actSeqLensKv));
+                globalTokenStart = 0U;
+                this->globalTokenEnd = globalTokenEnd;
                 globalS2Start = 0U;
                 globalS2End = (globalTokenEnd + s2BaseSize - 1U) / s2BaseSize;
                 firstValidS2Start = Min(firstValidS2Start, globalS2Start);
@@ -669,6 +859,18 @@ public:
 
             ClipSparseS2Range(globalS2Start, globalS2End, clipStart, clipEnd);
             ClipSparseS2Range(localS2Start, localS2End, clipStart, clipEnd);
+            uint32_t clipTokenStart = clipStart * s2BaseSize;
+            uint32_t clipTokenEnd = Min(clipEnd * s2BaseSize, static_cast<uint32_t>(actSeqLensKv));
+            ClipSparseTokenRange(globalTokenStart, globalTokenEnd, clipTokenStart, clipTokenEnd);
+            ClipSparseTokenRange(localTokenStart, localTokenEnd, clipTokenStart, clipTokenEnd);
+            if (!IsValidTokenRange(globalTokenStart, globalTokenEnd)) {
+                globalS2Start = 0U;
+                globalS2End = 0U;
+            }
+            if (!IsValidTokenRange(localTokenStart, localTokenEnd)) {
+                localS2Start = 0U;
+                localS2End = 0U;
+            }
 
             if (!IsValidS2Range(globalS2Start, globalS2End) && !IsValidS2Range(localS2Start, localS2End)) {
                 curS2Start = 0U;
@@ -801,17 +1003,27 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.isBandGlobalOnlyS2Loop = IsBandGlobalLocalSparse() &&
-                                      IsValidS2Range(globalS2Start, globalS2End) &&
-                                      s2Cur >= globalS2Start && s2Cur < globalS2End &&
-                                      !(IsValidS2Range(localS2Start, localS2End) &&
-                                        s2Cur >= localS2Start && s2Cur < localS2End);
-        if (info.isBandGlobalOnlyS2Loop) {
-            uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
-            info.actSingleLoopS2Size = globalTokenEnd - info.s2Idx;
+        if (IsBandGlobalLocalSparse()) {
+            uint32_t segStart = info.s2Idx;
+            uint32_t segEnd = info.s2Idx + info.actSingleLoopS2Size;
+            bool isGlobalOnly = false;
+            if (GetBandTokenSegment(s2Cur, bandSegmentIdx, segStart, segEnd, isGlobalOnly)) {
+                info.s2Idx = segStart;
+                info.actSingleLoopS2Size = segEnd - segStart;
+                info.isBandGlobalOnlyS2Loop = isGlobalOnly;
+            } else {
+                info.actSingleLoopS2Size = 0U;
+                info.isBandGlobalOnlyS2Loop = false;
+            }
+        } else {
+            info.isBandGlobalOnlyS2Loop = false;
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+
+        info.isFirstS2Loop = IsBandGlobalLocalSparse() ? IsFirstBandTokenSegment(s2Cur) :
+                                                        ((loop == 0) || (s2Cur == curS2Start));
+        info.isLastS2Loop = IsBandGlobalLocalSparse() ? IsLastBandTokenSegment(s2Cur) : (s2Cur + 1 == curS2End);
 
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
@@ -820,7 +1032,7 @@ public:
             if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
                 info.isChangeBatch = true;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+                info.isChangeBatch = (info.n2Idx == 0 && info.isFirstS2Loop);
             }
         }
 
@@ -830,10 +1042,8 @@ public:
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
         if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
@@ -867,8 +1077,19 @@ public:
                                           uint32_t &s2Cur)
     {
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            bandSegmentIdx = 0U;
             s2Cur = nextS2Start;
             return;
+        }
+
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK && IsBandGlobalLocalSparse()) {
+            if (HasBandTokenSegment(s2Cur, bandSegmentIdx + 1U)) {
+                bandSegmentIdx++;
+                return;
+            }
+            bandSegmentIdx = 0U;
+        } else if (taskDealMode != TASK_DEAL_MODE::CREATE_TASK) {
+            bandSegmentIdx = 0U;
         }
 
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
