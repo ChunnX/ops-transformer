@@ -42,13 +42,15 @@ class CPUBackend(Backend):
 
 
 def _to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
-    """将任意 layout 的 tensor 转回 BNSD (B,N,S,D) 格式。"""
-    if layout == "BNSD" or t.dim() != 4:
-        return t.clone().float()
+    """将任意 layout 的 tensor 转回 tforward 期望的格式。"""
+    if layout == "TND":
+        # InputSpec 生成 (total_s, N, D) → tforward 期望 (1, N, total_s, D)
+        return t.unsqueeze(0).permute(0, 2, 1, 3).contiguous().clone().float()
     if layout == "BSND":
         return t.permute(0, 2, 1, 3).contiguous().clone().float()
     if layout.startswith("PA_"):
         return _pa_to_bnsd(t, layout, params)
+    # BNSD or passthrough
     return t.clone().float()
 
 
