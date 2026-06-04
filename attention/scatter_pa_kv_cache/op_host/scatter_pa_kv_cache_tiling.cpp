@@ -576,7 +576,7 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         OP_LOGD(context_, "isViewVCache: %d", isViewVCache );
         if (isViewKCache) {
             OP_LOGD(context_, "kCacheStride enter1 ");
-            auto *kCacheStride = context_->GetInputStride(DIM_1);
+            auto kCacheStride = context_->GetInputStride(DIM_1);
             if (kCacheStride != nullptr) {
                 OP_LOGD(context_, "kCacheStride enter2 ");
 
@@ -589,7 +589,7 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         }
         if (isViewVCache) {
             OP_LOGD(context_, "VCacheStride enter1 ");
-            auto *VCacheStride = context_->GetInputStride(DIM_4);
+            auto VCacheStride = context_->GetInputStride(DIM_4);
             if (VCacheStride != nullptr) {
                 OP_LOGD(context_, "VCacheStride enter2 ");
                 params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
