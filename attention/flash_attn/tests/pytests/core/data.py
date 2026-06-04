@@ -1,7 +1,101 @@
-"""声明式张量生成规则。一个算子 = 一个 InputSpec 对象，约 10 行声明。"""
+"""声明式张量生成 + 按文档参数组构造参数。"""
 
 import torch
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+
+# ============================================================
+# 参数组构造 — 按 npu_flash_attn.md 的 6 组参数规范化
+# ============================================================
+
+def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
+                            ) -> Tuple[dict, dict, dict]:
+    """从 normalized params 按参数组构造 metadata / kernel kwargs。
+
+    Returns: (meta_kwargs, kernel_kwargs, out_layout)
+    """
+    layout_q   = p.get("layout_q", p.get("input_layout", "BNSD"))
+    layout_kv  = p.get("layout_kv", layout_q)
+    layout_out = p.get("layout_out", layout_q)
+    d = p["D"]
+
+    # === 公共参数组 ===
+    scale = p.get("scale", 1 / (d ** 0.5))
+
+    # === Mask 参数组 ===
+    mask_mode = p.get("mask_mode", 0)
+    wl = wr = -1
+    attn_mask = None
+    is_causal = False
+    if mask_mode == 3:
+        is_causal = True
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+    elif mask_mode != 0:
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
+
+    # === SeqLens 参数组 ===
+    def _u32(x):
+        if x is None: return None
+        if torch.is_tensor(x): return x.to(torch.int32, device=device).contiguous()
+        return torch.tensor(x, dtype=torch.int32, device=device).contiguous()
+
+    cu_q  = _u32(p.get("cu_seqlens_q"))
+    cu_kv = _u32(p.get("cu_seqlens_kv"))
+    sq    = _u32(p.get("seqused_q", p.get("actual_seq_qlen")))
+    skv   = _u32(p.get("seqused_kv", p.get("actual_seq_kvlen")))
+
+    # 从 tensor shape 推导 metadata 参数
+    q = inputs["q"]; k = inputs["k"]
+    if layout_q == "BNSD":
+        bs, nqh, msq, hd = q.shape[0], q.shape[1], q.shape[2], q.shape[3]
+        nkh, msk = k.shape[1], k.shape[2]
+    elif layout_q == "BSND":
+        bs, nqh, msq, hd = q.shape[0], q.shape[2], q.shape[1], q.shape[3]
+        nkh, msk = k.shape[2], k.shape[1]
+    elif layout_q == "TND":
+        bs = (cu_q.shape[0] - 1) if cu_q is not None else p.get("B", 1)
+        nqh, hd = q.shape[1], q.shape[2]
+        nkh = k.shape[1]
+        msq, msk = p.get("S1", 1), p.get("S2", p.get("S1", 1))
+    else:
+        bs = q.shape[0]; nqh = p["N1"]; nkh = p.get("N2", nqh)
+        hd = d; msq = q.shape[1]; msk = k.shape[1]
+
+    # === Paged Attention 参数组 ===
+    bt = None
+    if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+        bt = inputs.get("block_table")
+        if bt is not None:
+            bt = bt.to(device)
+            nkh = p.get("N2", nqh)
+            hd = d
+            msk = max(skv) if skv is not None else p.get("S2", p.get("S1", 1))
+
+    # === metadata kwargs ===
+    meta_kwargs = dict(
+        cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
+        seqused_q=sq, seqused_kv=skv,
+        num_heads_q=nqh, num_heads_kv=nkh, head_dim=hd,
+        batch_size=bs, max_seqlen_q=msq, max_seqlen_kv=msk,
+        mask_mode=mask_mode, win_left=wl, win_right=wr,
+        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+    )
+
+    # === kernel kwargs ===
+    kernel_kwargs = dict(
+        softmax_scale=scale, mask_mode=mask_mode,
+        win_left=wl, win_right=wr,
+        block_table=bt, sinks=None, attn_mask=attn_mask,
+        cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
+        seqused_q=sq, seqused_kv=skv,
+        max_seqlen_q=-1, max_seqlen_kv=-1,
+        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        return_softmax_lse=0,
+    )
+
+    return meta_kwargs, kernel_kwargs, layout_out
 
 
 class InputSpec:
