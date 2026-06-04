@@ -106,9 +106,6 @@ public:
     uint64_t actSeqLensQ = 0;
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
-    uint32_t localS2Start = 0;
-    uint32_t localS2End = 0;
-    uint32_t nextS2Start = 0;
     uint32_t prevBIdx = 0;
     uint32_t prevBN2Idx = 0;
     uint32_t prevGS1Idx = 0;
@@ -475,14 +472,8 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        nextS2Start = curS2Start;
         if (IsBandGlobalLocalSparse()) {
             if (!ShouldDispatchBandTask(s2Cur)) {
-                uint32_t nextBandS2Start = GetNextBandS2Start(s2Cur, static_cast<uint32_t>(s2LoopTimes));
-                if (nextBandS2Start != s2Cur) {
-                    nextS2Start = nextBandS2Start;
-                    return TASK_DEAL_MODE::NOT_START;
-                }
                 return TASK_DEAL_MODE::S2_END;
             }
         } else {
@@ -499,7 +490,7 @@ public:
             }
         }
 
-        if (s2Cur == curS2Start) {
+        if (IsBandGlobalLocalSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) : (s2Cur == curS2Start)) {
             mloop++;
         }
 
@@ -520,13 +511,6 @@ public:
         return s2Start < s2End;
     }
 
-    __aicore__ inline void ResetSparseS2Ranges()
-    {
-        localS2Start = 0U;
-        localS2End = 0U;
-        nextS2Start = 0U;
-    }
-
     __aicore__ inline void ClipSparseS2Range(uint32_t &s2Start, uint32_t &s2End, uint32_t clipStart,
                                              uint32_t clipEnd)
     {
@@ -540,12 +524,12 @@ public:
 
     __aicore__ inline bool IsCurS2InBandRange(uint32_t s2Cur)
     {
-        return IsValidS2Range(localS2Start, localS2End) && s2Cur >= localS2Start && s2Cur < localS2End;
+        return IsValidS2Range(curS2Start, curS2End) && s2Cur >= curS2Start && s2Cur < curS2End;
     }
 
     __aicore__ inline bool IsBandInitialS2Loop(uint32_t s2Cur)
     {
-        return IsBandGlobalLocalSparse() && curS2Start == 0U && curS2End > 0U && s2Cur == 0U;
+        return IsBandGlobalLocalSparse() && s2Cur == 0U;
     }
 
     __aicore__ inline bool ShouldDispatchBandTask(uint32_t s2Cur)
@@ -553,15 +537,11 @@ public:
         return IsBandInitialS2Loop(s2Cur) || IsCurS2InBandRange(s2Cur);
     }
 
-    __aicore__ inline uint32_t GetNextBandS2Start(uint32_t s2Cur, uint32_t s2LoopTimes)
+    __aicore__ inline bool IsBandFirstS2Loop(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (IsValidS2Range(localS2Start, localS2End) && s2Cur < localS2Start) {
-            return localS2Start;
-        }
-        if (s2Cur + 1U < s2LoopTimes) {
-            return s2LoopTimes - 1U;
-        }
-        return s2Cur;
+        bool isHeadS2Split =
+            (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (constInfo.s2OStart > 0U);
+        return IsBandInitialS2Loop(s2Cur) || (isHeadS2Split && s2Cur == curS2Start);
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
@@ -585,7 +565,6 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        ResetSparseS2Ranges();
         curS2Start = 0U;
         curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
         if ((bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
@@ -601,7 +580,6 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        ResetSparseS2Ranges();
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
@@ -635,10 +613,10 @@ public:
         uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
-        bool localS2RangeValid = !(s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 ||
-                                   s2LastToken < s2FirstToken);
+        bool bandS2RangeValid = !(s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 ||
+                                  s2LastToken < s2FirstToken);
 
-        if (localS2RangeValid) {
+        if (bandS2RangeValid) {
             s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
             s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
             s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
@@ -650,10 +628,8 @@ public:
             uint32_t clipStart = 0U;
             uint32_t clipEnd = s2LoopTimes;
 
-            if (localS2RangeValid) {
-                localS2Start = s2StartWithSparse;
-                localS2End = s2EndWithSparse;
-            }
+            curS2Start = bandS2RangeValid ? s2StartWithSparse : 0U;
+            curS2End = bandS2RangeValid ? s2EndWithSparse : 0U;
 
             if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) {
                 headS2Split = constInfo.s2OStart > 0U ? true : false;
@@ -664,28 +640,13 @@ public:
                 clipEnd = constInfo.s2OEnd > 0U ? constInfo.s2OEnd : clipEnd;
             }
 
-            if (localS2RangeValid) {
-                ClipSparseS2Range(localS2Start, localS2End, clipStart, clipEnd);
+            if (bandS2RangeValid) {
+                ClipSparseS2Range(curS2Start, curS2End, clipStart, clipEnd);
             }
-
-            bool hasInitialS2Loop = clipStart == 0U && clipEnd > 0U;
-            if (!hasInitialS2Loop && !IsValidS2Range(localS2Start, localS2End)) {
-                curS2Start = 0U;
-                curS2End = 0U;
-                return;
-            }
-
-            curS2Start = hasInitialS2Loop ? 0U : localS2Start;
-            curS2End = hasInitialS2Loop ? 1U : localS2End;
-            if (IsValidS2Range(localS2Start, localS2End)) {
-                curS2Start = Min(curS2Start, localS2Start);
-                curS2End = Max(curS2End, localS2End);
-            }
-            nextS2Start = curS2Start;
             return;
         }
 
-        if (!localS2RangeValid) {
+        if (!bandS2RangeValid) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
@@ -802,8 +763,9 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        bool isBandLocalS2Loop = IsCurS2InBandRange(s2Cur);
-        info.isBandGlobalOnlyS2Loop = IsBandInitialS2Loop(s2Cur) && !isBandLocalS2Loop;
+        bool isBandInitialS2Loop = IsBandInitialS2Loop(s2Cur);
+        bool isBandS2Loop = IsCurS2InBandRange(s2Cur);
+        info.isBandGlobalOnlyS2Loop = isBandInitialS2Loop && !isBandS2Loop;
         if (info.isBandGlobalOnlyS2Loop) {
             uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
             info.actSingleLoopS2Size = globalTokenEnd;
@@ -818,7 +780,9 @@ public:
             if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
                 info.isChangeBatch = true;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+                bool isFirstS2Loop = IsBandGlobalLocalSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) :
+                                                                  (s2Cur == curS2Start);
+                info.isChangeBatch = (info.n2Idx == 0 && isFirstS2Loop);
             }
         }
 
@@ -828,10 +792,20 @@ public:
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        if (IsBandGlobalLocalSparse()) {
+            info.isFirstS2Loop = ((loop == 0) || IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur));
+        } else {
+            info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        }
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
+        if (IsBandGlobalLocalSparse()) {
+            bool hasBandS2Range = IsValidS2Range(curS2Start, curS2End);
+            info.isLastS2Loop = (isBandS2Loop && (s2Cur + 1 == curS2End)) ||
+                                (isBandInitialS2Loop && !hasBandS2Range);
+        } else {
+            info.isLastS2Loop = (s2Cur + 1 == curS2End);
+        }
 
         if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
@@ -865,7 +839,7 @@ public:
                                           uint32_t &s2Cur)
     {
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
-            s2Cur = nextS2Start;
+            s2Cur = curS2Start;
             return;
         }
 
