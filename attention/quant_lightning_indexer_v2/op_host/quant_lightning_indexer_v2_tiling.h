@@ -49,41 +49,24 @@ constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX = 3;
 constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
-constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
-constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
-constexpr uint32_t BLOCK_TABLE_INDEX = 7;
+constexpr uint32_t CU_SEQLENS_Q_INDEX = 5;
+constexpr uint32_t CU_SEQLENS_K_INDEX = 6;
+constexpr uint32_t SEQUSED_Q_INDEX = 7;
+constexpr uint32_t SEQUSED_K_INDEX = 8;
+constexpr uint32_t BLOCK_TABLE_INDEX = 10;
+constexpr uint32_t METADATA_INDEX = 12;
 constexpr uint32_t quant_lightning_indexer = 0;
-// Inputs Index V2
-constexpr uint32_t QUERY_INDEX_V2 = 0;
-constexpr uint32_t KEY_INDEX_V2 = 1;
-constexpr uint32_t WEIGTHS_INDEX_V2 = 2;
-constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX_V2 = 3;
-constexpr uint32_t KEY_DEQUANT_SCALE_INDEX_V2 = 4;
-constexpr uint32_t CU_SEQLENS_Q_INDEX_V2 = 5;
-constexpr uint32_t CU_SEQLENS_K_INDEX_V2 = 6;
-constexpr uint32_t SEQUSED_Q_INDEX_V2 = 7;
-constexpr uint32_t SEQUSED_K_INDEX_V2 = 8;
-constexpr uint32_t BLOCK_TABLE_INDEX_V2 = 10;
-constexpr uint32_t METADATA_INDEX_V2 = 12;
-// Attributes Index
-constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
-constexpr uint32_t ATTR_KEY_QUANT_MODE_INDEX = 1;
+
+// Attributes Index V2
+constexpr uint32_t ATTR_TOPK_INDEX = 0;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 1;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
-constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 5;
-constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 6;
-constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 7;
-constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 8;
-constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 9;
-// Attributes Index V2
-constexpr uint32_t ATTR_TOPK_INDEX_V2 = 0;
-constexpr uint32_t ATTR_QUANT_MODE_INDEX_V2 = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX_V2 = 2;
-constexpr uint32_t ATTR_KEY_LAYOUT_INDEX_V2 = 3;
-constexpr uint32_t ATTR_MASK_MODE_INDEX_V2 = 4;
-constexpr uint32_t ATTR_CMP_RATIO_INDEX_V2 = 5;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX_V2 = 6;
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
+constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
+
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -106,14 +89,14 @@ constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
  	 
-constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
-constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
+// constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
+// constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
 
-constexpr uint32_t V1_OP_VERSION = 1;
-constexpr uint32_t V2_OP_VERSION = 2;;
+// constexpr uint32_t V1_OP_VERSION = 1;
+// constexpr uint32_t V2_OP_VERSION = 2;;
 
-constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
-                                            sizeof(V2_OP_NAME)});
+// constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+//                                             sizeof(V2_OP_NAME)});
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)

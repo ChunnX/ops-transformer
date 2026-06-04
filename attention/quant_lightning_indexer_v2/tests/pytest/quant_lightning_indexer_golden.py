@@ -86,7 +86,7 @@ HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
 class GeneralizedQLI:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
-                 act_seq_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count,
+                 act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
                  k_scale_datarange, cmp_ratio, return_value):
         self.batch_size = batch_size
@@ -108,9 +108,8 @@ class GeneralizedQLI:
         self.act_seq_q = act_seq_q
         self.act_seq_k = act_seq_k
         self.cmp_residual_k = cmp_residual_k
-        self.output_idx_offset = output_idx_offset
+        self.max_seqlen_q = max_seqlen_q
         self.quant_mode = quant_mode
-        self.key_quant_mode = key_quant_mode
         self.layout_query = layout_query
         self.layout_key = layout_key
         self.sparse_count = sparse_count
@@ -695,7 +694,7 @@ def trans_prefix_actseq(self,list):
 def qli_output_single(params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
-    act_seq_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count,\
+    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
     k_scale_datarange, cmp_ratio, return_value = params
     
@@ -708,14 +707,29 @@ def qli_output_single(params):
 
     test_qli = GeneralizedQLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
                     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
-                    act_seq_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count,
+                    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
                     k_scale_datarange, cmp_ratio, return_value)
 
+    # 生成 actual_seq_lengths_query 和 actual_seq_lengths_key
     actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
+                               if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
     actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
+                             if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
+    cu_seqlens_query = (torch.tensor(cu_seqlens_q).to(actual_seq_dtype).npu() 
+                    if (layout_query != "TND" and cu_seqlens_q is not None) 
+                    else None)
+    cu_seqlens_key = (torch.tensor(cu_seqlens_k).to(actual_seq_dtype).npu() 
+                    if (layout_key != "TND" and cu_seqlens_k is not None) 
+                    else None)
+
+    if cmp_ratio == 1:
+        cmp_residual_k = torch.zeros(batch_size, dtype=actual_seq_dtype, device='npu')
+    else:
+        # 假设外部的 cmp_residual_k_input 已定义
+        cmp_residual_k_input = cmp_residual_k
+        cmp_residual_k = torch.tensor(cmp_residual_k_input).to(actual_seq_dtype).npu()
+
 
     if layout_query == "BSND":
         if hifp8mode ==1:
@@ -827,8 +841,8 @@ def qli_output_single(params):
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
     metadata = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2_metadata(
-                                    cu_seqlens_q = cu_seqlens_q,
-                                    cu_seqlens_k = cu_seqlens_k,
+                                    cu_seqlens_q = cu_seqlens_query,
+                                    cu_seqlens_k = cu_seqlens_key,
                                     seqused_q = actual_seq_lengths_query,
                                     seqused_k = actual_seq_lengths_key,
                                     cmp_residual_k = cmp_residual_k,
@@ -849,11 +863,13 @@ def qli_output_single(params):
     npu_result, _ = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
-                                                    cu_seqlens_q = cu_seqlens_q,
-                                                    cu_seqlens_k = cu_seqlens_k,
+                                                    cu_seqlens_q = cu_seqlens_query,
+                                                    cu_seqlens_k = cu_seqlens_key,
                                                     seqused_q = actual_seq_lengths_query,
                                                     seqused_k = actual_seq_lengths_key,
                                                     cmp_residual_k = cmp_residual_k,
+                                                    output_idx_offset = None,
+                                                    max_seqlen_q = max_seqlen_q,
                                                     block_table = block_table,
                                                     metadata = metadata,
                                                     quant_mode = quant_mode,

@@ -24,11 +24,11 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()[f"param_{key}"] = value
     # 生成所有参数组合
     param_names = [
-        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num", "head_dim", 
-        "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q", "cu_seqlens_k",
-        "act_seq_q","act_seq_k", "cmp_residual_k", "output_idx_offset", "quant_mode", "layout_query","layout_key",
-        "sparse_count", "sparse_mode",  "query_datarange","key_datarange","weights_datarange",
-        "q_scale_datarange","k_scale_datarange","cmp_ratio"
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
+        "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
+        "cu_seqlens_k", "act_seq_q", "act_seq_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
+        "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
+        "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value"
     ]
     param_values = [
         locals()["param_batch_size"],
@@ -49,7 +49,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_act_seq_q"],
         locals()["param_act_seq_k"],
         locals()["param_cmp_residual_k"],
-        locals()["param_output_idx_offset"],
+        locals()["param_max_seqlen_q"],
         locals()["param_quant_mode"],
         locals()["param_layout_query"],
         locals()["param_layout_key"],
@@ -60,7 +60,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_weights_datarange"],
         locals()["param_q_scale_datarange"],
         locals()["param_k_scale_datarange"],
-        locals()["param_cmp_ratio"]
+        locals()["param_cmp_ratio"],
+        locals()["param_return_value"]
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -90,7 +91,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         act_seq_q = param_combinations['act_seq_q']
         act_seq_k = param_combinations['act_seq_k']
         cmp_residual_k = param_combinations['cmp_residual_k']
-        quant_mode = param_combinations['query_quant_mode']
+        max_seqlen_q = param_combinations['max_seqlen_q']
+        quant_mode = param_combinations['quant_mode']
         layout_query = param_combinations['layout_query']
         layout_key = param_combinations['layout_key']
         sparse_count = param_combinations['sparse_count']
@@ -101,12 +103,13 @@ for _, params in enumerate(ENABLED_PARAMS):
         q_scale_datarange = param_combinations['q_scale_datarange']
         k_scale_datarange = param_combinations['k_scale_datarange']
         cmp_ratio = param_combinations['cmp_ratio']
+        return_value = param_combinations['return_value']
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
                     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
-                    act_seq_k, cmp_residual_k, quant_mode, layout_query, layout_key, sparse_count,\
+                    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-                    k_scale_datarange, cmp_ratio
+                    k_scale_datarange, cmp_ratio, return_value
 
         # 获得cpu结果(真值)和算子结果（测试值）
         cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qli_output_single(test_data)

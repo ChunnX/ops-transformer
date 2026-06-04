@@ -28,7 +28,7 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
             "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, "\
             "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? "\
             "cmp_residual_k = None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "\
-            "str layout_query=\"BSND\", str layout_key=\"BSND\", int max_seqlen_q=-1, int mask_mode=0, "\
+            "str layout_q=\"BSND\", str layout_k=\"BSND\", int max_seqlen_q=-1, int mask_mode=0, "\
             "int cmp_ratio=1, int return_value=0) -> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -40,16 +40,16 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
         def npu_quant_lightning_indexer_v2_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
                                                 quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                                 block_table=None, output_idx_offset=None, metadata=None, 
-                                                layout_query="BSND", layout_key="BSND", max_seqlen_q=-1,
+                                                layout_q="BSND", layout_k="BSND", max_seqlen_q=-1,
                                                 mask_mode=0, cmp_ratio=1, return_value=0):
-            keyHeadNum = key.shape[1] if layout_key == "TND" else key.shape[2]
+            keyHeadNum = key.shape[1] if layout_k == "TND" else key.shape[2]
 
-            if layout_query == "BSND":
+            if layout_q == "BSND":
                 sparse_indices_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.int32, device="meta")
             else:
                 sparse_indices_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.int32, device="meta")
             if return_value:
-                if layout_query == "BSND":
+                if layout_q == "BSND":
                     sparse_values_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.bfloat16, device="meta")
                 else:
                     sparse_values_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.bfloat16, device="meta")
@@ -67,7 +67,7 @@ def npu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key
                                    quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                    seqused_q=None, seqused_k=None, cmp_residual_k=None, 
                                    block_table=None, output_idx_offset=None, metadata=None, 
-                                   layout_query="BSND", layout_key="BSND", max_seqlen_q=-1,
+                                   layout_q="BSND", layout_k="BSND", max_seqlen_q=-1,
                                    mask_mode=0, cmp_ratio=1, return_value=0):
     """
     dispatcher implementation for NPU.zhe
@@ -76,5 +76,5 @@ def npu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key
     return op_module.npu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale, 
                                                     topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
                                                     cmp_residual_k, block_table, output_idx_offset, metadata,
-                                                    layout_query, layout_key, max_seqlen_q, mask_mode,
+                                                    layout_q, layout_k, max_seqlen_q, mask_mode,
                                                     cmp_ratio, return_value)
