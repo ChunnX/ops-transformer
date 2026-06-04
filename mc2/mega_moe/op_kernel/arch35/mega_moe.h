@@ -136,6 +136,7 @@ private:
     LocalTensor<int32_t> cumsumTmpTensor_;
     LocalTensor<ActivationType> copyTempTensor_;
     LocalTensor<int32_t> resetFlagTensor_;
+    LocalTensor<float> sumOutTensor_;
     LocalTensor<bfloat16_t> dataResBf16_;
     LocalTensor<int32_t> resetTokenTensor_;
     LocalTensor<float> dataResFp32_;
@@ -284,6 +285,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
     // 大小 = CeilAlign(expertPerRank * (INT_CACHELINE + dispatchFlagSlots) * sizeof(int32_t), 32)
     // SwiGluToGmm2 + DispatchToGmm1 两个区域的总flag条目数，32对齐
     resetFlagTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, addr, maxResetBufAlign / sizeof(int32_t));
+    addr += maxResetBufAlign;
+    // [5] sumOutTensor: sum输出buffer
+    // 大小 = sizeof(float)
+    sumOutTensor_ = LocalTensor<float>(TPosition::VECCALC, addr, ALIGN_32 / sizeof(float));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -376,7 +381,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_ID2>();
     DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
-}
+
+    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
+    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
+    Sum(sumOutTensor_, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
+
+    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_ID2>();
+
+    LocalTensor<int32_t> resTensor = sumOutTensor_.template ReinterpretCast<int32_t>();
+    int32_t totalCnt = resTensor.GetValue(0);
+
+    SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_ID2>();
+    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
+    }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
