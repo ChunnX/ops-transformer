@@ -77,7 +77,8 @@ if __name__ == "__main__":
             sys.exit(1)
 
         entries = parse_op_summary(str(csv_path))
-        stats, crashed = compute_stats(entries, cases_list, args.perf_runs, args.perf_cold_thr)
+        stats, crashed = compute_stats(entries, cases_list, args.perf_runs,
+                                         args.perf_cold_thr, log_dir=str(out))
 
         SEP = "─" * 110
         print(f"\n┌{SEP}┐")
@@ -111,7 +112,7 @@ if __name__ == "__main__":
                     min_us="" if is_crash else s["min_us"],
                     max_us="" if is_crash else s["max_us"],
                     mode=s["mode"],
-                    error="kernel crashed, no duration data" if is_crash else "",
+                    error=s.get("error", "") if is_crash else "",
                 ))
         print(f"[perf] {perf_csv}")
         if crashed:
