@@ -136,7 +136,7 @@ public:
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-            if (seqIndex >= 0) {
+            if (seqIndex >= 0 && seqIndex < tilingData_->indexUpperBound) {
                 if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
@@ -177,7 +177,7 @@ public:
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             int64_t tokenOffsetInCurrentPage = tokenIdInCurrentBatch % tilingData_->blockSize;
             int64_t pageId = pageOffset / tilingData_->blockSize;
-            if (pageOffset >= 0) {
+            if (pageOffset >= 0 && pageOffset < tilingData_->indexUpperBound) {
                 if (tilingData_->cacheMode == PA_BLK_NZ_CACHE_MODE) {
                     gmOffset = (pageId * dk1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dk0;
                 } else {
@@ -205,7 +205,7 @@ public:
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
-            if (seqIndex >= 0) {
+            if (seqIndex >= 0 && seqIndex < tilingData_->indexUpperBound) {
                 if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dv;
@@ -246,7 +246,7 @@ public:
             WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
             int64_t tokenOffsetInCurrentPage = tokenIdInCurrentBatch % tilingData_->blockSize;
             int64_t pageId = pageOffset / tilingData_->blockSize;
-            if (pageOffset >= 0) {
+            if (pageOffset >= 0 && pageOffset < tilingData_->indexUpperBound) {
                 if (tilingData_->cacheMode == PA_BLK_NZ_CACHE_MODE) {
                     gmOffset = (pageId * dv1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dv0;
                 } else {
