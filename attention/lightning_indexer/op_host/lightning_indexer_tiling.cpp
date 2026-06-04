@@ -24,25 +24,25 @@ namespace optiling {
 // --------------------------LIInfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor key"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor key"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valuesOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output values is nullptr"),
+    OP_CHECK_IF(opParamInfo_.valuesOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output values"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output values is nullptr"),
+    OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output values"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -50,16 +50,16 @@ ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus LIInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE(opName_, "attr layout_query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layout_query"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE(opName_, "attr layout_key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layout_key"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, OP_LOGE(opName_, "attr sparse_count is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparse_count"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE(opName_, "attr sparse_mode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparse_mode"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -77,7 +77,7 @@ ge::graphStatus LIInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus LIInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("LightningIndexer", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("LightningIndexer", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -87,7 +87,7 @@ ge::graphStatus LIInfoParser::GetOpName()
 ge::graphStatus LIInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "GetPlatformInfo"), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -101,10 +101,10 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
+    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "workSpaceSize got from ge"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-               OP_LOGE(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
+               OP_LOGE_WITH_INVALID_INPUT(opName_, "RawTilingData got from GE context"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -279,17 +279,17 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_key is PA_BSND, input block_table must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengths.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_key is PA_BSND, input actual_seq_lengths_key must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                    OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_key is TND, input actual_seq_lengths_key must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor != nullptr &&
@@ -302,7 +302,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_query is TND, input actual_seq_lengths_query must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_query"),
                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
@@ -310,7 +310,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                OP_LOGE(opName_, "input actual_seq_lengths_query data type only support int32"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
-                   OP_LOGE(opName_, "when key layout is not PA_BSND, input block_table must be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
