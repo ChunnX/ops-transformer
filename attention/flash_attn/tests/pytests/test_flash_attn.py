@@ -99,7 +99,7 @@ if __name__ == "__main__":
         import csv as csv_mod
         perf_csv = out / "perf.csv"
         with open(perf_csv, "w", newline="") as f:
-            w = csv_mod.DictWriter(f, ["#","case","avg_us","min_us","max_us","mode","error"])
+            w = csv_mod.DictWriter(f, ["#","case","dir","avg_us","min_us","max_us","mode","error"])
             w.writeheader()
             for idx, name in enumerate(run_cases, 1):
                 s = stats.get(_case_key(normalize_params(all_cases[name])))
@@ -108,6 +108,7 @@ if __name__ == "__main__":
                 w.writerow(dict(
                     **{"#": idx},
                     case=name,
+                    dir=f"case_{idx-1:04d}",
                     avg_us="" if is_crash else s["avg_us"],
                     min_us="" if is_crash else s["min_us"],
                     max_us="" if is_crash else s["max_us"],
