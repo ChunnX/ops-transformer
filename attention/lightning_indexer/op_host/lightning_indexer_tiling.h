@@ -124,6 +124,7 @@ public:
     fe::PlatFormInfos *platformInfo = nullptr;
     LiParaInfo opParamInfo;
     // Base Param
+    NpuArch npuArch = NpuArch::DAV_2201;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
@@ -215,6 +216,7 @@ public:
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
