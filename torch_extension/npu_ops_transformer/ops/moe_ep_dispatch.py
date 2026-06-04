@@ -73,7 +73,10 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
                "Tensor recv_src_metadata_internal, Tensor num_recv_tokens_per_rank_host_pinned, " \
                "Tensor num_recv_tokens_per_expert_host_pinned, int ep_world_size, int ep_rank_id, " \
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, " \
-               "*, int expert_alignment=1) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
+               "*, int expert_alignment=1, " \
+               "Tensor recv_x, Tensor recv_topk_idx, Tensor recv_topk_weights, " \
+               "Tensor recv_src_metadata, Tensor num_recv_tokens_per_rank, " \
+               "Tensor num_recv_tokens_per_expert) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
