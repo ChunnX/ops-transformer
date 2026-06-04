@@ -24,9 +24,21 @@ constexpr int64_t EXPERT_NUM = 256;
 constexpr int64_t QUANT_MODE_UNQUANT = -1;
 constexpr int64_t QUANT_MODE_STATIC = 0;
 constexpr int64_t QUANT_MODE_DYNAMIC = 1;
+constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
+
+ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDataType)
+{
+    if (quantMode == QUANT_MODE_UNQUANT) {
+        return xDataType;
+    }
+    if (quantMode == QUANT_MODE_INT4_DYNAMIC) {
+        return ge::DT_INT4;
+    }
+    return ge::DT_INT8;
+}
 } // namespace
 
 class MoeInitRoutingV3Tiling : public testing::Test {
@@ -77,7 +89,7 @@ void RunSuccessTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity,
             {{{N, H}, {N, H}}, xDataType, ge::FORMAT_ND},
             {{{N, K}, {N, K}}, ge::DT_INT32, ge::FORMAT_ND},
         },
-        {{{{N * K, H}, {N * K, H}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{{N * K, H}, {N * K, H}}, GetExpandedXDtype(quantMode, xDataType), ge::FORMAT_ND},
          {{{N * K}, {N * K}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},
          {{{N * K}, {N * K}}, ge::DT_FLOAT, ge::FORMAT_ND}},
@@ -112,7 +124,7 @@ void RunFailureTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity,
             {{{N, H}, {N, H}}, xDataType, ge::FORMAT_ND},
             {{{N, K}, {N, K}}, ge::DT_INT32, ge::FORMAT_ND},
         },
-        {{{{N * K, H}, {N * K, H}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{{N * K, H}, {N * K, H}}, GetExpandedXDtype(quantMode, xDataType), ge::FORMAT_ND},
          {{{N * K}, {N * K}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},
          {{{N * K}, {N * K}}, ge::DT_FLOAT, ge::FORMAT_ND}},
@@ -350,6 +362,41 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_14)
     std::vector<size_t> expectWorkspaces = {23291568};
     RunSuccessTestcase(160, 96, 1450, 0, 0, 1, true, QUANT_MODE_DYNAMIC, 0, ge::DT_FLOAT16, {0, 100},
                        ROW_IDX_TYPE_SCATTER, ge::GRAPH_SUCCESS, 11021000, expectTilingData, expectWorkspaces);
+}
+
+// 单核 + INT4动态量化 + gather 10140000
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_01)
+{
+    RunSuccessTestcase(1859, 2880, 1, 0, 0, 1, true, QUANT_MODE_INT4_DYNAMIC, 0, ge::DT_FLOAT, {0, 256},
+                       ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 10140000, "", {});
+}
+
+// 单核 + INT4动态量化 + scatter 10141000
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_02)
+{
+    RunSuccessTestcase(1859, 2880, 1, 0, 0, 1, true, QUANT_MODE_INT4_DYNAMIC, 0, ge::DT_BF16, {0, 100},
+                       ROW_IDX_TYPE_SCATTER, ge::GRAPH_SUCCESS, 10141000, "", {});
+}
+
+// 多核 + INT4动态量化 + gather 11140000
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_03)
+{
+    RunSuccessTestcase(160, 96, 1450, 0, 0, 1, true, QUANT_MODE_INT4_DYNAMIC, 0, ge::DT_FLOAT, {180, 192},
+                       ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11140000, "", {});
+}
+
+// 多核 + INT4动态量化 + scatter 11141000
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_04)
+{
+    RunSuccessTestcase(160, 96, 1450, 0, 0, 1, true, QUANT_MODE_INT4_DYNAMIC, 0, ge::DT_BF16, {0, 100},
+                       ROW_IDX_TYPE_SCATTER, ge::GRAPH_SUCCESS, 11141000, "", {});
+}
+
+// 全载 + INT4动态量化复用动态量化全载key 220000
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_05)
+{
+    RunSuccessTestcase(1, 84, 27, 0, 0, 1, true, QUANT_MODE_INT4_DYNAMIC, 0, ge::DT_FLOAT, {180, 192},
+                       ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 220000, "", {});
 }
 
 // 单核 + static quant + drop mode + scale not None   1100000
