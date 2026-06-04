@@ -616,7 +616,7 @@ def build_attention_mask(actual_seq_q, actual_seq_kv, sq, skv,
         causal_mask = k_range > (q_range + delta)
         return causal_mask | q_padding_mask | k_padding_mask
 
-    if sparse_mode == 4:
+    if sparse_mode == 5:
         delta = k_lens_acl - q_lens_acl
         next_mask = k_range > (q_range + delta + next_tokens)
         pre_mask = k_range < (q_range + delta - pre_tokens)
