@@ -23,6 +23,7 @@
 #include "quant_block_sparse_attention_tiling.h"
 #include "quant_block_sparse_attention_check.h"
 #include "register/op_impl_registry.h"
+#include "log/log.h"
 
 namespace optiling {
 namespace {
@@ -241,6 +242,120 @@ void QuantBlockSparseAttentionTiling::CalcWorkspaceSize()
     workspaceSize_ = 0;
 }
 
+void QuantBlockSparseAttentionTiling::PrintAllTilingData()
+{
+    constexpr const char *kOpName = "QuantBlockSparseAttention";
+
+    auto &baseParams = tilingData_.baseParams;
+    OP_LOGD(kOpName, "===== BaseParams =====");
+    OP_LOGD(kOpName, "bSize:%u", baseParams.get_bSize());
+    OP_LOGD(kOpName, "n1Size:%u", baseParams.get_n1Size());
+    OP_LOGD(kOpName, "n2Size:%u", baseParams.get_n2Size());
+    OP_LOGD(kOpName, "gSize:%u", baseParams.get_gSize());
+    OP_LOGD(kOpName, "s1Size:%u", baseParams.get_s1Size());
+    OP_LOGD(kOpName, "s2Size:%u", baseParams.get_s2Size());
+    OP_LOGD(kOpName, "dSize:%u", baseParams.get_dSize());
+    OP_LOGD(kOpName, "dSizeV:%u", baseParams.get_dSizeV());
+    OP_LOGD(kOpName, "qbMax:%u", baseParams.get_qbMax());
+    OP_LOGD(kOpName, "kbMax:%u", baseParams.get_kbMax());
+    OP_LOGD(kOpName, "sparseCount:%u", baseParams.get_sparseCount());
+    OP_LOGD(kOpName, "qBlockSize:%u", baseParams.get_qBlockSize());
+    OP_LOGD(kOpName, "kvBlockSize:%u", baseParams.get_kvBlockSize());
+    OP_LOGD(kOpName, "maxBlockNumPerBatch:%u", baseParams.get_maxBlockNumPerBatch());
+    OP_LOGD(kOpName, "softmaxScale:%f", baseParams.get_softmaxScale());
+
+    auto &attrParams = tilingData_.attrParams;
+    OP_LOGD(kOpName, "===== AttrParams =====");
+    OP_LOGD(kOpName, "layoutQ:%u", attrParams.get_layoutQ());
+    OP_LOGD(kOpName, "layoutKv:%u", attrParams.get_layoutKv());
+    OP_LOGD(kOpName, "layoutSparseIndices:%u", attrParams.get_layoutSparseIndices());
+    OP_LOGD(kOpName, "quantMode:%u", attrParams.get_quantMode());
+    OP_LOGD(kOpName, "maskMode:%u", attrParams.get_maskMode());
+    OP_LOGD(kOpName, "returnSoftmaxLse:%u", attrParams.get_returnSoftmaxLse());
+
+    auto &paParams = tilingData_.paParams;
+    OP_LOGD(kOpName, "===== PaParams =====");
+    OP_LOGD(kOpName, "blockSize:%u", paParams.get_blockSize());
+    OP_LOGD(kOpName, "blockTableDim2:%u", paParams.get_blockTableDim2());
+    OP_LOGD(kOpName, "paBlockNumSum:%u", paParams.get_paBlockNumSum());
+    OP_LOGD(kOpName, "paLayoutType:%u", paParams.get_paLayoutType());
+
+    auto &sparseParams = tilingData_.sparseParams;
+    OP_LOGD(kOpName, "===== SparseParams =====");
+    OP_LOGD(kOpName, "gS1OuterSize:%u", sparseParams.get_gS1OuterSize());
+    OP_LOGD(kOpName, "sparseSeqLenStride:%u", sparseParams.get_sparseSeqLenStride());
+    OP_LOGD(kOpName, "sparseIndicesStride:%u", sparseParams.get_sparseIndicesStride());
+
+    auto &inputParams = tilingData_.inputParamsRegbase;
+    OP_LOGD(kOpName, "===== InputParamsRegbase =====");
+    OP_LOGD(kOpName, "bSize:%ld", inputParams.get_bSize());
+    OP_LOGD(kOpName, "t1Size:%ld", inputParams.get_t1Size());
+    OP_LOGD(kOpName, "t2Size:%ld", inputParams.get_t2Size());
+    OP_LOGD(kOpName, "n2Size:%ld", inputParams.get_n2Size());
+    OP_LOGD(kOpName, "gSize:%ld", inputParams.get_gSize());
+    OP_LOGD(kOpName, "s1Size:%ld", inputParams.get_s1Size());
+    OP_LOGD(kOpName, "s2Size:%ld", inputParams.get_s2Size());
+    OP_LOGD(kOpName, "alignedS2:%ld", inputParams.get_alignedS2());
+    OP_LOGD(kOpName, "dSize:%ld", inputParams.get_dSize());
+    OP_LOGD(kOpName, "dSizeV:%ld", inputParams.get_dSizeV());
+    OP_LOGD(kOpName, "dSizeRope:%ld", inputParams.get_dSizeRope());
+    OP_LOGD(kOpName, "keepProb:%f", inputParams.get_keepProb());
+    OP_LOGD(kOpName, "scaleValue:%f", inputParams.get_scaleValue());
+    OP_LOGD(kOpName, "preTokens:%ld", inputParams.get_preTokens());
+    OP_LOGD(kOpName, "nextTokens:%ld", inputParams.get_nextTokens());
+    OP_LOGD(kOpName, "layoutType:%u", inputParams.get_layoutType());
+    OP_LOGD(kOpName, "attenMaskCompressMode:%u", inputParams.get_attenMaskCompressMode());
+    OP_LOGD(kOpName, "attenMaskS2Size:%u", inputParams.get_attenMaskS2Size());
+    OP_LOGD(kOpName, "isActualSeqLengthsNull:%u", inputParams.get_isActualSeqLengthsNull());
+    OP_LOGD(kOpName, "isActualSeqLengthsKVNull:%u", inputParams.get_isActualSeqLengthsKVNull());
+    OP_LOGD(kOpName, "isKvContinuous:%u", inputParams.get_isKvContinuous());
+    OP_LOGD(kOpName, "isGqa:%u", inputParams.get_isGqa());
+    OP_LOGD(kOpName, "isSoftMaxLseEnable:%u", inputParams.get_isSoftMaxLseEnable());
+    OP_LOGD(kOpName, "headNumRatio:%u", inputParams.get_headNumRatio());
+    OP_LOGD(kOpName, "blockSize:%d", inputParams.get_blockSize());
+    OP_LOGD(kOpName, "blockTableDim2:%d", inputParams.get_blockTableDim2());
+    OP_LOGD(kOpName, "paBlockNumSum:%d", inputParams.get_paBlockNumSum());
+    OP_LOGD(kOpName, "paLayoutType:%u", inputParams.get_paLayoutType());
+
+    auto &multiCoreParams = tilingData_.multiCoreParamsRegbase;
+    OP_LOGD(kOpName, "===== MultiCoreParams =====");
+    OP_LOGD(kOpName, "coreNum:%d", multiCoreParams.get_coreNum());
+    OP_LOGD(kOpName, "totalSize:%ld", multiCoreParams.get_totalSize());
+    OP_LOGD(kOpName, "s1OuterSize:%ld", multiCoreParams.get_s1OuterSize());
+    OP_LOGD(kOpName, "splitFactorSize:%ld", multiCoreParams.get_splitFactorSize());
+    OP_LOGD(kOpName, "splitFactorTailSize:%ld", multiCoreParams.get_splitFactorTailSize());
+    for (uint32_t i = 0; i <= usedCoreNum_ && i < BSA_CORE_SPLIT_NUM; ++i) {
+        OP_LOGD(kOpName, "bnStartIdx[%u]:%u, sparseStartIdx[%u]:%ld", i, multiCoreParams.get_bnStartIdx()[i], i,
+                multiCoreParams.get_sparseStartIdx()[i]);
+    }
+    OP_LOGD(kOpName, "firstFullLoadS1OuterIdx:%ld", multiCoreParams.get_firstFullLoadS1OuterIdx());
+    OP_LOGD(kOpName, "splitCoreMode:%u", multiCoreParams.get_splitCoreMode());
+
+    auto &dropmaskParams = tilingData_.dropmaskParamsRegbase;
+    OP_LOGD(kOpName, "===== DropmaskParams =====");
+    OP_LOGD(kOpName, "multiCoreFactorSize:%d", dropmaskParams.get_multiCoreFactorSize());
+    OP_LOGD(kOpName, "baseUbCalSize:%d", dropmaskParams.get_baseUbCalSize());
+    OP_LOGD(kOpName, "multiCoreTotalSize:%ld", dropmaskParams.get_multiCoreTotalSize());
+    OP_LOGD(kOpName, "shapeTotalSize:%ld", dropmaskParams.get_shapeTotalSize());
+    OP_LOGD(kOpName, "dropMaskAddrOffset:%ld", dropmaskParams.get_dropMaskAddrOffset());
+
+    auto &initOutputParams = tilingData_.initOutputParams;
+    OP_LOGD(kOpName, "===== InitOutputParams =====");
+    OP_LOGD(kOpName, "singleCoreSize:%u", initOutputParams.get_singleCoreSize());
+    OP_LOGD(kOpName, "needInit:%u", initOutputParams.get_needInit());
+    OP_LOGD(kOpName, "isOneN:%u", initOutputParams.get_isOneN());
+    OP_LOGD(kOpName, "totalOutputSize:%ld", initOutputParams.get_totalOutputSize());
+    OP_LOGD(kOpName, "totalSoftMaxLseOutputSize:%ld", initOutputParams.get_totalSoftMaxLseOutputSize());
+
+    OP_LOGD(kOpName, "===== Summary =====");
+    OP_LOGD(kOpName, "usedCoreNum:%u", usedCoreNum_);
+    OP_LOGD(kOpName, "totalTaskNum:%lu", totalTaskNum_);
+    OP_LOGD(kOpName, "tilingKey:%lu", tilingKey_);
+    OP_LOGD(kOpName, "workspaceSize:%lu", workspaceSize_);
+    OP_LOGD(kOpName, "tilingDataSize:%lu", tilingData_.GetDataSize());
+    OP_LOGD(kOpName, "tilingDataCapacity:%lu", context_->GetRawTilingData()->GetCapacity());
+}
+
 ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAttentionTilingInfo *tilingInfo)
 {
     if (tilingInfo == nullptr || context_ == nullptr) {
@@ -267,6 +382,7 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
     FillInitOutputParams();
     CalcTilingKey();
     CalcWorkspaceSize();
+    PrintAllTilingData();
 
     auto rawTilingData = context_->GetRawTilingData();
     if (rawTilingData == nullptr) {
