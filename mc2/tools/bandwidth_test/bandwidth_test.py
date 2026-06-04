@@ -1,4 +1,4 @@
-#  Copyright (c) 2025 Huawei Technologies Co., Ltd.
+#  Copyright (c) 2026 Huawei Technologies Co., Ltd.
 #  This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 #  CANN Open Software License Agreement Version 2.0 (the "License").
 #  Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -133,7 +133,7 @@ else:
     mode = 1
 # endregion
 
-comm_alg = "urma"
+comm_alg = "mte"
 
 # region 其他配置
 is_save_tensor_to_bin = False
@@ -242,7 +242,7 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / (num_world_size-1)
     single_rank_data_kb = single_rank_data_bytes / 1024
     
-    logger.info("\n" + "=" * 60)
+    logger.info("=" * 60)
     logger.info("Bandwidth Test Performance Results")
     logger.info("=" * 60)
     logger.info(f"Single rank data: {single_rank_data_kb:.4f} KB")
@@ -313,8 +313,8 @@ def compile_model(model):
         logger.info(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
     npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
 
-    if graph_type == 1:  
-        logger.info('graph_type=1, 测试场景: 传统入图模式，静态shape+在线编译场景')
+    if graph_type == 3:  
+        logger.info('graph_type=3, 测试场景: aclgraph入图模式')
         compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
 
     return compiled_model
@@ -447,19 +447,19 @@ def compare_result(
                 all_pass = False
         return all_pass
     
-    logger.info(f"\n{'='*60}")
+    logger.info(f"{'='*60}")
     logger.info(f"对比 {name}")
     logger.info(f"NPU shape: {npu_output.shape}, Golden shape: {golden_output.shape}")
     logger.info(f"{'='*60}")
     
     if verbose:
-        logger.info(f"\nNPU 输出:")
+        logger.info(f"NPU 输出:")
         logger.info(npu_output)
-        logger.info(f"\nGolden 输出:")
+        logger.info(f"Golden 输出:")
         logger.info(golden_output)
     
     if torch.equal(npu_output, golden_output):
-        logger.info(f"\n[PASS] {name} 精度对比通过 (完全一致)")
+        logger.info(f"[PASS] {name} 精度对比通过 (完全一致)")
         return True
     
     diff = torch.abs(npu_output - golden_output)
@@ -471,32 +471,32 @@ def compare_result(
         max_rel_diff = rel_diff.max().item()
         
         if verbose:
-            logger.info(f"\n差异:")
+            logger.info(f"差异:")
             logger.info(diff)
-            logger.info(f"\n相对差异:")
+            logger.info(f"相对差异:")
             logger.info(rel_diff)
         
         if max_rel_diff > rtol and max_diff > atol:
-            logger.error(f"\n[ERROR] {name} 精度不满足要求:")
+            logger.error(f"[ERROR] {name} 精度不满足要求:")
             logger.error(f"  最大相对误差: {max_rel_diff}")
             logger.error(f"  容忍范围: rtol={rtol}, atol={atol}")
             return False
         else:
-            logger.info(f"\n[PASS] {name} 精度对比通过 (误差在容忍范围内)")
+            logger.info(f"[PASS] {name} 精度对比通过 (误差在容忍范围内)")
             logger.info(f"  最大绝对误差: {max_diff}, 最大相对误差: {max_rel_diff:.2e}")
     else:
         mean_diff = diff.float().mean().item()
         
         if verbose:
-            logger.info(f"\n差异:")
+            logger.info(f"差异:")
             logger.info(diff)
         
         if max_diff > atol:
-            logger.error(f"\n[ERROR] {name} 精度不满足要求:")
+            logger.error(f"[ERROR] {name} 精度不满足要求:")
             logger.error(f"  容忍范围: atol={atol}")
             return False
         else:
-            logger.info(f"\n[PASS] {name} 精度对比通过 (误差在容忍范围内)")
+            logger.info(f"[PASS] {name} 精度对比通过 (误差在容忍范围内)")
             logger.info(f"  最大绝对误差: {max_diff}")
     
     return True
@@ -614,9 +614,9 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     
     for _, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
-        logger.info(f"\n{'='*60}")
-        logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},
-        max_bs={test_max_bs}")
+        logger.info(f"{'='*60}")
+        logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},"
+        f"max_bs={test_max_bs}")
         logger.info(f"{'='*60}")
         
         logger.info(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
@@ -674,7 +674,7 @@ def run_precision_test(
     test_max_bs: int, test_data_size: int
 ) -> bool:
     """运行精度测试"""
-    logger.info("\n" + "=" * 60)
+    logger.info("=" * 60)
     logger.info("Precision Test")
     logger.info("=" * 60)
     
@@ -707,13 +707,13 @@ def run_precision_test(
     else:
         logger.error("Get result_queue Failed")
   
-    logger.info("\n" + "-" * 60)
+    logger.info("-" * 60)
     logger.info("Precision Verification:")
     logger.info("-" * 60)
     
     all_pass = True
     for rank in range(world_size):
-        logger.info(f"\n[Rank {rank}] 开始精度对比...")
+        logger.info(f"[Rank {rank}] 开始精度对比...")
         
         golden_y, golden_receive_cnt = gen_golden_data(
             rank, x_per_rank, dstrank_id_per_rank, test_max_bs, test_data_size
@@ -735,7 +735,7 @@ def run_bandwidth_test(
     test_max_bs: int, test_data_size: int
 ) -> Dict[str, Any]:
     """运行带宽测试"""
-    logger.info("\n" + "=" * 60)
+    logger.info("=" * 60)
     logger.info("Bandwidth Test")
     logger.info("=" * 60)
     
@@ -835,7 +835,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
 
 def print_summary_table(results: List[Dict[str, Any]]):
     """打印汇总结果表格"""
-    logger.info("\n" + "=" * 90)
+    logger.info("=" * 90)
     logger.info("Bandwidth Test Summary - All Configurations")
     logger.info("=" * 90)
     
@@ -865,7 +865,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("-" * 90)
     
     if max_bw_config:
-        logger.info(f"\n{'*'*90}")
+        logger.info(f"{'*'*90}")
         logger.info(f"Maximum Bandwidth: {max_bw_config['max_bandwidth_gbps']:.2f} GB/s")
         logger.info(f"  H: {max_bw_config['config']['data_size']}")
         logger.info(f"  Total Data: {max_bw_config['single_rank_data_kb']:.4f} KB")
@@ -885,7 +885,7 @@ def main():
     if is_bandwidth_test and len(test_configs) > 1:
         all_results = run_multi_config_bandwidth_test()
         
-        logger.info("\n" + "=" * 60)
+        logger.info("=" * 60)
         logger.info("Test Summary")
         logger.info("=" * 60)
         logger.info(f"Total configurations tested: {len(all_results)}/{len(test_configs)}")
@@ -902,7 +902,7 @@ def main():
         if is_bandwidth_test:
             bandwidth_result = run_bandwidth_test(x_per_rank, dstrank_id_per_rank, max_bs, data_size)
         
-        logger.info("\n" + "=" * 60)
+        logger.info("=" * 60)
         logger.info("Test Summary")
         logger.info("=" * 60)
         
