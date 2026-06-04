@@ -71,14 +71,18 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GET_TILING_DATA(tilingData, tilingGM);
 
     if (!tilingData.isFp16) {
+        using CommOpType = HcclA2avOp<bfloat16_t, true, TILINGKEY_COMM_MODE>;
         using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, bfloat16_t,
             bfloat16_t, float, bfloat16_t, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
             false, true>;
         using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, bfloat16_t,
             bfloat16_t, float, bfloat16_t, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
             true, true>;
-        A2avGmmScheduler<HcclA2avOp<bfloat16_t, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-            AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler;
+        CommOpType commOp;
+        ComputeOpType computeOp;
+        LocalComputeOpType localComputeOp;
+        A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType,
+            AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler(commOp, computeOp, localComputeOp);
 
         GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
             gmmArray, gmmArrayAddr_, tilingGM);
@@ -93,14 +97,18 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         return;
     }
 
+    using CommOpType = HcclA2avOp<half, true, TILINGKEY_COMM_MODE>;
     using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, half,
         half, float, half, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
         false, true>;
     using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, half,
         half, float, half, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
         true, true>;
-    A2avGmmScheduler<HcclA2avOp<half, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-        AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler;
+    CommOpType commOp;
+    ComputeOpType computeOp;
+    LocalComputeOpType localComputeOp;
+    A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType,
+        AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE> a2avGmmScheduler(commOp, computeOp, localComputeOp);
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
         gmmArray, gmmArrayAddr_, tilingGM);
