@@ -193,7 +193,7 @@ public:
         AscendC::GlobalTensor<int32_t> gBlockTable,
         LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
         uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint64_t keyBnStride)
+        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint64_t valueBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
@@ -213,7 +213,7 @@ public:
                 uint32_t nowLen = (curBlockIdx < (curBlockTotalNum-1)) ? (blockSize - blockStartOffset) : (blockEnd - blockStartOffset);
                 uint32_t nowNIdx = nIdx * maxKVStackLen / blockSize + curBlockIdx;
                 getBlockShape(actualShape, nowLen);
-                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize, keyBnStride);
+                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize, valueBnStride);
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
                 uint32_t curBlockSize = (curBlockIdx > 0) ? ((curBlockIdx - 1) * blockSize + blockStart) : 0;
                 MatrixCoord l1BTileCoord{curBlockSize, 0};
