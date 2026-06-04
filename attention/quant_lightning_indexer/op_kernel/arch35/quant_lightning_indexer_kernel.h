@@ -400,7 +400,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
-        aiCoreIdx = tmpBlockIdx / CVRATIO;  // 使用宏定义CVRATIO
+        aiCoreIdx = tmpBlockIdx / CVRATIO;
     } else {
         tmpBlockIdx = GetBlockIdx();  // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -588,7 +588,7 @@ template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * CVRATIO;  // CVRATIO表示AIC:AIV比值，默认2（1:2），可配置为1（1:1）
+        uint32_t aivCoreNum = GetBlockNum() * CVRATIO;
         uint64_t totalOutputSize;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
             totalOutputSize = constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
