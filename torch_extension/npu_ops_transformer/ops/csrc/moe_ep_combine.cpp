@@ -48,12 +48,12 @@ tensor_list npu_moe_ep_combine(const at::Tensor &context, const at::Tensor &x,
         combined_topk_weights = at::Tensor();
     }
 
-    at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
-    at::Tensor bias0_tensor = at::Tensor();
-    at::Tensor bias1_tensor = at::Tensor();
+    c10::optional<at::Tensor> topk_weights_opt = topk_weights;
+    c10::optional<at::Tensor> bias_0_opt = c10::optional<at::Tensor>();
+    c10::optional<at::Tensor> bias_1_opt = c10::optional<at::Tensor>();
 
     ACLNN_CMD(aclnnMoeEpCombine, context, x, dst_buffer_slot_idx, recv_src_metadata,
-        num_recv_tokens_per_rank, topk_weights_tensor, bias0_tensor, bias1_tensor,
+        num_recv_tokens_per_rank, topk_weights_opt, bias_0_opt, bias_1_opt,
         ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank, ccl_buffer_size,
         combined_x, combined_topk_weights);
 

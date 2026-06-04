@@ -194,7 +194,7 @@ class MoEElasticBuffer:
 
         return ccl_buffer_size
 
-    def _unpack_bias(bias):
+    def _unpack_bias(self, bias):
         if bias is None:
             return None, None
         if isinstance(bias, torch.Tensor):
