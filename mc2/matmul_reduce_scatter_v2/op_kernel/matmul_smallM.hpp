@@ -322,7 +322,7 @@ public:
                 LayoutC layout_tmp;
                 // 计算切片的layout和offset
                 if (smallMBlockIdxCoord.n() < smallMNEd) {
-                    //当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。smallMNSt~n_ed的通信矩阵切块是nd排布。
+                    // 当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。smallMNSt~n_ed的通信矩阵切块是nd排布。
                     n_comm_block = smallMNEd - smallMNSt;
                     int32_t comm_loopIdx = smallMLoopIdx - m_loop * smallMNSt;
                     int32_t n_len = n_comm_block * L1TileShape::N;
@@ -334,7 +334,9 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNSt * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = L1TileShape::N * smallMNSt *
+                        params.problemShape.m() +
+                        layout_tmp.GetOffset(offsetC_comm);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
                     n_comm_block = smallMNxtEd - smallMNEd;
@@ -348,7 +350,9 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNEd * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = L1TileShape::N * smallMNEd *
+                        params.problemShape.m() +
+                        layout_tmp.GetOffset(offsetC_comm);
                 }
 
                 if constexpr (HasBias) {
@@ -381,8 +385,13 @@ public:
                     int64_t smallMGmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
                     int64_t smallMGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
-                    blockMmad(gmA[smallMGmOffsetA], params.layoutA, gmB[smallMGmOffsetB], params.layoutB, gmDst[smallMGmOffsetC],
-                              layout_tmp, gmA[smallMGmOffsetNextA], gmB[smallMGmOffsetNextB], smallMBlockSizeCoord, smallMNextBlockSizeCoord,
+                    blockMmad(gmA[smallMGmOffsetA], params.layoutA,
+                              gmB[smallMGmOffsetB], params.layoutB,
+                              gmDst[smallMGmOffsetC], layout_tmp,
+                              gmA[smallMGmOffsetNextA],
+                              gmB[smallMGmOffsetNextB],
+                              smallMBlockSizeCoord,
+                              smallMNextBlockSizeCoord,
                               smallMIsFirstBlock, smallMHasNextBlock);
                 }
             }

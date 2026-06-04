@@ -301,8 +301,10 @@ public:
                 GemmCoord matmulBlockIdxCoord =
                     GetBlockIdCoord(matmulInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord matmulBlockLocCoord = GetBlockLocCoord(matmulBlockIdxCoord);
-                GemmCoord matmulBlockSizeCoord = GetBlockSizeCoord(matmulBlockIdxCoord, matmulBlockLocCoord, mLoopPerRank, finalM, nLoops,
-                                                             params.problemShape.n(), params.problemShape.k());
+                GemmCoord matmulBlockSizeCoord = GetBlockSizeCoord(
+                    matmulBlockIdxCoord, matmulBlockLocCoord, mLoopPerRank,
+                    finalM, nLoops, params.problemShape.n(),
+                    params.problemShape.k());
 
                 MatrixCoord offsetA{matmulBlockLocCoord.m(), matmulBlockLocCoord.k()};
                 MatrixCoord offsetB{matmulBlockLocCoord.k(), matmulBlockLocCoord.n()};
@@ -315,9 +317,10 @@ public:
                 if (std::is_same<ElementC, int32_t>::value) {
                     gmDst = gmWorkSpace;
                     layoutGmDst = params.layoutPeerMem;
-                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm + matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
-                                 (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
-                                matmulBlockSize;
+                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm +
+                        matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
+                        (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
+                        matmulBlockSize;
                 } else if (matmulDstRankIdx == params.rankIdx) {
                     gmDst = gmC;
                     layoutGmDst = params.layoutC;
@@ -325,9 +328,10 @@ public:
                 } else {
                     gmDst = gmPeerMem;
                     layoutGmDst = params.layoutPeerMem;
-                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm + matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
-                                 (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
-                                matmulBlockSize;
+                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm +
+                        matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
+                        (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
+                        matmulBlockSize;
                 }
                 if constexpr (HasBias) {
                     blockMmad(

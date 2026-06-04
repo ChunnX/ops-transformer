@@ -349,7 +349,9 @@ public:
         uint32_t subblockNumDequant = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdxDequant = subblockIdxDequant; loopIdxDequant < tileLoopsDequant; loopIdxDequant += subblockNumDequant) {
+        for (uint32_t loopIdxDequant = subblockIdxDequant;
+             loopIdxDequant < tileLoopsDequant;
+             loopIdxDequant += subblockNumDequant) {
             auto tileCoordDequant = epilogueTileSwizzleDequant.GetTileCoord(loopIdxDequant);
             auto actualTileShapeDequant = epilogueTileSwizzleDequant.GetActualTileShape(tileCoordDequant);
             auto tileOffsetDequant = tileCoordDequant * tileShapeDequant;
@@ -475,7 +477,9 @@ public:
         uint32_t subblockNumPerToken = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdxPerToken = subblockIdxPerToken; loopIdxPerToken < tileLoopsPerToken; loopIdxPerToken += subblockNumPerToken) {
+        for (uint32_t loopIdxPerToken = subblockIdxPerToken;
+             loopIdxPerToken < tileLoopsPerToken;
+             loopIdxPerToken += subblockNumPerToken) {
             auto tileCoordPerToken = epilogueTileSwizzlePerToken.GetTileCoord(loopIdxPerToken);
             auto actualTileShapePerToken = epilogueTileSwizzlePerToken.GetActualTileShape(tileCoordPerToken);
             auto tileOffsetPerToken = tileCoordPerToken * tileShapePerToken;

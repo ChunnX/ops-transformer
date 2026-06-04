@@ -430,7 +430,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
     
     // 等待最后一轮通信结束
     if (GetBlockIdx() == 0) {
-        hccl_.Wait(handles_[lastIndex + handleShift]); 
+        hccl_.Wait(handles_[lastIndex + handleShift]);
     }
     SyncAll<true>();
 

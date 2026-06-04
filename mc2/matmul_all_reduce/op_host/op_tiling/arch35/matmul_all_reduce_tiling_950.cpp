@@ -299,17 +299,20 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
     const uint64_t mValue = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(
         mValue > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(mValue).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+            std::to_string(mValue).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t kValue = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         kValue > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(kValue).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+            std::to_string(kValue).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t nValue = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
         nValue > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(nValue).c_str(), "exceeds upper limit INT32_MAX"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
+            std::to_string(nValue).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
 
     return CheckEmptyTensor();
