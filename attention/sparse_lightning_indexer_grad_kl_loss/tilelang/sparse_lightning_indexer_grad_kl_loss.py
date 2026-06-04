@@ -505,7 +505,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("V", 2)
 
             # ============================================================
-            # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
+            # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex -> dQueryIndex)
+            # dQueryIndex = reluGrad @ GatherKeyIndex (NO transpose)
+            # reluGrad: (Nidx1, K), GatherKeyIndex: (K, DQueryIndex)
+            # = (Nidx1, DQueryIndex)
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(2)
@@ -528,7 +531,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 GKI4_L1,
                             )
                             T.barrier_all()
-                            T.gemm_v0(RG_L1, GKI4_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
+                            T.gemm_v0(RG_L1, GKI4_L1, DQ_L0C, transpose_B=False, init=(n_idx == 0))
                             T.barrier_all()
                         T.copy(
                             DQ_L0C,
