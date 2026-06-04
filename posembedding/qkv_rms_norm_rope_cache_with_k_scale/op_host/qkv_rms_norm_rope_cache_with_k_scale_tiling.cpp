@@ -27,6 +27,7 @@ using qkv_rms_norm_rope_cache_with_k_scale::ContractStatusName;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractTiling;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
+using qkv_rms_norm_rope_cache_with_k_scale::TensorStrideInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::ValidateAndBuildTiling;
 
 constexpr size_t kQkvIndex = 0;
@@ -48,28 +49,64 @@ constexpr size_t kEpsilonAttrIndex = 1;
 constexpr uint64_t kTilingKeyArch35D128 = 350128;
 constexpr float kDefaultEpsilon = 1e-6f;
 
-TensorShapeInfo ToShapeInfo(const gert::StorageShape *shape)
+TensorShapeInfo ToShapeInfo(const gert::Shape &shape)
 {
     TensorShapeInfo info;
+    info.rank = static_cast<uint32_t>(shape.GetDimNum());
+    if (info.rank > 0) {
+        info.dim0 = static_cast<uint64_t>(shape.GetDim(0));
+    }
+    if (info.rank > 1) {
+        info.dim1 = static_cast<uint64_t>(shape.GetDim(1));
+    }
+    if (info.rank > 2) {
+        info.dim2 = static_cast<uint64_t>(shape.GetDim(2));
+    }
+    if (info.rank > 3) {
+        info.dim3 = static_cast<uint64_t>(shape.GetDim(3));
+    }
+    return info;
+}
+
+TensorShapeInfo ToShapeInfo(const gert::StorageShape *shape)
+{
     if (shape == nullptr) {
+        TensorShapeInfo info;
         info.present = false;
         return info;
     }
-    const gert::Shape &storageShape = shape->GetStorageShape();
-    info.rank = static_cast<uint32_t>(storageShape.GetDimNum());
+    return ToShapeInfo(shape->GetStorageShape());
+}
+
+TensorStrideInfo ToStrideInfo(const gert::Stride &stride)
+{
+    TensorStrideInfo info;
+    info.rank = static_cast<uint32_t>(stride.GetDimNum());
     if (info.rank > 0) {
-        info.dim0 = static_cast<uint64_t>(storageShape.GetDim(0));
+        info.stride0 = static_cast<uint64_t>(stride.GetStride(0));
     }
     if (info.rank > 1) {
-        info.dim1 = static_cast<uint64_t>(storageShape.GetDim(1));
+        info.stride1 = static_cast<uint64_t>(stride.GetStride(1));
     }
     if (info.rank > 2) {
-        info.dim2 = static_cast<uint64_t>(storageShape.GetDim(2));
+        info.stride2 = static_cast<uint64_t>(stride.GetStride(2));
     }
     if (info.rank > 3) {
-        info.dim3 = static_cast<uint64_t>(storageShape.GetDim(3));
+        info.stride3 = static_cast<uint64_t>(stride.GetStride(3));
     }
     return info;
+}
+
+TensorStrideInfo MakeContiguousStrideInfo(const gert::Shape &shape)
+{
+    gert::Stride stride;
+    stride.SetDimNum(shape.GetDimNum());
+    int64_t currentStride = 1;
+    for (int32_t dim = static_cast<int32_t>(shape.GetDimNum()) - 1; dim >= 0; --dim) {
+        stride.SetStride(dim, currentStride);
+        currentStride *= shape.GetDim(dim);
+    }
+    return ToStrideInfo(stride);
 }
 
 ContractDtype ToContractDtype(ge::DataType dtype)
@@ -88,14 +125,47 @@ ContractDtype ToContractDtype(ge::DataType dtype)
     }
 }
 
-TensorContractInfo ToTensorInfo(gert::TilingContext *context, size_t index)
+void FillInputDtype(gert::TilingContext *context, size_t index, TensorContractInfo &info)
 {
-    TensorContractInfo info;
-    info.shape = ToShapeInfo(context->GetInputShape(index));
     const auto desc = context->GetInputDesc(index);
     if (desc != nullptr) {
         info.dtype = ToContractDtype(desc->GetDataType());
     }
+}
+
+TensorContractInfo ToTensorInfo(gert::TilingContext *context, size_t index)
+{
+    TensorContractInfo info;
+    info.shape = ToShapeInfo(context->GetInputShape(index));
+    FillInputDtype(context, index, info);
+    return info;
+}
+
+TensorContractInfo ToCacheTensorInfo(gert::TilingContext *context, size_t index)
+{
+    TensorContractInfo info;
+    const auto storageShape = context->GetInputShape(index);
+    if (storageShape == nullptr) {
+        info.shape.present = false;
+        info.stride.present = false;
+        FillInputDtype(context, index, info);
+        return info;
+    }
+
+    if (context->InputIsView(index)) {
+        const auto inputStride = context->GetInputStride(index);
+        if (inputStride != nullptr && inputStride->GetDimNum() != 0) {
+            info.shape = ToShapeInfo(storageShape->GetShape());
+            info.stride = ToStrideInfo(*inputStride);
+            FillInputDtype(context, index, info);
+            return info;
+        }
+    }
+
+    const gert::Shape &shape = storageShape->GetStorageShape();
+    info.shape = ToShapeInfo(shape);
+    info.stride = MakeContiguousStrideInfo(shape);
+    FillInputDtype(context, index, info);
     return info;
 }
 
@@ -128,7 +198,7 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
 
     const auto qkv = ToTensorInfo(context, kQkvIndex);
     const auto cosSin = ToTensorInfo(context, kCosSinIndex);
-    const auto kCache = ToTensorInfo(context, kKCacheIndex);
+    const auto kCache = ToCacheTensorInfo(context, kKCacheIndex);
     const auto cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
     const auto &qkvShape = qkv.shape;
     const auto &cosSinShape = cosSin.shape;
@@ -159,8 +229,8 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
     input.cosSin = cosSin;
     input.slotMapping = ToTensorInfo(context, kSlotMappingIndex);
     input.kCache = kCache;
-    input.vCache = ToTensorInfo(context, kVCacheIndex);
-    input.kScaleCache = ToTensorInfo(context, kKScaleCacheIndex);
+    input.vCache = ToCacheTensorInfo(context, kVCacheIndex);
+    input.kScaleCache = ToCacheTensorInfo(context, kKScaleCacheIndex);
     input.cuSeqLen = cuSeqLen;
     input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
     input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);
@@ -187,9 +257,15 @@ void FillTilingData(const ContractInput &input, const ContractTiling &contractTi
     tilingData.coreGroupNum = contractTiling.coreGroupNum;
     tilingData.qkvStrideT = (input.numQHeads + input.numKHeads + input.numVHeads) * input.headDim;
     tilingData.qkvStrideH = input.headDim;
-    tilingData.cacheStrideBlock = input.numKHeads * input.blockSize * input.headDim;
-    tilingData.cacheStrideHead = input.blockSize * input.headDim;
-    tilingData.cacheStrideToken = input.headDim;
+    tilingData.kCacheStrideBlock = contractTiling.kCacheStrideBlock;
+    tilingData.kCacheStrideHead = contractTiling.kCacheStrideHead;
+    tilingData.kCacheStrideToken = contractTiling.kCacheStrideToken;
+    tilingData.vCacheStrideBlock = contractTiling.vCacheStrideBlock;
+    tilingData.vCacheStrideHead = contractTiling.vCacheStrideHead;
+    tilingData.vCacheStrideToken = contractTiling.vCacheStrideToken;
+    tilingData.kScaleCacheStrideBlock = contractTiling.kScaleCacheStrideBlock;
+    tilingData.kScaleCacheStrideHead = contractTiling.kScaleCacheStrideHead;
+    tilingData.kScaleCacheStrideToken = contractTiling.kScaleCacheStrideToken;
     tilingData.tokenTile = contractTiling.tokenTile;
     tilingData.tokenTilePerAiv = contractTiling.tokenTilePerAiv;
     tilingData.rowTile = contractTiling.rowTile;

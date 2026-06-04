@@ -41,6 +41,27 @@ TensorShapeInfo Shape(std::initializer_list<uint64_t> dims, bool present = true)
     return shape;
 }
 
+TensorStrideInfo Stride(std::initializer_list<uint64_t> strides, bool present = true)
+{
+    TensorStrideInfo stride;
+    stride.present = present;
+    stride.rank = static_cast<uint32_t>(strides.size());
+    auto it = strides.begin();
+    if (it != strides.end()) {
+        stride.stride0 = *it++;
+    }
+    if (it != strides.end()) {
+        stride.stride1 = *it++;
+    }
+    if (it != strides.end()) {
+        stride.stride2 = *it++;
+    }
+    if (it != strides.end()) {
+        stride.stride3 = *it++;
+    }
+    return stride;
+}
+
 void RefreshShapes(ContractInput &input)
 {
     const uint32_t htot = input.numQHeads + input.numKHeads + input.numVHeads;
@@ -50,8 +71,13 @@ void RefreshShapes(ContractInput &input)
     input.cosSin.shape = Shape({input.maxSeqLen, input.headDim});
     input.slotMapping.shape = Shape({input.totalTokens});
     input.kCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, input.headDim});
+    input.kCache.stride = Stride({input.numKHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
+        input.headDim, 1});
     input.vCache.shape = Shape({input.blockNum, input.numVHeads, input.blockSize, input.headDim});
+    input.vCache.stride = Stride({input.numVHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
+        input.headDim, 1});
     input.kScaleCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, 1});
+    input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
     input.cuSeqLen.shape = Shape({static_cast<uint64_t>(input.batch) + 1});
     input.qRotation.shape = Shape({input.headDim, input.headDim});
     input.kRotation.shape = Shape({input.headDim, input.headDim});
@@ -285,6 +311,65 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, ContiguousCacheStridesAreReported)
+{
+    ContractTiling tiling;
+    auto input = BuildInput();
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(tiling.kCacheStrideBlock, input.numKHeads * input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.kCacheStrideHead, input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.kCacheStrideToken, input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideBlock, input.numVHeads * input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideHead, input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideToken, input.headDim);
+    EXPECT_EQ(tiling.kScaleCacheStrideBlock, input.numKHeads * input.blockSize);
+    EXPECT_EQ(tiling.kScaleCacheStrideHead, input.blockSize);
+    EXPECT_EQ(tiling.kScaleCacheStrideToken, 1U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
+{
+    ContractTiling tiling;
+    auto input = BuildInput();
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({52000, 25000, 192, 1});
+    input.kScaleCache.stride = Stride({1024, 256, 2, 1});
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(tiling.kCacheStrideBlock, 45000U);
+    EXPECT_EQ(tiling.kCacheStrideHead, 21000U);
+    EXPECT_EQ(tiling.kCacheStrideToken, 160U);
+    EXPECT_EQ(tiling.vCacheStrideBlock, 52000U);
+    EXPECT_EQ(tiling.vCacheStrideHead, 25000U);
+    EXPECT_EQ(tiling.vCacheStrideToken, 192U);
+    EXPECT_EQ(tiling.kScaleCacheStrideBlock, 1024U);
+    EXPECT_EQ(tiling.kScaleCacheStrideHead, 256U);
+    EXPECT_EQ(tiling.kScaleCacheStrideToken, 2U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
+{
+    ContractTiling tiling;
+    auto input = BuildInput();
+    input.kCache.stride.stride3 = 2;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+
+    input = BuildInput();
+    input.vCache.stride.stride1 = input.headDim - 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+
+    input = BuildInput();
+    input.kCache.stride.rank = 3;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+
+    input = BuildInput();
+    input.kScaleCache.stride.stride3 = 2;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
+
+    input = BuildInput();
+    input.kScaleCache.stride.stride1 = 0;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 {
     ContractTiling tiling;
@@ -455,15 +540,24 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)
     EXPECT_EQ(tilingData.tokenTile, 0U);
     EXPECT_EQ(tilingData.coreTokenTile, 0U);
     EXPECT_EQ(tilingData.coreGroupNum, 0U);
+    EXPECT_EQ(tilingData.kCacheStrideBlock, 0U);
+    EXPECT_EQ(tilingData.vCacheStrideBlock, 0U);
+    EXPECT_EQ(tilingData.kScaleCacheStrideBlock, 0U);
 
     tilingData.totalTokens = 128;
     tilingData.numQHeads = 16;
     tilingData.coreTokenTile = 4;
     tilingData.coreGroupNum = 32;
+    tilingData.kCacheStrideToken = 128;
+    tilingData.vCacheStrideToken = 128;
+    tilingData.kScaleCacheStrideToken = 1;
     tilingData.tokenTile = 14;
     EXPECT_EQ(tilingData.totalTokens, 128U);
     EXPECT_EQ(tilingData.numQHeads, 16U);
     EXPECT_EQ(tilingData.coreTokenTile, 4U);
     EXPECT_EQ(tilingData.coreGroupNum, 32U);
+    EXPECT_EQ(tilingData.kCacheStrideToken, 128U);
+    EXPECT_EQ(tilingData.vCacheStrideToken, 128U);
+    EXPECT_EQ(tilingData.kScaleCacheStrideToken, 1U);
     EXPECT_EQ(tilingData.tokenTile, 14U);
 }

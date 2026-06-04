@@ -11,6 +11,7 @@
 #include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace optiling {
 namespace qkv_rms_norm_rope_cache_with_k_scale {
@@ -40,6 +41,55 @@ bool IsShape4D(const TensorShapeInfo &shape, uint64_t d0, uint64_t d1, uint64_t 
 bool HasDtype(const TensorContractInfo &tensor, ContractDtype expected)
 {
     return tensor.dtype == expected;
+}
+
+bool FitsUint32(uint64_t value)
+{
+    return value <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+}
+
+bool FitsByteStride(uint64_t value, uint32_t elementBytes)
+{
+    if (elementBytes == 0) {
+        return false;
+    }
+    return value <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) / elementBytes;
+}
+
+bool CacheMaxOffsetFitsUint32(
+    const TensorStrideInfo &stride, uint32_t blockNum, uint32_t heads, uint32_t blockSize, uint32_t headDim)
+{
+    const uint64_t maxOffset = (static_cast<uint64_t>(blockNum) - 1U) * stride.stride0 +
+        (static_cast<uint64_t>(heads) - 1U) * stride.stride1 +
+        (static_cast<uint64_t>(blockSize) - 1U) * stride.stride2 + (static_cast<uint64_t>(headDim) - 1U);
+    return FitsUint32(maxOffset);
+}
+
+bool ScaleMaxOffsetFitsUint32(
+    const TensorStrideInfo &stride, uint32_t blockNum, uint32_t heads, uint32_t blockSize)
+{
+    const uint64_t maxOffset = (static_cast<uint64_t>(blockNum) - 1U) * stride.stride0 +
+        (static_cast<uint64_t>(heads) - 1U) * stride.stride1 +
+        (static_cast<uint64_t>(blockSize) - 1U) * stride.stride2;
+    return FitsUint32(maxOffset);
+}
+
+bool IsCacheStrideValid(
+    const TensorStrideInfo &stride, uint32_t blockNum, uint32_t heads, uint32_t blockSize, uint32_t headDim,
+    uint32_t elementBytes)
+{
+    return stride.present && stride.rank == 4 && stride.stride0 > 0 && stride.stride1 >= headDim &&
+           stride.stride2 >= headDim && stride.stride3 == 1 && FitsUint32(stride.stride0) &&
+           FitsUint32(stride.stride1) && FitsUint32(stride.stride2) && FitsByteStride(stride.stride1 - headDim,
+           elementBytes) && CacheMaxOffsetFitsUint32(stride, blockNum, heads, blockSize, headDim);
+}
+
+bool IsScaleStrideValid(const TensorStrideInfo &stride, uint32_t blockNum, uint32_t heads, uint32_t blockSize)
+{
+    return stride.present && stride.rank == 4 && stride.stride0 > 0 && stride.stride1 >= 1 && stride.stride2 >= 1 &&
+           stride.stride3 == 1 && FitsUint32(stride.stride0) && FitsUint32(stride.stride1) &&
+           FitsUint32(stride.stride2) && FitsByteStride(stride.stride1 - 1, sizeof(float)) &&
+           ScaleMaxOffsetFitsUint32(stride, blockNum, heads, blockSize);
 }
 
 uint32_t CalcQkL0cRows(uint32_t tokenTile, uint32_t numQHeads, uint32_t numKHeads)
@@ -150,6 +200,13 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     if (!IsShape4D(input.kScaleCache.shape, input.blockNum, input.numKHeads, input.blockSize, 1)) {
         return ContractStatus::kInvalidScaleShape;
     }
+    if (!IsCacheStrideValid(input.kCache.stride, input.blockNum, input.numKHeads, input.blockSize, input.headDim, 1U) ||
+        !IsCacheStrideValid(input.vCache.stride, input.blockNum, input.numVHeads, input.blockSize, input.headDim, 1U)) {
+        return ContractStatus::kInvalidCacheStride;
+    }
+    if (!IsScaleStrideValid(input.kScaleCache.stride, input.blockNum, input.numKHeads, input.blockSize)) {
+        return ContractStatus::kInvalidScaleStride;
+    }
 
     uint32_t tokenTilePerAiv = std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
     while (tokenTilePerAiv > 0) {
@@ -175,6 +232,15 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     tiling.dimTile = kDimTileFast;
     tiling.rowTile = tiling.tokenTile * hqk;
     tiling.rowTileAligned = AlignUp(tiling.rowTile, 16);
+    tiling.kCacheStrideBlock = static_cast<uint32_t>(input.kCache.stride.stride0);
+    tiling.kCacheStrideHead = static_cast<uint32_t>(input.kCache.stride.stride1);
+    tiling.kCacheStrideToken = static_cast<uint32_t>(input.kCache.stride.stride2);
+    tiling.vCacheStrideBlock = static_cast<uint32_t>(input.vCache.stride.stride0);
+    tiling.vCacheStrideHead = static_cast<uint32_t>(input.vCache.stride.stride1);
+    tiling.vCacheStrideToken = static_cast<uint32_t>(input.vCache.stride.stride2);
+    tiling.kScaleCacheStrideBlock = static_cast<uint32_t>(input.kScaleCache.stride.stride0);
+    tiling.kScaleCacheStrideHead = static_cast<uint32_t>(input.kScaleCache.stride.stride1);
+    tiling.kScaleCacheStrideToken = static_cast<uint32_t>(input.kScaleCache.stride.stride2);
 
     return ContractStatus::kSuccess;
 }
@@ -255,6 +321,10 @@ const char *ContractStatusName(ContractStatus status)
             return "invalid_cache_shape";
         case ContractStatus::kInvalidScaleShape:
             return "invalid_scale_shape";
+        case ContractStatus::kInvalidCacheStride:
+            return "invalid_cache_stride";
+        case ContractStatus::kInvalidScaleStride:
+            return "invalid_scale_stride";
         case ContractStatus::kUnsupportedResource:
             return "unsupported_resource";
         default:

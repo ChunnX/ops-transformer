@@ -35,18 +35,15 @@
 | H02 | q_rotation/k_rotation host contract and kernel-entry ABI split | Done | Host/API contract splits the former single `rotation` input into `q_rotation` and `k_rotation`, shifts `v_scale` to input index 11, updates host/infer-shape UTs and docs, and adapts the kernel entry ABI. `git diff --check` passed; stale host/test single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | H03 | Kernel q/k rotation resident and compact Q/K segments | Done | AIC binds both rotation GM tensors, copies them to separate resident `qRotationL1Nz_`/`kRotationL1Nz_`, and loads them once before the tile loop into L0B halves. Vec runs separate Q/K RMSNorm+RoPE segment VF calls and writes Q then K into one active AL1 A buffer using the compact `NzMatrixElements(qTileRows)` offset; Cube consumes the same compact offset and multiplies Q with `qRotationL0b()` and K with `kRotationL0b()`. No fixed Q/K slots, no offset helper/accessor, and no CrossCore protocol changes were added. `git diff --check` passed; stale single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT. | This commit |
 | T13 | Synchronization protocol audit | Done | Static audit covered four semantic CrossCore ids (`A_READY`, `A_CONSUMED`, `C_READY`, `C_CONSUMED`), confirmed raw CrossCore primitives are centralized in common wrappers and semantic calls are centralized in basic block, confirmed no CrossCore flag is derived from `bufferId`/generation, checked tail/empty-slice counts remain fixed, and checked active intra-core event ids stay within `0..5`. AIC local FIXP events are intentionally absent because the Cube/Fixpipe path uses `unitFlag`; output DB reuse is gated by CrossCore `C_CONSUMED` credits. Initialized Vec `activeBufferId_` before persistent input staging. `git diff --check` passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`. | This commit |
+| H04 | Cache stride-aware tiling/writeback | Done | Host contract accepts independent contiguous or padded tail-contiguous strides for `k_cache`, `v_cache`, and `k_scale_cache`; tiling serializes per-cache stride triplets; kernel cache writeback uses those stride fields instead of shared contiguous formulas; qkv docs updated. `git diff --check` passed for ops-transformer and DiscussionForum; stale shared-cache-stride scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 16 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T14 | Kernel UT/ST closure | Not started | Full UT/ST | |
 
 ## Next Task
 
-Resume T13 synchronization protocol audit now that the Q/K rotation split is
-reflected in both the host/API contract and kernel internals. The audit should
-explicitly cover the four semantic CrossCore ids (`A_READY`, `A_CONSUMED`,
-`C_READY`, `C_CONSUMED`), their Set/Wait counts across rolling, tail, and empty
-AIV slices, and whether the design notes need to be updated for the A-side reuse
-credit. After T13, close T14 with kernel UT/ST and include a golden case where
-`q_rotation != k_rotation` and Q/K use the compact single-A-buffer segment
-layout.
+Close T14 with kernel UT/ST. Coverage should include a golden/runtime case where
+`q_rotation != k_rotation`, Q/K use the compact single-A-buffer segment layout,
+and `k_cache`, `v_cache`, and `k_scale_cache` use padded tail-contiguous strides
+so the H04 stride-aware cache writeback path is validated end-to-end.
 
 ## Kernel Layout
 

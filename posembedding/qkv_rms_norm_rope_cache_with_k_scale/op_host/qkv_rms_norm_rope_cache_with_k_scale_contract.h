@@ -47,6 +47,8 @@ enum class ContractStatus : uint32_t {
     kInvalidVScaleShape,
     kInvalidCacheShape,
     kInvalidScaleShape,
+    kInvalidCacheStride,
+    kInvalidScaleStride,
     kUnsupportedResource
 };
 
@@ -67,8 +69,18 @@ struct TensorShapeInfo {
     bool present = true;
 };
 
+struct TensorStrideInfo {
+    uint32_t rank = 0;
+    uint64_t stride0 = 0;
+    uint64_t stride1 = 0;
+    uint64_t stride2 = 0;
+    uint64_t stride3 = 0;
+    bool present = true;
+};
+
 struct TensorContractInfo {
     TensorShapeInfo shape;
+    TensorStrideInfo stride;
     ContractDtype dtype = ContractDtype::kUnknown;
 };
 
@@ -108,6 +120,15 @@ struct ContractTiling {
     uint32_t qkHeadTile = 0;
     uint32_t vHeadTile = 0;
     uint32_t dimTile = 0;
+    uint32_t kCacheStrideBlock = 0;
+    uint32_t kCacheStrideHead = 0;
+    uint32_t kCacheStrideToken = 0;
+    uint32_t vCacheStrideBlock = 0;
+    uint32_t vCacheStrideHead = 0;
+    uint32_t vCacheStrideToken = 0;
+    uint32_t kScaleCacheStrideBlock = 0;
+    uint32_t kScaleCacheStrideHead = 0;
+    uint32_t kScaleCacheStrideToken = 0;
 };
 
 struct TileParam {

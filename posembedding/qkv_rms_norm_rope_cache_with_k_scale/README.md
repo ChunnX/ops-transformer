@@ -15,7 +15,9 @@ Current state:
 3. The kernel uses a POD tiling layout under `op_kernel` that host tiling writes
    directly. Host tiling computes `coreTokenTile` with ceil division and writes
    `coreGroupNum`; AIC and paired AIV cores consume those values to derive the
-   same contiguous cube-group token range. The controller creates the
+   same contiguous cube-group token range. Host tiling also writes independent
+   `k_cache`, `v_cache`, and `k_scale_cache` stride triplets so cache writeback
+   does not assume a shared contiguous cache layout. The controller creates the
    contiguous core token range, expands it into token-size tiles, and derives
    per-tile tail parameters before calling the D=128 fast-path basic block.
 4. T03 adds static GM/L1/UB tensor binding. `qRotationL1Nz_` and
@@ -29,7 +31,7 @@ Current state:
    `q_rotation` for Q rows and `k_rotation` for K rows.
 5. T04/T11 add fixed CrossCore flag ids and wrappers for `A_READY`,
    `A_CONSUMED`, `C_READY`, and `C_CONSUMED`. `A_CONSUMED` is the A-side
-   double-buffer reuse credit; T13 still needs the final static protocol audit.
+   double-buffer reuse credit; T13 completed the final static protocol audit.
    CrossCore flag ids are semantic constants and are not derived from pingpong
    `bufferId` or loop generation.
 6. T05 adds fixed intra-core event constants and Init/End pairing for reusable
@@ -40,9 +42,9 @@ Current state:
    modules inside one file. Core-type dispatch is centralized in the
    controller AIC/AIV entry split; lower layers do not inspect `g_coreType`.
 8. Real Q/K/V compute, rotation matmul, Fixpipe distribution, rolling pipeline,
-   tail/empty-slice handling, and concrete synchronization call sites are
-   implemented through T12/H02. T13 synchronization audit and T14 kernel UT/ST
-   closure remain open.
+   tail/empty-slice handling, concrete synchronization call sites, and the
+   synchronization audit are implemented through T13/H03. T14 kernel UT/ST
+   closure remains open.
 9. Implementation work must follow `TASKS.md`.
 10. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.

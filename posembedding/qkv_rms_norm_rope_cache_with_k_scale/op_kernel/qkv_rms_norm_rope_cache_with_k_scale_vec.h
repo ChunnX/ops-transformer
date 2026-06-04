@@ -443,7 +443,7 @@ private:
         copyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
         copyParams.srcStride = 0U;
         copyParams.dstStride =
-            (tilingData_->cacheStrideHead - tilingData_->cacheStrideToken) * sizeof(fp8_e4m3fn_t);
+            (tilingData_->vCacheStrideHead - tilingData_->headDim) * sizeof(fp8_e4m3fn_t);
         copyParams.rsv = 0U;
 
         const LocalTensor<fp8_e4m3fn_t> vOut =
@@ -455,8 +455,8 @@ private:
             const uint32_t blockId = slot / tilingData_->blockSize;
             const uint32_t blockOffset = slot % tilingData_->blockSize;
             const uint32_t ubOffset = tokenIdx * tile.vHeadSize * tilingData_->headDim;
-            const uint32_t gmOffset = blockId * tilingData_->cacheStrideBlock +
-                tile.vHeadOffset * tilingData_->cacheStrideHead + blockOffset * tilingData_->cacheStrideToken;
+            const uint32_t gmOffset = blockId * tilingData_->vCacheStrideBlock +
+                tile.vHeadOffset * tilingData_->vCacheStrideHead + blockOffset * tilingData_->vCacheStrideToken;
             DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
         }
     }
@@ -524,7 +524,7 @@ private:
         kCopyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
         kCopyParams.srcStride = 0U;
         kCopyParams.dstStride =
-            (tilingData_->cacheStrideHead - tilingData_->cacheStrideToken) * sizeof(fp8_e4m3fn_t);
+            (tilingData_->kCacheStrideHead - tilingData_->headDim) * sizeof(fp8_e4m3fn_t);
         kCopyParams.rsv = 0U;
 
         DataCopyExtParams qScaleCopyParams;
@@ -538,7 +538,7 @@ private:
         kScaleCopyParams.blockCount = tilingData_->numKHeads;
         kScaleCopyParams.blockLen = sizeof(float);
         kScaleCopyParams.srcStride = (QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) * sizeof(float);
-        kScaleCopyParams.dstStride = (tilingData_->blockSize - 1U) * sizeof(float);
+        kScaleCopyParams.dstStride = (tilingData_->kScaleCacheStrideHead - 1U) * sizeof(float);
         kScaleCopyParams.rsv = 0U;
 
         const LocalTensor<float> qkAfterCube =
@@ -563,8 +563,9 @@ private:
             const uint32_t kRowIdx = qLocalRows + tokenIdx * tilingData_->numKHeads;
             const uint32_t kUbOffset = kRowIdx * tilingData_->headDim;
             const uint32_t kCacheOffset =
-                blockId * tilingData_->cacheStrideBlock + blockOffset * tilingData_->cacheStrideToken;
-            const uint32_t kScaleOffset = blockId * tilingData_->numKHeads * tilingData_->blockSize + blockOffset;
+                blockId * tilingData_->kCacheStrideBlock + blockOffset * tilingData_->kCacheStrideToken;
+            const uint32_t kScaleOffset =
+                blockId * tilingData_->kScaleCacheStrideBlock + blockOffset * tilingData_->kScaleCacheStrideToken;
             DataCopyPad(kCacheOutGm_[kCacheOffset], qkFp8[kUbOffset], kCopyParams);
             DataCopyPad(
                 kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(slice, tokenIdx, 0U)], kScaleCopyParams);

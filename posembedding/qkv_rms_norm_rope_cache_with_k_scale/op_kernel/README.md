@@ -136,9 +136,9 @@ has consumed the staged QKV row data. The V path loads `v_scale` into the
 reserve UB, calls `VScaleFp8D128Vf` with raw UB addresses so the token/head
 loops, BF16-to-FP32 conversion, scale multiply, and FP8 cast all stay inside
 the VF function, then scatters the packed FP8 rows into `v_cache` by
-`slot_mapping`, cache block, cache head, and cache token strides. `v_out_ub`
-uses local `V_MTE3`/`MTE3_V` event ids `0/1`; CrossCore calls remain only in
-basic block through the semantic wrappers.
+`slot_mapping` and the independent `v_cache` block/head/token strides from
+host tiling. `v_out_ub` uses local `V_MTE3`/`MTE3_V` event ids `0/1`;
+CrossCore calls remain only in basic block through the semantic wrappers.
 
 T10 adds Q/K postprocess after `C_READY` and before `C_CONSUMED`. Basic block
 still owns the semantic CrossCore calls; Vec only consumes the already-visible
@@ -146,9 +146,10 @@ still owns the semantic CrossCore calls; Vec only consumes the already-visible
 keeps the row loop and numeric work inside VF: D=128 FP32 row load,
 `max_abs`, `scale = max_abs / 448`, divide, FP8 RINT/SAT cast, and scale
 staging. The Q branch writes `q_out` and `q_scale`; the K branch writes
-`k_cache` and `k_scale_cache` using the same slot-to-cache address calculation
-as V. Q/K FP8 staging reuses `qk_after_cube_ub`, and the corresponding local
-`V_MTE3`/`MTE3_V` handoff uses event ids `2/3`.
+`k_cache` and `k_scale_cache` using independent `k_cache` and `k_scale_cache`
+block/head/token strides from host tiling. Q/K FP8 staging reuses
+`qk_after_cube_ub`, and the corresponding local `V_MTE3`/`MTE3_V` handoff uses
+event ids `2/3`.
 
 T11 keeps rolling scheduling in basic block while passing current/previous tile
 params from a controller-owned two-slot ring, matching the grouped-matmul
