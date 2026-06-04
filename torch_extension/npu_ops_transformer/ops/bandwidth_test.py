@@ -61,15 +61,17 @@ class BandwidthTestConfig:
 
 class _BandwidthTestOpBuilder(OpBuilder):
     def __init__(self):
-        super(_BandwidthTestOpBuilder, self).__init__("npu_bandwidth_test")
+        super(BandwidthTestOpBuilder, self).__init__("npu_bandwidth_test")
 
     def sources(self):
         """Path to C++ source code."""
         return ['ops/csrc/bandwidth_test.cpp']
 
     def schema(self) -> str:
-        """PyTorch operator signature with config object."""
-        return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, __config__ Config) -> (Tensor, Tensor)"
+        """PyTorch operator signature."""
+        return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, " \
+            "str group, int world_size, int max_bs, int mode, str comm_alg, int aiv_num) " \
+            "-> (Tensor, Tensor)"
 
     def register_meta(self):
         """
@@ -77,20 +79,24 @@ class _BandwidthTestOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_bandwidth_test_meta(x, dstrank_id, config: BandwidthTestConfig):
-            """Meta implementation using config object
+        def npu_bandwidth_test_meta(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+            """Meta implementation with expanded config parameters
             
             Args:
                 x: Input tensor
                 dstrank_id: Destination rank IDs tensor
-                config: Bandwidth test configuration
+                group: Communication group name
+                world_size: Number of processes
+                max_bs: Maximum batch size
+                mode: Test mode
+                comm_alg: Communication algorithm
+                aiv_num: Number of AI cores
             """
-            bs = x.size(0)
             h = x.size(1)
 
-            max_recv_cnt = config.max_bs * config.world_size
+            max_recv_cnt = max_bs * world_size
             y = x.new_empty((max_recv_cnt, h), dtype=x.dtype)
-            receive_cnt = x.new_empty((config.world_size,), dtype=torch.int32)
+            receive_cnt = x.new_empty((world_size,), dtype=torch.int32)
             
             return (y, receive_cnt)
 
@@ -100,12 +106,12 @@ _op_module = _bandwidth_test_op_builder.load()
 
 
 @impl(AS_LIBRARY, _bandwidth_test_op_builder.name, "PrivateUse1")
-def _npu_bandwidth_test(x, dstrank_id, config: BandwidthTestConfig):
+def _npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
     """
-    Implementation for NPU with config object.
+    Implementation for NPU with expanded config parameters.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return _op_module.npu_bandwidth_test(x, dstrank_id, config)
+    return _op_module.npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)
 
 
 def bandwidth_test(
@@ -113,7 +119,7 @@ def bandwidth_test(
     dstrank_id: torch.Tensor,
     config: BandwidthTestConfig
 ):
-    """Bandwidth test operation
+    """Bandwidth test operation - wrapper that unpacks config
     
     Args:
         x: Input tensor with shape (batch_size, hidden_size)
@@ -125,4 +131,8 @@ def bandwidth_test(
             y: Output tensor with shape (max_recv_cnt, hidden_size)
             receive_cnt: Receive count tensor with shape (world_size,)
     """
-    return torch.ops.npu_ops_transformer.npu_bandwidth_test(x, dstrank_id, config)
+    return torch.ops.npu_ops_transformer.npu_bandwidth_test(
+        x, dstrank_id, 
+        config.group, config.world_size, config.max_bs, 
+        config.mode, config.comm_alg, config.aiv_num
+    )
