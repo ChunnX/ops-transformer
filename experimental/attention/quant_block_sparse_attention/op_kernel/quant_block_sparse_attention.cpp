@@ -47,7 +47,7 @@ using namespace AscendC;
         op.Process();                                                                                    \
     } while (0)
 
-template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t COMPRESS_MODE,
+template <uint32_t QKV_DTYPE, uint32_t LAYOUT_Q, uint32_t KV_LAYOUT_T, uint32_t COMPRESS_MODE,
           bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attention(
     __gm__ uint8_t *query,
@@ -87,24 +87,17 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    // layout: BSND -> LAYOUT_BSH（B,S,H≡B,S,N*D，LayOutTypeEnum 无 LAYOUT_BSND）; TND -> LAYOUT_TND
-    constexpr LayOutTypeEnum bsaLayout =
-        (LAYOUT_T == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::LAYOUT_BSH;
-    // isPa: KV 连续 -> false; PA_BNSD -> true
+    constexpr LayOutTypeEnum bsaLayout = (LAYOUT_Q == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::None;
+    // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = (KV_LAYOUT_T == BSA_KV_LAYOUT_PA_ND);
 
     // block 模板参数顺序对齐 CUBE_BLOCK_TRAITS：
     // INPUT_T, T(计算 float), OUTPUT_T(BF16), implMode, layout, s1Tpl, s2Tpl, dTpl, dVTpl,
     // pseMode, hasAtten, hasDrop, hasRope, isInfer, isPa, enableKVPrefix, enableS1OutSplit
-    if constexpr (QKV_DTYPE == BSA_DTYPE_FP8_E4M3FN) {
-        BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
-            S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
-            DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
-            false, false);
-    } else {
-        BSA_OP_IMPL(hifloat8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
-            S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
-            DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
-            false, false);
-    }
+    // TODO: 待实现 - host tiling 当前产出 QuantBlockSparseAttentionTilingData，kernel 侧 InitBaseAPI 取
+    //       FlashAttentionScoreSimplifiedTilingData，host/kernel tiling 结构对齐留作后续。
+    BSA_OP_IMPL(QKV_DTYPE, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
+        S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
+        DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
+        false, false);
 }

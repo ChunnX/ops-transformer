@@ -24,12 +24,12 @@
 #include "common/infer_flash_attention_sparse.h"
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecBlockType>
-class QuantBlockSparseAttentionKernel : public QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
+template <typename CubeBlockType>
+class QuantBlockSparseAttentionKernel : public QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType>, CubeBlockType> {
 public:
     ARGS_TRAITS;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value && !IsSameType<OUTPUT_T, float>::value;
-    using BaseClass = QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
+    using BaseClass = QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType>, CubeBlockType>;
     /* =====================UB变量==================== */
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, 
@@ -42,9 +42,9 @@ private:
                                                     RunParamStr<isInfer> &runParam);
 };
 
-template <typename CubeBlockType, typename VecBlockType>
+template <typename CubeBlockType>
 __aicore__ inline void
-QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
+QuantBlockSparseAttentionKernel<CubeBlockType>::InitUniqueConstInfo()
 {
     if constexpr (POST_QUANT) {
         this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
@@ -86,17 +86,17 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
     }
 }
 
-template <typename CubeBlockType, typename VecBlockType>
+template <typename CubeBlockType>
 __aicore__ inline void
-QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+QuantBlockSparseAttentionKernel<CubeBlockType>::InitUniqueRunInfo(
     const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
 {
     InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, runInfo);
     ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
 }
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
+template <typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
     if (this->aicIdx == 0) {
@@ -226,8 +226,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     }
 }
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::Process()
+template <typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::Process()
 {
     if (this->aicIdx == 0) {
         printf("[BSA_DEBUG] enter Process aicIdx=%d needInit=%d\n", this->aicIdx,
@@ -241,8 +241,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 }
 
 // =========================================== private functions ===========================================
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+template <typename CubeBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ComputeAxisIdxByBnAndGs1(
     int64_t bnIndex, int64_t gS1Index, RunParamStr<isInfer> &runParam)
 {
     constexpr uint64_t fp8QBlockSize = 128U; // 128 is SOuterSize
