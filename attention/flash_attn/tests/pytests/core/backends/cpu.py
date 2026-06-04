@@ -31,23 +31,18 @@ class CPUBackend(Backend):
             k = inputs["k"].permute(0, 2, 1, 3).contiguous().clone().float()
             v = inputs["v"].permute(0, 2, 1, 3).contiguous().clone().float()
         elif layout == "TND":
-            q = inputs["q"].clone().float()
-            k = inputs["k"].clone().float()
-            v = inputs["v"].clone().float()
+            q = inputs["q"].unsqueeze(0).permute(0, 2, 1, 3).clone().float()
+            k = inputs["k"].unsqueeze(0).permute(0, 2, 1, 3).clone().float()
+            v = inputs["v"].unsqueeze(0).permute(0, 2, 1, 3).clone().float()
         else:  # BNSD / BSH
             q = inputs["q"].clone().float()
             k = inputs["k"].clone().float()
             v = inputs["v"].clone().float()
 
-        s1 = q.shape[2] if q.dim() == 4 else q.shape[1]
-        s2 = k.shape[2] if k.dim() == 4 else k.shape[1]
-        b = q.shape[0]
-        mask_mode = params.get("mask_mode", 0)
-        wl = params.get("win_left", 2147483647)
-        wr = params.get("win_right", 2147483647)
-        atten_mask = generate_cpu_mask(b, s1, s2, mask_mode, wl, wr)
+        tforward_kwargs = dict(params)
+        tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
 
-        out_cpu, x_max, x_sum = tforward(q, k, v, atten_mask=atten_mask, scale=params.get("scale"))
+        out_cpu, x_max, x_sum = tforward(q, k, v, **tforward_kwargs)
         lse = torch.log(x_sum) + x_max
 
         return {"out": out_cpu, "lse": lse}
