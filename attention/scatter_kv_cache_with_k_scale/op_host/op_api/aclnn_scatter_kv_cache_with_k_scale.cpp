@@ -109,24 +109,60 @@ static aclnnStatus CheckDtypeValid(const aclTensor *key, const aclTensor *value,
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value, const aclTensor *slotMapping)
+static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value, const aclTensor *keyCacheRef,
+                               const aclTensor *valueCacheRef, const aclTensor *slotMapping, const aclTensor *keyScale,
+                               const aclTensor *keyScaleCacheRef)
 {
     auto keyDimNum = key->GetViewShape().GetDimNum();
     auto valueDimNum = value->GetViewShape().GetDimNum();
     auto slotMappingDimNum = slotMapping->GetViewShape().GetDimNum();
 
-    if (keyDimNum != 3 && keyDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of key must be 3 or 4, but got %ld.", keyDimNum);
+    if (keyDimNum != 3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of key must be 3, but got %ld.", keyDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (valueDimNum != 3 && valueDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of value must be 3 or 4, but got %ld.", valueDimNum);
+    if (valueDimNum != 3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of value must be 3, but got %ld.", valueDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (slotMappingDimNum != 1 && slotMappingDimNum != 2) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of slotMapping must be 1 or 2, but got %ld.", slotMappingDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto keyCacheDimNum = keyCacheRef->GetViewShape().GetDimNum();
+    if (keyCacheDimNum != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of keyCache must be 4, but got %ld.", keyCacheDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto keyCacheLastDim = keyCacheRef->GetViewShape().GetDim(keyCacheDimNum - 1);
+    if (keyCacheLastDim == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The head_size of keyCache cannot be 0.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto valueCacheDimNum = valueCacheRef->GetViewShape().GetDimNum();
+    if (valueCacheDimNum != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of valueCache must be 4, but got %ld.", valueCacheDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto valueCacheLastDim = valueCacheRef->GetViewShape().GetDim(valueCacheDimNum - 1);
+    if (valueCacheLastDim == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The head_size of valueCache cannot be 0.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto keyScaleDimNum = keyScale->GetViewShape().GetDimNum();
+    if (keyScaleDimNum != 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of keyScale must be 2, but got %ld.", keyScaleDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto keyScaleCacheDimNum = keyScaleCacheRef->GetViewShape().GetDimNum();
+    if (keyScaleCacheDimNum != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of keyScaleCache must be 4, but got %ld.", keyScaleCacheDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -291,8 +327,9 @@ aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, 
     bool valueEmpty = value->GetViewShape().GetShapeSize() == 0 || valueCacheRef->GetViewShape().GetShapeSize() == 0;
     bool scaleEmpty =
         keyScale->GetViewShape().GetShapeSize() == 0 || keyScaleCacheRef->GetViewShape().GetShapeSize() == 0;
+    bool slotMappingEmpty = slotMapping->GetViewShape().GetShapeSize() == 0;
 
-    if (keyEmpty && valueEmpty && scaleEmpty) {
+    if (slotMappingEmpty || (keyEmpty && valueEmpty && scaleEmpty)) {
         *workspaceSize = 0;
         auto uniqueExecutor = CREATE_EXECUTOR();
         CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -300,7 +337,7 @@ aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, 
         return ACLNN_SUCCESS;
     }
 
-    CHECK_RET(CheckShape(key, value, slotMapping) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckDtypeValid(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef) ==
                   ACLNN_SUCCESS,

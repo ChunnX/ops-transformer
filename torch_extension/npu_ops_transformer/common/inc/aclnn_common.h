@@ -275,11 +275,11 @@ inline const char *GetCustOpApiLibName(void)
     return "libcust_opapi.so";
 }
 
-
 inline const char *GetTransformerOpApiLibName(void)
 {
     return "libopapi_transformer.so";
 }
+
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
     auto funcAddr = dlsym(handler, apiName);

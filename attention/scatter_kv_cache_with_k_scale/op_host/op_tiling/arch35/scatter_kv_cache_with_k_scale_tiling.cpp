@@ -202,6 +202,8 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((kcShape.GetDimNum() != KEY_CACHE_DIM_NUM), OP_LOGE(context, "key_cache must be 4D"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0), OP_LOGE(context, "key_cache head_size cannot be 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "key_cache numHead mismatch"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD_SIZE) != kHeadSize), OP_LOGE(context, "key_cache kHeadSize mismatch"),
@@ -211,6 +213,8 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
     OP_CHECK_IF((vcShape.GetDimNum() == 0), OP_LOGE(context, "value_cache shape is invalid"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((vcShape.GetDimNum() != VALUE_CACHE_DIM_NUM), OP_LOGE(context, "value_cache must be 4D"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0), OP_LOGE(context, "value_cache head_size cannot be 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "value_cache numHead mismatch"),
                 return ge::GRAPH_FAILED);
