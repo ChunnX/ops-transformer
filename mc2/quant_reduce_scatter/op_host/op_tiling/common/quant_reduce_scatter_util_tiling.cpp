@@ -110,8 +110,9 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
         quantMode = MX_QUANT_MOD;
     }
     OP_TILING_CHECK(!static_cast<bool>(quantMode),
-                    OP_LOGE(nodeName, "x dataType is %s and scale dataType is %s do not match any quantMode.",
-                            Ops::Base::ToString(xDtype).c_str(), Ops::Base::ToString(scalesDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode",
+                        ("x=" + std::string(Ops::Base::ToString(xDtype).c_str()) + ", scales=" + std::string(Ops::Base::ToString(scalesDtype).c_str())).c_str(),
+                        "should match a known quantization mode (TG or MX)"),
                     return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
@@ -204,26 +205,26 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
     }
 
     // 校验x是否为空tensor
-    OP_TILING_CHECK(emptyTensor, 
-                    OP_LOGE(nodeName, 
-                            "Input tensor 'x' has shape %s, but empty tensor is not supported. All dimensions must be positive (>=1).",
-                            Ops::Base::ToString(xShape->GetStorageShape()).c_str()), 
+    OP_TILING_CHECK(emptyTensor,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
+                        Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
+                        "all dimensions must be positive (>=1)"),
                     return false);
 
     // 校验BS是否被worldSize整除
     const char* dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
     OP_TILING_CHECK(xValueBS % runInfo.rankSize != 0,
-                    OP_LOGE(nodeName,
-                            "Input tensor 'x' has shape %s. The %s dimension (%lu) is invalid, which must be divisible by world_size (%ld).",
-                            Ops::Base::ToString(xShape->GetStorageShape()).c_str(), dimDesc, xValueBS, runInfo.rankSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
+                        ("shape=" + Ops::Base::ToString(xShape->GetStorageShape()) + ", " + std::string(dimDesc) + "=" + std::to_string(xValueBS)).c_str(),
+                        (std::string(dimDesc) + " must be divisible by world_size (" + std::to_string(runInfo.rankSize) + ")").c_str()),
                     return false);
 
     // 校验H是否在[1024, 8192]之间，且能被128整除
     OP_TILING_CHECK(
         xValueH < H_VALUE_LOWER_LIMIT || xValueH > H_VALUE_UPPER_LIMIT || xValueH % TG_QUANT_NUMBER != 0,
-        OP_LOGE(nodeName,
-                "Input tensor 'x' has shape %s. The H dimension (%lu) is invalid, which must be in [1024, 8192] and 128 multiple.",
-                Ops::Base::ToString(xShape->GetStorageShape()).c_str(), xValueH),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
+            std::to_string(xValueH).c_str(),
+            "H dimension must be in [1024, 8192] and 128 multiple"),
         return false);
     return true;
 }
@@ -320,26 +321,20 @@ static bool CheckScalesValid(const gert::TilingContext *context,
     // 检查维度数量是否一致
     size_t actualDimNum = scalesShape->GetStorageShape().GetDimNum();
     if (actualDimNum != expectedScalesDims.size()) {
-        OP_LOGE(nodeName, 
-                "Scales dimension mismatch in %s quant mode. Expected %lu dimensions, but got %lu dimensions. "
-                "Expected shape: %s, Actual shape: %s",
-                quantModeStr, expectedScalesDims.size(), actualDimNum,
-                FormatShape(expectedScalesDims).c_str(),
-                Ops::Base::ToString(scalesShape->GetStorageShape()).c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
+            FormatShape(expectedScalesDims).c_str(),
+            ("expected " + std::to_string(expectedScalesDims.size()) + "D but got " + std::to_string(actualDimNum) + "D").c_str());
         return false;
     }
-    
+
     // 检查每个维度的值是否一致
     for (size_t i = 0; i < expectedScalesDims.size(); ++i) {
         uint64_t expectedDim = expectedScalesDims[i];
         uint64_t actualDim = scalesShape->GetStorageShape().GetDim(i);
         if (expectedDim != actualDim) {
-            OP_LOGE(nodeName,
-                    "Scales dimension %lu mismatch in %s quant mode. Expected %lu, but got %lu. "
-                    "Expected shape: %s, Actual shape: %s",
-                    i, quantModeStr, expectedDim, actualDim,
-                    FormatShape(expectedScalesDims).c_str(),
-                    Ops::Base::ToString(scalesShape->GetStorageShape()).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
+                std::to_string(actualDim).c_str(),
+                ("expected " + std::to_string(expectedDim) + " at dim " + std::to_string(i)).c_str());
             return false;
         }
     }
@@ -423,17 +418,15 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
         OP_LOGI(nodeName, "output dim2 is %lu, x dim2 is %lu", outputValueThree, xValueThree);
         invalidShape = invalidShape || (xValueThree != outputValueThree); // 校验第三维的大小
         OP_TILING_CHECK(invalidShape,
-                        OP_LOGE(nodeName,
-                                "output shape is invalid, which was mismatch with x shape,"
-                                "actual output shape is (%lu, %lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %ld.",
-                                outputValueOne, outputValueTwo, outputValueThree, xValueOne, xValueTwo, xValueThree, runInfo.rankSize),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                            ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ", " + std::to_string(outputValueThree) + ")").c_str(),
+                            ("should match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ", " + std::to_string(xValueThree) + ")").c_str()),
                         return false);
     } else {
         OP_TILING_CHECK(invalidShape,
-                        OP_LOGE(nodeName,
-                                "output shape is invalid, which was mismatch with x shape,"
-                                "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %ld.",
-                                outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo.rankSize),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                            ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
+                            ("should match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ")").c_str()),
                         return false);
     }
     
@@ -454,10 +447,9 @@ static bool CheckReduceScatter3DShape(const gert::TilingContext *context,
     bool invalidShape = xValueBS / runInfo.rankSize != outputValueOne; // 校验bs轴
     invalidShape = invalidShape || (xValueThree != outputValueTwo); // 校验h轴
     OP_TILING_CHECK(invalidShape,
-                    OP_LOGE(nodeName,
-                            "output shape is invalid, which was calculated with x shape,"
-                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu, %lu), rankSize is %ld.",
-                            outputValueOne, outputValueTwo, xValueOne, xValueTwo, xValueThree, runInfo.rankSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                        ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
+                        ("should match x shape/rankSize (BS=" + std::to_string(xValueBS) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueThree) + ")").c_str()),
                     return false);
     return true;
 }
@@ -473,10 +465,9 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
     bool invalidShape = xValueOne / runInfo.rankSize != outputValueOne; // 校验bs轴
     invalidShape = invalidShape || (xValueTwo != outputValueTwo); // 校验h轴
     OP_TILING_CHECK(invalidShape,
-                    OP_LOGE(nodeName,
-                            "output shape is invalid, which was calculated with x shape,"
-                            "actual output shape is (%lu, %lu), x shape is (%lu, %lu), rankSize is %ld.",
-                            outputValueOne, outputValueTwo, xValueOne, xValueTwo, runInfo.rankSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
+                        ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
+                        ("should match x shape/rankSize (BS=" + std::to_string(xValueOne) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueTwo) + ")").c_str()),
                     return false);
     return true;
 }
@@ -639,7 +630,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"), return ge::GRAPH_FAILED);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE;
     return ge::GRAPH_SUCCESS;
 }
@@ -654,11 +645,13 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckNpuArch(const gert::TilingCon
     const char *nodeName = context->GetNodeName();
     // 校验NpuArch
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(nodeName, "platformInfoPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "platformInfoPtr"), return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
     OP_TILING_CHECK(npuArch != NpuArch::DAV_3510,
-                    OP_LOGE(nodeName, "NpuArch needed to be DAV_3510."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch",
+                        "non-DAV_3510", "should be DAV_3510"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -127,19 +127,20 @@ static void SetTilingKey(gert::TilingContext *context)
 static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 {
     OP_TILING_CHECK(context == nullptr,
-                    OP_LOGE("quant_all_reduce", "failed to get tiling context in quant_all_reduce."),
+                    OP_LOGE_WITH_INVALID_INPUT("quant_all_reduce", "context"),
                     return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("quant_all_reduce", "failed to get nodeName in quant_all_reduce."),
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE_WITH_INVALID_INPUT("quant_all_reduce", "nodeName"),
                     return ge::GRAPH_FAILED);
 
     QuantAllReduceTilingData *tilingData = context->GetTilingData<QuantAllReduceTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in quant_all_reduce."),
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"),
                     return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
- 	                OP_LOGE(nodeName, "NpuArch is invalid in quant_all_reduce."), return ge::GRAPH_FAILED);
+ 	                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510", "should be DAV_3510"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);

@@ -146,18 +146,18 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantGroupSize() const
     OP_LOGD(context_->GetNodeName(), "start CheckQuantGroupSize.");
     auto groupSizePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
     OP_TILING_CHECK(groupSizePtr == nullptr,
-        OP_LOGE(context_->GetNodeName(), "The groupSize can not be null."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "groupSize"),
         return ge::GRAPH_FAILED);
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-    OP_TILING_CHECK(((groupSizeM != MX_GROUP_SIZE_M && groupSizeM != 0) || 
-                    (groupSizeN != MX_GROUP_SIZE_N && groupSizeN != 0) || 
+    OP_TILING_CHECK(((groupSizeM != MX_GROUP_SIZE_M && groupSizeM != 0) ||
+                    (groupSizeN != MX_GROUP_SIZE_N && groupSizeN != 0) ||
                     (groupSizeK != MX_GROUP_SIZE_K && groupSizeK != 0)),
-            OP_LOGE(context_->GetNodeName(), "When mx quant mode, GroupSizeM should be 1 or 0, "
-            "groupSizeN should be 1 or 0 and groupSizeK should be 32 or 0, but actual is "
-            "[groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu].",
-            groupSizeM, groupSizeN, groupSizeK), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "groupSize",
+                (std::string("[M=") + std::to_string(groupSizeM) + ", N=" + std::to_string(groupSizeN) +
+                 ", K=" + std::to_string(groupSizeK) + "]").c_str(),
+                "M should be 1 or 0, N should be 1 or 0, K should be 32 or 0"), return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckQuantGroupSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -167,42 +167,44 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
     OP_LOGD(context_->GetNodeName(), "start CheckQuantMode.");
     // check gmmXQuantMode null
     OP_TILING_CHECK(gmmXQuantModePtr_ == nullptr,
-        OP_LOGE(context_->GetNodeName(), "When mx quant mode, gmmXQuantMode attr can not be null."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmXQuantMode"),
         return ge::GRAPH_FAILED);
     // check gmmXQuantMode
     int64_t gmmXQuantMode = *gmmXQuantModePtr_;
     OP_TILING_CHECK(gmmXQuantMode != static_cast<int64_t>(MX_QUANT_MODE),
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmXQuantMode",
-        std::to_string(gmmXQuantMode), "6"),
+        std::to_string(gmmXQuantMode).c_str(), "6"),
         return ge::GRAPH_FAILED);
     // check gmmWeightQuantMode null
     OP_TILING_CHECK(gmmWeightQuantModePtr_ == nullptr,
-        OP_LOGE(context_->GetNodeName(), "When mx quant mode, gmmWeightQuantMode attr can not be null."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeightQuantMode"),
         return ge::GRAPH_FAILED);
     // check gmmWeightQuantMode
     int64_t gmmWeightQuantMode = *gmmWeightQuantModePtr_;
     OP_TILING_CHECK(gmmWeightQuantMode != static_cast<int64_t>(MX_QUANT_MODE),
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmWeightQuantMode",
-        std::to_string(gmmWeightQuantMode), "6"), return ge::GRAPH_FAILED);
+        std::to_string(gmmWeightQuantMode).c_str(), "6"), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // check mmXQuantMode null
         OP_TILING_CHECK(mmXQuantModePtr_ == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When mx quant mode and has shared expert, mmXQuantModePtr "
-            "attr can not be null."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmXQuantMode"),
+            return ge::GRAPH_FAILED);
         // mmXQuantMode(same as gmmXQuantMode)
         int64_t mmXQuantMode = *mmXQuantModePtr_;
         OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
-            OP_LOGE(context_->GetNodeName(), "When mx quant mode and has shared expert, mmXQuantMode "
-            "should be same as gmmXQuantMode(6), but actual is %ld.", mmXQuantMode), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmXQuantMode",
+                std::to_string(mmXQuantMode).c_str(),
+                "mmXQuantMode should be same as gmmXQuantMode(6)"), return ge::GRAPH_FAILED);
         // check mmWeightQuantMode null
         OP_TILING_CHECK(mmWeightQuantModePtr_ == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When mx quant mode and has shared expert, mmWeightQuantModePtr "
-            "attr can not be null."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeightQuantMode"),
+            return ge::GRAPH_FAILED);
         // mmWeightQuantMode(same as gmmWeightQuantMode)
         int64_t mmWeightQuantMode = *mmWeightQuantModePtr_;
         OP_TILING_CHECK(mmWeightQuantMode != gmmWeightQuantMode,
-            OP_LOGE(context_->GetNodeName(), "When mx quant mode and has shared expert, mmWeightQuantMode "
-            "should be same as gmmWeightQuantMode(6), but actual is %ld.", mmWeightQuantMode),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmWeightQuantMode",
+                std::to_string(mmWeightQuantMode).c_str(),
+                "mmWeightQuantMode should be same as gmmWeightQuantMode(6)"),
             return ge::GRAPH_FAILED);
     }
     ge::graphStatus status = CheckQuantGroupSize();

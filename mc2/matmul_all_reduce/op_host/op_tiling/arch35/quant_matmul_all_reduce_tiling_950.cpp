@@ -208,15 +208,13 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
     // 如果1行数据就超通信数据量限制，那么任何M切分方式都无法满足
     uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), "
-            "the size %lu still exceeds 256MB.", sizeOfSingleM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul output size", std::to_string(sizeOfSingleM).c_str(), "should not exceed 256MB"),
         return ge::GRAPH_FAILED);
     // 如果按通信最大次数切分，能够满足通信数据量限制，那么继续做tiling
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM),
         mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), "
-            "the size %lu still exceeds 256MB.", sizeOfSplitM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size", std::to_string(sizeOfSplitM).c_str(), "should not exceed 256MB"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -475,7 +473,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(QuantMatmulAllReduceTilingDataA5) % sizeof(uint64_t)) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(sizeof(QuantMatmulAllReduceTilingDataA5)).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", sizeof(QuantMatmulAllReduceTilingDataA5)),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),

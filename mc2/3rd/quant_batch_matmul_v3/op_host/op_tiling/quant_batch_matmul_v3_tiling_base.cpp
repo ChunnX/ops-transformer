@@ -163,7 +163,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
             groupSizePtr = attrs->GetAttrPointer<int64_t>(idx++);
         }
         OP_TILING_CHECK(!dtypePtr,
-                        OP_LOGE(inputParams_.opName, "There should be at least the required dtype attr."),
+                        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dtype attr"),
                         return false);
         inputParams_.outDtype = *dtypePtr;
         inputParams_.transA = transposeX1Ptr ? *transposeX1Ptr : false;
@@ -469,7 +469,9 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     uint64_t fusedDimValue = inputParams_.mSize * inputParams_.batchA;
     int8_t resultCheckFusionBatchA = CheckFusionBatchA(x1Shape, x2Shape, biasShape->GetStorageShape(), fusedDimValue);
     OP_TILING_CHECK(resultCheckFusionBatchA == OUTPUT_INFER_FAIL,
-                    OP_LOGE(inputParams_.opName, "The fused M [%lu] exceed INT32_MAX [%d] in a4w4 case", fusedDimValue, INT32_MAX), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "M",
+                        std::to_string(fusedDimValue).c_str(),
+                        "The fused M should not exceed INT32_MAX in a4w4 case."), return false);
     if (resultCheckFusionBatchA == OUTPUT_INFER_SUCCESS) {
         DoBatchFusion(fusedDimValue);
     }
