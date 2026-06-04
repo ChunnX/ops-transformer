@@ -82,8 +82,8 @@ struct WorkspaceInfo {
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagSwiGluToGmm2;
     GM_ADDR ptrFlagDispatchToGmm1;
-    GM_ADDR ptrMmadTileResFirst;
-    GM_ADDR ptrMmadTileResSecond;
+    GM_ADDR ptrGmm1MmadRes;
+    GM_ADDR ptrGmm2MmadRes;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -120,9 +120,9 @@ struct WorkspaceInfo {
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
         expandedRowIdxGather = ptrA;
-        ptrMmadTileResFirst = base + workspaceSize;
+        ptrGmm1MmadRes = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
-        ptrMmadTileResSecond = base + workspaceSize;
+        ptrGmm2MmadRes = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->h;
     }
 };
