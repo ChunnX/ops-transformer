@@ -368,6 +368,7 @@ def fill_none_params(params_dict):
         'template_run_mode': template_run_mode,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
+        'isSink': params_dict.get('isSink', False),
     }
 
     return filled_params
