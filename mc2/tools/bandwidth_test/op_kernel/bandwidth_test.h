@@ -153,7 +153,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     aivId_ = GetBlockIdx();          // 获取当前核ID
 
     // ============ HCCL窗口初始化 ============
-    totalWinSizeEp_ = tilingData->total_win_size;
+    totalWinSizeEp_ = tilingData->totalWinSize;
     context_ = (__gm__ Mc2MoeContext *)context;
 
     // ============ 从tiling获取配置参数 ============
