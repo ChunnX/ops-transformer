@@ -34,20 +34,23 @@ public:
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
                                    GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, 
                                    GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
+                                   GM_ADDR cmp_residual_kv,
                                    GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, 
+                                   GM_ADDR cmp_softmax_l1_norm,
                                    GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
 
 private:
     __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
-    __aicore__ inline void UpdateGmOffset(int64_t task);
+    __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
     __aicore__ inline void SaveLastInfo();
     __aicore__ inline void GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
                                         const GM_ADDR actual_seq_ori_kvlen_addr,
                                         const GM_ADDR actual_seq_cmp_kvlen_addr,
+                                        const GM_ADDR cmp_residual_kv,
                                         const int64_t t1Idx, int64_t &bIdx);
-    __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount);
+    __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount, int32_t &curS2Loop);
 
     uint32_t cubeBlockIdx;
     uint32_t subBlockIdx;
@@ -68,6 +71,7 @@ private:
     int64_t curS1;
     int64_t curS2;
     int64_t curS3;
+    int64_t residual;
     int64_t curMaxS3;
     int64_t dimS1;
     int64_t cmpRatio;
@@ -115,6 +119,12 @@ private:
     int32_t actualSelectedBlockCount{0};
     int32_t selectedBlockSize{0};
     int32_t selectedBlockCount{0};
+    int32_t oriS2Loop{0};
+    int32_t cmpS2Loop{0};
+    int32_t s2Loop{0};
+    int32_t actualSelCntOffset{0};
+    int32_t oriS2Tail{0};
+    int32_t cmpS2Tail{0};
 
     // flag
     constexpr static uint32_t CUBE_WAIT_VEC_PING = 0;
@@ -185,11 +195,16 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Init(const TILING_CLA
 template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
     GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
-    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, 
+    GM_ADDR cmp_residual_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
+    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
 {
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
+
+    if constexpr (IS_BSND == true) {
+        residual = ((__gm__ int32_t *)cmp_residual_kv)[0];
+    }
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -202,12 +217,12 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
+            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
-                for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
-                    UpdateGmOffset(task);
+                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
+                for (int32_t loop = 0; loop < s2Loop; loop++) {
+                    UpdateGmOffset(task, loop);
                     CubeCompute(cubeOp);
                     if (changeS1) {
                         CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -235,18 +250,18 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, workspace, tilingData, &pipeVec);
+                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, t1Index, bIndex);
+            GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
-                for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
-                    UpdateGmOffset(task);
+                GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount, s2Loop);
+                for (int32_t loop = 0; loop < s2Loop; loop++) {
+                    UpdateGmOffset(task, loop);
                     VecCompute(vecOp);
                     task++;
                 }
@@ -336,7 +351,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLA
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_t task)
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_t task, int32_t loop)
 {
     /*
      *  query:    B S1 N2 G D
@@ -365,6 +380,21 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_
     selectedKGmOffset = selectdKPPPidx * selectedKWspOffset;
     selectedVGmOffset = selectedKGmOffset;
 
+    if (loop == 0) {
+        blkCntOffset = 0;
+    } else {
+        blkCntOffset += actualSelCntOffset;
+    }
+
+    if (loop == oriS2Loop - 1) {
+        actualSelCntOffset = oriS2Tail;
+    } else if (loop == oriS2Loop + cmpS2Loop - 1) {
+        actualSelCntOffset = cmpS2Tail;
+    } else {
+        actualSelCntOffset = selectedCountOffset;
+    }
+
+    runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
     runInfo[mmPingPongIdx].task = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
     runInfo[mmPingPongIdx].blkCntOffset = blkCntOffset;
@@ -376,7 +406,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_
     runInfo[mmPingPongIdx].mm12GmOffset = mm12GmOffset;
     runInfo[mmPingPongIdx].mm345GmOffset = mm345GmOffset;
     runInfo[mmPingPongIdx].dqOutGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].actualSelCntOffset = blkCntOffset + selectedCountOffset <= actualSelectedBlockCount ? selectedCountOffset : actualSelectedBlockCount - blkCntOffset;
+    runInfo[mmPingPongIdx].actualSelCntOffset = actualSelCntOffset;
     runInfo[mmPingPongIdx].lastBlockSize = isLastBlockSelected && curMaxS3 % selectedBlockSize != 0 ? curMaxS3 % selectedBlockSize : selectedBlockSize;
     runInfo[mmPingPongIdx].isLastBasicBlock = (blkCntOffset + selectedCountOffset >= actualSelectedBlockCount);
     runInfo[mmPingPongIdx].scatterTaskId = scatterTaskId;
@@ -406,6 +436,7 @@ template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
                                                                        const GM_ADDR actual_seq_ori_kvlen_addr,
                                                                        const GM_ADDR actual_seq_cmp_kvlen_addr,
+                                                                       const GM_ADDR cmp_residual_kv,
                                                                        const int64_t t1Idx, int64_t &bIdx)
 {
     if constexpr (IS_BSND == false) {
@@ -421,6 +452,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
             curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex + 1];
             curS2 = ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex + 1];
             curS3 = ((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex + 1];
+            residual = ((__gm__ int32_t *)cmp_residual_kv)[bIndex];
         } else {
             t1Offset = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
             t2Offset = ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex - 1];
@@ -428,6 +460,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
             curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
             curS2 = (((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_ori_kvlen_addr)[bIndex - 1]);
             curS3 = (((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_cmp_kvlen_addr)[bIndex - 1]);
+            residual = ((__gm__ int32_t *)cmp_residual_kv)[bIndex - 1];
         }
 
         s1Index = t1Idx - t1Offset;
@@ -441,20 +474,25 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount)
+__aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount, int32_t &curS2Loop)
 {
-    int64_t maxS3 = Max((curS2 - curS1 + s1Index + 1) / cmpRatio, 0);
+    int64_t maxS3 = Max((curS3 * cmpRatio + residual - curS1 + s1Index + 1) / cmpRatio, 0);
     curMaxS3 = (maxS3 + selectedBlockSize - 1) / selectedBlockSize;
 
     actualSelectedBlockCount = Min(selectedBlockCount, curMaxS3);
+    cmpS2Loop = CeilDiv(actualSelectedBlockCount, selectedCountOffset);
+    cmpS2Tail = actualSelectedBlockCount % selectedCountOffset ? actualSelectedBlockCount % selectedCountOffset : selectedCountOffset;
 
     int64_t oriWinDiagOffset = curS2 - curS1;
     oriWinEnd = Min(s1Index + oriWinRight + 1 + oriWinDiagOffset, curS2);
     oriWinEnd = Max(oriWinEnd, 0);
     oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset, 0);
     int64_t oriWinS2Len = oriWinEnd - oriWinStart;
+    oriS2Loop = CeilDiv(oriWinS2Len, selectedCountOffset);
+    oriS2Tail = oriWinS2Len % selectedCountOffset ? oriWinS2Len % selectedCountOffset : selectedCountOffset;
 
     actualSelectedBlockCount += oriWinS2Len;
+    curS2Loop = oriS2Loop + cmpS2Loop;
 }
 
 } // namespace SMLAG_BASIC

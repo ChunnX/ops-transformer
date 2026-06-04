@@ -311,32 +311,32 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(con
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
-    size_t size = mSplitInfo.vecDealM * FP32_BLOCK_ELEMENT_NUM;
-    uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
-    uint64_t offset = (accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize +              // taskoffset
+    uint64_t qsfaBaseOffset = mSplitInfo.nBufferStartM / 2;
+    size_t qsfaSize = mSplitInfo.vecDealM * FP32_BLOCK_ELEMENT_NUM;
+    uint64_t qsfaAccumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
+    uint64_t qsfaOffset = (qsfaAccumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
                        FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if (info.actualSingleProcessSInnerSize != 0) {
-        LocalTensor<T> tmp = outputBuff2.Get<T>();
+        LocalTensor<T> qsfaTmp = outputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-        Brcb(tmp, softmaxSumUb[baseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+        Brcb(qsfaTmp, softmaxSumUb[qsfaBaseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(lseSumFdGm[offset], tmp, size);
+        DataCopy(lseSumFdGm[qsfaOffset], qsfaTmp, qsfaSize);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 
-        tmp = outputBuff2.Get<T>();
+        qsfaTmp = outputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-        Brcb(tmp, softmaxMaxUb[baseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+        Brcb(qsfaTmp, softmaxMaxUb[qsfaBaseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-        DataCopy(lseMaxFdGm[offset], tmp, size);
+        DataCopy(lseMaxFdGm[qsfaOffset], qsfaTmp, qsfaSize);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
     } else {
-        matmul::InitOutput<T>(lseSumFdGm[offset], size, ConstInfo::FLOAT_ZERO);
-        matmul::InitOutput<T>(lseMaxFdGm[offset], size, SOFTMAX_MIN_NUM);
+        matmul::InitOutput<T>(lseSumFdGm[qsfaOffset], qsfaSize, ConstInfo::FLOAT_ZERO);
+        matmul::InitOutput<T>(lseMaxFdGm[qsfaOffset], qsfaSize, SOFTMAX_MIN_NUM);
     }
 }
 
@@ -348,44 +348,46 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &i
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.scaleValue), dealRowCount * columnCount);
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // v0的无效值判断
-        uint64_t s2ValidSizeFirstPart = v0ValidSizeUb_.GetValue(128 + info.loop % MERGE_CACHE_GM_BUF_NUM);
-        uint64_t s2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + info.loop % MERGE_CACHE_GM_BUF_NUM);
+        uint64_t qsfaS2ValidSizeFirstPart = v0ValidSizeUb_.GetValue(128 + info.loop % MERGE_CACHE_GM_BUF_NUM);
+        uint64_t qsfaS2ValidSizeSecondPart = v0ValidSizeUb_.GetValue(256 + info.loop % MERGE_CACHE_GM_BUF_NUM);
 
-        int64_t s2ProcessSize = info.actualSingleProcessSInnerSize;
-        int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
-        int64_t s2Mid = CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-        if (s2Mid > s2ProcessSize) {
-            s2Mid = s2ProcessSize;
+        int64_t qsfaS2ProcessSize = info.actualSingleProcessSInnerSize;
+        int64_t qsfaS2Pair = CeilDiv(qsfaS2ProcessSize, 2L * constInfo.sparseBlockSize);
+        int64_t qsfaS2Mid = CeilDiv(qsfaS2Pair, 2L) * 2 * constInfo.sparseBlockSize;
+        if (qsfaS2Mid > qsfaS2ProcessSize) {
+            qsfaS2Mid = qsfaS2ProcessSize;
         }
-        if (unlikely(s2ValidSizeFirstPart < s2Mid)) {
-            int64_t s2StartCeilAlign = CeilAlign(s2ValidSizeFirstPart, 8);
-            int64_t s2MidFloorAlign = s2Mid / 8 * 8;
+        if (unlikely(qsfaS2ValidSizeFirstPart < qsfaS2Mid)) {
+            int64_t qsfaS2StartCeilAlign = CeilAlign(qsfaS2ValidSizeFirstPart, 8);
+            int64_t qsfaS2MidFloorAlign = qsfaS2Mid / 8 * 8;
             // 场景一 s2Mid > s2ValidSizeFirstPart + oneBlk
             // 可以推导出s2StartCeilAlign < s2Mid   第一阶段取到s2StartCeilAlign
             // s2StartCeilAlign <= s2MidFloorAlign 第二阶段取到s2MidFloorAlign
             // 场景二 s2Mid <= s2ValidSizeFirstPart + oneBlk
             // 可以推导出 s2StartCeilAlign >= s2Mid 第一阶段取到mid
             // s2StartCeilAlign > s2MidFloorAlign 第二阶段取到s2StartCeilAlign
-            SetInfInBlk(mmResUb, dealRowCount, columnCount, s2ValidSizeFirstPart,
-                        s2StartCeilAlign >= s2Mid ? s2Mid : s2StartCeilAlign);
-            SetMidInf(mmResUb, dealRowCount, columnCount, s2StartCeilAlign, s2MidFloorAlign);
+            SetInfInBlk(mmResUb, dealRowCount, columnCount, qsfaS2ValidSizeFirstPart,
+                        qsfaS2StartCeilAlign >= qsfaS2Mid ? qsfaS2Mid : qsfaS2StartCeilAlign);
+            SetMidInf(mmResUb, dealRowCount, columnCount, qsfaS2StartCeilAlign, qsfaS2MidFloorAlign);
             SetInfInBlk(mmResUb, dealRowCount, columnCount,
-                        s2StartCeilAlign <= s2MidFloorAlign ? s2MidFloorAlign : s2StartCeilAlign, s2Mid);
+                        qsfaS2StartCeilAlign <= qsfaS2MidFloorAlign ? \
+                        qsfaS2MidFloorAlign : qsfaS2StartCeilAlign, qsfaS2Mid);
         }
-        if (unlikely(s2ValidSizeSecondPart < s2ProcessSize - s2Mid)) {
+        if (unlikely(qsfaS2ValidSizeSecondPart < qsfaS2ProcessSize - qsfaS2Mid)) {
             // 场景一 s2Mid + s2ValidSizeSecondPart > s2ProcessSize + oneBlk
             // 可以推导出 s2StartCeilAlign < s2ProcessSize 第一阶段取到s2StartCeilAlign
             // s2StartCeilAlign <= s2EndFloorAlign 第二阶段取到s2EndFloorAlign
             // 场景二 s2Mid + s2ValidSizeSecondPart <= s2ProcessSize + oneBlk
             // 可以推导出 s2StartCeilAlign >= s2ProcessSize 第一阶段取到s2ProcessSize
             // s2StartCeilAlign > s2EndFloorAlign 第二阶段取到s2StartCeilAlign
-            int64_t s2StartCeilAlign = CeilAlign(s2Mid + s2ValidSizeSecondPart, 8);
-            int64_t s2EndFloorAlign = s2ProcessSize / 8 * 8;
-            SetInfInBlk(mmResUb, dealRowCount, columnCount, s2Mid + s2ValidSizeSecondPart,
-                        s2StartCeilAlign >= s2ProcessSize ? s2ProcessSize : s2StartCeilAlign);
-            SetMidInf(mmResUb, dealRowCount, columnCount, s2StartCeilAlign, s2EndFloorAlign);
+            int64_t qsfaS2StartCeilAlign = CeilAlign(qsfaS2Mid + qsfaS2ValidSizeSecondPart, 8);
+            int64_t qsfaS2EndFloorAlign = qsfaS2ProcessSize / 8 * 8;
+            SetInfInBlk(mmResUb, dealRowCount, columnCount, qsfaS2Mid + qsfaS2ValidSizeSecondPart,
+                        qsfaS2StartCeilAlign >= qsfaS2ProcessSize ? qsfaS2ProcessSize : qsfaS2StartCeilAlign);
+            SetMidInf(mmResUb, dealRowCount, columnCount, qsfaS2StartCeilAlign, qsfaS2EndFloorAlign);
             SetInfInBlk(mmResUb, dealRowCount, columnCount,
-                        s2StartCeilAlign <= s2EndFloorAlign ? s2EndFloorAlign : s2StartCeilAlign, s2ProcessSize);
+                        qsfaS2StartCeilAlign <= qsfaS2EndFloorAlign ? qsfaS2EndFloorAlign : qsfaS2StartCeilAlign,
+                        qsfaS2ProcessSize);
         }
     }
 }
@@ -402,18 +404,18 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SetInfInBlk(const LocalTensor<T
         return;
     }
 
-    uint64_t startFloorAlignSize = startId / BLOCK_ELEMENT_NUM * BLOCK_ELEMENT_NUM;
-    uint64_t notComputePreMaskOneBlk = (1 << (startId - startFloorAlignSize)) - 1;
-    uint64_t notComputePostMaskOneBlk = ~((1 << (endId - startFloorAlignSize)) - 1);
-    uint64_t notComputeMaskOneBlk = notComputePreMaskOneBlk ^ notComputePostMaskOneBlk;
+    uint64_t qsfaStartFloorAlignSize = startId / BLOCK_ELEMENT_NUM * BLOCK_ELEMENT_NUM;
+    uint64_t qsfaNotComputePreMaskOneBlk = (1 << (startId - qsfaStartFloorAlignSize)) - 1;
+    uint64_t qsfaNotComputePostMaskOneBlk = ~((1 << (endId - qsfaStartFloorAlignSize)) - 1);
+    uint64_t qsfaNotComputeMaskOneBlk = qsfaNotComputePreMaskOneBlk ^ qsfaNotComputePostMaskOneBlk;
 
-    uint64_t maskOneBlk = ~notComputeMaskOneBlk;
-    uint64_t mask[1] = {maskOneBlk};
+    uint64_t qsfaMaskOneBlk = ~qsfaNotComputeMaskOneBlk;
+    uint64_t mask[1] = {qsfaMaskOneBlk};
     for (int i = 1; i < 8; i++) {
-        mask[0] = mask[0] | (maskOneBlk << (i * 8));
+        mask[0] = mask[0] | (qsfaMaskOneBlk << (i * 8));
     }
-    for (uint64_t rowId = 0; rowId < dealRowCount; rowId += 8) {
-        Duplicate(mmResUb[rowId * columnCount + startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
+    for (uint64_t qsfaRowId = 0; qsfaRowId < dealRowCount; qsfaRowId += 8) {
+        Duplicate(mmResUb[qsfaRowId * columnCount + qsfaStartFloorAlignSize], SOFTMAX_MIN_NUM, mask,
                   1, CeilDiv(columnCount, 8), 0);
     }
 }
@@ -429,8 +431,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SetMidInf(const LocalTensor<T> 
     // startId        endId
     //    0      ...    0
     // 从startId到endId部分置-inf, startId、endId为32B对齐的下标
-    for (uint64_t rowId = 0; rowId < dealRowCount; rowId++) {
-        Duplicate(mmResUb[rowId * columnCount + startId], SOFTMAX_MIN_NUM, endId - startId);
+    for (uint64_t qsfaRowId = 0; qsfaRowId < dealRowCount; qsfaRowId++) {
+        Duplicate(mmResUb[qsfaRowId * columnCount + startId], SOFTMAX_MIN_NUM, endId - startId);
     }
 }
 
@@ -471,14 +473,14 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(
     const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount,
     uint32_t columnCount, uint32_t loopId)
 {
-    uint32_t computeSize = dealRowCount * columnCount;
-    uint64_t inOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
+    uint32_t qsfaComputeSize = dealRowCount * columnCount;
+    uint64_t qsfaInOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
                              (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow) * columnCount;
-    LocalTensor<MM1_OUT_T> mmResUb = inputBuff1.Get<MM1_OUT_T>();
-    mmResUb = mmResUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM1_OUT_T)];
+    LocalTensor<MM1_OUT_T> qsfaMmResUb = inputBuff1.Get<MM1_OUT_T>();
+    qsfaMmResUb = qsfaMmResUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM1_OUT_T)];
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
-    DataCopy(mmResUb, mm1ResGm[inOutGmOffset], computeSize);
+    DataCopy(qsfaMmResUb, mm1ResGm[qsfaInOutGmOffset], qsfaComputeSize);
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         if (loopId == 0) {
             WaitFlag<HardEvent::MTE2_S>(0);
@@ -487,25 +489,25 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
-    ElewiseCompute(info, mmResUb, dealRowCount, columnCount);
+    ElewiseCompute(info, qsfaMmResUb, dealRowCount, columnCount);
 
     PipeBarrier<PIPE_V>();
-    LocalTensor<T> tmpAFloorUb = tmpBuff1.Get<T>();
-    LocalTensor<uint8_t> softmaxTmpUb = tmpAFloorUb.template ReinterpretCast<uint8_t>();
+    LocalTensor<T> qsfaTmpAFloorUb = tmpBuff1.Get<T>();
+    LocalTensor<uint8_t> qsfaSoftmaxTmpUb = qsfaTmpAFloorUb.template ReinterpretCast<uint8_t>();
 
-    SoftmaxFlashV2Compute(info, mSplitInfo, mmResUb, softmaxTmpUb, startRow, dealRowCount, columnCount,
+    SoftmaxFlashV2Compute(info, mSplitInfo, qsfaMmResUb, qsfaSoftmaxTmpUb, startRow, dealRowCount, columnCount,
                             info.actualSingleProcessSInnerSize);
 
     PipeBarrier<PIPE_V>();
     LocalTensor<K_ROPE_T> tmpMMResCastTensor = outputBuff1.Get<K_ROPE_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 
-    Cast(tmpMMResCastTensor, mmResUb, AscendC::RoundMode::CAST_ROUND, computeSize);
+    Cast(tmpMMResCastTensor, qsfaMmResUb, AscendC::RoundMode::CAST_ROUND, qsfaComputeSize);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
-    DataCopy(vec1ResGm[inOutGmOffset], tmpMMResCastTensor, computeSize);
+    DataCopy(vec1ResGm[qsfaInOutGmOffset], tmpMMResCastTensor, qsfaComputeSize);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 }
 
@@ -516,17 +518,17 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    uint32_t mSplitSize = info.actualSingleProcessSInnerSize == 0 ?
+    uint32_t qsfaMSplitSize = info.actualSingleProcessSInnerSize == 0 ?
         16 : BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
-    mSplitSize = mSplitSize / 8 * 8;
+    qsfaMSplitSize = qsfaMSplitSize / 8 * 8;
 
-    if (mSplitSize > mSplitInfo.vecDealM) {
-        mSplitSize = mSplitInfo.vecDealM;
+    if (qsfaMSplitSize > mSplitInfo.vecDealM) {
+        qsfaMSplitSize = mSplitInfo.vecDealM;
     }
-    uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
-    uint32_t tailSplitSize = mSplitInfo.vecDealM - (loopCount - 1) * mSplitSize;
+    uint32_t qsfaLoopCount = (mSplitInfo.vecDealM + qsfaMSplitSize - 1) / qsfaMSplitSize;
+    uint32_t qsfaTailSplitSize = mSplitInfo.vecDealM - (qsfaLoopCount - 1) * qsfaMSplitSize;
 
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         DataCopyExtParams dataCopyParams;
@@ -539,16 +541,17 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
         DataCopyPad(v0ValidSizeUb_[128], kvValidSizeGm_[info.loop % MERGE_CACHE_GM_BUF_NUM * (128 * 2)],
                     dataCopyParams, padParams);
         SetFlag<HardEvent::MTE2_S>(0);
-        if (unlikely(loopCount == 0)) {
+        if (unlikely(qsfaLoopCount == 0)) {
             // scalar同步影响较大，挪到循环内部进行
             WaitFlag<HardEvent::MTE2_S>(0);
         }
     }
-    for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
-        if (i == (loopCount - 1)) {
-            dealSize = tailSplitSize;
+    for (uint32_t qsfaI = 0, dealSize = qsfaMSplitSize; qsfaI < qsfaLoopCount; qsfaI++) {
+        if (qsfaI == (qsfaLoopCount - 1)) {
+            dealSize = qsfaTailSplitSize;
         }
-        DealBmm1ResBaseBlock(info, mSplitInfo, i * mSplitSize, dealSize, info.actualSingleProcessSInnerSizeAlign, i);
+        DealBmm1ResBaseBlock(info, mSplitInfo, qsfaI * qsfaMSplitSize, dealSize,
+            info.actualSingleProcessSInnerSizeAlign, qsfaI);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
 }
@@ -557,12 +560,12 @@ template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
                                                               int64_t topkGmBaseOffset, const RunInfo &runInfo)
 {
-    int64_t topkGmIdx = (s2GmOffset + runInfo.s2Idx * constInfo.s2BaseSize) / constInfo.sparseBlockSize;
-    if (unlikely(topkGmIdx >= constInfo.sparseBlockCount)) {
+    int64_t qsfaTopkGmIdx = (s2GmOffset + runInfo.s2Idx * constInfo.s2BaseSize) / constInfo.sparseBlockSize;
+    if (unlikely(qsfaTopkGmIdx >= constInfo.sparseBlockCount)) {
         realS2Idx = -1;
         return;
     }
-    realS2Idx = topkGm_.GetValue(topkGmBaseOffset + topkGmIdx) * static_cast<int64_t>(constInfo.sparseBlockSize) +
+    realS2Idx = topkGm_.GetValue(topkGmBaseOffset + qsfaTopkGmIdx) * static_cast<int64_t>(constInfo.sparseBlockSize) +
                 static_cast<int64_t>((s2GmOffset + runInfo.s2Idx * constInfo.s2BaseSize) % constInfo.sparseBlockSize);
 }
 
@@ -795,56 +798,56 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     int64_t topkGmBaseOffset = 0;
 
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(runInfo.bIdx - 1);
-        topkGmBaseOffset += (actualSeqQPrefixSum + runInfo.gS1Idx / constInfo.gSize) * constInfo.kvHeadNum *
+        uint64_t qsfaActualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(runInfo.bIdx - 1);
+        topkGmBaseOffset += (qsfaActualSeqQPrefixSum + runInfo.gS1Idx / constInfo.gSize) * constInfo.kvHeadNum *
                             constInfo.sparseBlockCount + runInfo.n2Idx * constInfo.sparseBlockCount;
     } else {
         topkGmBaseOffset += runInfo.bIdx * constInfo.qSeqSize * constInfo.sparseBlockCount +
                             runInfo.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
     }
-    int64_t mergeMte3Idx = 0;
-    int64_t mte2Size = 0;
-    int64_t mte3Size = 0;
-    int64_t s2IdxArray0 = -1;
-    int64_t s2IdxArray1 = -1;
-    bool needWaitMte3ToMte2 = true;
+    int64_t qsfaMergeMte3Idx = 0;
+    int64_t qsfaMte2Size = 0;
+    int64_t qsfaMte3Size = 0;
+    int64_t qsfaS2IdxArray0 = -1;
+    int64_t qsfaS2IdxArray1 = -1;
+    bool qsfaNeedWaitMte3ToMte2 = true;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-    int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    int64_t s2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: s2ProcessSize;
-    if (s2GmLimit > s2ProcessSize) {
-        s2GmLimit = s2ProcessSize;
+    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
+    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: s2ProcessSize;
+    if (qsfaS2GmLimit > s2ProcessSize) {
+        qsfaS2GmLimit = s2ProcessSize;
     }
-    for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit; s2GmOffsetArray += 2 *
+    for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit; s2GmOffsetArray += 2 *
         constInfo.sparseBlockSize) {
-        if (needWaitMte3ToMte2) {
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2);
-            needWaitMte3ToMte2 = false;
+        if (qsfaNeedWaitMte3ToMte2) {
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
+            qsfaNeedWaitMte3ToMte2 = false;
         }
-        GetRealS2Idx(s2GmOffsetArray, s2IdxArray0, topkGmBaseOffset, runInfo);
-        if (unlikely(s2IdxArray0 < 0)) {
-            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset, mergeMte3Idx, runInfo);
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2);
-            mergeMte3Idx++;
+        GetRealS2Idx(s2GmOffsetArray, qsfaS2IdxArray0, topkGmBaseOffset, runInfo);
+        if (unlikely(qsfaS2IdxArray0 < 0)) {
+            CopyOutMrgeResult(qsfaMte2Size, qsfaMte3Size, qsfaS2GmStartOffset, qsfaMergeMte3Idx, runInfo);
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
+            qsfaMergeMte3Idx++;
             break;
         }
-        GetRealS2Idx(s2GmOffsetArray + constInfo.sparseBlockSize, s2IdxArray1, topkGmBaseOffset, runInfo);
-        CopyInKv(mte2Size, mte3Size, mergeMte3Idx, s2IdxArray0, s2IdxArray1, runInfo);
-        if ((mte2Size - mte3Size + 2 * constInfo.sparseBlockSize > 32) ||
-            s2GmOffsetArray + 2 * constInfo.sparseBlockSize >= s2GmLimit) {
-            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset, mergeMte3Idx, runInfo);
-            mte3Size = mte2Size;
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2);
-            mergeMte3Idx++;
-            needWaitMte3ToMte2 = true;
+        GetRealS2Idx(s2GmOffsetArray + constInfo.sparseBlockSize, qsfaS2IdxArray1, topkGmBaseOffset, runInfo);
+        CopyInKv(qsfaMte2Size, qsfaMte3Size, qsfaMergeMte3Idx, qsfaS2IdxArray0, qsfaS2IdxArray1, runInfo);
+        if ((qsfaMte2Size - qsfaMte3Size + 2 * constInfo.sparseBlockSize > 32) ||
+            s2GmOffsetArray + 2 * constInfo.sparseBlockSize >= qsfaS2GmLimit) {
+            CopyOutMrgeResult(qsfaMte2Size, qsfaMte3Size, qsfaS2GmStartOffset, qsfaMergeMte3Idx, runInfo);
+            qsfaMte3Size = qsfaMte2Size;
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
+            qsfaMergeMte3Idx++;
+            qsfaNeedWaitMte3ToMte2 = true;
         }
     }
 
-    if (unlikely(s2GmStartOffset + mte2Size < s2GmLimit)) {
+    if (unlikely(qsfaS2GmStartOffset + qsfaMte2Size < qsfaS2GmLimit)) {
         uint64_t blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
         SetFlag<AscendC::HardEvent::MTE3_V>(0);
         WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
         LocalTensor<K_ROPE_T> mergeUb = kvMergUb_.template ReinterpretCast<K_ROPE_T>();
         Duplicate(mergeUb, static_cast<K_ROPE_T>(0.0), constInfo.headDim);
         SetFlag<AscendC::HardEvent::V_MTE3>(0);
@@ -855,22 +858,22 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
         dataCopyParams.blockLen = blockElementNum * sizeof(K_ROPE_T);
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = (constInfo.s2BaseSize - 1) * blockElementNum * sizeof(K_ROPE_T);
-        for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
+        for (int64_t s2GmOffset = qsfaS2GmStartOffset + qsfaMte2Size; s2GmOffset < qsfaS2GmLimit; s2GmOffset++) {
             DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s2GmOffset * blockElementNum],
                         mergeUb, dataCopyParams);
         }
         dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
-        for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
+        for (int64_t s2GmOffset = qsfaS2GmStartOffset + qsfaMte2Size; s2GmOffset < qsfaS2GmLimit; s2GmOffset++) {
             DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * constInfo.headDim +
                                    s2GmOffset * blockElementNum],
                         mergeUb, dataCopyParams);
         }
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx & 1);
-        mergeMte3Idx++;
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
+        qsfaMergeMte3Idx++;
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-    v0ValidSizeUb_.SetValue(runInfo.loop % MERGE_CACHE_GM_BUF_NUM, mte2Size);
+    v0ValidSizeUb_.SetValue(runInfo.loop % MERGE_CACHE_GM_BUF_NUM, qsfaMte2Size);
     SetFlag<AscendC::HardEvent::S_MTE3>(1);
     WaitFlag<AscendC::HardEvent::S_MTE3>(1);
     DataCopyExtParams dataCopyParams;
@@ -886,13 +889,13 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1L(const RunInfo &info)
 {
-    uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
-    uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
-    for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
+    uint32_t qsfaNBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    uint32_t qsfaNBufferTail = info.actMBaseSize - (qsfaNBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
+    for (uint32_t qsfaI = 0; qsfaI < qsfaNBufferLoopTimes; qsfaI++) {
         MSplitInfo mSplitInfo;
-        mSplitInfo.nBufferIdx = i;
-        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
-        mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
+        mSplitInfo.nBufferIdx = qsfaI;
+        mSplitInfo.nBufferStartM = qsfaI * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferDealM = (qsfaI + 1 != qsfaNBufferLoopTimes) ? constInfo.nBufferMBaseSize : qsfaNBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
@@ -1021,13 +1024,13 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
 
 template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &info)
 {
-    uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
-    uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
-    for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
+    uint32_t qsfaNBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    uint32_t qsfaNBufferTail = info.actMBaseSize - (qsfaNBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
+    for (uint32_t qsfaI = 0; qsfaI < qsfaNBufferLoopTimes; qsfaI++) {
         MSplitInfo mSplitInfo;
-        mSplitInfo.nBufferIdx = i;
-        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
-        mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
+        mSplitInfo.nBufferIdx = qsfaI;
+        mSplitInfo.nBufferStartM = qsfaI * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferDealM = (qsfaI + 1 != qsfaNBufferLoopTimes) ? constInfo.nBufferMBaseSize : qsfaNBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
             (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
@@ -1046,18 +1049,18 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2Inner(const RunInfo 
                                                                   const MSplitInfo &mSplitInfo,
                                                                   uint32_t mStartRow, uint32_t mDealSize)
 {
-    uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
-    if (mSplitSize > mDealSize) {
-        mSplitSize = mDealSize;
+    uint32_t qsfaMSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
+    if (qsfaMSplitSize > mDealSize) {
+        qsfaMSplitSize = mDealSize;
     }
 
-    uint32_t loopCount = (mDealSize + mSplitSize - 1) / mSplitSize;
-    uint32_t tailSplitSize = mDealSize - (loopCount - 1) * mSplitSize;
-    for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
-        if (i == (loopCount - 1)) {
-            dealSize = tailSplitSize;
+    uint32_t qsfaLoopCount = (mDealSize + qsfaMSplitSize - 1) / qsfaMSplitSize;
+    uint32_t qsfaTailSplitSize = mDealSize - (qsfaLoopCount - 1) * qsfaMSplitSize;
+    for (uint32_t qsfaI = 0, dealSize = qsfaMSplitSize; qsfaI < qsfaLoopCount; qsfaI++) {
+        if (qsfaI == (qsfaLoopCount - 1)) {
+            dealSize = qsfaTailSplitSize;
         }
-        DealBmm2ResBaseBlock(info, mSplitInfo, i * mSplitSize + mStartRow, dealSize,
+        DealBmm2ResBaseBlock(info, mSplitInfo, qsfaI * qsfaMSplitSize + mStartRow, dealSize,
                              constInfo.headDim, constInfo.headDim);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
@@ -1070,19 +1073,19 @@ __aicore__ inline void QSFAVectorService<QSFAT>::GetConfusionTransposeTiling(
     ConfusionTransposeTiling &tiling)
 {
     (void)stackBufferSize;
-    uint32_t blockSize = ONE_BLK_SIZE / typeSize;
-    uint32_t height = numC;
-    uint32_t width = numR;
-    uint32_t highBlock = height / BLOCK_CUBE;
-    uint32_t stride = height * blockSize * typeSize / ONE_BLK_SIZE;
-    uint32_t repeat = width / blockSize;
+    uint32_t qsfaBlockSize = ONE_BLK_SIZE / typeSize;
+    uint32_t qsfaHeight = numC;
+    uint32_t qsfaWidth = numR;
+    uint32_t qsfaHighBlock = qsfaHeight / BLOCK_CUBE;
+    uint32_t qsfaStride = qsfaHeight * qsfaBlockSize * typeSize / ONE_BLK_SIZE;
+    uint32_t qsfaRepeat = qsfaWidth / qsfaBlockSize;
 
-    tiling.param0 = blockSize;
-    tiling.param1 = height;
-    tiling.param2 = width;
-    tiling.param3 = highBlock;
-    tiling.param4 = stride;
-    tiling.param5 = repeat;
+    tiling.param0 = qsfaBlockSize;
+    tiling.param1 = qsfaHeight;
+    tiling.param2 = qsfaWidth;
+    tiling.param3 = qsfaHighBlock;
+    tiling.param4 = qsfaStride;
+    tiling.param5 = qsfaRepeat;
 }
 
 template <typename QSFAT>
@@ -1136,17 +1139,17 @@ QSFAVectorService<QSFAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T>
                                              uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
                                              uint32_t actualColumnCount)
 {
-    LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuff1.Get<OUT_T>();
+    LocalTensor<OUT_T> qsfaTmpBmm2ResCastTensor = outputBuff1.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-        Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
+        Cast(qsfaTmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
     } else {
-        Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
+        Cast(qsfaTmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
-    Bmm2DataCopyOutTrans(info, tmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
+    Bmm2DataCopyOutTrans(info, qsfaTmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 }
 
@@ -1176,41 +1179,42 @@ QSFAVectorService<QSFAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> s
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
     // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
     // columnCount]
-    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
+    uint32_t qsfaDtypeMask = FP32_REPEAT_ELEMENT_NUM;
+    uint32_t qsfaDLoop = actualColumnCount / qsfaDtypeMask;
+    uint32_t qsfaDRemain = actualColumnCount % qsfaDtypeMask;
 
-    BinaryRepeatParams repeatParamsDiv;
-    repeatParamsDiv.src0BlkStride = 1;
-    repeatParamsDiv.src1BlkStride = 0;
-    repeatParamsDiv.dstBlkStride = 1;
-    repeatParamsDiv.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsDiv.src1RepStride = 1;
-    repeatParamsDiv.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
-    uint32_t columnRepeatCount = dLoop;
-    if (columnRepeatCount <= dealRowCount) {
-        uint32_t offset = 0;
-        for (uint32_t i = 0; i < dLoop; i++) {
-            Div(dstUb[offset], src0Ub[offset], src1Ub, dtypeMask, dealRowCount, repeatParamsDiv);
-            offset += dtypeMask;
+    BinaryRepeatParams qsfaRepeatParamsDiv;
+    qsfaRepeatParamsDiv.src0BlkStride = 1;
+    qsfaRepeatParamsDiv.src1BlkStride = 0;
+    qsfaRepeatParamsDiv.dstBlkStride = 1;
+    qsfaRepeatParamsDiv.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    qsfaRepeatParamsDiv.src1RepStride = 1;
+    qsfaRepeatParamsDiv.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    uint32_t qsfaColumnRepeatCount = qsfaDLoop;
+    if (qsfaColumnRepeatCount <= dealRowCount) {
+        uint32_t qsfaOffset = 0;
+        for (uint32_t qsfaI = 0; qsfaI < qsfaDLoop; qsfaI++) {
+            Div(dstUb[qsfaOffset], src0Ub[qsfaOffset], src1Ub, qsfaDtypeMask, dealRowCount, qsfaRepeatParamsDiv);
+            qsfaOffset += qsfaDtypeMask;
         }
     } else {
-        BinaryRepeatParams columnRepeatParams;
-        columnRepeatParams.src0BlkStride = 1;
-        columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
-        columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
-        columnRepeatParams.src1RepStride = 0;
-        columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
-        uint32_t offset = 0;
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            Div(dstUb[offset], src0Ub[offset], src1Ub[i * FP32_BLOCK_ELEMENT_NUM], dtypeMask, columnRepeatCount,
-                columnRepeatParams);
-            offset += columnCount;
+        BinaryRepeatParams qsfaColumnRepeatParams;
+        qsfaColumnRepeatParams.src0BlkStride = 1;
+        qsfaColumnRepeatParams.src1BlkStride = 0;
+        qsfaColumnRepeatParams.dstBlkStride = 1;
+        qsfaColumnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+        qsfaColumnRepeatParams.src1RepStride = 0;
+        qsfaColumnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+        uint32_t qsfaOffset = 0;
+        for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
+            Div(dstUb[qsfaOffset], src0Ub[qsfaOffset], src1Ub[qsfaI * FP32_BLOCK_ELEMENT_NUM], qsfaDtypeMask,
+                qsfaColumnRepeatCount, qsfaColumnRepeatParams);
+            qsfaOffset += columnCount;
         }
     }
-    if (dRemain > 0) {
-        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub, dRemain, dealRowCount, repeatParamsDiv);
+    if (qsfaDRemain > 0) {
+        Div(dstUb[qsfaDLoop * qsfaDtypeMask], src0Ub[qsfaDLoop * qsfaDtypeMask], src1Ub, qsfaDRemain,
+            dealRowCount, qsfaRepeatParamsDiv);
     }
 }
 
@@ -1224,73 +1228,74 @@ QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, L
     // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
     // columnCount]
     // dealRowCount is repeat times, must be less 256
-    uint32_t repeatElementNum = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t blockElementNum = FP32_BLOCK_ELEMENT_NUM;
+    uint32_t qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM;
+    uint32_t qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM;
 
     if constexpr (std::is_same<T, half>::value) {
         // 此限制由于每个repeat至多连续读取256B数据
-        repeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
-        blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;   // 32/4 * 2 = 16
+        qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
+        qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;   // 32/4 * 2 = 16
     }
 
     // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
     // 列方向分dLoop次，每次处理8列数据
-    uint32_t dLoop = actualColumnCount / repeatElementNum;
-    uint32_t dRemain = actualColumnCount % repeatElementNum;
+    uint32_t qsfaDLoop = actualColumnCount / qsfaRepeatElementNum;
+    uint32_t qsfaDRemain = actualColumnCount % qsfaRepeatElementNum;
     // REPEATE_STRIDE_UP_BOUND=256， 此限制由于src0RepStride数据类型为uint8之多256个datablock间距
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * blockElementNum) {
-        BinaryRepeatParams repeatParams;
-        repeatParams.src0BlkStride = 1;
-        repeatParams.src1BlkStride = 0;
-        repeatParams.dstBlkStride = 1;
-        repeatParams.src0RepStride = columnCount / blockElementNum;
-        repeatParams.src1RepStride = 1;
-        repeatParams.dstRepStride = columnCount / blockElementNum;
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * qsfaBlockElementNum) {
+        BinaryRepeatParams qsfaRepeatParams;
+        qsfaRepeatParams.src0BlkStride = 1;
+        qsfaRepeatParams.src1BlkStride = 0;
+        qsfaRepeatParams.dstBlkStride = 1;
+        qsfaRepeatParams.src0RepStride = columnCount / qsfaBlockElementNum;
+        qsfaRepeatParams.src1RepStride = 1;
+        qsfaRepeatParams.dstRepStride = columnCount / qsfaBlockElementNum;
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
-        if (dLoop <= dealRowCount) {
-            uint32_t offset = 0;
-            for (uint32_t i = 0; i < dLoop; i++) {
-                Mul(dstUb[offset], src0Ub[offset], src1Ub, repeatElementNum, dealRowCount, repeatParams);
-                offset += repeatElementNum;
+        if (qsfaDLoop <= dealRowCount) {
+            uint32_t qsfaOffset = 0;
+            for (uint32_t qsfaI = 0; qsfaI < qsfaDLoop; qsfaI++) {
+                Mul(dstUb[qsfaOffset], src0Ub[qsfaOffset], src1Ub, qsfaRepeatElementNum, dealRowCount,
+                    qsfaRepeatParams);
+                qsfaOffset += qsfaRepeatElementNum;
             }
         } else {
-            BinaryRepeatParams columnRepeatParams;
-            columnRepeatParams.src0BlkStride = 1;
-            columnRepeatParams.src1BlkStride = 0;
-            columnRepeatParams.dstBlkStride = 1;
-            columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
-            columnRepeatParams.src1RepStride = 0;
-            columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
-            for (uint32_t i = 0; i < dealRowCount; i++) {
-                Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum,
-                    dLoop, columnRepeatParams);
+            BinaryRepeatParams qsfaColumnRepeatParams;
+            qsfaColumnRepeatParams.src0BlkStride = 1;
+            qsfaColumnRepeatParams.src1BlkStride = 0;
+            qsfaColumnRepeatParams.dstBlkStride = 1;
+            qsfaColumnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+            qsfaColumnRepeatParams.src1RepStride = 0;
+            qsfaColumnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+            for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
+                Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
+                    qsfaRepeatElementNum, qsfaDLoop, qsfaColumnRepeatParams);
             }
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
-        if (dRemain > 0) {
-            Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
-                repeatParams);
+        if (qsfaDRemain > 0) {
+            Mul(dstUb[qsfaDLoop * qsfaRepeatElementNum], src0Ub[qsfaDLoop * qsfaRepeatElementNum], src1Ub,
+                qsfaDRemain, dealRowCount, qsfaRepeatParams);
         }
     } else {
-        BinaryRepeatParams repeatParams;
-        repeatParams.src0RepStride = 8; // 每个repeat为256B数据，正好8个datablock
-        repeatParams.src0BlkStride = 1;
-        repeatParams.src1RepStride = 0;
-        repeatParams.src1BlkStride = 0;
-        repeatParams.dstRepStride = 8;
-        repeatParams.dstBlkStride = 1;
+        BinaryRepeatParams qsfaRepeatParams;
+        qsfaRepeatParams.src0RepStride = 8; // 每个repeat为256B数据，正好8个datablock
+        qsfaRepeatParams.src0BlkStride = 1;
+        qsfaRepeatParams.src1RepStride = 0;
+        qsfaRepeatParams.src1BlkStride = 0;
+        qsfaRepeatParams.dstRepStride = 8;
+        qsfaRepeatParams.dstBlkStride = 1;
         // 每次计算一行，共计算dealRowCount行
-        for (uint32_t i = 0; i < dealRowCount; i++) {
+        for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
             // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
-            Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
-                repeatParams);
+            Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
+                qsfaRepeatElementNum, qsfaDLoop, qsfaRepeatParams);
             //  计算一行中的尾块
-            if (dRemain > 0) {
-                Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
-                    src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
-                    repeatParams);
+            if (qsfaDRemain > 0) {
+                Mul(dstUb[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],
+                    src0Ub[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],
+                    src1Ub[qsfaI * qsfaBlockElementNum], qsfaDRemain, 1, qsfaRepeatParams);
             }
         }
     }

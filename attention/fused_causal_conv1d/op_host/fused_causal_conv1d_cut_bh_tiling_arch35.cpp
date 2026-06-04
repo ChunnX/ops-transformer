@@ -954,6 +954,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.inplace = inplace_;
     tilingData_.convMode = convMode_;
     tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
+    tilingData_.maxQueryLen = maxQueryLen_;
 
     // ---- dimRemainder（last dim core）相关字段 ----
     tilingData_.dimRemainderElems = dimRemainderElems_;

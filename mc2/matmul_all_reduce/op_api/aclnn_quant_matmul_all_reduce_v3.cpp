@@ -64,11 +64,11 @@ static bool CheckDtypeValid(
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* commQuantScale1Optional,
     const aclTensor* commQuantScale2Optional, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -76,14 +76,14 @@ static bool CheckDtypeValid(
     // 对于量化来说，x1,x2只为INT8
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeSupport, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeSupport, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeList, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeSupport, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeList, return false);
         // 检查x3和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
     }

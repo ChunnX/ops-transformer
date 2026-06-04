@@ -26,12 +26,14 @@
 #include "aclnnInner_all_gather_matmul_v2.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999300
+#if __has_include("version/hcomm_version.h")
+#include "version/hcomm_version.h"
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#endif
 #endif
 
 using namespace op;
@@ -416,7 +418,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
     } else if (std::strncmp(commMode, "", EMPTY_LEN) == 0) {
         // 获取卡数
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
         CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif

@@ -437,15 +437,23 @@ ge::graphStatus QLIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                   const std::string &actualSeqLenName) const
+static ge::graphStatus QliGetActualSeqLenSize(
+    uint32_t &qliSize, const gert::Tensor *qliTensor,
+    const std::string &qliActualSeqLenName, const char *qliOpName)
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize());
-    if (size <= 0) {
-        OP_LOGE(opName_, "%s's shape size is %u, it should be greater than 0.", actualSeqLenName.c_str(), size);
+    qliSize = static_cast<uint32_t>(qliTensor->GetShapeSize());
+    if (qliSize == 0) {
+        OP_LOGE(qliOpName, "%s's shape size is %u, it should be greater than 0.",
+            qliActualSeqLenName.c_str(), qliSize);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+                                                   const std::string &actualSeqLenName) const
+{
+    return QliGetActualSeqLenSize(size, tensor, actualSeqLenName, opName_);
 }
 
 ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
@@ -504,29 +512,32 @@ ge::graphStatus QLIInfoParser::GetBatchSize()
     }
 }
 
-ge::graphStatus QLIInfoParser::GetHeadDim()
+static ge::graphStatus QliGetHeadDim(const TilingRequiredParaInfo &qliQuery, DataLayout qliQLayout,
+    const char *qliOpName, uint32_t &qliHeadDim)
 {
-    // 以query的D维度为基准
-    uint32_t dIndex = DIM_IDX_TWO;
-    // 根据layout确定D维度在shape中的位置
-    switch (qLayout_) {
+    uint32_t qliDIndex = DIM_IDX_TWO;
+    switch (qliQLayout) {
         case DataLayout::TND:
-            // TND格式: [Total, N, D] -> D是第2维(索引2)
-            dIndex = DIM_IDX_TWO;
+            qliDIndex = DIM_IDX_TWO;
             break;
         case DataLayout::BSND:
-            // BSND格式: [Batch, SeqLen, N, D] -> D是第3维(索引3)
-            dIndex = DIM_IDX_THREE;
+            qliDIndex = DIM_IDX_THREE;
             break;
         default:
-            OP_LOGE(opName_, "unsupported layout for getting head dim.");
+            OP_LOGE(qliOpName, "unsupported layout for getting head dim.");
             return ge::GRAPH_FAILED;
     }
-    headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(dIndex);
-    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT, OP_LOGE(opName_, "input query's last dim head_dim only support 128, but now is %u.", headDim_),
-               return ge::GRAPH_FAILED);
+    qliHeadDim = qliQuery.shape->GetStorageShape().GetDim(qliDIndex);
+    OP_CHECK_IF(qliHeadDim != HEAD_DIM_LIMIT,
+        OP_LOGE(qliOpName, "input query's last dim head_dim only support 128, but now is %u.", qliHeadDim),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QLIInfoParser::GetHeadDim()
+{
+    return QliGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_);
 }
 
 ge::graphStatus QLIInfoParser::GetS1Size()
@@ -833,6 +844,39 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 }
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
+static uint32_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
+                                     int64_t qliS2Size, uint32_t qliAicNum)
+{
+    constexpr uint32_t qliMm1ResElemSize = 4;
+    constexpr uint32_t qliDoubleBuffer = 2;
+    constexpr uint32_t qliMBaseSize = 512;
+    constexpr uint32_t qliS2BaseSize = 512;
+    constexpr uint32_t qliV1ResElemSize = 4;
+    constexpr uint32_t qliV1ResElemType = 2;
+    constexpr uint32_t qliV1DecodeParamElemSize = 8;
+    constexpr uint32_t qliV1DecodeParamNum = 16;
+    constexpr uint32_t qliV1DecodeDataNum = 2;
+    constexpr uint32_t qliS1BaseSize = 8;
+    constexpr uint32_t qliTopkMaxSize = 2048;
+
+    uint32_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
+    if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        constexpr uint32_t qli3510S1Base = 4;
+        constexpr uint32_t qli3510S2Base = 128;
+        qliWorkspaceSize +=
+            qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
+            sizeof(uint16_t) * qliAicNum;
+    } else {
+        constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
+        qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
+        qliWorkspaceSize +=
+            qliV1DecodeDataNum * qliS1BaseSize * qliV1ResElemType * qliTopkMaxSize * qliV1ResElemSize * qliAicNum;
+        qliWorkspaceSize +=
+            qliV1DecodeDataNum * qliS1BaseSize * qliV1DecodeParamNum * qliV1DecodeParamElemSize * qliAicNum;
+    }
+    return qliWorkspaceSize;
+}
+
 ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
 {
     // -------------set blockdim-----------------
@@ -843,36 +887,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    constexpr uint32_t MM1_RES_ELEM_SIZE = 4;          // 4: fp32
-    constexpr uint32_t DOUBLE_BUFFER = 2;              // 双Buffer
-    constexpr uint32_t M_BASE_SIZE = 512;              // m轴基本块大小
-    constexpr uint32_t S2_BASE_SIZE = 512;             // S2轴基本块大小
-    constexpr uint32_t V1_RES_ELEM_SIZE = 4;           // 4: int32
-    constexpr uint32_t V1_RES_ELEM_TYPE = 2;           // 保留Index和Value 2种数据
-    constexpr uint32_t V1_DECODE_PARAM_ELEM_SIZE = 8;  // 8: int64
-    constexpr uint32_t V1_DECODE_PARAM_NUM = 16;       // Decode参数个数
-    constexpr uint32_t V1_DECODE_DATA_NUM = 2;         // Decode每个核需要存储头和尾部两块数据
-    constexpr uint32_t S1_BASE_SIZE = 8;               // S1轴基本块的大小
-    constexpr uint32_t TOPK_MAX_SIZE = 2048;           // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    // 主流程需Workspace大小
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t s1BaseSize = 4;
-        constexpr uint32_t s2BaseSize = 128;
-        workspaceSize +=
-            s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint16_t) * aicNum;
-    } else {
-        constexpr uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
-        workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
-        // Decode流程(LD)需要Workspace大小
-        // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
-        workspaceSize +=
-            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-        // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
-        workspaceSize +=
-            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-    }
-    
+    uint32_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

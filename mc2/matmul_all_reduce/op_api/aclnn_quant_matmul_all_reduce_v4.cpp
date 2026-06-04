@@ -174,9 +174,9 @@ static bool CheckShape(
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
         OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
-        op::Shape biasShape;
-        biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        op::Shape biasShapeExpected;
+        biasShapeExpected.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShapeExpected, return false);
     }
 
     // x3 shape [s,m,n]

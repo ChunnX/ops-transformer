@@ -44,9 +44,11 @@ constexpr int BNSD_DIM_S = 2;
 constexpr int BNSD_DIM_D = 3;
 constexpr int BNSD_DIM_NUM = 4;
 
-constexpr int BSH_DIM_B = 0;
-constexpr int BSH_DIM_S = 1;
-constexpr int BSH_DIM_H = 2;
+constexpr int BSND_DIM_B = 0;
+constexpr int BSND_DIM_S = 1;
+constexpr int BSND_DIM_N = 2;
+constexpr int BSND_DIM_D = 3;
+constexpr int BSND_DIM_NUM = 4;
 
 constexpr int QUERY_INDEX = 0;
 constexpr int KEY_INDEX = 1;
@@ -99,7 +101,8 @@ constexpr uint32_t TRIO_BUF = 3;
 
 std::unordered_map<std::string, std::string> inputLayoutMapQ2Kv = {
     {"TND", "TND"},
-    {"BNSD", "BNSD"}
+    {"BNSD", "BNSD"},
+    {"BSND", "BSND"}
 };
 
 static std::string DataTypeToString(ge::DataType dataType)
@@ -162,7 +165,7 @@ ge::graphStatus BSATiling::GetNpuInfo(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
 {
     // 只在TND格式时进行校验
-    if (qInputLayout_ != RFAQInputLayout::TND_Q || kvCacheLayout_ != RFAKvCacheLayout::TND) {
+    if (qInputLayout_ != BSAQInputLayout::TND_Q || kvCacheLayout_ != BSAKvCacheLayout::TND_KV) {
         return ge::GRAPH_SUCCESS;
     }
     
@@ -209,17 +212,24 @@ ge::graphStatus BSATiling::GetInputLayout(gert::TilingContext *bsaContext)
     auto it = inputLayoutMapQ2Kv.find(qLayout);
     auto itRev = inputLayoutMapQ2Kv.find(kvLayout);
     if (it == inputLayoutMapQ2Kv.end() || itRev == inputLayoutMapQ2Kv.end()) {
-        OP_LOGE(bsaContext->GetNodeName(), "The inputLayout attrs only support TND/BNSD.");
+        OP_LOGE(bsaContext->GetNodeName(), "The inputLayout attrs only support TND/BNSD/BSND.");
         return ge::GRAPH_FAILED;
     } else if (it->second != kvLayout) {
         OP_LOGE(bsaContext->GetNodeName(), "QInputLayout and kvInputLayout must be the same.");
         return ge::GRAPH_FAILED;
     } else if (it->first == "TND") {
-        qInputLayout_ = RFAQInputLayout::TND_Q;
-        kvCacheLayout_ = RFAKvCacheLayout::TND;
+        qInputLayout_ = BSAQInputLayout::TND_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::TND_KV;
     } else if (it->first == "BNSD") {
-        qInputLayout_ = RFAQInputLayout::BNSD_Q;
-        kvCacheLayout_ = RFAKvCacheLayout::BNSD;
+        qInputLayout_ = BSAQInputLayout::BNSD_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::BNSD_KV;
+    } else if (it->first == "BSND") {
+        if (socVer_ != SOC_VER_950_CODE) {
+            OP_LOGE(bsaContext->GetNodeName(), "Only the chip 950 supports BSND inputLayout.");
+            return ge::GRAPH_FAILED;
+        }
+        qInputLayout_ = BSAQInputLayout::BSND_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::BSND_KV;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -349,6 +359,44 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
+{
+    const auto *queryShape = bsaContext->GetInputShape(QUERY_INDEX);
+    const auto *keyShape = bsaContext->GetInputShape(KEY_INDEX);
+    const auto *valueShape = bsaContext->GetInputShape(VALUE_INDEX);
+    if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr) {
+        OP_LOGE(bsaContext->GetNodeName(), "Query/Key/Value shape is null");
+        return ge::GRAPH_FAILED;
+    }
+    if (queryShape->GetStorageShape().GetDimNum() != BSND_DIM_NUM ||
+        keyShape->GetStorageShape().GetDimNum() != BSND_DIM_NUM ||
+        valueShape->GetStorageShape().GetDimNum() != BSND_DIM_NUM) {
+        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have 4 dimensions when layout is 'BSND'.");
+        return ge::GRAPH_FAILED;
+    }
+    batch_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BSND_DIM_B));
+    auto kBatch = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BSND_DIM_B));
+    auto vBatch = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(BSND_DIM_B));
+    numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BSND_DIM_N));
+    auto kHeads = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BSND_DIM_N));
+    auto vHeads = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(BSND_DIM_N));
+    embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BSND_DIM_D));
+    auto embeddingSizeK = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BSND_DIM_D));
+    auto embeddingSizeV = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(BSND_DIM_D));
+    maxQSeqlen_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BSND_DIM_S));
+    maxKvSeqlen_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BSND_DIM_S));
+    if (batch_ != kBatch || batch_ != vBatch) {
+        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent batch with each other, "
+            "but got qBatch %u, kBatch %u, vBatch %u.", batch_, kBatch, vBatch);
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckQKVDimVal(bsaContext, kHeads, vHeads, embeddingSizeK, embeddingSizeV) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContext)
 {
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
@@ -371,10 +419,13 @@ ge::graphStatus BSATiling::ParseRequiredTensors(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     ge::graphStatus ret = ge::GRAPH_SUCCESS;
-    if (qInputLayout_ == RFAQInputLayout::TND_Q) {
+
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         ret = ParseQKVInTND(bsaContext);
-    } else if (qInputLayout_ == RFAQInputLayout::BNSD_Q) {
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q) {
         ret = ParseQKVInBNSD(bsaContext);
+    } else if (qInputLayout_ == BSAQInputLayout::BSND_Q) {
+        ret = ParseQKVInBSND(bsaContext);
     }
 
     if (socVer_ == SOC_VER_950_CODE) {
@@ -410,7 +461,7 @@ ge::graphStatus BSATiling::ParseSeqlensInTND(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
+ge::graphStatus BSATiling::ParseSeqlensInNonTND(gert::TilingContext *bsaContext)
 {
     const auto *actualSeqLengths = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_INDEX);
     const auto *actualSeqLengthsKv = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_KV_INDEX);
@@ -427,6 +478,22 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
         }
         qSeqLenList_ = actualSeqLengths->GetData<int64_t>();
         kvSeqLenList_ = actualSeqLengthsKv->GetData<int64_t>();
+
+        // 校验BNSD/BSND格式时，每个batch的actualSeqLength须小于等于maxSeqLength
+        for (uint32_t i = 0; i < batch_; i++) {
+            if (qSeqLenList_[i] > maxQSeqlen_) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "The actualSeqLength of each batch must be less than or equal to the maxSeqLength. The "
+                        "maxSeqLength is %u, but the value at index %u of the actualSeqLengths is %ld",
+                        maxQSeqlen_, i, qSeqLenList_[i]);
+            }
+            if (kvSeqLenList_[i] > maxKvSeqlen_) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "The actualSeqLengthKv of each batch must be less or equal to than the maxSeqLengthKv. The "
+                        "maxSeqLengthKv is %u, but the value at index %u of the actualSeqLengthsKv is %ld",
+                        maxQSeqlen_, i, qSeqLenList_[i]);
+            }
+        }
         useUniformQSeqlen_ = false;
         useUniformKvSeqlen_ = false;
     } else if (actualSeqLengths == nullptr && actualSeqLengthsKv == nullptr) {
@@ -443,10 +510,10 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseSeqlens(gert::TilingContext *bsaContext)
 {
     ge::graphStatus ret = ge::GRAPH_SUCCESS;
-    if (qInputLayout_ == RFAQInputLayout::TND_Q) {
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         ret = ParseSeqlensInTND(bsaContext);
-    } else if (qInputLayout_ == RFAQInputLayout::BNSD_Q) {
-        ret = ParseSeqlensInBNSD(bsaContext);
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q || qInputLayout_ == BSAQInputLayout::BSND_Q) {
+        ret = ParseSeqlensInNonTND(bsaContext);
     }
     return ret;
 }
@@ -818,10 +885,10 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
         // 根据useUniformQSeqlen_标志位决定使用actualSeqLengths数组还是maxQSeqlen_
         int64_t qSeqlen;
         if (useUniformQSeqlen_) {
-            // BNSD格式下actualSeqLengths为nullptr，使用maxQSeqlen_作为统一的qseqlen值
+            // BNSD/BSND格式下actualSeqLengths为nullptr，使用maxQSeqlen_作为统一的qseqlen值
             qSeqlen = static_cast<int64_t>(maxQSeqlen_);
         } else {
-            // 使用actualSeqLengths数组（TND格式或BNSD格式但提供了actualSeqLengths）
+            // 使用actualSeqLengths数组（TND/BNSD/BSND格式但提供了actualSeqLengths）
             if (qSeqLenList_ == nullptr) {
                 OP_LOGE(bsaContext->GetNodeName(), "qSeqLenList_ is nullptr, cannot calculate task split");
                 return ge::GRAPH_FAILED;
@@ -948,7 +1015,7 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_maxQSeqlen(maxQSeqlen_);
     tilingData_->set_maxKvSeqlen(maxKvSeqlen_);
     
-    // BNSD格式下当actualSeqLengths为nullptr时，使用maxQSeqlen和maxKvSeqlen作为统一值
+    // BNSD/BSND格式下当actualSeqLengths为nullptr时，使用maxQSeqlen和maxKvSeqlen作为统一值
     tilingData_->set_useUniformQSeqlen(useUniformQSeqlen_ ? 1 : 0);
     tilingData_->set_useUniformKvSeqlen(useUniformKvSeqlen_ ? 1 : 0);
     
@@ -995,11 +1062,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     /**
      * 64位整数，使用十进制位域表示：
      * AAAABBBBCCCCDDDDEEEE
-     * - 位0-1:   Q Layout（个位）      2=TND, 3=BNSD
+     * - 位0-1:   Q Layout（个位）      2=TND, 3=BNSD, 4=BSND
      * - 位2-4:   Mask Type（千位）    0=NoMask, 3=CausalMask
      * - 位5-7:   Softmax Precision（十万位） 0=Float, 1=Half
      * - 位8-10:  PagedCache Flag（千万位）  0=NoCache, 1=WithCache
-     * - 位11-13: KV Layout（十亿位）   00=TND, 20=BNSD
+     * - 位11-13: KV Layout（十亿位）   30=TND, 50=BNSD, 60=BSND
      * - 位14-15: Data Type（百亿位）  00=FP16, 22=BF16
      * - 位16-18: Operator Category（千万亿位） 900=BlockSparseAttention910, 905=BlockSparseAttention950
      * 
@@ -1027,12 +1094,14 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     }
 
     // [位11-13] KV Layout（十亿位）
-    if (kvCacheLayout_ == RFAKvCacheLayout::TND) {
-        tilingKey += 30000000ULL;  // 00 for TND
-    } else if (kvCacheLayout_ == RFAKvCacheLayout::BNSD) {
-        tilingKey += 50000000ULL;  // 20 for BNSD
+    if (kvCacheLayout_ == BSAKvCacheLayout::TND_KV) {
+        tilingKey += 30000000ULL; // 30 for TND
+    } else if (kvCacheLayout_ == BSAKvCacheLayout::BNSD_KV) {
+        tilingKey += 50000000ULL; // 50 for BNSD
+    } else if (kvCacheLayout_ == BSAKvCacheLayout::BSND_KV) {
+        tilingKey += 60000000ULL; // 60 for BSND
     }
-    
+
     // [位8-10] PagedCache Flag（千万位）
     bool hasPagedCache = (bsaContext->GetOptionalInputTensor(BLOCK_TABLE_INDEX) != nullptr);
     if (hasPagedCache) {
@@ -1054,10 +1123,12 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     // maskType_ == 0: 0 for NoMask（默认值）
     
     // [位0-1] Q Layout（个位）
-    if (qInputLayout_ == RFAQInputLayout::TND_Q) {
-        tilingKey += 2;  // 2 for TND
-    } else if (qInputLayout_ == RFAQInputLayout::BNSD_Q) {
-        tilingKey += 3;  // 3 for BNSD
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
+        tilingKey += 2; // 2 for TND
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q) {
+        tilingKey += 3; // 3 for BNSD
+    } else if (qInputLayout_ == BSAQInputLayout::BSND_Q) {
+        tilingKey += 4; // 4 for BSND
     }
 
     // Softmax LSE（亿位）
