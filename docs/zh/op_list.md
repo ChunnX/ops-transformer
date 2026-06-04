@@ -448,6 +448,16 @@
   </tr>
   <tr>
     <td>ffn</td>
+    <td><a href="../../experimental/ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
     <td><a href="../../ffn/ffn_worker_scheduler/README.md">ffn_worker_scheduler</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -834,7 +844,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+    <td>MoE计算中，对输入x做Sigmoid、SoftMax或者Softplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
   </tr>
   <tr>
     <td>moe</td>

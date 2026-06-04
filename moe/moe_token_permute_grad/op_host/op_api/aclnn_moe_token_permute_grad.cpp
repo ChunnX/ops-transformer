@@ -77,19 +77,19 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
         DFX_IN(permutedOutputGrad, sortedIndices, numTopk, paddedMode),
                    DFX_OUT(out));
 
-    static bool useMoeInitRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
+    bool useMoeInitRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeInitRoutingV2Grad) {
         return aclnnInnerMoeTokenPermuteGradGetWorkspaceSize(
             permutedOutputGrad, sortedIndices, numTopk, paddedMode, out, workspaceSize, executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
+    aclnnStatus ret = MoeTokenPermuteGradCheck::CheckParams(permutedOutputGrad, sortedIndices, out);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    aclnnStatus ret = MoeTokenPermuteGradCheck::CheckParams(permutedOutputGrad, sortedIndices, out);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto permutedOutputGradContiguous = l0op::Contiguous(permutedOutputGrad, uniqueExecutor.get());

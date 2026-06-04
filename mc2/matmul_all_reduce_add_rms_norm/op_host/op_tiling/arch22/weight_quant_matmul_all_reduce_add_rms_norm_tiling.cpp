@@ -54,16 +54,16 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const 
 }
 ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(helper_->DoOpTiling());
-    GE_ASSERT_GRAPH_SUCCESS(CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
-    GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
-    GE_ASSERT_GRAPH_SUCCESS(CheckMRNInput(mrnCtxInfo_));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), helper_->DoOpTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CheckMRNInput(mrnCtxInfo_));
     hasTail_ = (tilingData_.weightQuantMatmulAllReduceTilingData.param.tailCnt != 0);
     AddRmsNormTilingInputFromMM addRmsNormTilingInputFromMm;
     addRmsNormTilingInputFromMm.m = helper_->tileMValue_;
     addRmsNormTilingInputFromMm.n = helper_->args_.nValue;
     addRmsNormTilingInputFromMm.x1Dtype = helper_->args_.geCType;
-    GE_ASSERT_TRUE(context_->GetPlatformInfo() != nullptr);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), context_->GetPlatformInfo() != nullptr);
     AddRMSNormTilingDepend addRmsNormTilingDepend = {
         context_->GetNodeName(),
         *context_->GetPlatformInfo(),
@@ -74,7 +74,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
 
     AddRMSNormTilingOutput addRmsNormTilingOutput = {tilingData_.addRMSNormTileTilingData, tilingOutAddRmsNormTile_};
 
-    GE_ASSERT_GRAPH_SUCCESS(CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutput));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutput));
     tilingData_.addRmsNormTilingeKeyData.ARNKeyTile = tilingOutAddRmsNormTile_.tilingKey;
     tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTile = tilingOutAddRmsNormTile_.numBlocks;
 
@@ -82,7 +82,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
         addRmsNormTilingDepend.addRmsNormTilingInputFromMm.m = helper_->tailMValue_;
         AddRMSNormTilingOutput addRmsNormTilingOutputTail = {
             tilingData_.addRMSNormTailTilingData, tilingOutAddRmsNormTail_};
-        GE_ASSERT_GRAPH_SUCCESS(
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), 
             CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutputTail));
         tilingData_.addRmsNormTilingeKeyData.ARNKeyTail = tilingOutAddRmsNormTail_.tilingKey;
         tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTail = tilingOutAddRmsNormTail_.numBlocks;
@@ -92,14 +92,14 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::DoOpTiling()
 ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
 {
     if (strcmp(context_->GetNodeType(), MRN) == 0) {
-        GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(context_, mrnCtxInfo_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(context_, mrnCtxInfo_));
     } else if (strcmp(context_->GetNodeType(), IMRN) == 0) {
-        GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
     } else {
         OP_LOGE(context_->GetNodeName(), "Unsupported node type %s", context_->GetNodeType());
         return ge::GRAPH_FAILED;
     }
-    GE_ASSERT_NOTNULL(helper_);
+    MC2_CHECK_NOTNULL_RET(context_->GetNodeName(), helper_);
     return helper_->GetShapeAttrsInfo();
 }
 ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetPlatformInfo()
@@ -123,14 +123,14 @@ WeightQuantMatmulAllReduceAddRmsNormTiling::WeightQuantMatmulAllReduceAddRmsNorm
 
 ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(helper_->GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), helper_->GetWorkspaceSize());
     const auto mc2_workspace = helper_->myWorkSpaceSize_;
-    GE_ASSERT_TRUE(mc2_workspace >= SYS_WORKSPACE_SIZE);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), mc2_workspace >= SYS_WORKSPACE_SIZE);
     if (HasTail()) {
-        GE_ASSERT_TRUE(tilingOutAddRmsNormTile_.workSpaceSize == tilingOutAddRmsNormTail_.workSpaceSize);
+        MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize == tilingOutAddRmsNormTail_.workSpaceSize);
     }
     // 系统空间用mc2申请的就好了， arn的减去这部分
-    GE_ASSERT_TRUE(tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
     const auto arn_workspace = tilingOutAddRmsNormTile_.workSpaceSize - SYS_WORKSPACE_SIZE;
     const auto my_workspace = mc2_workspace + arn_workspace;
     OP_LOGI(
@@ -170,13 +170,13 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::PostTiling()
         helper_->opName_, "ctx block dim: %lu, mc2 block dim %lu, arn block dim %lu", helper_->args_.aicCoreNum,
         helper_->args_.aicCoreNum, numBlocksOfArn);
     // 当前mc2给的aicCoreNum是硬件规格的最大个数, numBlocksOfArn取了尾和非尾的最大值，最大值应该小于等于硬件规格的aiv num
-    GE_ASSERT_TRUE(helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
     context_->SetBlockDim(helper_->args_.aicCoreNum);
 
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), ret);
 
     return ge::GRAPH_SUCCESS;
 }

@@ -56,6 +56,42 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::Til
 }
 
 /**
+ * @brief 从参数中获取通信引擎
+ *
+ * @param context 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName 算子名称
+ * @param contextInfo 存储了tiling的过程信息
+ * @param commMode 返回通信引擎模式
+ * @return ge::graphStatus
+ */
+ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
+                                                                const TilingContextInfo &contextInfo,
+                                                                const OpAttrIndexSchema &indexSchema, uint8_t &commMode)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(indexSchema.commMode);
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
+
+    const size_t maxLength = 6UL;
+    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (strncmp(commModeStr, "", maxLength) == 0) {
+        uint32_t rankDim = contextInfo.args_.rankDim;
+        commMode = (rankDim <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(opName, "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
  * @brief 设置二维输入输出的shape信息, 仅支持x1,x2,output都是二维的情况
  *
  * @param context 上下文信息
@@ -90,10 +126,13 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    const char *commMode = attrs->GetAttrPointer<char>(indexSchema.commMode);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "group"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_INPUT(opName, "group"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
     // 判断group是否超过127
     size_t groupLen = strlen(group);
