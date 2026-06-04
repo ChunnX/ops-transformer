@@ -36,7 +36,8 @@ public:
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset, int64_t curLoopCols);
 
 private:
-    __aicore__ inline void InitBasicParams(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void InitBasicParams(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                           TPipe *tPipe);
     TPipe *pipe_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> xCopyInQueue_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleCopyInQueue_;
@@ -78,8 +79,8 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3GatherOutMxfp8<T>::InitBasicParams(GM_ADDR workspace, 
-                                                               const MoeInitRoutingV3Arch35TilingData *tilingData, 
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::InitBasicParams(GM_ADDR workspace,
+                                                               const MoeInitRoutingV3Arch35TilingData *tilingData,
                                                                TPipe *tPipe)
 {
     pipe_ = tPipe;
@@ -226,7 +227,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::Process()
                 int64_t scaleDstOffset = (curExpertLoopOffset + indicesIndex) * scaleHCols;
                 int64_t xDstOffset = (curExpertLoopOffset + indicesIndex) * cols_;
                 SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                
+
                 int64_t curLoopCols = perLoopCols_;
                 int64_t perLoopScaleHCols = perLoopCols_ / SCALE_FACTOR_WITH_X; // perLoopCols_再tiling时已是64对齐的
                 int64_t curLoopScaleHCols = perLoopScaleHCols;

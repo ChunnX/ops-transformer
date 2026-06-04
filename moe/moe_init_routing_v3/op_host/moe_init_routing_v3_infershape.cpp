@@ -404,7 +404,8 @@ static ge::graphStatus CheckScaleShapeForDynamicQuant(const gert::InferShapeCont
                 return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(
-                scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
+                scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE &&
+                    scaleShape->GetDim(1) != xShape->GetDim(1)),
                 OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
                                           ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
                 return ge::GRAPH_FAILED);
@@ -486,7 +487,7 @@ static ge::graphStatus CheckInputOffsetShape(const gert::InferShapeContext *cont
 }
 
 static ge::graphStatus CheckXShape(const gert::InferShapeContext *context, const gert::Shape *xShape,
-                                   int64_t &x_n,int64_t &cols)
+                                   int64_t &x_n, int64_t &cols)
 {
     if (xShape->GetDimNum() == DIM_ONE) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
@@ -770,7 +771,7 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     int64_t rowIdxType = -1;
 
     if (GetAndValidateAttrs(context, attrs, xShape, experNum, expertStart, expertEnd, dropPadMode, activeNum,
-                           expertCapacity, expertTokenNumType, expertTokenNumFlag, quantMode, rowIdxType) !=
+                            expertCapacity, expertTokenNumType, expertTokenNumFlag, quantMode, rowIdxType) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -896,9 +897,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         return ge::GRAPH_FAILED;
     }
     int64_t quantMode = *quantModePtr;
-
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
-
     if (ValidateInputDtype(context, xDtype, quantMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -918,9 +917,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
 static void SetExpandedScaleShapeRanges(gert::InferShapeRangeContext *context, int64_t quantMode)
 {
     auto expanded_scale = context->GetOutputShapeRange(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE);
-
     if (expanded_scale->GetMin() != nullptr && expanded_scale->GetMax() != nullptr) {
-
         size_t dimNum = DIM_ONE;
         if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
             dimNum = DIM_THREE;
