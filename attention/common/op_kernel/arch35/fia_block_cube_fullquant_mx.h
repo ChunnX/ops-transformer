@@ -710,7 +710,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CalcSize,
                                     (uint32_t)constInfo.dSize, false, true);
-        MatmulFull<Q_T, KV_T, T, 128, 256, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+        MatmulFullMX<Q_T, KV_T, T, 128, 256, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                    SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
             mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
             mmL0ABuffers, mmL0BBuffers,
@@ -723,7 +723,7 @@ public:
             uint32_t kRopeOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
             MMParam ropeParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CalcSize,
                                             (uint32_t)constInfo.dSizeRope, false, true, true, false);
-            MatmulFull<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
+            MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<ROPE_T>(qRopeOffset), mm1B.GetTensor<ROPE_T>(kRopeOffset),
                 mmL0ABuffers, mmL0BBuffers,
                 mm1ResL0C.GetTensor<T>(),
@@ -836,7 +836,7 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize,
                                     (uint32_t)constInfo.dSize, false, true);
-        MatmulFull<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+        MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                    SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
             mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
             mmL0ABuffers, mmL0BBuffers,
@@ -849,7 +849,7 @@ public:
             uint32_t kRopeOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo.dSize / sizeof(ROPE_T);
             MMParam ropeParam = MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize,
                                             (uint32_t)constInfo.dSizeRope, false, true, true, false);
-            MatmulFull<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
+            MatmulFullMX<ROPE_T, ROPE_T, T, 128, 256, 64, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<ROPE_T>(kRopeOffset), mm1B.GetTensor<ROPE_T>(qRopeOffset),
                 mmL0ABuffers, mmL0BBuffers,
                 mm1ResL0C.GetTensor<T>(),
@@ -938,7 +938,7 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFull<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+            MatmulFullMX<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
@@ -997,25 +997,15 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            mm2AScale.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-            LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>();
-            InitConstValue(mm2AScaleTensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / 32, 0,
-                                             0x7f7f}); // 构造假的全1P_SCALE传给MX接口
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        } else {
-            mm2AScale = PScaleBuffers.GetPre();
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        }
-        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2AScale.GetTensor<SCALE_T>();
+        uint32_t pScaleOffset = mBaseSize * s2BaseSize; // PScale在L1的偏移量（单位：元素）
+        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
-        mm2AScale.Wait<HardEvent::MTE2_MTE1>();
 
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
+        uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
@@ -1029,6 +1019,11 @@ public:
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
+            if (realK % 64 != 0) {
+                LocalTensor<uint16_t> mm2BFakeTensor = mm2B.GetTensor<uint16_t>();
+                InitConstValue(mm2BFakeTensor, {1, mBaseSize * s2BaseSize / 2 / 32, 0, 0});
+                PipeBarrier<PIPE_MTE2>();
+            }
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
@@ -1044,18 +1039,16 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFull<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+            MatmulFullMX<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
-                mm2AScaleFakeTensor, mm2BScaleTensor);
+                mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
-        if (unlikely(runInfo.isLastS2Loop)) {
-            mm2AScale.Set<HardEvent::MTE1_MTE2>();
-        }
+
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 

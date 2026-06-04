@@ -389,6 +389,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    const char *commMode = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     const int64_t *x1_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
     const int64_t *x2_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX);
     // 判断为空或者空字符串
@@ -396,6 +397,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_INPUT(opName_, "group"),
                     return ge::GRAPH_FAILED);
+    if (commMode != nullptr && strnlen(commMode, 1UL) > 0) { // 不为空字符串
+        OP_LOGI(opName_, "The current soc only support default communication engine.");
+    }
     info.worldSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(SUPPORT_RANK_SIZE_910B.find(info.worldSize) == SUPPORT_RANK_SIZE_910B.end(),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "world_size", std::to_string(info.worldSize).c_str(), "2/4/8"),
@@ -745,7 +749,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
     // 1. tilingData
     MatmulAlltoAllTilingData *tilingData = context_->GetTilingData<MatmulAlltoAllTilingData>();
     OPS_CHECK(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "tilingData is nullptr."),
@@ -754,9 +758,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
     MatmulAlltoAllInfo &info = tilingData->matmulAlltoAllInfo;
     OPS_LOG_I(opName_, "MatmulAlltoAll get tilingData info.");
 
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo(info));
-    GE_ASSERT_GRAPH_SUCCESS(DoMmCommTiling(tilingData->cocTiling, info));
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling(tilingData));
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo(info));
+    MC2_CHECK_LOG_RET(opName_, DoMmCommTiling(tilingData->cocTiling, info));
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling(tilingData));
 
     // 2. tilingkey
     SetTilingKey();

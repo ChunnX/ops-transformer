@@ -136,10 +136,10 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
  */
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
 {
-    GE_ASSERT_GRAPH_SUCCESS(
+    MC2_CHECK_LOG_RET(opName_, 
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(SetMxDataTypeInfo(context_, opName_, contextInfo)); 
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
+    MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo)); 
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
     return ge::GRAPH_SUCCESS;
 }
@@ -152,15 +152,15 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
-    GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
+    MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
-    GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
+    MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
-    GE_ASSERT_GRAPH_SUCCESS(DoMxQuantMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     // hccl的tiling参数赋值处理
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -599,9 +599,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    // 0代表默认走调度模式
-    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
@@ -627,13 +631,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
     // 设置MM切前信息
     mmMvalueLen_ = inferredInfo.tileM;
     MxQuantMatmulAlltoAllHelper mmTile(*this, localTilingData_.mc2QuantBmmV3TileTilingData, mmMvalueLen_);
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (inferredInfo.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
     mmMvalueLen_ = inferredInfo.tailM;
     MxQuantMatmulAlltoAllHelper mmTail(*this, localTilingData_.mc2QuantBmmV3TailTilingData, mmMvalueLen_);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -714,7 +718,7 @@ ge::graphStatus MxQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
         (perTokenScaleTensorDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         inputParams_.groupSizeK = MX_SCALE_OFFSET;
     }
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(tilingProcesser_.opName_, AnalyzeInputs());
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;
 }
@@ -736,7 +740,7 @@ void MxQuantMatmulAlltoAllHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo&
 
 ge::graphStatus MxQuantMatmulAlltoAllHelper::DoLibApiTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
+    MC2_CHECK_LOG_RET(tilingProcesser_.opName_, Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -932,7 +936,11 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
 
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
     OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,

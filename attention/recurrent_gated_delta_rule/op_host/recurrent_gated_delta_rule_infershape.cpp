@@ -67,6 +67,16 @@ static ge::graphStatus InferShapeRecurrentGatedDeltaRule(InferShapeContext *cont
     shapeOut->SetDim(DIM_1, outDim1);
     shapeOut->SetDim(DIM_2, outDim2);
 
+    shapeFinalState->SetDimNum(STATE_DIM);
+    int64_t stateDim0 = shapeInitialState->GetDim(DIM_0);
+    int64_t stateDim1 = shapeInitialState->GetDim(DIM_1);
+    int64_t stateDim2 = shapeInitialState->GetDim(DIM_2);
+    int64_t stateDim3 = shapeInitialState->GetDim(DIM_3);
+    shapeFinalState->SetDim(DIM_0, stateDim0);
+    shapeFinalState->SetDim(DIM_1, stateDim1);
+    shapeFinalState->SetDim(DIM_2, stateDim2);
+    shapeFinalState->SetDim(DIM_3, stateDim3);
+
     return ge::GRAPH_SUCCESS;
 }
 

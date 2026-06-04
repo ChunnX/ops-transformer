@@ -112,7 +112,10 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckRequiredAttrValue()
     auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     OP_TILING_CHECK(((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
                      (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH)),
-                    OP_LOGE(nodeName_, "groupEp length is invalid."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "groupEp",
+                        (std::string("length=") +
+                         std::to_string(strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH))).c_str(),
+                        "valid group name length"), return ge::GRAPH_FAILED);
 
     if (CheckEpWorldSize() != ge::GRAPH_SUCCESS || CheckMoeExpertNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -122,7 +125,9 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckRequiredAttrValue()
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(
         ((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr)),
-        OP_LOGE(nodeName_, "epRankId shoud be within the range of [0, %ld), get %ld", *epWorldSizePtr, *epRankIdPtr),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epRankId",
+            std::to_string(*epRankIdPtr).c_str(),
+            (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -166,24 +171,24 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckSharedExpertAttrValue(
         return ge::GRAPH_SUCCESS;
     }
     OP_TILING_CHECK((sharedExpertNum == 0),
-                    OP_LOGE(nodeName_,
-                            "attribute must comply with sharedExpertNum != 0 when sharedExpertRankNum != 0, but got "
-                            "sharedExpertNum=%u, sharedExpertRankNum=%u.",
-                            sharedExpertNum, sharedExpertRankNum),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertNum",
+                        (std::string("sharedExpertNum=") + std::to_string(sharedExpertNum) +
+                         ", sharedExpertRankNum=" + std::to_string(sharedExpertRankNum)).c_str(),
+                        "sharedExpertNum != 0"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (sharedExpertNum > sharedExpertRankNum),
-        OP_LOGE(nodeName_,
-                "attribute must comply with sharedExpertNum <= sharedExpertRankNum, but got sharedExpertNum=%u, "
-                "sharedExpertRankNum=%u.",
-                sharedExpertNum, sharedExpertRankNum),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertNum",
+            (std::string("sharedExpertNum=") + std::to_string(sharedExpertNum) +
+             ", sharedExpertRankNum=" + std::to_string(sharedExpertRankNum)).c_str(),
+            "sharedExpertNum <= sharedExpertRankNum"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (sharedExpertRankNum % sharedExpertNum != 0),
-        OP_LOGE(nodeName_,
-                "attribute must comply with sharedExpertRankNum %% sharedExpertNum == 0, but got sharedExpertNum=%u, "
-                "sharedExpertRankNum=%u.",
-                sharedExpertNum, sharedExpertRankNum),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertRankNum",
+            (std::string("sharedExpertNum=") + std::to_string(sharedExpertNum) +
+             ", sharedExpertRankNum=" + std::to_string(sharedExpertRankNum)).c_str(),
+            "sharedExpertRankNum % sharedExpertNum == 0"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -207,17 +212,23 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckOptionalAttrValue()
 
     // globalBs 会在后面获取 BS 后再次校验
     OP_TILING_CHECK((*globalBsPtr < 0),
-                    OP_LOGE(nodeName_, "globalBs shoud be 0 or maxBs * epWorldSize, get %ld", *globalBsPtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "globalBs",
+                        std::to_string(*globalBsPtr).c_str(),
+                        "0 or maxBs * epWorldSize"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*commQuantModePtr != COMM_QUANT_NONE),
-                    OP_LOGE(nodeName_, "commQuantMode only support 0, get %ld.", *commQuantModePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "commQuantMode",
+                        std::to_string(*commQuantModePtr).c_str(), "0"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*commTypePtr != URMA_COMM),
-                    OP_LOGE(nodeName_, "commType only support %lu, get [%lu]", URMA_COMM, *commTypePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "commType",
+                        std::to_string(*commTypePtr).c_str(),
+                        std::to_string(URMA_COMM).c_str()),
                     return ge::GRAPH_FAILED);
     if (commAlgPtr != nullptr) {
         const std::string commAlg = std::string(commAlgPtr);
-        OP_TILING_CHECK((commAlg != ""), OP_LOGE(nodeName_, "commAlg shoud be null or empty string."),
+        OP_TILING_CHECK((commAlg != ""), OP_LOGE_WITH_INVALID_ATTR(nodeName_, "commAlg",
+                        commAlg.c_str(), "null or empty string"),
                         return ge::GRAPH_FAILED);
     }
 
@@ -282,11 +293,11 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::GetComplexAttrAndSetTilingD
 
     OP_TILING_CHECK(
         (moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0),
-        OP_LOGE(
-            nodeName_,
-            "attribute must comply with moeExpertNum %% (epWorldSize - sharedExpertRankNum) == 0, but got moeExpertNum "
-            "%u, epWorldSize %u, sharedExpertRankNum %u.",
-            moeExpertNum, epWorldSize, sharedExpertRankNum),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "moeExpertNum",
+            (std::string("moeExpertNum=") + std::to_string(moeExpertNum) + ", epWorldSize=" +
+             std::to_string(epWorldSize) + ", sharedExpertRankNum=" +
+             std::to_string(sharedExpertRankNum)).c_str(),
+            "moeExpertNum % (epWorldSize - sharedExpertRankNum) == 0"),
         return ge::GRAPH_FAILED);
 
     // localMoeExpertNum
@@ -324,7 +335,9 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckOneTensorDim(std::stri
     OP_TILING_CHECK(shape == nullptr, OP_LOGE(nodeName_, "%s is null.", name.c_str()), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         shape->GetStorageShape().GetDimNum() != dims,
-        OP_LOGE(nodeName_, "%s got %lu dim, expected %u dim", name.c_str(), shape->GetStorageShape().GetDimNum(), dims),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, name.c_str(),
+            std::to_string(shape->GetStorageShape().GetDimNum()).c_str(),
+            std::to_string(dims).c_str()),
         return ge::GRAPH_FAILED);
 
     for (uint32_t d = 0; d < dims; d++) {
@@ -371,9 +384,12 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
     auto quantExpandXOutStorageShape = context_->GetOutputShape(QUANT_EXPAND_X_OUT_INDEX);
     OP_TILING_CHECK(
         (expandXStorageShape->GetStorageShape().GetDim(0) != quantExpandXOutStorageShape->GetStorageShape().GetDim(0)),
-        OP_LOGE(nodeName_, "expandx's dim0[%lu] should be equal to quantexpandxout's dim0[%lu]",
-                expandXStorageShape->GetStorageShape().GetDim(0),
-                quantExpandXOutStorageShape->GetStorageShape().GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandX/quantExpandXOut",
+            (std::string("expandX dim0=") +
+             std::to_string(expandXStorageShape->GetStorageShape().GetDim(0)) +
+             ", quantExpandXOut dim0=" +
+             std::to_string(quantExpandXOutStorageShape->GetStorageShape().GetDim(0))).c_str(),
+            "expandX dim0 must equal quantExpandXOut dim0"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -513,21 +529,26 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
     int64_t assistInfoForCombineOutSizeGolden = A * 128;
     OP_TILING_CHECK(
         assistInfoForCombineOutSize != assistInfoForCombineOutSizeGolden,
-        OP_LOGE(nodeName_, "assistInfoForCombine's dim0[%ld] should be equal to A * 128", assistInfoForCombineOutSize),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "assistInfoForCombine",
+            (std::string("dim0=") + std::to_string(assistInfoForCombineOutSize)).c_str(),
+            (std::string("A * 128 = ") + std::to_string(assistInfoForCombineOutSizeGolden)).c_str()),
         return ge::GRAPH_FAILED);
 
     int64_t tokenMsgSizeGolden = ops::CeilAlign(
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
         ALIGN_512);
     OP_TILING_CHECK(tokenMsgSize != tokenMsgSizeGolden,
-                    OP_LOGE(nodeName_, "quantExpandXOut's dim1[%ld] should be equal to tokenMsgSize[%ld]", tokenMsgSize,
-                            tokenMsgSizeGolden),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "quantExpandXOut",
+                        (std::string("dim1=") + std::to_string(tokenMsgSize)).c_str(),
+                        (std::string("tokenMsgSize=") + std::to_string(tokenMsgSizeGolden)).c_str()),
                     return ge::GRAPH_FAILED);
 
     int64_t commCmdInfoOutSizeGolden = (A + epWorldSize) * COMM_CMD_INFO_SIZE;
     OP_TILING_CHECK(commCmdInfoOutSize != commCmdInfoOutSizeGolden,
-                    OP_LOGE(nodeName_, "commCmdInfo's dim0[%ld] should be equal to commCmdInfoOutSize[%ld]",
-                            commCmdInfoOutSize, commCmdInfoOutSizeGolden),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfoOut",
+                        (std::string("dim0=") + std::to_string(commCmdInfoOutSize)).c_str(),
+                        (std::string("(A + epWorldSize) * 16 = ") +
+                         std::to_string(commCmdInfoOutSizeGolden)).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -564,25 +585,24 @@ bool MoeDistributeCombineSetupTilingBase::CheckTensorDataType()
     auto commCmdInfoOutDesc = context_->GetOutputDesc(COMM_CMD_INFO_OUT_INDEX);
 
     OP_TILING_CHECK((expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
-                    OP_LOGE(nodeName_,
-                            "expandX dataType is invalid, dataType should be bfloat16 or float16, but got %s",
-                            Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expandX",
+                        Ops::Base::ToString(expandXDesc->GetDataType()).c_str(), "bfloat16 or float16"),
                     return false);
     OP_TILING_CHECK((expertIdsDesc->GetDataType() != ge::DT_INT32),
-                    OP_LOGE(nodeName_, "expertIds dataType is invalid, dataType should be int32, but got %s",
-                            Ops::Base::ToString(expertIdsDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expertIds",
+                        Ops::Base::ToString(expertIdsDesc->GetDataType()).c_str(), "int32"),
                     return false);
     OP_TILING_CHECK((assistInfoForCombineDesc->GetDataType() != ge::DT_INT32),
-                    OP_LOGE(nodeName_, "assistInfoForCombine dataType is invalid, dataType should be int32, but is %s",
-                            Ops::Base::ToString(assistInfoForCombineDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "assistInfoForCombine",
+                        Ops::Base::ToString(assistInfoForCombineDesc->GetDataType()).c_str(), "int32"),
                     return false);
     OP_TILING_CHECK((quantExpandXOutDesc->GetDataType() != ge::DT_INT8),
-                    OP_LOGE(nodeName_, "quantExpandXOut dataType is invalid, dataType should be int8, but got %s",
-                            Ops::Base::ToString(quantExpandXOutDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "quantExpandXOut",
+                        Ops::Base::ToString(quantExpandXOutDesc->GetDataType()).c_str(), "int8"),
                     return false);
     OP_TILING_CHECK((commCmdInfoOutDesc->GetDataType() != ge::DT_INT32),
-                    OP_LOGE(nodeName_, "commCmdInfoOut dataType is invalid, dataType should be int32, but is %s",
-                            Ops::Base::ToString(commCmdInfoOutDesc->GetDataType()).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "commCmdInfoOut",
+                        Ops::Base::ToString(commCmdInfoOutDesc->GetDataType()).c_str(), "int32"),
                     return false);
     return true;
 }
@@ -596,27 +616,34 @@ bool MoeDistributeCombineSetupTilingBase::CheckTensorDataFormat()
     auto commCmdInfoOutDesc = context_->GetOutputDesc(COMM_CMD_INFO_OUT_INDEX);
 
     ge::Format expandXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
-    OP_TILING_CHECK((expandXFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expandX format is invalid"),
+    OP_TILING_CHECK((expandXFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "expandX",
+                        Ops::Base::ToString(expandXFormat).c_str(), "FRACTAL_NZ"),
                     return false);
 
     ge::Format expertIdsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat()));
-    OP_TILING_CHECK((expertIdsFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expertIds format is invalid"),
+    OP_TILING_CHECK((expertIdsFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "expertIds",
+                        Ops::Base::ToString(expertIdsFormat).c_str(), "FRACTAL_NZ"),
                     return false);
 
     ge::Format assistInfoFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoForCombineDesc->GetStorageFormat()));
     OP_TILING_CHECK((assistInfoFormat == ge::FORMAT_FRACTAL_NZ),
-                    OP_LOGE(nodeName_, "assistInfoForCombine format is invalid"), return false);
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "assistInfoForCombine",
+                        Ops::Base::ToString(assistInfoFormat).c_str(), "FRACTAL_NZ"), return false);
 
     ge::Format quantExpandXFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(quantExpandXOutDesc->GetStorageFormat()));
     OP_TILING_CHECK((quantExpandXFormat == ge::FORMAT_FRACTAL_NZ),
-                    OP_LOGE(nodeName_, "quantExpandXOut format is invalid"), return false);
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "quantExpandXOut",
+                        Ops::Base::ToString(quantExpandXFormat).c_str(), "FRACTAL_NZ"), return false);
 
     ge::Format commCmdInfoFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(commCmdInfoOutDesc->GetStorageFormat()));
     OP_TILING_CHECK((commCmdInfoFormat == ge::FORMAT_FRACTAL_NZ),
-                    OP_LOGE(nodeName_, "commCmdInfoOut format is invalid"), return false);
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "commCmdInfoOut",
+                        Ops::Base::ToString(commCmdInfoFormat).c_str(), "FRACTAL_NZ"), return false);
 
     return true;
 }
