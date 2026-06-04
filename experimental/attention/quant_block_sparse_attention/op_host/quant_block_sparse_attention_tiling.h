@@ -17,9 +17,13 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_TILING_H_
 
 #include <cstdint>
+#include <limits>
+#include <string>
 
 #include <exe_graph/runtime/tiling_context.h>
+#include <register/op_impl_registry.h>
 #include "register/tilingdata_base.h"
+#include "quant_block_sparse_attention_info_parser.h"
 
 namespace optiling {
 constexpr uint32_t BSA_MAX_CORE_NUM = 48U;
@@ -27,41 +31,65 @@ constexpr uint32_t BSA_CORE_SPLIT_NUM = BSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t BSA_BLOCK_SIZE = 128U;
 constexpr uint32_t BSA_D_SIZE = 128U;
 
-// Inputs Index
-constexpr uint32_t BSA_QUERY_INDEX = 0U;
-constexpr uint32_t BSA_KEY_INDEX = 1U;
-constexpr uint32_t BSA_VALUE_INDEX = 2U;
-constexpr uint32_t BSA_Q_DESCALE_INDEX = 3U;
-constexpr uint32_t BSA_K_DESCALE_INDEX = 4U;
-constexpr uint32_t BSA_V_DESCALE_INDEX = 5U;
-constexpr uint32_t BSA_P_SCALE_INDEX = 6U;
-constexpr uint32_t BSA_CU_SEQLENS_Q_INDEX = 7U;
-constexpr uint32_t BSA_CU_SEQLENS_KV_INDEX = 8U;
-constexpr uint32_t BSA_SEQUSED_Q_INDEX = 9U;
-constexpr uint32_t BSA_SEQUSED_KV_INDEX = 10U;
-constexpr uint32_t BSA_SPARSE_INDICES_INDEX = 11U;
-constexpr uint32_t BSA_SPARSE_SEQ_LEN_INDEX = 12U;
-constexpr uint32_t BSA_BLOCK_TABLE_INDEX = 13U;
-constexpr uint32_t BSA_ATTEN_MASK_INDEX = 14U;
-constexpr uint32_t BSA_METADATA_INDEX = 15U;
+inline uint32_t BSACeilDiv(uint32_t value, uint32_t divisor)
+{
+    return divisor == 0U ? 0U : (value + divisor - 1U) / divisor;
+}
 
-// Outputs Index
-constexpr uint32_t BSA_ATTENTION_OUT_INDEX = 0U;
-constexpr uint32_t BSA_SOFTMAX_LSE_INDEX = 1U;
+inline bool BSAGetDimAsU32(const gert::Shape &shape, size_t dimIndex, uint32_t &value)
+{
+    if (dimIndex >= shape.GetDimNum()) {
+        return false;
+    }
+    const auto dim = shape.GetDim(dimIndex);
+    if (dim <= 0 || dim > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
+    value = static_cast<uint32_t>(dim);
+    return true;
+}
 
-// Attributes Index
-constexpr uint32_t BSA_MAX_SEQLEN_Q_ATTR_INDEX = 0U;
-constexpr uint32_t BSA_MAX_SEQLEN_KV_ATTR_INDEX = 1U;
-constexpr uint32_t BSA_SOFTMAX_SCALE_ATTR_INDEX = 2U;
-constexpr uint32_t BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX = 3U;
-constexpr uint32_t BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX = 4U;
-constexpr uint32_t BSA_PA_BLOCK_STRIDE_ATTR_INDEX = 5U;
-constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 6U;
-constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 7U;
-constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 8U;
-constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 9U;
-constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 10U;
-constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 11U;
+inline uint32_t BSAGetPositiveAttr(const gert::RuntimeAttrs *attrs, uint32_t index, uint32_t defaultValue)
+{
+    const int64_t *attrPtr = attrs->GetAttrPointer<int64_t>(index);
+    if (attrPtr == nullptr || *attrPtr <= 0) {
+        return defaultValue;
+    }
+    if (*attrPtr > std::numeric_limits<uint32_t>::max()) {
+        return defaultValue;
+    }
+    return static_cast<uint32_t>(*attrPtr);
+}
+
+inline uint32_t BSAGetUintAttr(const gert::RuntimeAttrs *attrs, uint32_t index, uint32_t defaultValue)
+{
+    const int64_t *attrPtr = attrs->GetAttrPointer<int64_t>(index);
+    if (attrPtr == nullptr || *attrPtr < 0) {
+        return defaultValue;
+    }
+    if (*attrPtr > std::numeric_limits<uint32_t>::max()) {
+        return defaultValue;
+    }
+    return static_cast<uint32_t>(*attrPtr);
+}
+
+inline float BSAGetFloatAttr(const gert::RuntimeAttrs *attrs, uint32_t index, float defaultValue)
+{
+    const float *attrPtr = attrs->GetAttrPointer<float>(index);
+    return attrPtr == nullptr ? defaultValue : *attrPtr;
+}
+
+inline bool BSAGetBoolAttr(const gert::RuntimeAttrs *attrs, uint32_t index, bool defaultValue)
+{
+    const bool *attrPtr = attrs->GetAttrPointer<bool>(index);
+    return attrPtr == nullptr ? defaultValue : *attrPtr;
+}
+
+inline std::string BSAGetStringAttr(const gert::RuntimeAttrs *attrs, uint32_t index, const char *defaultValue)
+{
+    const char *attrPtr = attrs->GetAttrPointer<char>(index);
+    return attrPtr == nullptr ? std::string(defaultValue) : std::string(attrPtr);
+}
 
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttentionBaseParams)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
@@ -226,6 +254,35 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttention, QuantBlockSparseAttentionTilingData)
 
 ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context);
+
+class QuantBlockSparseAttentionTiling {
+public:
+    explicit QuantBlockSparseAttentionTiling(gert::TilingContext *context);
+    ~QuantBlockSparseAttentionTiling() = default;
+
+    ge::graphStatus DoOpTiling(QuantBlockSparseAttentionTilingInfo *tilingInfo);
+
+private:
+    void FillBaseParams();
+    void FillAttrParams();
+    void FillPaParams();
+    void FillSparseParams();
+    void FillInputParams();
+    void FillMultiCoreParams();
+    void FillDropmaskParams();
+    void FillInitOutputParams();
+    void CalcTilingKey();
+    void CalcWorkspaceSize();
+
+    gert::TilingContext *context_ = nullptr;
+    QuantBlockSparseAttentionTilingInfo *tilingInfo_ = nullptr;
+    QuantBlockSparseAttentionTilingData tilingData_;
+    uint32_t usedCoreNum_ = 0;
+    uint64_t totalTaskNum_ = 0;
+    uint64_t tilingKey_ = 0;
+    uint64_t workspaceSize_ = 0;
+};
+
 } // namespace optiling
 
 #endif // QUANT_BLOCK_SPARSE_ATTENTION_TILING_H_
