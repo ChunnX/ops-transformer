@@ -42,7 +42,7 @@ public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
-    using X_T = typename AscendC::Conditional<X_DTYPE, bfloat16_t, half>::type;
+    using O_T = bfloat16_t;
 
     __aicore__ inline QuantCompressorBlockVector(){};
     // =================================设置参数=================================
@@ -169,9 +169,9 @@ private:
     __aicore__ inline void MultRowRmsNorm(const LocalTensor<T> &normResUb, const LocalTensor<T> &vec1ResUb,
                                           const LocalTensor<T> &normWeightUb, const LocalTensor<T> &tempLocal,
                                           uint32_t dealRowCount);
-    __aicore__ inline void CalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
+    __aicore__ inline void CalRope(const LocalTensor<O_T> &outputUb, const LocalTensor<T> &normResUb,
                                    const Vec2SliceInfo &originSliceInfo, uint32_t dealRowCount);
-    __aicore__ inline void CopyFinalResultOut(const LocalTensor<X_T> &cmpKvOutUb,
+    __aicore__ inline void CopyFinalResultOut(const LocalTensor<O_T> &cmpKvOutUb,
                                               QuantCompressorVec2SliceIterator<COMP> &sliceIterator);
     __aicore__ inline void DealVec2BaseBlock(const Vec2RunInfo &info, const Vec2SplitInfo &splitInfo,
                                              QuantCompressorVec2SliceIterator<COMP> &sliceIterator);
@@ -190,6 +190,7 @@ private:
     uint32_t compressedCnt_ = 0;
     uint32_t prevApeDStartIdx_ = 0;
     uint32_t prevApeDDealSize_ = 0;
+    float xDescale_ = 0;
     bool apeIsLoad_ = false;
     bool isExistSeqUsed_ = false;
     bool isExistStartPos_ = false;
@@ -205,24 +206,30 @@ private:
     GlobalTensor<T> normWeightGm_;
     GlobalTensor<T> ropeSinGm_;
     GlobalTensor<T> ropeCosGm_;
-    GlobalTensor<X_T> cmpKvOutGm_;
+    GlobalTensor<T> xDescaleGm_;
+    GlobalTensor<T> wKvDescaleGm_;
+    GlobalTensor<T> wGateDescaleGm_;
+    GlobalTensor<O_T> cmpKvOutGm_;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
     LocalTensor<T> normWeightUb;
     LocalTensor<T> apeUb;
+    LocalTensor<T> wKvDescaleUb;
+    LocalTensor<T> wGateDescaleUb;
     // 临时tbuf
     TBuf<TPosition::VECCALC> tmpBuff1;
     TBuf<TPosition::VECCALC> tmpBuff2;
     TBuf<TPosition::VECCALC> apeBuf;
     TBuf<TPosition::VECCALC> normWeightBuf;
+    TBuf<TPosition::VECCALC> wKvDescaleBuf;
+    TBuf<TPosition::VECCALC> wGateDescaleBuf;
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
     TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
-    TQue<QuePosition::VECOUT, 1> outputQue2;
 };
 
 
@@ -253,7 +260,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::Init(__gm__ uint8_t *x,
     normWeightGm_.SetGlobalBuffer((__gm__ T *)normWeight);
     ropeSinGm_.SetGlobalBuffer((__gm__ T *)ropeSin);
     ropeCosGm_.SetGlobalBuffer((__gm__ T *)ropeCos);
-    cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
+    cmpKvOutGm_.SetGlobalBuffer((__gm__ O_T *)cmpKvOut);
     isExistSeqUsed_ = (seqUsed != nullptr);
     isExistStartPos_ = (startPos != nullptr);
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
@@ -264,6 +271,12 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::Init(__gm__ uint8_t *x,
     }
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+    }
+    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+        xDescaleGm_.SetGlobalBuffer((__gm__ T *)xDescale);
+        xDescale_ = xDescaleGm_(0);
+        wKvDescaleGm_.SetGlobalBuffer((__gm__ T *)wKvDescale);
+        wGateDescaleGm_.SetGlobalBuffer((__gm__ T *)wGateDescale);
     }
 }
 
@@ -276,17 +289,31 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitBuffers(TPipe *pipe
     pipe->InitBuffer(tmpBuff1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(tmpBuff2, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(outputQue1, 1, BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(outputQue2, 1, BUFFER_SIZE_BYTE_16K);
     pipe->InitBuffer(normWeightBuf, BUFFER_SIZE_BYTE_4K);
+    pipe->InitBuffer(wKvDescaleBuf, BUFFER_SIZE_BYTE_8K);
+    pipe->InitBuffer(wGateDescaleBuf, BUFFER_SIZE_BYTE_8K);
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
     normWeightUb = normWeightBuf.Get<T>();
     apeUb = apeBuf.Get<T>();
+    wKvDescaleUb = wKvDescaleBuf.Get<T>();
+    wGateDescaleUb = wGateDescaleBuf.Get<T>();
     LocalTensor<T> normweightInUb = inputQue2.AllocTensor<T>();
     DataCopy(normweightInUb, normWeightGm_, constInfo_.headDim); // 获取normWeight，常驻
     inputQue2.EnQue(normweightInUb);
     inputQue2.DeQue<T>();
     DataCopy(normWeightUb, normweightInUb, constInfo_.headDim);
     inputQue2.FreeTensor(normweightInUb);
+    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+        // 获取wKvDescale & wGateDescale，常驻
+        LocalTensor<T> wDescale = inputQue3.AllocTensor<T>();
+        DataCopy(wDescale, wKvDescaleGm_, coff_ * constInfo_.headDim); 
+        DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], wGateDescaleGm_, coff_ * constInfo_.headDim);
+        inputQue3.EnQue(wDescale);
+        inputQue3.DeQue<T>();
+        DataCopy(wKvDescaleUb, wDescale, coff_ * constInfo_.headDim);
+        DataCopy(wGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], coff_ * constInfo_.headDim);
+        inputQue3.FreeTensor(wDescale);
+    }
     PipeBarrier<PIPE_V>();
 }
 
@@ -666,6 +693,9 @@ QuantCompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLoc
         AddMultiDataToUb(dstLocal, srcGm[srcGmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount,
                          constInfo_.kBaseNum, constInfo_.mm1KvResSize);
     }
+    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+        
+    }
 }
 
 template <typename COMP>
@@ -1035,15 +1065,15 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::DealVec1BaseBlock(const
 
     if (statisticInfo.compressorScCnt > 0) {
         SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
-        LocalTensor<T> comperssoredUb = outputQue2.AllocTensor<T>();
+        LocalTensor<T> comperssoredUb = outputQue1.AllocTensor<T>();
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        outputQue2.EnQue(comperssoredUb);
-        outputQue2.DeQue<T>();
+        outputQue1.EnQue(comperssoredUb);
+        outputQue1.DeQue<T>();
         GlobalTensor<T> resGm = vec1ResGm_[info.v1v2DbIdx * constInfo_.dbSize];
         CopyOutVec1Res(resGm, info, comperssoredUb, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
-        outputQue2.FreeTensor(comperssoredUb);
+        outputQue1.FreeTensor(comperssoredUb);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
@@ -1291,14 +1321,14 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::DealVec2BaseBlock(const
     inputQue1.FreeTensor(vec1ResUb);
 
     // rope: 只对后RD进行rope
-    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+    LocalTensor<O_T> outputUb = outputQue1.AllocTensor<O_T>();
     PipeBarrier<PIPE_V>();
     CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
     PipeBarrier<PIPE_V>();
 
     // CopyOut
     outputQue1.EnQue(outputUb);
-    outputQue1.DeQue<X_T>();
+    outputQue1.DeQue<O_T>();
     CopyFinalResultOut(outputUb, sliceIterator);
     outputQue1.FreeTensor(outputUb);
 }
@@ -1320,7 +1350,7 @@ QuantCompressorBlockVector<COMP>::MultRowRmsNorm(const LocalTensor<T> &normResUb
 
 
 template <typename COMP>
-__aicore__ inline void QuantCompressorBlockVector<COMP>::CalRope(const LocalTensor<X_T> &outputUb,
+__aicore__ inline void QuantCompressorBlockVector<COMP>::CalRope(const LocalTensor<O_T> &outputUb,
                                                             const LocalTensor<T> &normResUb,
                                                             const Vec2SliceInfo &originSliceInfo, uint32_t dealRowCount)
 {
@@ -1356,7 +1386,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::CalRope(const LocalTens
 
 
 template <typename COMP>
-__aicore__ inline void QuantCompressorBlockVector<COMP>::CopyFinalResultOut(const LocalTensor<X_T> &cmpKvOutUb,
+__aicore__ inline void QuantCompressorBlockVector<COMP>::CopyFinalResultOut(const LocalTensor<O_T> &cmpKvOutUb,
                                                                        QuantCompressorVec2SliceIterator<COMP> &sliceIterator)
 {
     Vec2SliceInfo &sliceInfo = sliceIterator.GetSlice();
