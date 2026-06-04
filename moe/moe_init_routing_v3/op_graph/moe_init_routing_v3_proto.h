@@ -32,7 +32,8 @@ namespace ge {
                   Hif8, FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1.
                   The data type must be the same as that of x.
                   When quant_mode is 0, type is Int8.
-                  When quant_mode is 1, type is Int8 or Int4.
+                  When quant_mode is 1, type is Int8 (int8 dynamic quantization).
+                  When quant_mode is 13, type is Int4 (int4 dynamic quantization).
                   When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN].
                   When quant_mode in [6, 7, 8], type is Hif8.
                   When quant_mode is 9, type is FLOAT4_E2M1.
@@ -62,9 +63,9 @@ namespace ge {
                               1(compute tokens count), which in dropPad scenario. Default: 0.
 * @li expert_tokens_num_flag: Optional parameter. Type is:Bool. The value is true (compute tokens) or
                               false(do not compute tokens), which in dropPad scenario. Default: false.
-* @li quant_mode: Optional parameter. Type is:Int. Valid values: -1(unquant), 0(static), 1(dynamic), 2(fp8_e5m2),
-                  3(fp8_e4m3fn), 6(hif8 cast), 7(hif8_pertensor), 8(hif8_pertoken), 9(fp4_e2m1),
-                  11(fp8_perblock_e5m2), 12(fp8_perblock_e4m3fn). Default: -1.
+* @li quant_mode: Optional parameter. Type is:Int. Valid values: -1(unquant), 0(static), 1(dynamic int8),
+                  2(fp8_e5m2), 3(fp8_e4m3fn), 6(hif8 cast), 7(hif8_pertensor), 8(hif8_pertoken), 9(fp4_e2m1),
+                  11(fp8_perblock_e5m2), 12(fp8_perblock_e4m3fn), 13(dynamic int4). Default: -1.
 * @li active_expert_range: Optional parameter. Type is:ListInt. Like [expert_start, expert_end].
                            expert_start must be greater than or equal to 0, expert_end must be less than or equal to 10240, expert_start must be less than expert_end. Default: [].
 * @li row_idx_type: Optional parameter. Type is:Int. The value is 0(gather) or 1(scatter). Default: 0.

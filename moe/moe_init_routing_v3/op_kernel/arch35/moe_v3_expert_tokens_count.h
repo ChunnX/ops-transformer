@@ -46,6 +46,7 @@ private:
     GlobalTensor<int32_t> sortedExpertIdxGm_;
     GlobalTensor<int32_t> expertCountTempGm_;
     GlobalTensor<int64_t> expertTokensCountGm_;
+    GlobalTensor<int32_t> expertTokensCountInitGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
@@ -72,6 +73,7 @@ private:
     int64_t expertNum_ = 0;
     int64_t expertTokensNumType_ = 0;
     int64_t expertCountElements_ = 0;
+    int64_t expertTokensOutputElements_ = 0;
     int64_t coreNum_ = 0;
     int64_t dropPadMode_ = 0;
     int32_t finalExpertId_ = -1;
@@ -141,14 +143,18 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     }
 
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
+        expertTokensOutputElements_ = expertNum_ * KEY_VALUE_MODE_DIM_NUM;
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ? (actualExpertNum_ + 1) * KEY_VALUE_MODE_DIM_NUM :
-                                                                       expertNum_ * KEY_VALUE_MODE_DIM_NUM;
+                                                                       expertTokensOutputElements_;
     } else {
         expertCountElements_ = actualExpertNum_;
+        expertTokensOutputElements_ = expertCountElements_;
     }
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
-    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
+    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertTokensOutputElements_);
+    expertTokensCountInitGm_.SetGlobalBuffer((__gm__ int32_t *)expertTokensCount,
+                                             expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)));
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
@@ -211,6 +217,12 @@ __aicore__ inline void ExpertTokensCount::Process()
     SyncAll();
 
     if (blockIdx_ == 0) {
+        if (expertTokensNumType_ == KEY_VALUE_MODE) {
+            InitGlobalMemory(expertTokensCountInitGm_, expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)),
+                             0);
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+        }
         expertCountCopyIn();
         expertCountCompute();
         expertCountCopyOut();
