@@ -33,7 +33,7 @@ def run_test(rank):
     topk_idx = torch.randint(0, num_experts, (num_tokens, top_k), dtype=torch.int32, device=f"npu:{rank}")
     topk_weights = torch.rand(num_tokens, top_k, dtype=torch.float32, device=f"npu:{rank}")
 
-    print(f"[rank {rank}] BEFORE dispatch: ccl_buffer_size={int(buf.ccl_buffer_size)}, ep_world_size={buf.ep_world_size}")
+    print(f"[rank {rank}] BEFORE dispatch: ccl_buffer_size={buf.ccl_buffer_size.value}, ep_world_size={buf.ep_world_size.value}")
     print(f"[rank {rank}] context first 10 ints={buf.context.cpu()[:10].tolist()}")
     recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(
         x, topk_idx, topk_weights, do_cpu_sync=False)
@@ -41,7 +41,7 @@ def run_test(rank):
     upper_a = world_size * num_max_tokens_per_rank
     torch.npu.synchronize()
     print(f"[rank {rank}] recv_x shape={recv_x.shape}, expected upper_a={upper_a}")
-    print(f"[rank {rank}] ccl_buffer_size={int(buf.ccl_buffer_size)}, ep_world_size={buf.ep_world_size}")
+    print(f"[rank {rank}] ccl_buffer_size={buf.ccl_buffer_size.value}, ep_world_size={buf.ep_world_size.value}")
     print(f"[rank {rank}] context first 5 ints={buf.context.cpu()[:5].tolist()}")
     assert recv_x.shape[0] == upper_a, f"shape mismatch: {recv_x.shape[0]} vs {upper_a}"
     print(f"[rank {rank}] test_dispatch_forward_upper_bound: PASS")
