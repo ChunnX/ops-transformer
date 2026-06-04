@@ -19,6 +19,7 @@
 #include "log/log.h"
 #include "tiling_base/tiling_base.h"
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 constexpr uint64_t AXES_ALIGN_SIZE = 512;
@@ -734,19 +735,45 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
     auto kvCacheOriginShape = context->GetInputShape(INDEX_KV_CACHE)->GetOriginShape();
 
-    param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheOriginShape.GetDim(DIM_1));
+    // blockSize（每个 block 的逻辑行数，固定 128）的取数位置随 cache 格式不同：
+    //   - ND（cacheMode 0/1）：logical/origin shape 为 [blockNum, blockSize, 1, dim]，blockSize 在 dim1；
+    //   - NZ（cacheMode 2/3）：storage shape 为 [blockNum, C1, blockSize, C0]，blockSize 在 dim2。
+    // 注意不能统一用 origin.dim1：NZ 输入的 origin/view 往往已是 NZ 排布（dim1=C1），会错算成 16/32。
+    const bool isNzCache = (param.cacheMode == NUM_2 || param.cacheMode == NUM_3);  // 2:INT8_NZ, 3:NZ
+    if (isNzCache && kvCacheShape.GetDimNum() > DIM_2) {
+        param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheShape.GetDim(DIM_2));
+    } else {
+        param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheOriginShape.GetDim(DIM_1));
+    }
     param.kvCacheStride0 = GetInputStride0(context, INDEX_KV_CACHE, kvCacheShape);
     param.kvCacheRopeStride0 = GetInputStride0(context, INDEX_KV_CACHE_ROPE, kvCacheRopeShape);
 
-    OP_LOGD(context->GetNodeName(), "kvCacheShape: dim0=%ld, dim1=%ld, dim2=%ld.",
-            kvCacheShape.GetDim(DIM_0), kvCacheShape.GetDim(DIM_1),
-            kvCacheShape.GetDimNum() > DIM_2 ? kvCacheShape.GetDim(DIM_2) : -1);
-    OP_LOGD(context->GetNodeName(), "kvCacheRopeShape: dim0=%ld, dim1=%ld.",
-            kvCacheRopeShape.GetDim(DIM_0), kvCacheRopeShape.GetDim(DIM_1));
-    OP_LOGD(context->GetNodeName(), "kvCacheOriginShape: dim0=%ld, dim1=%ld.",
-            kvCacheOriginShape.GetDim(DIM_0), kvCacheOriginShape.GetDim(DIM_1));
-    OP_LOGD(context->GetNodeName(), "kvCacheBlockSize=%lu, kvCacheStride0=%lu, kvCacheRopeStride0=%lu.",
-            param.kvCacheBlockSize, param.kvCacheStride0, param.kvCacheRopeStride0);
+    auto kvCacheRopeOriginShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetOriginShape();
+    auto shapeToStr = [](const gert::Shape &s, char *buf, size_t cap) {
+        size_t off = 0;
+        off += snprintf(buf + off, cap - off, "[");
+        for (size_t d = 0; d < s.GetDimNum() && off < cap; ++d) {
+            off += snprintf(buf + off, cap - off, "%s%ld", d == 0 ? "" : ",", s.GetDim(d));
+        }
+        snprintf(buf + off, cap - off, "]");
+    };
+    char kvStorageBuf[64];
+    char kvOriginBuf[64];
+    char kvRopeStorageBuf[64];
+    char kvRopeOriginBuf[64];
+    shapeToStr(kvCacheShape, kvStorageBuf, sizeof(kvStorageBuf));
+    shapeToStr(kvCacheOriginShape, kvOriginBuf, sizeof(kvOriginBuf));
+    shapeToStr(kvCacheRopeShape, kvRopeStorageBuf, sizeof(kvRopeStorageBuf));
+    shapeToStr(kvCacheRopeOriginShape, kvRopeOriginBuf, sizeof(kvRopeOriginBuf));
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess shape dump: cacheMode=%lu isNzCache=%d | kvCache storage=%s origin=%s | "
+            "kvCacheRope storage=%s origin=%s.",
+            param.cacheMode, static_cast<int>(isNzCache), kvStorageBuf, kvOriginBuf,
+            kvRopeStorageBuf, kvRopeOriginBuf);
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess derived: kvCacheBlockSize=%lu (from %s.dim%d) kvCacheStride0=%lu kvCacheRopeStride0=%lu.",
+            param.kvCacheBlockSize, isNzCache ? "storage" : "origin", isNzCache ? 2 : 1,
+            param.kvCacheStride0, param.kvCacheRopeStride0);
 
     return param;
 }
