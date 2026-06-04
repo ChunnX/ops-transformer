@@ -97,18 +97,20 @@ def run_precision_test():
         traceback.print_exc()
         tl_available = False
 
-    print("\n[2] 官方 Ascend C 算子计算 (BSND layout)...")
+    print("\n[2] 官方 Ascend C 算子计算 (BSND layout, zero rope)...")
+    zero_rope_q = torch.zeros_like(query_rope)
+    zero_rope_k = torch.zeros_like(key_rope)
     try:
         d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
             query, key, query_index, key_index, weights, sparse_indices,
             softmax_max, softmax_sum, scale_value,
-            query_rope=query_rope,
-            key_rope=key_rope,
+            query_rope=zero_rope_q,
+            key_rope=zero_rope_k,
             layout="BSND",
             sparse_mode=3,
         )
         torch.npu.synchronize()
-        print("  完成")
+        print("  完成 (zero rope)")
         official_available = True
     except Exception as e:
         print(f"  失败: {e}")
@@ -116,8 +118,27 @@ def run_precision_test():
         traceback.print_exc()
         official_available = False
 
+    rope_available = False
+    if official_available:
+        print("\n[2b] 官方 Ascend C 算子计算 (BSND layout, with rope)...")
+        try:
+            d_qi_off_rope, d_ki_off_rope, dw_off_rope, loss_off_rope = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
+                query, key, query_index, key_index, weights, sparse_indices,
+                softmax_max, softmax_sum, scale_value,
+                query_rope=query_rope,
+                key_rope=key_rope,
+                layout="BSND",
+                sparse_mode=3,
+            )
+            torch.npu.synchronize()
+            print("  完成 (with rope)")
+            rope_available = True
+        except Exception as e:
+            print(f"  失败: {e}")
+            rope_available = False
+
     if tl_available and official_available:
-        print("\n[3] 精度对比...")
+        print("\n[3] 精度对比 (TileLang vs 官方 zero rope)...")
         for name, tl_val, off_val in [
             ("dQueryIndex", d_qi_tl, d_qi_off),
             ("dKeyIndex", d_ki_tl, d_ki_off),
@@ -130,6 +151,21 @@ def run_precision_test():
             print(f"  {name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, rel_err={rel_err:.6f}")
         loss_diff = abs(loss_tl.float().item() - loss_off.float().item())
         print(f"  Loss: abs_diff={loss_diff:.6f}, tl={loss_tl.item():.6f}, off={loss_off.item():.6f}")
+
+    if rope_available:
+        print("\n[3b] 精度对比 (TileLang vs 官方 with rope)...")
+        for name, tl_val, off_val in [
+            ("dQueryIndex", d_qi_tl, d_qi_off_rope),
+            ("dKeyIndex", d_ki_tl, d_ki_off_rope),
+            ("dWeights", dw_tl, dw_off_rope),
+        ]:
+            diff = (tl_val.float() - off_val.float()).abs()
+            max_diff = diff.max().item()
+            mean_diff = diff.mean().item()
+            rel_err = (diff / (off_val.float().abs() + 1e-6)).mean().item()
+            print(f"  {name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, rel_err={rel_err:.6f}")
+        loss_diff = abs(loss_tl.float().item() - loss_off_rope.float().item())
+        print(f"  Loss: abs_diff={loss_diff:.6f}, tl={loss_tl.item():.6f}, off={loss_off_rope.item():.6f}")
     elif tl_available:
         print("\n[3] 官方算子不可用，仅验证 TileLang 输出非全零...")
         for name, val in [("dQueryIndex", d_qi_tl), ("dKeyIndex", d_ki_tl), ("dWeights", dw_tl)]:
