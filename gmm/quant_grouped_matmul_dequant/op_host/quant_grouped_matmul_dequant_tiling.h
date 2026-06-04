@@ -52,6 +52,18 @@ constexpr int32_t GMM_GMEV_THRESHOLD_MIN = 7;
 constexpr int32_t GMM_GMEV_THRESHOLD_MAX = 20;
 constexpr uint32_t BATCH_MODE = 1;
 
+constexpr uint32_t QGMMD_FLAG_DYNAMIC_QUANT     = 1u << 0;
+constexpr uint32_t QGMMD_FLAG_HAS_SMOOTH        = 1u << 1;
+constexpr uint32_t QGMMD_FLAG_PER_TOKEN         = 1u << 2;
+constexpr uint32_t QGMMD_FLAG_SCALE_IS_INT64    = 1u << 3;
+constexpr uint32_t QGMMD_FLAG_BLOCKED_ZN        = 1u << 4;
+constexpr uint32_t QGMMD_FLAG_SMALL_M           = 1u << 5;
+constexpr uint32_t QGMMD_FLAG_L2_WEIGHT_FITS    = 1u << 6;
+constexpr uint32_t QGMMD_FLAG_HAS_X_RAW_L1      = 1u << 7;
+constexpr uint32_t QGMMD_FLAG_USE_L2_HINT       = 1u << 8;
+constexpr uint32_t QGMMD_FLAG_DBL0C             = 1u << 9;
+constexpr uint32_t QGMMD_FLAG_USE_XZN_WORKSPACE = 1u << 10;
+
 enum class QuantMatmulDequantTilingKey : uint64_t {
   GEMV = 10000001,
   NORMAL = 10000002,
@@ -84,6 +96,7 @@ struct QuantMatmulDequantParam {
   bool perToken;
   bool dynamicQuant;
   bool smoothScale;
+  bool scaleIsInt64;
   uint64_t originE;
   uint64_t originM;
   uint64_t originN;
@@ -141,6 +154,35 @@ struct QuantMatmulDequantParam {
   uint64_t ubKMask;
 
   uint32_t isXScaleHalf;
+
+  // optimized dynamic pertoken path
+  uint32_t optCoreNum;
+  uint32_t optMCoreNum;
+  uint32_t optNCoreNum;
+  uint32_t optM;
+  uint32_t optK;
+  uint32_t optN;
+  uint32_t optE;
+  uint32_t optOriginKAligned32;
+  uint32_t optOriginKAligned512;
+  uint32_t optFracM;
+  uint32_t optFracK;
+  uint32_t optFracN;
+  uint32_t optMb;
+  uint32_t optNb;
+  uint32_t optKb;
+  uint32_t optKPasses;
+  uint32_t optWChunkKPasses;
+  uint32_t optPhaseXChunk;
+  uint32_t optPhaseXFullPairs;
+  uint32_t optPhaseXTail;
+  uint32_t optMaxOneTurnToken;
+  uint32_t optMaxWeightColOneTurn;
+  uint32_t optPerCoreIters;
+  uint32_t optRemainderIters;
+  uint32_t optWeightBlockN1;
+  uint32_t optNBlockSize;
+  uint32_t optFlags;
 };
 
 BEGIN_TILING_DATA_DEF(QuantMatmulDequantTilingData)
@@ -200,6 +242,35 @@ TILING_DATA_FIELD_DEF(uint32_t, baseKTail_2);
 
 TILING_DATA_FIELD_DEF(uint64_t, ubKMask);
 TILING_DATA_FIELD_DEF(uint32_t, isXScaleHalf);
+
+// optimized dynamic pertoken path
+TILING_DATA_FIELD_DEF(uint32_t, optCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, optMCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, optNCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, optM);
+TILING_DATA_FIELD_DEF(uint32_t, optK);
+TILING_DATA_FIELD_DEF(uint32_t, optN);
+TILING_DATA_FIELD_DEF(uint32_t, optE);
+TILING_DATA_FIELD_DEF(uint32_t, optOriginKAligned32);
+TILING_DATA_FIELD_DEF(uint32_t, optOriginKAligned512);
+TILING_DATA_FIELD_DEF(uint32_t, optFracM);
+TILING_DATA_FIELD_DEF(uint32_t, optFracK);
+TILING_DATA_FIELD_DEF(uint32_t, optFracN);
+TILING_DATA_FIELD_DEF(uint32_t, optMb);
+TILING_DATA_FIELD_DEF(uint32_t, optNb);
+TILING_DATA_FIELD_DEF(uint32_t, optKb);
+TILING_DATA_FIELD_DEF(uint32_t, optKPasses);
+TILING_DATA_FIELD_DEF(uint32_t, optWChunkKPasses);
+TILING_DATA_FIELD_DEF(uint32_t, optPhaseXChunk);
+TILING_DATA_FIELD_DEF(uint32_t, optPhaseXFullPairs);
+TILING_DATA_FIELD_DEF(uint32_t, optPhaseXTail);
+TILING_DATA_FIELD_DEF(uint32_t, optMaxOneTurnToken);
+TILING_DATA_FIELD_DEF(uint32_t, optMaxWeightColOneTurn);
+TILING_DATA_FIELD_DEF(uint32_t, optPerCoreIters);
+TILING_DATA_FIELD_DEF(uint32_t, optRemainderIters);
+TILING_DATA_FIELD_DEF(uint32_t, optWeightBlockN1);
+TILING_DATA_FIELD_DEF(uint32_t, optNBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, optFlags);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantMatmulDequantTilingData)
