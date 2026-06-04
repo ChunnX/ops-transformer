@@ -29,4 +29,6 @@ add_modules_sources(OPTYPE quant_block_sparse_attention ACLNNTYPE aclnn)
 add_tiling_modules()
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     quant_block_sparse_attention_tiling.cpp
+    quant_block_sparse_attention_info_parser.cpp
+    quant_block_sparse_attention_check.cpp
 )
