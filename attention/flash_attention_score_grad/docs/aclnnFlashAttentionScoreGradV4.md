@@ -168,7 +168,17 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与keyIn/value一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>queryRopeOptional</td>
+      <td>输入</td>
+      <td>公式中的输入Q的rope部分。</td>
+      <td>数据类型与query一致。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -178,7 +188,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与query/value一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -188,7 +198,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与keyIn一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -198,7 +208,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与query/keyIn一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -208,17 +218,17 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
       <td>pseShiftOptional</td>
       <td>可选输入</td>
       <td>公式中的pse，表示位置编码。</td>
-      <td>支持[B,N,S,S]、[B,N,1,S]、[1,N,S,S]、[B,N,H,S]、[1,N,H,S]。</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、4</td>
+      <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -268,42 +278,41 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>
         <ul>
           <li>取值1表示该位不参与计算，0表示参与计算。</li>
-          <li>支持[B,N,S,S]、[B,1,S,S]、[1,1,S,S]、[S,S]。</li>
         </ul>
       </td>
       <td>BOOL、UINT8</td>
       <td>ND</td>
-      <td>0、2、4</td>
+      <td>[B,N,Sq,Skv]、[B,1,Sq,Skv]、[1,1,Sq,Skv]、[Sq,Skv]</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
+      <td>-</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>0、4</td>
+      <td>[B,N,Sq,8],[N,T,8],[T,N,8]</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
+      <td>-</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>0、4</td>
+      <td>[B,N,Sq,8],[N,T,8],[T,N,8]</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxInOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。预留参数暂未使用。</td>
-      <td>shape=[B,N,Sq,8]。</td>
+      <td>-</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>0、4</td>
+      <td>[B,N,Sq,8]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -313,7 +322,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型和shape与query一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -543,7 +552,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -553,7 +562,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -563,7 +572,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -573,7 +582,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -583,7 +592,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0、3、4</td>
+      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
       <td>√</td>
     </tr>
     <tr>
