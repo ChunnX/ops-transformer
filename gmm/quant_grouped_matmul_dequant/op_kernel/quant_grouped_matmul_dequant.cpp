@@ -86,6 +86,29 @@ __aicore__ inline void BuildOptTilingData(const QuantMatmulDequantTilingData *__
   dst.flags = src->optFlags;
   dst.ubKMask = src->ubKMask;
 }
+
+__aicore__ inline __attribute__((noinline)) void RunGroupedLegacy(
+    GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list,
+    GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale,
+    GM_ADDR y, GM_ADDR usrworkspace, const QuantMatmulDequantTilingData *__restrict tilingData)
+{
+  QuantMatmulDequantGrouped handle;
+  handle.Init(x, quantized_weight, weight_scale, group_list, bias, x_scale,
+              x_offset, smooth_scale, y, usrworkspace, tilingData);
+  handle.Process();
+}
+
+__aicore__ inline __attribute__((noinline)) void RunSwiftLegacy(
+    GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list,
+    GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale,
+    GM_ADDR y, GM_ADDR usrworkspace, const QuantMatmulDequantTilingData *__restrict tilingData)
+{
+  QuantMatmulDequantGrouped handle;
+  handle.SetSwift();
+  handle.Init(x, quantized_weight, weight_scale, group_list, bias, x_scale,
+              x_offset, smooth_scale, y, usrworkspace, tilingData);
+  handle.Process();
+}
 }  // namespace AscendC
 
 #define QGMMD_ORIGIN_OPT_DISPATCH(hasSmooth, scaleIsU64, smallM)                         \
@@ -144,14 +167,11 @@ extern "C" __global__ __aicore__ void quant_grouped_matmul_dequant(GM_ADDR x, GM
     return;
   }
   if (TILING_KEY_IS(10000003)) {
-    QuantMatmulDequantGrouped handle;
-    handle.Init(x, quantized_weight, weight_scale, group_list, bias, x_scale, x_offset, smooth_scale, y, usrworkspace, tilingData);
-    handle.Process();
+    RunGroupedLegacy(x, quantized_weight, weight_scale, group_list, bias, x_scale,
+                     x_offset, smooth_scale, y, usrworkspace, tilingData);
   } else if (TILING_KEY_IS(10000004)){
-    QuantMatmulDequantGrouped handle;
-    handle.SetSwift();
-    handle.Init(x, quantized_weight, weight_scale, group_list, bias, x_scale, x_offset, smooth_scale, y, usrworkspace, tilingData);
-    handle.Process();
+    RunSwiftLegacy(x, quantized_weight, weight_scale, group_list, bias, x_scale,
+                   x_offset, smooth_scale, y, usrworkspace, tilingData);
   }
   SetMaskNorm();
   ResetMask();
