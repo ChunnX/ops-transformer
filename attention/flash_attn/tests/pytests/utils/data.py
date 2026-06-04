@@ -125,13 +125,13 @@ def rearrange_by_block_table(bnsd_tensor, block_table, block_size, b, act_seq_le
         return page_cache_tensor.permute(0, 2, 1, 3)
     elif kv_storage_mode == "PA_BNBD":
         return page_cache_tensor
-    elif kv_storage_mode == "PA_NZ":
+    elif kv_storage_mode == "PA_NZ":  # PA_NZ: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
         blk_elem = 32 // dtype_sizeof(kv_dtype)
         page_cache_tensor = page_cache_tensor.reshape(page_cache_tensor.shape[0],
                                                        page_cache_tensor.shape[1],
-                                                       page_cache_tensor.shape[2],
-                                                       page_cache_tensor.shape[3] // blk_elem,
-                                                       blk_elem).permute(0, 1, 3, 2, 4)
+                                                       page_cache_tensor.shape[2] // blk_elem,
+                                                       blk_elem,
+                                                       page_cache_tensor.shape[3]).permute(0, 1, 2, 4, 3)
         return page_cache_tensor
     else:
         return None
