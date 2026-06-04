@@ -48,12 +48,6 @@ public:
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
-    static constexpr uint32_t CeilLog2(uint32_t v) {
-        return (v <= 1) ? 0 : 1 + CeilLog2(v >> 1);
-    }
-    static constexpr uint32_t S2_SHIFT = CeilLog2(s2BaseSize);
-    static constexpr uint32_t M_SHIFT = CeilLog2(mBaseSize);
-
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
@@ -477,9 +471,9 @@ public:
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
         }
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) >> S2_SHIFT;
+        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) >> M_SHIFT;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
@@ -534,7 +528,7 @@ public:
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         curS2Start = 0U;
-        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) >> S2_SHIFT;
+        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
 
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
             headS2Split = s2OStart_ != 0U;
@@ -591,8 +585,8 @@ public:
         s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
         s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
 
-        s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) >> S2_SHIFT;
-        s2EndWithSparse = (static_cast<uint32_t>(s2LastToken) >> S2_SHIFT) + 1U;
+        s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
+        s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
 
         // 4. Calc curS2Start, curS2End
         curS2Start = s2StartWithSparse;
@@ -750,9 +744,9 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) >> S2_SHIFT;
+        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) >> M_SHIFT;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
         // 当前S2未处理完
         if (s2Cur + 1 < s2LoopTimes) {
