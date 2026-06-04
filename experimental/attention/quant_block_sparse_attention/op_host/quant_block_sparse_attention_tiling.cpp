@@ -33,7 +33,8 @@ constexpr size_t DIM_NUM_5 = 5U;
 constexpr size_t DIM_B = 0U;
 constexpr size_t DIM_S = 1U;
 constexpr size_t DIM_N = 2U;
-constexpr size_t DIM_BLOCK_SIZE = 1U;
+constexpr size_t DIM_PA_N = 1U;
+constexpr size_t DIM_PA_BLOCK_SIZE = 2U;
 constexpr size_t DIM_BLOCK_TABLE_MAX = 1U;
 constexpr size_t DIM_SPARSE_QB = 3U;
 constexpr size_t DIM_SPARSE_COUNT = 4U;
@@ -46,6 +47,8 @@ constexpr uint8_t BSA_LAYOUT_TYPE_TND = 4U;
 constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_LEFT_UP_CAUSAL = 1U;
+constexpr uint32_t BSA_COMBINE_ALIGN_BYTES = 32U;
+constexpr uint32_t BSA_K_SCALE_BYTES = sizeof(float);
 
 uint32_t CeilDiv(uint32_t value, uint32_t divisor)
 {
@@ -199,12 +202,21 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     uint32_t n2Size = 0;
     uint32_t physicalKvBlockSize = 0;
     uint32_t kvDSize = 0;
-    if (keyShape.GetDimNum() != DIM_NUM_4 || !GetDimAsU32(keyShape, DIM_BLOCK_SIZE, physicalKvBlockSize) ||
-        !GetDimAsU32(keyShape, DIM_N, n2Size) || !GetDimAsU32(keyShape, DIM_SPARSE_QB, kvDSize) ||
+    if (keyShape.GetDimNum() != DIM_NUM_4 || !GetDimAsU32(keyShape, DIM_PA_BLOCK_SIZE, physicalKvBlockSize) ||
+        !GetDimAsU32(keyShape, DIM_PA_N, n2Size) || !GetDimAsU32(keyShape, DIM_SPARSE_QB, kvDSize) ||
         physicalKvBlockSize != kvBlockSize || kvDSize != BSA_D_SIZE) {
         return ge::GRAPH_FAILED;
     }
     if (n2Size == 0U || n1Size % n2Size != 0U) {
+        return ge::GRAPH_FAILED;
+    }
+    const uint32_t paBlockStride = GetPositiveAttr(attrs, BSA_PA_BLOCK_STRIDE_ATTR_INDEX, 0U);
+    const uint32_t combineBytes =
+        ((BSA_D_SIZE + BSA_D_SIZE + BSA_K_SCALE_BYTES + BSA_COMBINE_ALIGN_BYTES - 1U) /
+        BSA_COMBINE_ALIGN_BYTES) * BSA_COMBINE_ALIGN_BYTES;
+    const uint64_t minPaBlockStride = static_cast<uint64_t>(kvBlockSize) * n2Size * combineBytes;
+    if (paBlockStride == 0U || paBlockStride % BSA_COMBINE_ALIGN_BYTES != 0U ||
+        paBlockStride < minPaBlockStride) {
         return ge::GRAPH_FAILED;
     }
     const uint32_t gSize = n1Size / n2Size;
@@ -287,6 +299,7 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     tilingData.baseParams.set_qBlockSize(qBlockSize);
     tilingData.baseParams.set_kvBlockSize(kvBlockSize);
     tilingData.baseParams.set_maxBlockNumPerBatch(maxBlockNumPerBatch);
+    tilingData.baseParams.set_paBlockStride(paBlockStride);
     const float softmaxScale = GetFloatAttr(attrs, BSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
     tilingData.baseParams.set_softmaxScale(softmaxScale);
     tilingData.attrParams.set_layoutQ(layoutQValue);
@@ -369,6 +382,7 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     inputParams.set_blockSize(kvBlockSize);
     inputParams.set_blockTableDim2(maxBlockNumPerBatch);
     inputParams.set_paBlockNumSum(paBlockNumSum);
+    inputParams.set_paBlockStride(paBlockStride);
     inputParams.set_attenMaskS1Size(s1Size);
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
     inputParams.set_isRowInvalid(0);

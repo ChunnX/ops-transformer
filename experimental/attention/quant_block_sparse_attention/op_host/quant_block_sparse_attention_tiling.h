@@ -55,12 +55,13 @@ constexpr uint32_t BSA_MAX_SEQLEN_KV_ATTR_INDEX = 1U;
 constexpr uint32_t BSA_SOFTMAX_SCALE_ATTR_INDEX = 2U;
 constexpr uint32_t BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX = 3U;
 constexpr uint32_t BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX = 4U;
-constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 5U;
-constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 6U;
-constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 7U;
-constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 8U;
-constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 9U;
-constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_PA_BLOCK_STRIDE_ATTR_INDEX = 5U;
+constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 6U;
+constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 7U;
+constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 8U;
+constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 9U;
+constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 11U;
 
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttentionBaseParams)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
@@ -77,6 +78,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
 TILING_DATA_FIELD_DEF(uint32_t, qBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
+TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
 TILING_DATA_FIELD_DEF(float, softmaxScale)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttentionBaseParamsOp, QuantBlockSparseAttentionBaseParams)
@@ -171,6 +173,7 @@ TILING_DATA_FIELD_DEF(uint32_t, headNumRatio)
 TILING_DATA_FIELD_DEF(int32_t, blockSize)
 TILING_DATA_FIELD_DEF(int32_t, blockTableDim2)
 TILING_DATA_FIELD_DEF(int32_t, paBlockNumSum)
+TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
 TILING_DATA_FIELD_DEF(int32_t, attenMaskS1Size)
 TILING_DATA_FIELD_DEF(uint8_t, paLayoutType)
 TILING_DATA_FIELD_DEF(uint8_t, isRowInvalid)

@@ -38,6 +38,7 @@ struct PAShape{
     uint32_t copyRowNum;
     uint32_t copyRowNumAlign;
     uint32_t pageStride;
+    uint32_t rowStride;
 };
 
 struct Position{
@@ -318,7 +319,10 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
                 offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+                offset = idInBlockTable * shape.pageStride +
+                    static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.rowStride) +
+                    remainRowCnt * shape.rowStride + startPos.dIdx;
+                dStride = shape.rowStride;
             }
 
             uint32_t dValue = shape.actHeadDim;

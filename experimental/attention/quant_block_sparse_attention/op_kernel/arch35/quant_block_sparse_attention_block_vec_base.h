@@ -95,7 +95,10 @@ public:
     __aicore__ inline void InitCommonGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
         __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t * learnableSink, __gm__ uint8_t *&workspace, ConstInfo<isInfer, hasRope> &constInfo);
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *&workspace,
+        ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline float GetPaKScaleValue(
+        const RunInfo<isInfer> &runInfo, const ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo<isInfer, hasRope> &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -120,6 +123,7 @@ public:
     quantGmType deScaleKGm;
     quantGmType deScaleVGm;
     quantGmType pScaleGm;
+    GlobalTensor<int32_t> blockTableGm;
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
     vec2ResGmType vec2ResGm[3];
     GlobalTensor<INPUT_T> sinkGm;
@@ -208,7 +212,8 @@ TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-    __gm__ uint8_t *learnableSink, __gm__ uint8_t *&workspace, ConstInfo<isInfer, hasRope> &constInfo)
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *&workspace,
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     if ASCEND_IS_AIV {
         if constexpr (isFp8 || isInt8) {
@@ -221,6 +226,9 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
             } else {
                 constInfo.pScale = 1.0f;
             }
+        }
+        if constexpr (isPa) {
+            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
         if constexpr (hasAtten) {
@@ -250,6 +258,20 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
             constInfo.learnableSinkFlag = true;
         }
     }
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline float BSABlockVecBase<TEMPLATE_BASE_ARGS>::GetPaKScaleValue(
+    const RunInfo<isInfer> &runInfo, const ConstInfo<isInfer, hasRope> &constInfo)
+{
+    const uint64_t logicalToken = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
+    const uint64_t logicalBlock = logicalToken / constInfo.blockSize;
+    const uint64_t tokenInBlock = logicalToken % constInfo.blockSize;
+    const uint64_t physicalBlock =
+        blockTableGm.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + logicalBlock);
+    const uint64_t byteOffset = physicalBlock * constInfo.paBlockStride +
+        runInfo.n2oIdx * constInfo.blockSize * constInfo.combineDim + tokenInBlock * constInfo.combineDim;
+    return deScaleKGm.GetValue(byteOffset / sizeof(float));
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
@@ -503,7 +525,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                                     (runInfo.s2StartIdx >> 8) + runInfo.s2LoopCount; // 8 ：按照256分块计算deScaleKv偏移
         }
         float deSCaleQValue = this->deScaleQGm.GetValue(deScaleQOffset);
-        float deSCaleKValue = this->deScaleKGm.GetValue(runInfo.deScaleKvOffset);  // [0-128)
+        float deSCaleKValue = GetPaKScaleValue(runInfo, constInfo);
         descaleQK = deSCaleQValue * deSCaleKValue;
     }
  
@@ -841,7 +863,11 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             deScaleKvOffset = runInfo.deScaleKvOffset;
         }
         float deSCaleQValue = this->deScaleQGm.GetValue(deScaleQOffset);
-        deSCaleKValue = this->deScaleKGm.GetValue(deScaleKvOffset);
+        if constexpr (isPa) {
+            deSCaleKValue = GetPaKScaleValue(runInfo, constInfo);
+        } else {
+            deSCaleKValue = this->deScaleKGm.GetValue(deScaleKvOffset);
+        }
         descaleQK = deSCaleQValue * deSCaleKValue;
     }
 
@@ -1899,7 +1925,8 @@ public:
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
         __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,__gm__ uint8_t *prefix,
-        __gm__ uint8_t *attenMask, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink, 
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
         __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset,
         uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo) {}
 

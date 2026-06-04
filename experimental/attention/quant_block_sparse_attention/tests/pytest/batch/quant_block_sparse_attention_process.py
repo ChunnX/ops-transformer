@@ -12,6 +12,8 @@
 
 import pytest
 import torch
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
 
 try:
     import torch_npu
@@ -22,6 +24,7 @@ else:
     TORCH_NPU_IMPORT_ERROR = None
 
 import custom_ops
+import combined_kv_cache
 
 
 def _to_npu(tensor):
@@ -43,6 +46,16 @@ def _check_runtime_available():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
         pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attention is not registered.{suffix}")
+
+
+def _prepare_kv_inputs(inputs):
+    if "kv_cache_storage" not in inputs:
+        return None, _to_npu(inputs["key"]), _to_npu(inputs["value"]), _to_npu(inputs["k_descale"])
+
+    kv_cache_storage = _to_npu(inputs["kv_cache_storage"])
+    key, value, k_descale = combined_kv_cache.assert_combined_kv_views(
+        kv_cache_storage, inputs["kv_cache_meta"])
+    return kv_cache_storage, key, value, k_descale
 
 
 def _normalize_npu_output(output, return_softmax_lse):
@@ -80,12 +93,13 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
     _check_runtime_available()
     torch_npu.npu.set_device(device_id)
     inputs = test_data["input"]
+    kv_cache_storage, key, value, k_descale = _prepare_kv_inputs(inputs)
     output = torch.ops.custom.npu_quant_block_sparse_attention(
         _to_npu(inputs["query"]),
-        _to_npu(inputs["key"]),
-        _to_npu(inputs["value"]),
+        key,
+        value,
         _to_npu(inputs["q_descale"]),
-        _to_npu(inputs["k_descale"]),
+        k_descale,
         _to_npu(inputs["v_descale"]),
         _to_npu(inputs["p_scale"]),
         _to_npu(inputs["sparse_indices"]),
@@ -94,6 +108,7 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
         inputs["softmax_scale"],
         inputs["sparse_q_block_size"],
         inputs["sparse_kv_block_size"],
+        inputs["pa_block_stride"],
         cu_seqlens_q=_to_npu(inputs["cu_seqlens_q"]),
         cu_seqlens_kv=_to_npu(inputs["cu_seqlens_kv"]),
         seqused_q=_to_npu(inputs["seqused_q"]),
@@ -110,12 +125,49 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
         return_softmax_lse=inputs["return_softmax_lse"],
     )
     torch_npu.npu.synchronize()
+    del kv_cache_storage
     return _normalize_npu_output(output, inputs["return_softmax_lse"])
 
 
+class _QuantBlockSparseAttentionGraph(torch.nn.Module):
+    def __init__(self, inputs):
+        super().__init__()
+        self.inputs = inputs
+
+    def forward(self, query, key, value, q_descale, k_descale, v_descale, p_scale, sparse_indices,
+                sparse_seq_len, atten_mask, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                block_table, metadata):
+        return torch.ops.custom.npu_quant_block_sparse_attention(
+            query, key, value, q_descale, k_descale, v_descale, p_scale, sparse_indices, sparse_seq_len,
+            atten_mask, self.inputs["softmax_scale"], self.inputs["sparse_q_block_size"],
+            self.inputs["sparse_kv_block_size"], self.inputs["pa_block_stride"],
+            cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, seqused_q=seqused_q,
+            seqused_kv=seqused_kv, block_table=block_table, metadata=metadata,
+            max_seqlen_q=self.inputs["max_seqlen_q"], max_seqlen_kv=self.inputs["max_seqlen_kv"],
+            layout_kv=self.inputs["layout_kv"], layout_q=self.inputs["layout_q"],
+            layout_sparse_indices=self.inputs["layout_sparse_indices"], quant_mode=self.inputs["quant_mode"],
+            mask_mode=self.inputs["mask_mode"], return_softmax_lse=self.inputs["return_softmax_lse"])
+
+
 def test_quant_block_sparse_attention_process_graph(test_data, device_id=0):
-    npu_result = _call_npu_quant_block_sparse_attention(test_data, device_id)
-    return npu_result, _golden_output(test_data)
+    _check_runtime_available()
+    torch_npu.npu.set_device(device_id)
+    inputs = test_data["input"]
+    kv_cache_storage, key, value, k_descale = _prepare_kv_inputs(inputs)
+    config = CompilerConfig()
+    config.mode = "reduce-overhead"
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    model = torch.compile(
+        _QuantBlockSparseAttentionGraph(inputs).npu(), fullgraph=True, backend=npu_backend, dynamic=False)
+    output = model(
+        _to_npu(inputs["query"]), key, value, _to_npu(inputs["q_descale"]), k_descale,
+        _to_npu(inputs["v_descale"]), _to_npu(inputs["p_scale"]), _to_npu(inputs["sparse_indices"]),
+        _to_npu(inputs["sparse_seq_len"]), _to_npu(inputs["atten_mask"]), _to_npu(inputs["cu_seqlens_q"]),
+        _to_npu(inputs["cu_seqlens_kv"]), _to_npu(inputs["seqused_q"]), _to_npu(inputs["seqused_kv"]),
+        _to_npu(inputs["block_table"]), _to_npu(inputs["metadata"]))
+    torch_npu.npu.synchronize()
+    del kv_cache_storage
+    return _normalize_npu_output(output, inputs["return_softmax_lse"]), _golden_output(test_data)
 
 
 def test_quant_block_sparse_attention_process_ci(test_data, device_id=0):

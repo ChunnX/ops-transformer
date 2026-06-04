@@ -15,8 +15,10 @@ The CPU golden follows BSA scheme 2.4:
 - `sparse_indices` stores logical KV block ids in actual KV token space.
 - `q_descale` and `k_descale` are applied in Vec1 as row x column scale on raw `QK^T`.
 - `p_scale[0]` is a static per-tensor P quant scale; golden casts `softmax / p_scale` to FP8 and multiplies BMM2 output by `p_scale * v_descale[n2]`.
+- `key`, `value`, and `k_descale` are rebuilt as separate Tensor views over one combined `uint8` PA storage. The saved `.pt` file contains only that raw storage and its layout metadata.
+- `pa_block_padding_bytes` adds aligned padding after each physical block so tests distinguish `paBlockStride` from a tightly packed block size.
 - Empty sparse tasks produce zero `attention_out` and `EMPTY_LSE` softmax LSE.
-- `mask_mode`: `0` no mask, `1` LEFT_UP causal, `2` RIGHT_DOWN causal.
+- `mask_mode`: `0` no mask, `3` lower-triangular causal.
 
 ## Typical Cases
 
