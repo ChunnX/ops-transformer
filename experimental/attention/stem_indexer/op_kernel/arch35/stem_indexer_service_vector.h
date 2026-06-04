@@ -519,9 +519,30 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
         // 计算当前 S1 位置的原始有效 S2 长度（减去 WINDOW_BLOCKS 之前）
         int32_t s1PosOriginalValidS2Len = info.actS2Size - info.actS1Size + curAivS1Idx + s1Pos + 1;
 
-        // 外层判断：causal 场景下是否需要直接输出连续索引（跳过 TopK）
-        bool directOutput = constInfo_.attenMaskFlag && 
-                            (s1PosOriginalValidS2Len <= (int32_t)(INIT_BLOCKS + WINDOW_BLOCKS));
+        // causal 场景：直接输出连续索引，跳过 TopK
+        if (constInfo_.attenMaskFlag && (s1PosOriginalValidS2Len <= (int32_t)(INIT_BLOCKS + WINDOW_BLOCKS))) {
+            if (s1PosOriginalValidS2Len > 0) {
+                // 循环外一次性生成索引
+                AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 
+                                        0, (uint32_t)s1PosOriginalValidS2Len);
+                PipeBarrier<PIPE_V>();
+            }
+            
+            // 循环内只做 DataCopyPad
+            uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
+            for (uint32_t j = 0; j < groupSize; j++) {
+                if (s1PosOriginalValidS2Len > 0) {
+                    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                    copyOutParams.blockLen = (uint16_t)((uint32_t)s1PosOriginalValidS2Len * sizeof(int32_t));
+                    AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + cumulativeOutputOffset],
+                                            indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+                    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+                    cumulativeOutputOffset += s1PosOriginalValidS2Len;
+                }
+            }
+            continue;
+        }
 
         // 计算动态 topkCount（同一个 S1 位置下相同）
         // buffer 按 MAX_TOPK_COUNT 分配，clamp 兜底防止越界
@@ -566,17 +587,17 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                 }
                 
                 //  [actualInit, ..., groupValidS2Len-1]
-                AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), actualInit, (uint32_t)topkValidLen);
+                AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), actualInit, (uint32_t)(groupValidS2Len - actualInit));
                 PipeBarrier<PIPE_V>();
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                copyOutParams.blockLen = (uint16_t)((uint32_t)topkValidLen * sizeof(int32_t));
+                copyOutParams.blockLen = (uint16_t)((uint32_t)(groupValidS2Len - actualInit) * sizeof(int32_t));
                 AscendC::DataCopyPad(indiceOutGm[gmBase + actualInit], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 
                 // [groupValidS2Len, topkSelectNum-1]
-                int32_t topkPadLen = topkSelectNum - topkValidLen;
+                int32_t topkPadLen = topkSelectNum - (groupValidS2Len - actualInit);
                 if (topkPadLen > 0) {
                     Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, (uint32_t)topkPadLen);
                     PipeBarrier<PIPE_V>();
@@ -584,18 +605,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     copyOutParams.blockLen = (uint16_t)((uint32_t)topkPadLen * sizeof(int32_t));
-                    AscendC::DataCopyPad(indiceOutGm[gmBase + actualInit + topkValidLen], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+                    AscendC::DataCopyPad(indiceOutGm[gmBase + groupValidS2Len], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 }
                 
                 // window 段：[topkSelectNum, topkSelectNum+actualWindow-1]
                 if (actualWindow > 0) {
-                    AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 0, (uint32_t)actualWindow);
-                    PipeBarrier<PIPE_V>();
-                    Duplicate(mrgValueLocal_.ReinterpretCast<int32_t>(), groupValidS2Len, (uint32_t)actualWindow);
-                    PipeBarrier<PIPE_V>();
-                    Add(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(),
-                        mrgValueLocal_.ReinterpretCast<int32_t>(), (uint32_t)actualWindow);
+                    AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), topkSelectNum, (uint32_t)actualWindow);
                     PipeBarrier<PIPE_V>();
                     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -613,30 +629,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
         // 内层循环：遍历同一 S1 位置下的 G 个行
         uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
         for (uint32_t j = 0; j < groupSize; j++) {
-            // causal 场景：直接输出连续索引，跳过 TopK
-            if (directOutput) {
-                if (s1PosOriginalValidS2Len > 0) {
-                    AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 
-                                            0, (uint32_t)s1PosOriginalValidS2Len);
-                    PipeBarrier<PIPE_V>();
-                    
-                    if (s1PosOriginalValidS2Len < totalOutput) {
-                        uint32_t padCount = totalOutput - s1PosOriginalValidS2Len;
-                        Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[s1PosOriginalValidS2Len], 
-                                    neg, padCount);
-                        PipeBarrier<PIPE_V>();
-                    }
-
-                    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    copyOutParams.blockLen = (uint16_t)((uint32_t)totalOutput * sizeof(int32_t));
-                    AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + cumulativeOutputOffset],
-                                            indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-                    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                    cumulativeOutputOffset += totalOutput;
-                }
-                continue;
-            }
 
             uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + groupStartRowIdx + j;
 
