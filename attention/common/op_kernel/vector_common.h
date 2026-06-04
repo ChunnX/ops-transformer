@@ -46,6 +46,7 @@ enum SparseMode : uint8_t {
     LEFT_UP_CAUSAL,
     RIGHT_DOWN_CAUSAL,
     BAND,
+    INIT_SWA,
     TREE = 9,
 };
 

@@ -70,6 +70,7 @@ constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
 constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
 constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr int32_t SPARSE_MODE_INIT_SWA = 5;
 constexpr int32_t SPARSE_MODE_TREE = 9;
 
 enum class FiaLayout : uint32_t {
