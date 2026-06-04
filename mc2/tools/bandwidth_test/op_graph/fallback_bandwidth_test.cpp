@@ -57,7 +57,8 @@ static graphStatus BandwidthTestExecuteFunc(OpExecuteContext* host_api_ctx)
     const auto *ccl_buffer_size = attrs->GetInt(static_cast<size_t>(4));
     OP_CHECK_IF(ccl_buffer_size == nullptr, OP_LOGE(BandwidthTestInfo, "ccl_buffer_size is null"),
                                                                         return ge::GRAPH_FAILED);
-
+    const auto *comm_alg = attrs->GetInt(static_cast<size_t>(5));
+    const auto *aiv_num = attrs->GetInt(static_cast<size_t>(6));
     const auto api_ret = EXEC_OPAPI_CMD(aclnnBandwidthTest, x, dst_rank_id, group, *world_size,
     *max_bs, *mode, *ccl_buffer_size, *comm_alg, *aiv_num, y, receive_cnt);
     OP_CHECK_IF(api_ret != ge::GRAPH_SUCCESS, OP_LOGE(BandwidthTestInfo, "aclnn api error code %u", api_ret),
