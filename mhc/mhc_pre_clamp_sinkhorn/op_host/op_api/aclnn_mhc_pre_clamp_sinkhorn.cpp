@@ -275,7 +275,6 @@ aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
-    printf("[aclnnMhcPreClampSinkhorn] hcEps: %f, normEps: %f, needBackward: %d, clamp_min: %f, clamp_max: %f\n", hcEps, normEps, needBackward, clamp_min, clamp_max);
     L2_DFX_PHASE_1(aclnnMhcPreClampSinkhorn,
                    DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max),
                    DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits));

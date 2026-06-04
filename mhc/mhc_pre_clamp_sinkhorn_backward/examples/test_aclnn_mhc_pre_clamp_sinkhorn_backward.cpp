@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstring>
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
@@ -32,6 +33,16 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
         size *= dim;
     }
     return size;
+}
+
+uint16_t FloatToBFloat16(float value)
+{
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+
+    const uint32_t rounding_bias = ((bits >> 16) & 1U) + 0x7FFFU;
+    bits += rounding_bias;
+    return static_cast<uint16_t>(bits >> 16);
 }
 
 void PrintTensorDataFloat(const std::vector<int64_t> &shape, void *device_addr)
@@ -92,7 +103,7 @@ int CreateAclTensorBfloat16(const std::vector<float> &host_data, const std::vect
     int64_t size = GetShapeSize(shape);
     std::vector<uint16_t> host_data_bf16(size);
     for (int64_t i = 0; i < size; ++i) {
-        host_data_bf16[i] = static_cast<uint16_t>(static_cast<int16_t>(host_data[i] * 32767));
+        host_data_bf16[i] = FloatToBFloat16(host_data[i]);
     }
 
     int64_t byte_size = size * sizeof(uint16_t);
@@ -192,18 +203,18 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
                        const std::vector<int64_t> &reduce_out_shape,
                        Tensors &tensors)
 {
-    std::vector<float> grad_hin_host_data(GetShapeSize(grad_hin_shape), 1.0f);
-    std::vector<float> grad_h_post_host_data(GetShapeSize(grad_h_post_shape), 1.0f);
-    std::vector<float> grad_h_res_host_data(GetShapeSize(grad_h_res_shape), 1.0f);
-    std::vector<float> x_host_data(GetShapeSize(x_shape), 1.0f);
-    std::vector<float> phi_host_data(GetShapeSize(phi_shape), 1.0f);
-    std::vector<float> alpha_host_data(GetShapeSize(alpha_shape), 1.0f);
-    std::vector<float> bias_host_data(GetShapeSize(bias_shape), 1.0f);
-    std::vector<float> h_pre_host_data(GetShapeSize(h_pre_shape), 1.0f);
-    std::vector<float> hc_before_norm_host_data(GetShapeSize(hc_before_norm_shape), 1.0f);
+    std::vector<float> grad_hin_host_data(GetShapeSize(grad_hin_shape), 0.5f);
+    std::vector<float> grad_h_post_host_data(GetShapeSize(grad_h_post_shape), 0.5f);
+    std::vector<float> grad_h_res_host_data(GetShapeSize(grad_h_res_shape), 0.5f);
+    std::vector<float> x_host_data(GetShapeSize(x_shape), 0.5f);
+    std::vector<float> phi_host_data(GetShapeSize(phi_shape), 0.5f);
+    std::vector<float> alpha_host_data(GetShapeSize(alpha_shape), 0.5f);
+    std::vector<float> bias_host_data(GetShapeSize(bias_shape), 0.5f);
+    std::vector<float> h_pre_host_data(GetShapeSize(h_pre_shape), 0.5f);
+    std::vector<float> hc_before_norm_host_data(GetShapeSize(hc_before_norm_shape), 0.5f);
     std::vector<float> inv_rms_host_data(GetShapeSize(inv_rms_shape), 1.0f);
-    std::vector<float> sum_out_host_data(GetShapeSize(sum_out_shape), 1.0f);
-    std::vector<float> norm_out_host_data(GetShapeSize(norm_out_shape), 1.0f);
+    std::vector<float> sum_out_host_data(GetShapeSize(sum_out_shape), 0.5f);
+    std::vector<float> norm_out_host_data(GetShapeSize(norm_out_shape), 0.5f);
 
     int ret = CreateAclTensorBfloat16(grad_hin_host_data, grad_hin_shape, tensors.grad_hin_addr, tensors.grad_hin);
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_hin_tensor failed\n"); return -1);
@@ -230,7 +241,7 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
     ret = CreateAclTensorFloat32(norm_out_host_data, norm_out_shape, tensors.norm_out_addr, tensors.norm_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create norm_out_tensor failed\n"); return -1);
 
-    std::vector<float> reduce_out_host_data(reduce_out_shape.size() > 0 ? 1 : 0, 0.0f);
+    std::vector<float> reduce_out_host_data(GetShapeSize(reduce_out_shape), 0.0f);
     ret = CreateAclTensorFloat32(reduce_out_host_data, reduce_out_shape, tensors.reduce_out_addr, tensors.reduce_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create reduce_out_tensor failed\n"); return -1);
 
@@ -297,17 +308,19 @@ void FreeDeviceMemory(Tensors &tensors)
 
 int main()
 {
-    int32_t device_id = 7;
+    int32_t device_id = 4;
     aclrtContext context = nullptr;
     aclrtStream stream = nullptr;
     Tensors tensors;
 
-    int64_t bs = 2, seq_len = 128, n = 4, c = 256;
+    // Smallest legal input set for easier debugging while satisfying tiling constraints:
+    // n must be 4, c must be divisible by 128, and sum_out dim0 / 2 must equal 20.
+    int64_t bs = 1, seq_len = 1, n = 4, c = 128;
     int64_t hc_mult = n;
     int64_t hc_mix = n * n + 2 * n;
     int64_t num_iters = 20;
     double hc_eps = 1e-6;
-    double min_val = 0.0;
+    double min_val = -6.0;
     double max_val = 1.0;
 
     std::vector<int64_t> grad_hin_shape = {bs, seq_len, c};
@@ -327,7 +340,7 @@ int main()
     std::vector<int64_t> grad_phi_shape = {hc_mix, n * c};
     std::vector<int64_t> grad_alpha_shape = {3};
     std::vector<int64_t> grad_bias_shape = {hc_mix};
-    std::vector<int64_t> reduce_out_shape = {bs, seq_len, n, c};
+    std::vector<int64_t> reduce_out_shape = {bs, seq_len, n, n};
 
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
@@ -343,14 +356,14 @@ int main()
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-
+    // printf("[backward]min_val: %f, max_val: %f\n", min_val, max_val);
     aclnnStatus aclnn_ret = aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize(
         tensors.grad_hin, tensors.grad_h_post, tensors.grad_h_res,
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
         tensors.sum_out, tensors.norm_out,
         tensors.reduce_out,
-        min_val, max_val, hc_eps,
+        hc_eps, min_val, max_val, 
         tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
         &workspace_size, &executor);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
@@ -361,7 +374,7 @@ int main()
         ret = aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc workspace failed, error: %d\n", ret); return -1);
     }
-
+    printf("33333333\n");
     aclnn_ret = aclnnMhcPreClampSinkhornBackward(workspace_addr, workspace_size, executor, stream);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornBackward failed, error: %d\n", aclnn_ret); return -1);
 

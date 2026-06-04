@@ -273,7 +273,7 @@ public:
             invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
             sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
             normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
-            reduceOutGm.SetGlobalBuffer((__gm__ float *)hResLogits);
+            hResLogitsGm.SetGlobalBuffer((__gm__ float *)hResLogits);
         } else {
             int64_t xCastWsTotalSize = tilingData->stage1XCastWsSize / sizeof(float);
             invRmsGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize);
@@ -457,10 +457,10 @@ public:
                 AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
                                                 tilingData->hcMult * tilingData->hcMultAlign);
                 if (needGrad_) {
-                    int64_t reduceOutBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
+                    int64_t hResLogitsBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
                                                    rowOuterIdx * curStage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
                     VToMTE3Sync();
-                    CopyOut(mxies02ReduceLocal, reduceOutGm[reduceOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
+                    CopyOut(mxies02ReduceLocal, hResLogitsGm[hResLogitsBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
                     MTE3ToVSync();
                 }
 
@@ -617,7 +617,7 @@ private:
     GlobalTensor<float> invRmsGm;
     GlobalTensor<float> sumOutGm;
     GlobalTensor<float> normOutGm;
-    GlobalTensor<float> reduceOutGm;
+    GlobalTensor<float> hResLogitsGm;
 
     bool needGrad_ = false;
     bool isTailBsLoop_ = false;

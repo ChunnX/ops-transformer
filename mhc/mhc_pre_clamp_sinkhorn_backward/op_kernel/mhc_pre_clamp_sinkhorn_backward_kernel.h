@@ -566,7 +566,6 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     PipeBarrier<PIPE_V>();
     //* Start CLAMP BWD
     // clamp backward: mask = (reduceOut >= min) && (reduceOut <= max)
-    printf("[backward]minVal_: %f, maxVal_: %f\n", minVal_, maxVal_);
     // auto reduceOutLocal = inputGradQueue.AllocTensor<T>();
     auto reduceOutLocal = inputClampQueue.AllocTensor<T>();
     DataCopyPad(reduceOutLocal, reduceOutGlobal_[taskOffset * n_ * n_],
@@ -575,7 +574,6 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     inputClampQueue.EnQue(reduceOutLocal);
     inputClampQueue.DeQue();
 
-    printf("tileCoreBS_: %d, n_: %d\n", tileCoreBS_, n_);
     // Keep mask tensors in int16_t view for Compare/And.
     auto clampMinInt16Local = clampMinLocal_.template ReinterpretCast<int16_t>();
     auto clampMaxInt16Local = clampMaxLocal_.template ReinterpretCast<int16_t>();
@@ -604,10 +602,11 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     AscendC::And(clampMaskInt16Local, clampMinInt16Local, clampMaxInt16Local, compareMask, compareRepeatTimes,
                  compareParams);
     PipeBarrier<PIPE_V>();
-    Cast(clampMaskFloatLocal, clampMaskInt16Local, RoundMode::CAST_NONE,
-         tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    // Cast(clampMaskFloatLocal, clampMaskInt16Local, RoundMode::CAST_NONE,
+    //      tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
-    Mul(gradHResLocal_, gradHResLocal_, clampMaskFloatLocal, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    Select(gradHResLocal_, clampMaskInt16Local, gradHResLocal_, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    // Mul(gradHResLocal_, gradHResLocal_, clampMaskFloatLocal, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
 
     inputClampQueue.FreeTensor(reduceOutLocal);
