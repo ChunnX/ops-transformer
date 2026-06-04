@@ -1116,7 +1116,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
 
     // INT4 dynamic quantization: expanded_x must be DT_INT4, and x must be FLOAT/BF16
     if (quantMode_ == QUANT_MODE_DYNAMIC_INT4) {
-        // expandedXDtype_ 在 Infershape 阶段已正确推断为 DT_INT4，此处做防御性校验
+        OP_CHECK_IF(
+            expandedXDtype_ != ge::DataType::DT_INT4,
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_x",
+                                      Ops::Base::ToString(expandedXDtype_).c_str(),
+                                      "DT_INT4"),
+            return ge::GRAPH_FAILED);
         if (xDtype_ != ge::DataType::DT_FLOAT && xDtype_ != ge::DataType::DT_BF16) {
             OP_LOGE(context_,
                     "INT4 dynamic quantization requires x dtype DT_FLOAT or DT_BF16, but got %d.",

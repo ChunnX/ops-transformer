@@ -185,8 +185,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
         SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
         float scaleVal = scaleLocal.GetValue(0);
         float quantFactor = (scaleVal != 0.0f) ? (1.0f / scaleVal) : 0.0f;
-        __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
-
         sreg = maskLength;
         __VEC_SCOPE__
         {
@@ -194,7 +192,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
             MicroAPI::RegTensor<int16_t> outRegI16;
             MicroAPI::RegTensor<half> outRegF16;
             MicroAPI::RegTensor<uint16_t> packedHalfReg;
-            MicroAPI::RegTensor<int4x2_t> outRegI4;
+            MicroAPI::RegTensor<int8_t> outRegI8;
             MicroAPI::MaskReg maskRegInLoop;
             MicroAPI::MaskReg maskRegStore = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
 
@@ -207,10 +205,10 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
                 MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
                 MicroAPI::Pack(packedHalfReg, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
                 MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
-                    outRegI4,
+                    (MicroAPI::RegTensor<int4x2_t> &)outRegI8,
                     (MicroAPI::RegTensor<half> &)packedHalfReg, maskRegInLoop);
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                    outUbAddrInt4 + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegStore);
+                MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI8, maskRegStore);
             }
         }
     }
