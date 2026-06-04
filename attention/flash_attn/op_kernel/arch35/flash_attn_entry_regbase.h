@@ -107,6 +107,10 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
+    // 静态Tensor编程：必须显式调用 InitSocState 初始化全局状态寄存器（替代 TPipe 构造时的隐式初始化）。
+    // SyncAll() 保留：用于在 InitSocState 之后、Init/Process 之前对齐所有核的启动时机，
+    //   避免在 InitMMResBuf / vecFaBlock.ClearOutput 等阶段出现跨核状态不一致。
+    //   SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突。
     InitSocState();
     AscendC::SyncAll();
     Kernel op;
