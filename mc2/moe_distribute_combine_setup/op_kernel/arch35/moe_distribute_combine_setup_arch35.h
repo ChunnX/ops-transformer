@@ -48,12 +48,7 @@ struct WriteWithNotifySQEInfoParams {
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
 using namespace AscendC;
-using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
- 	 
-#define TemplateMC2TypeClass \
-    typename XType, \
-    typename YType
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
@@ -216,11 +211,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     epStatusSpaceGM_ = GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId);
 
     //=============================== Urma --add by xuxn ===============================//
-    hAlignSize_ = Ceil(moeDistributeCombineSetupInfo_->h * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
+    hAlignSize_ = Ceil(moeDistributeCombineSetupInfo_->h * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
 
-    //hOutSize_ = moeDistributeCombineSetupInfo_->h * sizeof(XType);                             // 原始hidden size
-    //hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
+    //hOutSize_ = moeDistributeCombineSetupInfo_->h * sizeof(ExpandXType);                             // 原始hidden size
+    //hAlignWinCnt_ = hAlignWinSize_ / sizeof(ExpandXType);
     //hOutAlignUbSize_ = hAlignSize_;
     //uint32_t tmpTotalUB = moeDistributeCombineSetupInfo_->totalUbSize + hOutAlignUbSize_ * BUFFER_NUM;
     //bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
@@ -367,12 +362,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
 
         //非本卡通信：统一敲doorbell
+        uint32_t currRankId = sendRankId > moeDistributeCombineSetupInfo_->epRankId ? sendRankId - 1 : sendRankId;
         for(uint32_t tokenIndex = 0; tokenIndex < curTokenNum; ++tokenIndex) {
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
             GM_ADDR rankGM = (GM_ADDR)(GetWinAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
-            uint32_t currRankId = sendRankId > moeDistributeCombineSetupInfo_->epRankId ? sendRankId - 1 : sendRankId;
             hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
     
         }
