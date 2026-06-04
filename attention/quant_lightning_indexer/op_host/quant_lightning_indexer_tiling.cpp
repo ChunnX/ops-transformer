@@ -203,17 +203,16 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     std::string layout_query(opParamInfo_.layOutQuery);
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) == "BNSD") || (std::string(opParamInfo_.layOutKey) == "PA_BBND")),
-        OP_LOGE(opName_, "input attr layout_key only supported PA_BSND, PA_BBND, BSND or TND"
-                  "but now layout_key is %s.", layout_key.c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "key", layout_key.c_str(), "PA_BSND, PA_BBND, BSND or TND"),
                   return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") && (std::string(opParamInfo_.layOutQuery) != "TND")),
-               OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", layout_query.c_str(), "BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BSND") &&
         (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
-        OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
-                  "but now layout_key is %s, layout_query is %s.",
-         layout_key.c_str(),  layout_query.c_str()), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "query and key",
+            layout_key + " and " + layout_query,
+            "When layOutKey is not PA_BSND, layout_query and layout_key must be same."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 2048, but now sparse_count is %u",
                        *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
@@ -575,7 +574,7 @@ ge::graphStatus QLIInfoParser::GetS2SizeForBatchContinuous()
         s2Size_ = opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_ZERO);
     }
     OP_CHECK_IF((kLayout_ != DataLayout::BSND) && (kLayout_ != DataLayout::TND),
-        OP_LOGE(opName_, "the layout of key is %s, it is unsupported.", layout_key.c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "key", layout_key.c_str(), "BSND or TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
