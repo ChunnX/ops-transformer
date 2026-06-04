@@ -3076,8 +3076,10 @@ MLAOperation<InDtype, CACHE_MODE, weightFormat1, weightFormat2, weightFormat3, q
     }
     FftsCrossCoreSync<PIPE_MTE3, 0>(MM2);
     WaitFlagDev(MM2);
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(AIC_MM2_START);
-
+    // [nc_dim0 修复] s3Gm 被 cube 的 mm2(mm_w8a8_aic_2) 复用为输出，而下方 cache-write 仍需读 s3Gm 里的
+    // mm1 结果(s3Gm[0:576])。若在此提前放行 AIC_MM2_START，cube 的 mm2 写 s3Gm 会与 cache 读 s3Gm 抢跑(WAR)，
+    // release 紧时序下 cache 读到被覆盖的数据 → 输出全 0（debug 慢时序恰好掩盖）。故把 AIC_MM2_START 推迟到
+    // cache-write 读完 s3Gm 之后再发，保证“先读 mm1、后让 cube 覆盖”。
     if (row_work_ != 0) {
         AscendC::LocalTensor<InDtype> input_tensor = buf.GetBuffer<BufferType::ASCEND_UB, InDtype>(0);
         AscendC::LocalTensor<InDtype> gamma_tensor = buf.GetBuffer<BufferType::ASCEND_UB, InDtype>(mm1_out_size_ * 2);
@@ -3132,6 +3134,8 @@ MLAOperation<InDtype, CACHE_MODE, weightFormat1, weightFormat2, weightFormat3, q
                          SPLIT_RMSNRORM_SIZE_TWO],
             temp_tensor, tmpfp16, int8OutTensor, scale3);
     }
+    // s3Gm 已被 cache-write 读完，此处才放行 cube 的 mm2 覆盖 s3Gm（见上方 WAR 竞态说明）。
+    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(AIC_MM2_START);
     mm_w8a8_aiv_2.Process();
     FftsCrossCoreSync<PIPE_MTE3, 0>(MM2OUT);
     WaitFlagDev(MM2OUT);
