@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -77,13 +77,13 @@ constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;  // A5架构base key
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
-    OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
-    OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
-    OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
+    OP_LOGD(nodeName, "data_size is %d.", tilingData.dataSize);
+    OP_LOGD(nodeName, "world_size is %d.", tilingData.worldSize);
+    OP_LOGD(nodeName, "max_bs is %d.", tilingData.maxBs);
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
-    OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
-    OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.total_ub_size);
-    OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
+    OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
+    OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
+    OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.totalWinSize);
 }
 
 // 校验属性指针非空
@@ -156,8 +156,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     group = std::string(groupPtr);
-    tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
-    tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
+    tilingData.worldSize = static_cast<int32_t>(*worldSizePtr);
+    tilingData.maxBs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
@@ -189,8 +189,8 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
                 return ge::GRAPH_FAILED);
 
-    tilingData.max_bs = static_cast<int32_t>(xDim0);
-    tilingData.data_size = static_cast<int32_t>(xDim1);
+    tilingData.maxBs = static_cast<int32_t>(xDim0);
+    tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
     OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
@@ -208,13 +208,13 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
 }
 
 // 校验输出tensor shape
-// y: [max_bs * world_size, data_size], receive_cnt: [world_size]
+// y: [maxBs * worldSize, dataSize], receive_cnt: [worldSize]
 static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
-    int64_t worldSize = static_cast<int64_t>(tilingData.world_size);
-    int64_t maxBs = static_cast<int64_t>(tilingData.max_bs);
-    int64_t dataSize = static_cast<int64_t>(tilingData.data_size);
+    int64_t worldSize = static_cast<int64_t>(tilingData.worldSize);
+    int64_t maxBs = static_cast<int64_t>(tilingData.maxBs);
+    int64_t dataSize = static_cast<int64_t>(tilingData.dataSize);
 
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yStorageShape == nullptr,
@@ -296,9 +296,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         context, nodeName, hcclBufferSize, maxWindowSize, ATTR_GROUP_INDEX, false) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed"), return ge::GRAPH_FAILED);
 
-    uint64_t dataSize = static_cast<uint64_t>(tilingData->data_size);
-    uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
-    uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
+    uint64_t dataSize = static_cast<uint64_t>(tilingData->dataSize);
+    uint64_t worldSize = static_cast<uint64_t>(tilingData->worldSize);
+    uint64_t maxBs = static_cast<uint64_t>(tilingData->maxBs);
     uint64_t actualSize = worldSize * maxBs * dataSize * 2UL * 2UL;
 
     if (actualSize > maxWindowSize) {
@@ -308,7 +308,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         return ge::GRAPH_FAILED;
     }
 
-    tilingData->total_win_size = maxWindowSize;
+    tilingData->totalWinSize = maxWindowSize;
     OP_LOGD(nodeName, "WindowSize = %lu", maxWindowSize);
 
     return ge::GRAPH_SUCCESS;
@@ -372,8 +372,8 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
 
     context->SetBlockDim(numBlocks);
-    tilingData->total_ub_size = ubSize;
-    tilingData->aiv_num = aivNum;
+    tilingData->totalUbSize = ubSize;
+    tilingData->aivNum = aivNum;
 
     OP_LOGD(nodeName, "numBlocks = %u, aivNum = %u, ubSize = %lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);

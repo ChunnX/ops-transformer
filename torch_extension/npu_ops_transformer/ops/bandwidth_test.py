@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -59,9 +59,9 @@ class BandwidthTestConfig:
             )
 
 
-class BandwidthTestOpBuilder(OpBuilder):
+class _BandwidthTestOpBuilder(OpBuilder):
     def __init__(self):
-        super(BandwidthTestOpBuilder, self).__init__("npu_bandwidth_test")
+        super(_BandwidthTestOpBuilder, self).__init__("npu_bandwidth_test")
 
     def sources(self):
         """Path to C++ source code."""
@@ -85,8 +85,6 @@ class BandwidthTestOpBuilder(OpBuilder):
                 dstrank_id: Destination rank IDs tensor
                 config: Bandwidth test configuration
             """
-            # Parameter validation is already handled in config.__post_init__
-            
             bs = x.size(0)
             h = x.size(1)
 
@@ -97,51 +95,34 @@ class BandwidthTestOpBuilder(OpBuilder):
             return (y, receive_cnt)
 
 
-# Instantiate the builder
-bandwidth_test_op_builder = BandwidthTestOpBuilder()
-op_module = bandwidth_test_op_builder.load()
+_bandwidth_test_op_builder = _BandwidthTestOpBuilder()
+_op_module = _bandwidth_test_op_builder.load()
 
 
-@impl(AS_LIBRARY, bandwidth_test_op_builder.name, "PrivateUse1")
-def npu_bandwidth_test(x, dstrank_id, config: BandwidthTestConfig):
+@impl(AS_LIBRARY, _bandwidth_test_op_builder.name, "PrivateUse1")
+def _npu_bandwidth_test(x, dstrank_id, config: BandwidthTestConfig):
     """
     Implementation for NPU with config object.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return op_module.npu_bandwidth_test(x, dstrank_id, config)
+    return _op_module.npu_bandwidth_test(x, dstrank_id, config)
 
 
-# GE Converter for Graph Mode
-try:
-    import torchair
-    from torchair._ge_concrete_graph import ge_apis as ge
-    from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
-    from torchair._ge_concrete_graph.supported_declaration import Support
-    _TORCHAIR_AVAILABLE = True
-except ImportError:
-    _TORCHAIR_AVAILABLE = False
-
-if _TORCHAIR_AVAILABLE:
-    @declare_supported([
-        Support(torch.float16, (8, 128)),
-        Support(torch.bfloat16, (8, 128)),
-        Support(torch.float32, (8, 128)),
-    ])
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_bandwidth_test.default)
-    def converter_bandwidth_test(
-        x: Tensor,
-        dstrank_id: Tensor,
-        config: BandwidthTestConfig,
-        *,
-        meta_outputs: TensorSpec = None):
-        return ge.BandwidthTest(
-            x,
-            dstrank_id,
-            group=config.group,
-            world_size=config.world_size,
-            max_bs=config.max_bs,
-            mode=config.mode,
-            comm_alg=config.comm_alg,
-            aiv_num=config.aiv_num
-        )
+def bandwidth_test(
+    x: torch.Tensor,
+    dstrank_id: torch.Tensor,
+    config: BandwidthTestConfig
+):
+    """Bandwidth test operation
+    
+    Args:
+        x: Input tensor with shape (batch_size, hidden_size)
+        dstrank_id: Destination rank IDs tensor
+        config: Bandwidth test configuration
+    
+    Returns:
+        Tuple of (y, receive_cnt) where:
+            y: Output tensor with shape (max_recv_cnt, hidden_size)
+            receive_cnt: Receive count tensor with shape (world_size,)
+    """
+    return torch.ops.npu_ops_transformer.npu_bandwidth_test(x, dstrank_id, config)
