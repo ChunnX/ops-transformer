@@ -473,29 +473,32 @@ public:
         }
 
         if (IsSpecialBandSparse()) {
+            if (curS2Start >= curS2End) {
+                return TASK_DEAL_MODE::SKIP;
+            }
             if (!ShouldDispatchBandTask(s2Cur)) {
                 return TASK_DEAL_MODE::S2_END;
             }
         } else {
-            if (curS2Start >= curS2End) {
-                return TASK_DEAL_MODE::SKIP;
-            }
-
-            if (s2Cur < curS2Start) {
-                return TASK_DEAL_MODE::NOT_START;
-            }
-
-            if (s2Cur >= curS2End) {
+            if (curS2Start < curS2End && s2Cur >= curS2End) {
                 return TASK_DEAL_MODE::S2_END;
             }
+
+            if (s2Cur < curS2Start || s2Cur >= curS2End) {
+                return TASK_DEAL_MODE::SKIP;
+            }
         }
 
-        if (IsSpecialBandSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) : (s2Cur == curS2Start)) {
-            mloop++;
-        }
+        // if (IsSpecialBandSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) : (s2Cur == curS2Start)) {
+        //     mloop++;
+        // }
 
         if (SkipForS1OutSplit()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
+        }
+
+        if (s2Cur == curS2Start || s2Cur == 0) {
+            mloop++;
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
