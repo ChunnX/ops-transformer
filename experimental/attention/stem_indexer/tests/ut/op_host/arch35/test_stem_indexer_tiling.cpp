@@ -32,7 +32,7 @@ namespace {
 using TensorDesc = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
-constexpr int64_t EXPECTED_WORKSPACE_ASCEND950 = 17039360;
+constexpr int64_t EXPECTED_WORKSPACE_ASCEND950 = 29360128;
 
 struct StemIndexerCompileInfo {};
 
