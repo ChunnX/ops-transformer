@@ -16,12 +16,9 @@
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
 
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if __has_include("version/hcomm_version.h")
+#ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#else
-#define HCOMM_VERSION_NUM HCCL_CHANNEL_SUPPORT_VERSION
-#endif
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
 #include <string>
@@ -29,7 +26,7 @@
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
-#include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
 
@@ -95,5 +92,6 @@ private:
 };
 } // namespace Mc2Aclnn
 
-#endif
+#endif // EXCEPTION_DUMP_SUPPORT_VERSION
+#endif // BUILD_OPEN_PROJECT
 #endif // MC2_CONTEXT_H

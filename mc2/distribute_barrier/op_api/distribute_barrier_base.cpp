@@ -19,6 +19,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_distribute_barrier.h"
 #include "distribute_barrier_base.h"
@@ -54,7 +55,7 @@ bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
     // 检查必选入参出参为非空
     OP_CHECK_NULL(xRef, return false);
     if (group == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnDistributeBarrier", "group");
         return false;
     }
     return true;
@@ -66,8 +67,9 @@ aclnnStatus BarrierCheckParams(const aclTensor* xRef, const char* group)
     CHECK_RET(BarrierCheckNullStatus(xRef, group), ACLNN_ERR_PARAM_NULLPTR);
     auto groupStrnLen = strnlen(group, HCCL_GROUP_NAME_MAX);
     if ((groupStrnLen >= HCCL_GROUP_NAME_MAX) || (groupStrnLen == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name length in range (0, HCCL_GROUP_NAME_MAX), but it's %zu.",
-                groupStrnLen);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnDistributeBarrier", "group",
+            std::to_string(groupStrnLen).c_str(),
+            "group name length should be in range (0, HCCL_GROUP_NAME_MAX)");
         return false;
     }
     return ACLNN_SUCCESS;
