@@ -523,11 +523,9 @@ __aicore__ inline void RunA8W4AivPrologue(BlockPrologue& blockPrologue, Schedule
     }
 }
 
-template <typename Policy, typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC,
-    typename SwigluQuantOp>
-__aicore__ inline void RunA8W4AivPostProcess(SwigluQuantOp& swigluQuantOp, Scheduler& scheduler, TensorC& l0cOutGm,
-    const Params& params, uint32_t n, uint32_t outputN, uint32_t groupIdx, int32_t rankId, uint32_t startLoopIdx,
-    uint32_t tileNum, uint32_t blockNum)
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename SwigluQuantOp>
+__aicore__ inline void RunA8W4AivGmm1PostProcess(SwigluQuantOp& swigluQuantOp, Scheduler& scheduler,
+    TensorC& l0cOutGm, uint32_t outputN, uint32_t startLoopIdx, uint32_t tileNum, uint32_t blockNum)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -536,61 +534,71 @@ __aicore__ inline void RunA8W4AivPostProcess(SwigluQuantOp& swigluQuantOp, Sched
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         WaitForCubeFinishCopyout();
-        if constexpr (Policy::IS_GMM1) {
-            AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
-            auto tensorBlockGmFirst = l0cOutGm.Slice(
-                Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc + outputN),
-                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+        auto tensorBlockGmFirst = l0cOutGm.Slice(
+            Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc + outputN),
+            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
 
-            auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
-            int64_t ubOffsetFirst = 0;
-            int64_t ubOffsetSecond = ubOffsetFirst + MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-            auto tensorBlockUbFirst =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
-            auto tensorBlockUbSecond =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
-            auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-            AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
-            AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
-                                                                         Get<N_VALUE>(actualShape), 0, 0};
-            Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                mLoc * outputN + nLoc,
-                mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                    CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                0, 0, 0, 0};
+        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+        int64_t ubOffsetFirst = 0;
+        int64_t ubOffsetSecond = ubOffsetFirst + MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
+        auto tensorBlockUbFirst =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
+        auto tensorBlockUbSecond =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
+        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+        AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
+                                                                     Get<N_VALUE>(actualShape), 0, 0};
+        Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+            mLoc * outputN + nLoc,
+            mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+            0, 0, 0, 0};
 
-            AscendC::SetCtrlSpr<60, 60>(0);
-            swigluQuantOp(epilogueShape, epilogueOffset);
-            AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
-        } else {
-            auto tensorBlockGm = l0cOutGm.Slice(
-                Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
-            int64_t ubOffset = 0;
-            auto tensorBlockUb =
-                Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutL0cUB);
-            LocalTensor<ElementC> l0cOutUbGMM2 =
-                LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-            auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-            AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+        AscendC::SetCtrlSpr<60, 60>(0);
+        swigluQuantOp(epilogueShape, epilogueOffset);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+    }
+}
 
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
-            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-        }
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC>
+__aicore__ inline void RunA8W4AivGmm2PostProcess(Scheduler& scheduler, TensorC& l0cOutGm, const Params& params,
+    uint32_t n, uint32_t groupIdx, int32_t rankId, uint32_t startLoopIdx, uint32_t tileNum, uint32_t blockNum)
+{
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+        WaitForCubeFinishCopyout();
+        auto tensorBlockGm = l0cOutGm.Slice(
+            Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+        int64_t ubOffset = 0;
+        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutL0cUB);
+        LocalTensor<ElementC> l0cOutUbGMM2 =
+            LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+        MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+            mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     }
 }
 
@@ -707,9 +715,13 @@ __aicore__ inline void GroupMatmulA8W4Common(SwigluQuantOp& swigluQuantOp, const
                 blockPrologue, scheduler, gmB, k, n, outputN, l1Params.kL1, startLoopIdx, tileNum, blockNum);
         } else {
             // AIV sub-block 1: GM→UB copyout; GMM1 runs SwiGLU Quant, GMM2 runs combine.
-            RunA8W4AivPostProcess<Policy, ElementC, MakeLayoutC>(
-                swigluQuantOp, scheduler, l0cOutGm, params, n, outputN, groupIdx, rankId, startLoopIdx, tileNum,
-                blockNum);
+            if constexpr (Policy::IS_GMM1) {
+                RunA8W4AivGmm1PostProcess<ElementC, MakeLayoutC>(
+                    swigluQuantOp, scheduler, l0cOutGm, outputN, startLoopIdx, tileNum, blockNum);
+            } else {
+                RunA8W4AivGmm2PostProcess<ElementC, MakeLayoutC>(
+                    scheduler, l0cOutGm, params, n, groupIdx, rankId, startLoopIdx, tileNum, blockNum);
+            }
         }
     }
 
