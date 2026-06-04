@@ -1,0 +1,72 @@
+input:
+ADtype
+BDtype
+CDtype
+singleM
+singleN
+singleK
+baseM
+baseN
+baseK
+
+MTE2-HBM
+MTE2-L2
+MTE1
+CUBE
+FIXP-L2
+FIXP-Ub
+coreNum
+Freq
+
+output:
+MTE2-A-single-HBM = singleM * singleK * sizeof(ADtype) / MTE2-HBM
+MTE2-A-single-L2 = singleM * singleK * sizeof(ADtype) / MTE2-L2
+MTE2-B-single-HBM = singleN * singleK * sizeof(BDtype) / MTE2-HBM
+MTE2-B-single-L2 = singleN * singleK * sizeof(BDtype) / MTE2-L2
+MTE1-a-base = baseM * baseK * sizeof(ADtype) / MTE1
+MTE1-b-base = baseN * baseK * sizeof(BDtype) / MTE1
+CUBE-single = singleM * singleN * singleK / CUBE
+CUBE-base = baseM * baseN * baseK / CUBE
+FIXP-single-L2 = singleM * singleN * sizeof(CDtype) / FIXP-L2
+FIXP-single-Ub = singleM * singleN * sizeof(CDtype) / FIXP-Ub
+
+举例：
+input:
+ADtype = bf16
+BDtype = bf16
+CDtype = bf16
+singleM = 128
+singleN = 128
+singleK = 128
+baseM = 128
+baseN = 128
+baseK = 128
+
+MTE2-HBM = 86B/cycle
+MTE2-L2 = 129B/cycle
+MTE1 = 256B/cycle
+CUBE = 16*16*32B/cycle
+FIXP-L2 = 129B/cycle
+FIXP-Ub = 256B/cycle
+coreNum = 64core
+Freq = 1.6GHz
+
+output:
+MTE2-A-single-HBM = singleM * singleK * sizeof(ADtype) / MTE2-HBM = 381cycle
+MTE2-A-single-L2 = singleM * singleK * sizeof(ADtype) / MTE2-L2 = 254cycle
+MTE2-B-single-HBM = singleN * singleK * sizeof(BDtype) / MTE2-HBM = 381cycle
+MTE2-B-single-L2 = singleN * singleK * sizeof(BDtype) / MTE2-L2 = 254cycle
+MTE1-a-base = baseM * baseK * sizeof(ADtype) / MTE1 = 128cycle
+MTE1-b-base = baseN * baseK * sizeof(BDtype) / MTE1 = 128cycle
+CUBE-single = singleM * singleN * singleK * sizeof(CDtype) / CUBE = 512cycle
+CUBE-base = baseM * baseN * baseK / CUBE = 512cycle
+FIXP-single-L2 = singleM * singleN * sizeof(CDtype) / FIXP-L2 = 508cycle
+FIXP-single-Ub = singleM * singleN * sizeof(CDtype) / FIXP-Ub = 256cycle
+
+
+flash_attention算子包含query、key、value三个矩阵。三个矩阵的shape信息为：
+query.shape = [B,N1,S1,D]，key.shape = [B,N2,S2,D]，value.shape = [B,N2,S2,D]，其中，N1可被N2整除
+sparse_mode=3代表attention中的因果注意力机制，假设P矩阵为第一个matmul的结果，即P=Q@K。P.shape = [B,N1,S1,S2]
+sparse_mode=3代表，以P矩阵的右下角为顶点，斜向上45度延伸的对角线，对角线下方的部分有效，会参与到后续计算中。
+flash_attention算子的cube计算量公式为：flops=B*N1*S1*S2*D*2*(2*S2-S1+1)*S1/2/(S1*S2)
+要求生成2条用例，用例中的S1>S2,2条用例cube计算量一致，但是输入矩阵的shape信息不同。
