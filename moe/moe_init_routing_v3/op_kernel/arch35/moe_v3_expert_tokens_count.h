@@ -72,6 +72,7 @@ private:
     int64_t expertNum_ = 0;
     int64_t expertTokensNumType_ = 0;
     int64_t expertCountElements_ = 0;
+    int64_t keyValueOutputElements_ = 0;
     int64_t coreNum_ = 0;
     int64_t dropPadMode_ = 0;
     int32_t finalExpertId_ = -1;
@@ -141,14 +142,17 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     }
 
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
+        keyValueOutputElements_ = expertNum_ * KEY_VALUE_MODE_DIM_NUM;
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ? (actualExpertNum_ + 1) * KEY_VALUE_MODE_DIM_NUM :
-                                                                       expertNum_ * KEY_VALUE_MODE_DIM_NUM;
+                                                                       keyValueOutputElements_;
     } else {
         expertCountElements_ = actualExpertNum_;
     }
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
-    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
+    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount,
+                                         (expertTokensNumType_ == KEY_VALUE_MODE) ? keyValueOutputElements_ :
+                                                                                    expertCountElements_);
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
@@ -306,6 +310,9 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyOut()
 {
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.DeQue<int64_t>();
     LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.DeQue<int32_t>();
+    if (expertTokensNumType_ == KEY_VALUE_MODE) {
+        InitGlobalMemory(expertTokensCountGm_, keyValueOutputElements_, 0LL);
+    }
     DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                  static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
     DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
