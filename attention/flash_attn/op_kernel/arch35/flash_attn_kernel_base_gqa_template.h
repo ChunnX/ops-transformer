@@ -92,6 +92,10 @@ public:
     static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
     static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
     static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
+    // 与上面静态分配的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子(__mix__(1,2)) 的标准做法。
+    // 不再使用 CrossCoreSetFlag<0> 自实现 barrier ：手动 mode 0 + PIPE_ALL 在某些时序下会
+    // 触发 aicore subErrType 0x4 trap（见 base04_aicore.log），SyncAll 内部封装更稳健。
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -812,6 +816,9 @@ public:
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
@@ -820,9 +827,14 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
-        SyncAll();
+        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
+        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
+        AscendC::SyncAll();
         vecFdBlock.FreeEventID();
     }
 
