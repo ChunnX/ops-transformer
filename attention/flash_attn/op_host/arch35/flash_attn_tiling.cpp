@@ -142,7 +142,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     } else if (faInfo_->qkHeadDim == 256) {
         dConfig = 4;
     } else {
-        OP_LOGE(faInfo_->opName, "Invalid qkHeadDim %ld, only support [64, 128, 256].", faInfo_->qkHeadDim);
+        OP_LOGE(faInfo_->opName, "Invalid qkHeadDim %ld, only support 64/128/256.", faInfo_->qkHeadDim);
     }
 
     tilingKeyInfo_.config = dConfig + sOuterConfig;
