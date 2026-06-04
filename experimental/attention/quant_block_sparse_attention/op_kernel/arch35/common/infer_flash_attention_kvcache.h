@@ -286,30 +286,6 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParamStr<isInfer>& runParam, c
 }
 
 TEMPLATE_INTF
-__aicore__ inline void GetKeyRopeCoreOffsetParam(RunParamStr<isInfer>& runParam,
-    const ConstInfo<isInfer> &constInfo, int32_t bIdx, __gm__ int64_t *actualSeqKvlenAddr)
-{
-    uint64_t kRopeInnerOffsetSize = 0;
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-        kRopeInnerOffsetSize = bIdx * constInfo.n2S2DR + runParam.kvLeftPaddingSize * constInfo.n2DR;
-        runParam.kRopeNBGOffset = kRopeInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeRope;
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        if constexpr (!isPa) {
-            kRopeInnerOffsetSize = (bIdx == 0)? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.n2DR;
-        } else {
-            kRopeInnerOffsetSize = bIdx * constInfo.n2S2DR;
-        }
-        runParam.kRopeNBGOffset = kRopeInnerOffsetSize + runParam.n2oIdx * constInfo.dSizeRope;
-    } else {
-        uint64_t headStrideKV = 0;
-        headStrideKV = constInfo.s2DR;
-        kRopeInnerOffsetSize = bIdx * constInfo.n2Size * headStrideKV +
-            runParam.kvLeftPaddingSize * constInfo.dSizeRope;
-        runParam.kRopeNBGOffset = kRopeInnerOffsetSize + runParam.n2oIdx * headStrideKV;
-    }
-}
-
-TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer> &constInfo,
     const AttenMaskInfo &attenMaskInfo,
     GlobalTensor<INPUT_T>& keyGm, __gm__ int64_t *actualSeqQlenAddr,
