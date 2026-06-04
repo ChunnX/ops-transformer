@@ -57,11 +57,11 @@ class Reporter:
             a = res.get("attn", {})
             l = res.get("lse", {})
             a_tag = "PASS" if a.get("passed") else "FAIL"
-            l_tag = "PASS" if l.get("passed") else "FAIL"
+            l_tag = "PASS" if l.get("passed") else ("FAIL" if l.get("total", 0) > 0 else "---")
             a_max = f"{a.get('max_abs', 0):.6f}" if a.get("total", 0) > 0 else "N/A"
             a_fr = f"{a.get('fail_ratio', 0)*100:.4f}%" if a.get("total", 0) > 0 else "N/A"
-            l_max = f"{l.get('max_abs', 0):.6f}" if l.get("total", 0) > 0 else "---"
-            l_fr = f"{l.get('fail_ratio', 0)*100:.4f}%" if l.get("total", 0) > 0 else "---"
+            l_max = f"{l.get('max_abs', 0):.6f}" if l.get("total", 0) > 0 else "-"
+            l_fr = f"{l.get('fail_ratio', 0)*100:.4f}%" if l.get("total", 0) > 0 else "-"
             print(f"│  {name:<{max_len}}  "
                   f"{a_tag:>8}  {a_max:>12}  {a_fr:>10}  │  "
                   f"{l_tag:>8}  {l_max:>12}  {l_fr:>10}  │")
