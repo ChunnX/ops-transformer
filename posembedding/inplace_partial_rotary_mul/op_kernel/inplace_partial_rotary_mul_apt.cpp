@@ -13,14 +13,14 @@
  * \brief
  */
 #include "kernel_operator.h"
-#include "arch35/rotary_position_embedding_reg_bab.h"
-#include "arch35/rotary_position_embedding_reg_ab.h"
-#include "arch35/rotary_position_embedding_reg_aba_and_ba.h"
-#include "arch35/rotary_position_embedding_reg_a_and_b.h"
-#include "arch35/rotary_position_embedding_reg_bab_mixed.h"
-#include "arch35/rotary_position_embedding_reg_aba_and_ba_mixed.h"
-#include "arch35/rotary_position_embedding_reg_a_and_b_mixed.h"
-#include "arch35/rotary_position_embedding_reg_ab_mixed.h"
+#include "arch35/rotary_position_embedding_bab.h"
+#include "arch35/rotary_position_embedding_ab.h"
+#include "arch35/rotary_position_embedding_aba_and_ba.h"
+#include "arch35/rotary_position_embedding_a_and_b.h"
+#include "arch35/rotary_position_embedding_bab_mixed.h"
+#include "arch35/rotary_position_embedding_aba_and_ba_mixed.h"
+#include "arch35/rotary_position_embedding_a_and_b_mixed.h"
+#include "arch35/rotary_position_embedding_ab_mixed.h"
 
 #define TILING_KEY_ABA 20010
 #define TILING_KEY_BA 20011
