@@ -465,7 +465,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.barrier_all()
                                 # reluGrad = weight * diff * I(reluRes > 0)
                                 # I(reluRes > 0) ≈ 1 - exp(-reluRes * 100)
-                                T.tile.mul(mask_ub, bmm2_ub[g_row, :], 100.0)
+                                T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
                                 T.barrier_all()
                                 T.tile.mul(mask_ub, mask_ub, -1.0)
                                 T.barrier_all()
@@ -749,11 +749,12 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight = results[1]
         relu_grad = results[2]
 
-        # Debug: compare intermediate results with Python reference
-        bmm1_res = bmm1_res_ws
-        bmm2_res = bmm2_res_ws
+        # Debug: recompute bmm1/bmm2 from original inputs for accurate reference
+        ref_bmm1 = torch.matmul(query.float(), gather_key.float().transpose(-1, -2))  # (B, S1, N1, K)
+        ref_bmm2_raw = torch.matmul(query_index.float(), gather_key_index.float().transpose(-1, -2))  # (B, S1, Nidx1, K)
+        ref_bmm2 = torch.relu(ref_bmm2_raw)
         ref_dw, ref_rg, ref_loss = _compute_vector_outputs(
-            bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
+            ref_bmm1, ref_bmm2, weights, softmax_max, softmax_sum,
             scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
             input_dtype,
         )
@@ -766,6 +767,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         logger.warning(f"[DEBUG] SoftmaxI ws range: [{softmax_i_ws.min().item():.6f}, {softmax_i_ws.max().item():.6f}]")
         logger.warning(f"[DEBUG] bmm1Res ws range: [{bmm1_res_ws.min().item():.6f}, {bmm1_res_ws.max().item():.6f}]")
         logger.warning(f"[DEBUG] bmm2Res ws range: [{bmm2_res_ws.min().item():.6f}, {bmm2_res_ws.max().item():.6f}]")
+        logger.warning(f"[DEBUG] ref_bmm1 range: [{ref_bmm1.min().item():.6f}, {ref_bmm1.max().item():.6f}]")
+        logger.warning(f"[DEBUG] ref_bmm2 range: [{ref_bmm2.min().item():.6f}, {ref_bmm2.max().item():.6f}]")
 
         # KL Loss: compute in Python from bmm1_res and bmm2_res
         kl_loss = ref_loss

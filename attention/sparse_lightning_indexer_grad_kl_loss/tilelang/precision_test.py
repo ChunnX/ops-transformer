@@ -24,7 +24,7 @@ def run_precision_test():
 
     B = 1
     S1 = 1
-    S2 = 1
+    S2 = 2048
     N1 = 128
     N2 = 1
     Nidx1 = 64
@@ -53,10 +53,23 @@ def run_precision_test():
     for i in range(S2):
         sparse_indices[0, 0, 0, i] = i
 
-    softmax_max = torch.full((B, N2, S1, G), 25.4483, dtype=torch.float32).npu()
-    softmax_sum = torch.full((B, N2, S1, G), 1.0, dtype=torch.float32).npu()
-
     scale_value = 1.0 / math.sqrt(DQuery)
+
+    # Compute correct softmax_max/sum from actual query/key (full FlashAttention)
+    # bmm1_full = query @ key^T, shape (B, S1, N1, S2)
+    # softmax_max[g] = max_k(bmm1_full[g,k] * scale)
+    # softmax_sum[g] = sum_k(exp(bmm1_full[g,k]*scale - softmax_max[g]))
+    with torch.no_grad():
+        q_fp32 = query.float()  # (B, S1, N1, DQuery)
+        k_fp32 = key.float().squeeze(2)  # (B, S2, DQuery) for MQA
+        bmm1_full = torch.matmul(q_fp32, k_fp32.transpose(-1, -2))  # (B, S1, N1, S2)
+        bmm1_scaled = bmm1_full * scale_value
+        sm_max_val = bmm1_scaled.max(dim=-1).values  # (B, S1, N1)
+        sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)  # (B, S1, N1)
+        softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(torch.float32).npu()
+        softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(torch.float32).npu()
+    print(f"  softmax_max range: [{softmax_max.min().item():.6f}, {softmax_max.max().item():.6f}]")
+    print(f"  softmax_sum range: [{softmax_sum.min().item():.6f}, {softmax_sum.max().item():.6f}]")
 
     print(f"\nBSND Tensor shapes:")
     print(f"  query: {query.shape}, key: {key.shape}")
