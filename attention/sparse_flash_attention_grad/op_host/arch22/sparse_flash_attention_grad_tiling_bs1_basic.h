@@ -45,6 +45,7 @@ struct TempParams {
     int64_t ropeDim;
     bool ropeEnable = false;
     bool deterministic = false;
+    bool kvMerge = false;
 };
 
 class SparseFlashAttentionGradBasicTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
