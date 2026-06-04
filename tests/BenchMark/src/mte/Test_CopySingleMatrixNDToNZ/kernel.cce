@@ -1,0 +1,142 @@
+#include <cmath>
+#include <algorithm>
+#include <random>
+#include <unordered_map>
+#include <chrono>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <sstream>
+#include <string>
+#include <map>
+#include <functional>
+
+#include "kernel_operator.h"
+#include "acl/acl.h"
+
+#include "op_kernel/memcopy/copy_gm_to_l1.h"
+
+// ======================================================= Kernel ======================================================
+
+using namespace AscendC;
+
+// todo：outerloop; 数据类型
+
+extern "C" __global__ __aicore__ void DoGm2L1ND2NZ(GM_ADDR srcGM, 
+    uint32_t MmType, uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
+    TPipe pipe;
+    
+    AscendC::GlobalTensor<half> aGM;
+    aGM.SetGlobalBuffer((__gm__ half *)srcGM);
+
+    AscendC::TQue<AscendC::TPosition::A1, 1> inQueueA1;
+    pipe.InitBuffer(inQueueA1, 1, dstNzC0Stride * dValue * sizeof(half));
+    AscendC::LocalTensor<half> a1Local = inQueueA1.AllocTensor<half>();
+
+    CopySingleMatrixNDToNZ(a1Local, aGM, nValue, dValue, srcDValue, dstNzC0Stride);
+    inQueueA1.EnQue(a1Local);
+    pipe_barrier(PIPE_ALL);
+}
+
+// ======================================================== Host =======================================================
+
+#define CHECK_ACL(x)                                                                \
+    do {                                                                                        \
+        aclError __ret = x;                                                                     \
+        if (__ret != ACL_ERROR_NONE) {                                                          \
+            std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl;  \
+        }                                                                                       \
+    } while (0);
+
+struct TestCase {
+    uint32_t coreNum;
+    uint32_t MmType;
+    uint32_t nValue;
+    uint32_t dValue;
+    uint32_t srcDValue;
+    uint32_t dstNzC0Stride;
+};
+
+TestCase ParseTestCaseCSV(const std::string& csvPath, size_t i) {
+    std::ifstream file(csvPath);
+    if (!file.is_open()) {
+        throw std::runtime_error("无法打开CSV文件: " + csvPath);
+    }
+
+    std::string line;
+    // 跳过表头
+    std::getline(file, line);
+
+    // 读取第i行
+    for (size_t j = 0; j < i; ++j) {
+        if (!std::getline(file, line)) {
+            file.close();
+            throw std::runtime_error("CSV文件中没有第" + std::to_string(i) + "行");
+        }
+    }
+
+    if (!std::getline(file, line)) {
+        file.close();
+        throw std::runtime_error("CSV文件中没有第" + std::to_string(i) + "行");
+    }
+
+    std::stringstream ss(line);
+    std::string coreNum, MmType, nValue, dValue, srcDValue, dstNzC0Stride;
+
+    std::getline(ss, coreNum, ',');
+    std::getline(ss, MmType, ',');
+    std::getline(ss, nValue, ',');
+    std::getline(ss, dValue, ',');
+    std::getline(ss, srcDValue, ',');
+    std::getline(ss, dstNzC0Stride, ',');
+
+    TestCase tc{};
+    tc.coreNum = static_cast<uint32_t>(std::stoi(coreNum));
+    tc.MmType = static_cast<uint32_t>(std::stoi(MmType));
+    tc.nValue = static_cast<uint32_t>(std::stoi(nValue));
+    tc.dValue = static_cast<uint32_t>(std::stoi(dValue));
+    tc.srcDValue = static_cast<uint32_t>(std::stoi(srcDValue));
+    tc.dstNzC0Stride = static_cast<uint32_t>(std::stoi(dstNzC0Stride));
+
+    file.close();
+    return tc;
+}
+
+int main(int argc, char* argv[])
+{
+    // 命令行参数：仅接收CSV文件路径
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <test_case_csv_path> <lineNum>" << std::endl;
+        return 1;
+    }
+    std::string csvPath = argv[1];
+    uint32_t rowNum = std::stoi(argv[2]);
+
+    CHECK_ACL(aclInit(nullptr));
+    int32_t deviceId = 0;
+    CHECK_ACL(aclrtSetDevice(deviceId));
+    aclrtStream stream = nullptr;
+    CHECK_ACL(aclrtCreateStream(&stream));
+
+    TestCase tc = ParseTestCaseCSV(csvPath, rowNum);
+
+    std::cout << "\n----------------------------------------" << std::endl;
+    std::cout << "参数: coreNum=" << tc.coreNum << ", MmType=" << tc.MmType << ", nValue=" << tc.nValue 
+        << ", dValue=" << tc.dValue << ", srcDValue=" << tc.srcDValue << ", dstNzC0Stride=" << tc.dstNzC0Stride << std::endl;
+
+    uint8_t *srcGm = nullptr;
+    int64_t totalSize = tc.coreNum * tc.nValue * tc.srcDValue * 4;
+    aclrtMalloc((void **)&srcGm, totalSize, ACL_MEM_MALLOC_HUGE_FIRST);
+
+    DoGm2L1ND2NZ<<<tc.coreNum, nullptr, stream>>>(srcGm, tc.MmType, tc.nValue, tc.dValue, tc.srcDValue, tc.dstNzC0Stride);
+
+    CHECK_ACL(aclrtSynchronizeStream(stream));
+    CHECK_ACL(aclrtFree(srcGm));
+
+    CHECK_ACL(aclrtDestroyStream(stream));
+    CHECK_ACL(aclrtResetDevice(deviceId));
+    CHECK_ACL(aclFinalize());
+    return 0;
+}
