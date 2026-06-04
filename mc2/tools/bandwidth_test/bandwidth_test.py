@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 is_precision_test = True
 is_bandwidth_test = False
 is_single_test = True
-graph_type = 0
+graph_type = 0  # 0为单算子，1为静态图模式，2为动态图模式（暂不支持），3为aclgraph
 is_full_core = 1
 core_num = 16 if not is_full_core else 32
 aic_core_num = core_num
@@ -181,8 +181,8 @@ def check_setting():
     if server_num * rank_per_dev != world_size:
         error_log_and_exit("server_num * rank_per_dev 必须等于 world_size")
 
-    if graph_type == 2:
-        error_log_and_exit("当前不支持动态图模式, graph_type 合法值仅有 0 和 1")
+    if graph_type not in [0, 1, 3]:
+        error_log_and_exit("当前不支持动态图模式, graph_type 合法值为 0, 1, 3")
 
 # endregion
 
@@ -303,19 +303,23 @@ def compile_model(model):
 
     logger.info(f"------------------graph_type: {graph_type}------------------")
     import torchair
-
     from torchair.configs.compiler_config import CompilerConfig
-    if is_full_core:
-        compiler_config = None
-    else:
-        compiler_config = CompilerConfig()
-        compiler_config.ge_config.aicore_num = f"{aic_core_num}|{aiv_core_num}"
-        logger.info(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
+    
+    compiler_config = CompilerConfig()
     npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
 
-    if graph_type == 3:  
+    if graph_type == 3:
         logger.info('graph_type=3, 测试场景: aclgraph入图模式')
-        compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+        compiler_config.mode = "reduce-overhead"
+        compiled_model = torch.compile(model, backend=npu_backend)
+    elif graph_type == 1:
+        logger.info('graph_type=1, 测试场景: 传统入图模式，静态shape+在线编译场景')
+        if is_full_core:
+            compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
+        else:
+            compiler_config.ge_config.aicore_num = f"{aic_core_num}|{aiv_core_num}"
+            logger.info(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
+            compiled_model = torch.compile(model, backend=npu_backend, dynamic=False, fullgraph=True)
 
     return compiled_model
 
