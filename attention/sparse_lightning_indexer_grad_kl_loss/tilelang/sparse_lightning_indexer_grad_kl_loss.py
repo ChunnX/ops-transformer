@@ -624,7 +624,7 @@ def _compute_vector_outputs(
     relu_grad_half = relu_grad.to(input_dtype)
 
     eps = 1e-10
-    kl_loss = (softmax_i * (torch.log(softmax_i + eps) - torch.log(P_reduced + eps))).sum()
+    kl_loss = (P_reduced * (torch.log(P_reduced + eps) - torch.log(softmax_i + eps))).sum()
 
     return d_weights, relu_grad_half, kl_loss
 
