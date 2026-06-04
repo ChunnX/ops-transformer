@@ -16,7 +16,6 @@
 #include "vector"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
@@ -894,7 +893,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
         coreNum == 0,
         OP_LOGE(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
         return ge::GRAPH_FAILED);
-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
+    int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
 

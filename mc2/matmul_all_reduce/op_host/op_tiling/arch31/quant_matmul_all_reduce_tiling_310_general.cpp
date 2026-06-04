@@ -143,23 +143,23 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
 
 CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutAllreduceResult;
+    SocVersion inputSocVer = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVer);
+    const gert::StorageShape* commQuantScaleShapeOne = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShapeTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShapeOne != nullptr) && (commQuantScaleShapeTwo != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantAllReduceTilingHcclObj(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer);
+        quantAllReduceTilingHcclObj.GetTiling();
+        mCutAllreduceResult = quantAllReduceTilingHcclObj.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        allReduceTilingHcclObj.GetTiling();
+        mCutAllreduceResult = allReduceTilingHcclObj.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceResult;
 }
 
 //注册tiling类

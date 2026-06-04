@@ -288,105 +288,114 @@ public:
         }
 
         BlockMmad blockMmad(resource);
-        int32_t blockSize = L1TileShape::M * L1TileShape::N;
+        int32_t smallMBlockSize = L1TileShape::M * L1TileShape::N;
         CommColumnSplitter taskSplit(loop_num_per_comm, m_loop,
                                      params.swizzlDirect ? params.swizzlCount : 1, n_loop);
 
-        for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
-            int32_t n_st = taskSplit.GetCulumnStartPos(calIdx);
-            int32_t n_ed = calIdx == calCount - 1 ? n_loop : taskSplit.GetCulumnEndPos(calIdx);
-            int32_t n_nxt_ed = calIdx == calCount - 2 ? n_loop : taskSplit.GetCulumnEndPos(calIdx + 1);
+        for (int32_t smallMCalIdx = 0; smallMCalIdx < calCount; smallMCalIdx++) {
+            int32_t smallMNSt = taskSplit.GetCulumnStartPos(smallMCalIdx);
+            int32_t smallMNEd = smallMCalIdx == calCount - 1 ? n_loop : taskSplit.GetCulumnEndPos(smallMCalIdx);
+            int32_t smallMNxtEd = smallMCalIdx == calCount - 2 ? n_loop : taskSplit.GetCulumnEndPos(smallMCalIdx + 1);
 
-            int32_t flagIdx = calIdx % MAX_BLOCK_COUNT_SM;
+            int32_t smallMFlagIdx = smallMCalIdx % MAX_BLOCK_COUNT_SM;
             for (int32_t p = 0; p < params.pValue; p++) {
-                int32_t loopIdx = calIdx * loop_num_per_comm + p * core_num + block_id;
-                if (loopIdx >= coreLoops) {
+                int32_t smallMLoopIdx = smallMCalIdx * loop_num_per_comm + p * core_num + block_id;
+                if (smallMLoopIdx >= coreLoops) {
                     break;
                 }
-                GemmCoord blockIdxCoord =
-                    GetBlockIdCoord(loopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-                GemmCoord blockSizeCoord =
-                    GetBlockSizeCoord(blockIdxCoord, blockLocCoord, m_loop, params.problemShape.m(), n_loop,
+                GemmCoord smallMBlockIdxCoord =
+                    GetBlockIdCoord(smallMLoopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
+                GemmCoord smallMBlockLocCoord = GetBlockLocCoord(smallMBlockIdxCoord);
+                GemmCoord smallMBlockSizeCoord =
+                    GetBlockSizeCoord(smallMBlockIdxCoord, smallMBlockLocCoord, m_loop, params.problemShape.m(), n_loop,
                                       params.problemShape.n(), params.problemShape.k());
 
-                MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
-                MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC;
+                MatrixCoord offsetA{smallMBlockLocCoord.m(), smallMBlockLocCoord.k()};
+                MatrixCoord offsetB{smallMBlockLocCoord.k(), smallMBlockLocCoord.n()};
+                int64_t smallMGmOffsetA = params.layoutA.GetOffset(offsetA);
+                int64_t smallMGmOffsetB = params.layoutB.GetOffset(offsetB);
+                int64_t smallMGmOffsetC;
                 AscendC::GlobalTensor<ElementC> gmDst;
                 gmDst = gmC;
 
                 int32_t n_comm_block = -1;
                 LayoutC layout_tmp;
                 // 计算切片的layout和offset
-                if (blockIdxCoord.n() < n_ed) {
-                    //当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。n_st~n_ed的通信矩阵切块是nd排布。
-                    n_comm_block = n_ed - n_st;
-                    int32_t comm_loopIdx = loopIdx - m_loop * n_st;
+                if (smallMBlockIdxCoord.n() < smallMNEd) {
+                    // 当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。smallMNSt~n_ed的通信矩阵切块是nd排布。
+                    n_comm_block = smallMNEd - smallMNSt;
+                    int32_t comm_loopIdx = smallMLoopIdx - m_loop * smallMNSt;
                     int32_t n_len = n_comm_block * L1TileShape::N;
                     layout_tmp = {static_cast<uint32_t>(params.problemShape.m()), static_cast<uint32_t>(n_len)};
                     GemmCoord comm_blockIdxCoord =
                         GetBlockIdCoord(comm_loopIdx, m_loop, n_comm_block, params.swizzlDirect, params.swizzlCount);
-                    if (params.swizzlDirect && ((n_st / params.swizzlCount) & 1)) {
+                    if (params.swizzlDirect && ((smallMNSt / params.swizzlCount) & 1)) {
                         comm_blockIdxCoord.m() = m_loop - comm_blockIdxCoord.m() - 1;
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    gmOffsetC = L1TileShape::N * n_st * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = L1TileShape::N * smallMNSt *
+                        params.problemShape.m() +
+                        layout_tmp.GetOffset(offsetC_comm);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
-                    n_comm_block = n_nxt_ed - n_ed;
-                    int32_t comm_loopIdx = loopIdx - m_loop * n_ed;
+                    n_comm_block = smallMNxtEd - smallMNEd;
+                    int32_t comm_loopIdx = smallMLoopIdx - m_loop * smallMNEd;
                     int32_t n_len = n_comm_block * L1TileShape::N;
                     layout_tmp = {static_cast<uint32_t>(params.problemShape.m()), static_cast<uint32_t>(n_len)};
                     GemmCoord comm_blockIdxCoord =
                         GetBlockIdCoord(comm_loopIdx, m_loop, n_comm_block, params.swizzlDirect, params.swizzlCount);
-                    if (params.swizzlDirect && ((n_ed / params.swizzlCount) & 1) & 1) {
+                    if (params.swizzlDirect && ((smallMNEd / params.swizzlCount) & 1) & 1) {
                         comm_blockIdxCoord.m() = m_loop - comm_blockIdxCoord.m() - 1;
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    gmOffsetC = L1TileShape::N * n_ed * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = L1TileShape::N * smallMNEd *
+                        params.problemShape.m() +
+                        layout_tmp.GetOffset(offsetC_comm);
                 }
 
                 if constexpr (HasBias) {
                     blockMmad(
-                        gmA[gmOffsetA], params.layoutA,
-                        gmB[gmOffsetB], params.layoutB,
-                        gmDst[gmOffsetC], layout_tmp,
-                        gmBias[blockLocCoord.n()], blockSizeCoord);
+                        gmA[smallMGmOffsetA], params.layoutA,
+                        gmB[smallMGmOffsetB], params.layoutB,
+                        gmDst[smallMGmOffsetC], layout_tmp,
+                        gmBias[smallMBlockLocCoord.n()], smallMBlockSizeCoord);
                 } else {
 
-                    bool isFirstBlock = loopIdx == block_id;
-                    bool hasNextBlock = false;
+                    bool smallMIsFirstBlock = smallMLoopIdx == block_id;
+                    bool smallMHasNextBlock = false;
                     GemmCoord nextBlockIdCoord;
                     GemmCoord nextBlockLocCoord;
-                    GemmCoord nextBlockSizeCoord;
-                    int32_t nextLoopIdx = loopIdx + core_num;
+                    GemmCoord smallMNextBlockSizeCoord;
+                    int32_t nextLoopIdx = smallMLoopIdx + core_num;
                     int32_t nextDstRankIdx = nextLoopIdx % params.rankSize;
                     int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
                     if (nextLoopIdx < coreLoops) {
-                        hasNextBlock = true;
+                        smallMHasNextBlock = true;
                         nextBlockIdCoord =
                             GetBlockIdCoord(nextLoopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
                         nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                        nextBlockSizeCoord =
+                        smallMNextBlockSizeCoord =
                             GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, m_loop, params.problemShape.m(),
                                 n_loop, params.problemShape.n(), params.problemShape.k());
                     }
                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-                    int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
-                    int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+                    int64_t smallMGmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
+                    int64_t smallMGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
-                    blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
-                              layout_tmp, gmA[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord,
-                              isFirstBlock, hasNextBlock);
+                    blockMmad(gmA[smallMGmOffsetA], params.layoutA,
+                              gmB[smallMGmOffsetB], params.layoutB,
+                              gmDst[smallMGmOffsetC], layout_tmp,
+                              gmA[smallMGmOffsetNextA],
+                              gmB[smallMGmOffsetNextB],
+                              smallMBlockSizeCoord,
+                              smallMNextBlockSizeCoord,
+                              smallMIsFirstBlock, smallMHasNextBlock);
                 }
             }
-            FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
+            FFTSCrossCoreSync<PIPE_FIX, 2>(smallMFlagIdx);
         }
     }
 
