@@ -1146,7 +1146,6 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
 
     tilingData->isPermuteOut = permuteOutFlag_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
-    tilingData->isFp16 = (gmmXDataType_ == ge::DT_FLOAT16);
 
     return ge::GRAPH_SUCCESS;
 }
