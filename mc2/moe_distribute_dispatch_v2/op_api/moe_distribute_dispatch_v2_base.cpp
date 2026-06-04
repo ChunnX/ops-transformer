@@ -19,6 +19,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "log/log.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
 
@@ -77,7 +78,7 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
     OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group groupEp name is Empty");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
         return false;
     }
     return true;
@@ -97,11 +98,13 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name exceeds %zu", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupEp",
+            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupTp name exceeds %zu", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupTp",
+            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupTp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
