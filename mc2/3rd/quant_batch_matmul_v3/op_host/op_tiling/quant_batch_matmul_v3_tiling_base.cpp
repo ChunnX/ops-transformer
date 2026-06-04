@@ -460,7 +460,9 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
         return false;
     }
     OP_TILING_CHECK(!CheckOutputShapeAvailable(),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "output", "", "The product of output shape dimensions must be within the boundary of INT64_MAX"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "output",
+                        (std::to_string(inputParams_.mSize) + "x" + std::to_string(inputParams_.nSize) + "x" + std::to_string(inputParams_.batchC)).c_str(),
+                        "The product of output shape dimensions must be within the boundary of INT64_MAX"),
                                           return false);
     uint64_t fusedDimValue = inputParams_.mSize * inputParams_.batchA;
     int8_t resultCheckFusionBatchA = CheckFusionBatchA(x1Shape, x2Shape, biasShape->GetStorageShape(), fusedDimValue);
@@ -519,7 +521,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::ReCalcGroupSize(uint64_t &groupSize, uint6
             scaleName =  "scale";
         }
         OP_TILING_CHECK(scaleSize == 0ULL,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The shape dimension of input cannot be 0"),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", std::to_string(scaleSize).c_str(), "The shape dimension of input cannot be 0"),
             return false);
         OP_TILING_CHECK(inputSize % scaleSize != 0ULL,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The group_size in the dimension cannot be inferred"),

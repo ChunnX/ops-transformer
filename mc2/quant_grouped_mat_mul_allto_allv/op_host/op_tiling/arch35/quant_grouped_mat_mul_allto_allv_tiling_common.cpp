@@ -130,7 +130,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
     OP_TILING_CHECK(!isAllSame,
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "mmXTensor, mmWeightTensor, mmYTensor",
-                            "not all in same existence state",
+                            (std::string(isMmXNull ? "null" : "not null") + ", " +
+                             std::string(isMmWeightNull ? "null" : "not null") + ", " +
+                             std::string(isMmYNull ? "null" : "not null")).c_str(),
                             "The values of mmXTensor, mmWeightTensor and mmYTensor must be the same in existence state"),
                     return ge::GRAPH_FAILED);
     if (!isMmXNull) {

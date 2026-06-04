@@ -270,7 +270,7 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
         OP_TILING_CHECK(isTransA == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransA"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(*isTransA != false,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", "true", "The value of isTransA must be false"), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", *isTransA ? "true" : "false", "The value of isTransA must be false"), return ge::GRAPH_FAILED);
     }
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));

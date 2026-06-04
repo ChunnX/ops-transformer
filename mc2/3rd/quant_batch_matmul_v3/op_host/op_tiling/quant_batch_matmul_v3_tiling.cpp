@@ -553,7 +553,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape,
         mulBound = curDim * mul;
         OP_TILING_CHECK(mulBound / curDim != mul,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, dimName,
-                                                               "",
+                                                               std::to_string(mulBound).c_str(),
                                                                "The product of shape dimensions must be within the boundary of INT64_MAX"),
                         return false);
         mul = mulBound;

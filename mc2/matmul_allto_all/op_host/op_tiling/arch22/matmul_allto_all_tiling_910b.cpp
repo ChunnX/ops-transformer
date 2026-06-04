@@ -627,11 +627,11 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
                         return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(info.M == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", "0", "The value of dim 0 (m) of x1 cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.M == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.M).c_str(), "The value of dim 0 (m) of x1 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验K,K的范围应该在[1, 65535]
     OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(), "The value of k dim of x1 must not exceed 65535"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", "0", "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(), "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

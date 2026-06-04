@@ -196,7 +196,8 @@ bool InferShapeBatchMatMul::InferBias()
     OP_CHECK_IF(
         !InferNWithBias(op_name, shape_bias->GetDim(num_dim_bias - 1), shape_out.GetDim(num_dim - 1), shape_value_out),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "bias and output",
-            "dimensions are incompatible", "The shape of bias and output must be compatible for inferring N dimension"), return false);
+            (std::to_string(shape_bias->GetDim(num_dim_bias - 1)) + " and " + std::to_string(shape_out.GetDim(num_dim - 1))).c_str(),
+            "The shape of bias and output must be compatible for inferring N dimension"), return false);
 
     shape_out.SetDim(num_dim - 1, shape_value_out);
 
@@ -208,7 +209,8 @@ bool InferShapeBatchMatMul::InferBias()
             OP_CHECK_IF(
                 !BroadcastBatchDim(op_name, shape_bias->GetDim(i - valid_offset), shape_out.GetDim(i), shape_value_out),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "bias and output",
-                    "dimensions are incompatible", "The shapes of bias and output must be compatible for batch dimension broadcasting"), return false);
+                    (std::to_string(shape_bias->GetDim(i - valid_offset)) + " and " + std::to_string(shape_out.GetDim(i))).c_str(),
+                    "The shapes of bias and output must be compatible for batch dimension broadcasting"), return false);
 
             shape_out.SetDim(i, shape_value_out);
         }
@@ -220,7 +222,8 @@ bool InferShapeBatchMatMul::InferBias()
         OP_CHECK_IF(
             !BroadcastBatchDim(op_name, shape_bias->GetDim(i), shape_out.GetDim(i - valid_offset), shape_value_out),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "bias and output",
-                "dimensions are incompatible", "The shapes of bias and output must be compatible for batch dimension broadcasting"), return false);
+                (std::to_string(shape_bias->GetDim(i)) + " and " + std::to_string(shape_out.GetDim(i - valid_offset))).c_str(),
+                "The shapes of bias and output must be compatible for batch dimension broadcasting"), return false);
 
         shape_out.SetDim(i, shape_value_out);
     }
@@ -281,7 +284,8 @@ bool InferShapeBatchMatMul::InferShape()
     }
     OP_CHECK_IF(!InferBatch(),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "x1 and x2",
-            "dimensions are incompatible", "The shapes of x1 and x2 must be compatible for inferring batch dimensions"), return false);
+            (std::to_string(shape_a.GetDimNum()) + "D and " + std::to_string(shape_b.GetDimNum()) + "D").c_str(),
+            "The shapes of x1 and x2 must be compatible for inferring batch dimensions"), return false);
 
     // using index - 2 to get m_dim in shape_out
     shape_out.SetDim((num_dim - 2), shape_a.GetDim(idx_m));
@@ -289,7 +293,8 @@ bool InferShapeBatchMatMul::InferShape()
     if (shape_bias != nullptr) {
         OP_CHECK_IF(!InferBias(),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "bias",
-                "shape is incompatible with output", "The shape of bias must be compatible with output for inferring bias"), return false);
+                (std::to_string(shape_bias->GetDimNum()) + "D").c_str(),
+                "The shape of bias must be compatible with output for inferring bias"), return false);
     }
     return true;
 }
@@ -436,7 +441,8 @@ ge::graphStatus InferShapeForBatchMatMul(
     OP_CHECK_IF(
         !batchMatMulInfer.InferShape(),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "x1 and x2",
-            "incompatible shapes", "The shapes of x1 and x2 must be compatible for inferring output shape"),
+            (std::to_string(shape_x1_new.GetDimNum()) + "D and " + std::to_string(shape_x2_new.GetDimNum()) + "D").c_str(),
+            "The shapes of x1 and x2 must be compatible for inferring output shape"),
         return ge::GRAPH_FAILED);
 
     InferComplementedOutput(shape_x1_reshape_flag, shape_x2_reshape_flag, *shape_out);
@@ -747,7 +753,8 @@ bool InferShapeRangeBatchMatMul::InferShapeRange()
     // 从bias推理N和推理bias的batch
     OP_CHECK_IF(
         !InferRangeBias(op_name, new_shape_range_out, idx_n, bias_shape_range, new_shape_range_x2),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "bias and x2", "incompatible ranges",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "bias and x2",
+            (std::to_string(bias_shape_range.size()) + "D and " + std::to_string(new_shape_range_x2.size()) + "D").c_str(),
             "The shapes of bias and x2 must be compatible for inferring n range"), return false);
 
     // 设置输出range
