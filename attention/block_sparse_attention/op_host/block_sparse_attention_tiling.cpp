@@ -153,7 +153,7 @@ static inline uint32_t GetQNBlockTile()
 ge::graphStatus BSATiling::GetNpuInfo(gert::TilingContext *bsaContext)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(bsaContext->GetPlatformInfo());
-    
+
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
@@ -168,7 +168,7 @@ ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
     if (qInputLayout_ != BSAQInputLayout::TND_Q || kvCacheLayout_ != BSAKvCacheLayout::TND_KV) {
         return ge::GRAPH_SUCCESS;
     }
-    
+
     // 计算所有batch的qseqlen之和
     int64_t sumQSeqlen = 0;
     int64_t sumKvSeqlen = 0;
@@ -177,23 +177,23 @@ ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
         sumQSeqlen += qSeqLenList_[i];
         sumKvSeqlen += kvSeqLenList_[i];
     }
-    
+
     // 校验qseqlen之和是否等于Q的T
     if (sumQSeqlen != totalTokensT_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
-                "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)", 
+        OP_LOGE(bsaContext->GetNodeName(),
+                "TND format validation failed: sum of qseqlen across all batches (%ld) != Q T (%ld)",
                 sumQSeqlen, totalTokensT_);
         return ge::GRAPH_FAILED;
     }
-    
+
     // 校验kvseqlen之和是否等于KV的T
     if (sumKvSeqlen != totalTokensKv_) {
-        OP_LOGE(bsaContext->GetNodeName(), 
-                "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)", 
+        OP_LOGE(bsaContext->GetNodeName(),
+                "TND format validation failed: sum of kvseqlen across all batches (%ld) != KV T (%ld)",
                 sumKvSeqlen, totalTokensKv_);
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -543,12 +543,12 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
     if (bsmBatch != batch_) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent batch with context,"
             "but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_);
-        return ge::GRAPH_FAILED;        
+        return ge::GRAPH_FAILED;
     }
     if (bsmNumHead != numHeads_) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent numHeads with context,"
             "but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.", bsmNumHead, numHeads_);
-        return ge::GRAPH_FAILED; 
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -740,17 +740,17 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     kvHeads_ = *attrs->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX);
-    
+
     if (attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
         scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
     } else {
         scaleValue_ = *attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX);
     }
-    
+
     if (attrs->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX) != nullptr) {
         maskType_ = *attrs->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX);
     }
-    
+
     // 获取innerPrecise参数
     if (attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX) != nullptr) {
         innerPrecise_ = *attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
@@ -801,7 +801,7 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 or 1, but got: %ld.", *softmaxLsePtr);
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -872,10 +872,10 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "batch_ is 0 in CalculateTaskSplit");
         return ge::GRAPH_FAILED;
     }
-    
+
     // 根据useUniformQSeqlen_标志位决定分核时使用actualSeqLengths数组还是maxQSeqlen_
     uint32_t groupSize = numHeads_ / kvHeads_;
-    
+
     // 遍历每个batch进行分核计算
     for (auto i = 0; i < batch_; i++) {
         // 根据useUniformQSeqlen_标志位决定使用actualSeqLengths数组还是maxQSeqlen_
@@ -895,7 +895,7 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
         uint32_t curTaskNum = 0;
         uint32_t curQBlockNum = 0;
         CalculateBatchTaskSplit(qSeqlen, groupSize, curTaskNum, curQBlockNum);
-        
+
         if (i == 0) {
             firstBatchTaskNum_ = curTaskNum;
             firstQBlockNum_ = curQBlockNum;
@@ -909,8 +909,9 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
 
 void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
 {
-    selectIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
-    selectNumIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
+    selectIdxSize_ =
+        static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
+    selectNumIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
     workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
 }
@@ -925,18 +926,18 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
     selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
-    
+
     mm1OutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
     smOnlineOutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(uint16_t) * NUM3;
     mm2OutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
     updateSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
-    
+
     workSpaceSize_ = libapiSize_ + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + selectNumIdxSize_ + selectIdxSize_ + syncSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     uint32_t totalTaskNumMask = batch_ * numHeads_ * maxQBlockNum_;
     avgRowNumPerSubCore_ = CeilDiv(totalTaskNumMask, blockDim_ * 2);
     preActivateSubCoreNum_ = CeilDiv(totalTaskNumMask, avgRowNumPerSubCore_);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -995,32 +996,32 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_firstBatchTaskNum(firstBatchTaskNum_);
     tilingData_->set_totalTaskNum(totalTaskNum_);
     tilingData_->set_maskType(maskType_);
-    
+
     tilingData_->set_blockShapeX(blockShapeX_);
     tilingData_->set_blockShapeY(blockShapeY_);
-    
+
     tilingData_->set_firstQBlockNum(firstQBlockNum_);
     tilingData_->set_totalQBlocks(totalQBlocks_);
     tilingData_->set_maxKvBlockNum(maxKvBlockNum_);
     tilingData_->set_maxQBlockNum(maxQBlockNum_);
     tilingData_->set_avgRowNumPerSubCore(avgRowNumPerSubCore_);
     tilingData_->set_preActivateSubCoreNum(preActivateSubCoreNum_);
-    
+
     tilingData_->set_kvCacheLayout(static_cast<uint32_t>(kvCacheLayout_));
     tilingData_->set_queryLayout(static_cast<uint32_t>(qInputLayout_));
     tilingData_->set_maxQSeqlen(maxQSeqlen_);
     tilingData_->set_maxKvSeqlen(maxKvSeqlen_);
-    
+
     // BNSD/BSND格式下当actualSeqLengths为nullptr时，使用maxQSeqlen和maxKvSeqlen作为统一值
     tilingData_->set_useUniformQSeqlen(useUniformQSeqlen_ ? 1 : 0);
     tilingData_->set_useUniformKvSeqlen(useUniformKvSeqlen_ ? 1 : 0);
-    
+
     // 生成tilingKey（按照开发规范：在tiling层生成）
     uint64_t tilingKey = GenerateTilingKey(bsaContext);
     tilingData_->set_tilingKey(tilingKey);
     bsaContext->SetTilingKey(tilingKey);
     bsaContext->SetBlockDim(blockDim_);
-    
+
     tilingData_->set_mm1OutSize(mm1OutSize_);
     tilingData_->set_smOnlineOutSize(smOnlineOutSize_);
     tilingData_->set_mm2OutSize(mm2OutSize_);
@@ -1065,17 +1066,17 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
      * - 位11-13: KV Layout（十亿位）   30=TND, 50=BNSD, 60=BSND
      * - 位14-15: Data Type（百亿位）  00=FP16, 22=BF16
      * - 位16-18: Operator Category（千万亿位） 900=BlockSparseAttention910, 905=BlockSparseAttention950
-     * 
+     *
      * 示例：
      * - FP16, TND, TND, NoCache, Half, NoMask = 9000000030100002
      * - FP16, TND, TND, NoCache, Float, NoMask = 9000000030000002
      */
-    
+
     uint64_t tilingKey = 9000000000000000ULL;  // RFA基础值（Operator Category = 900）
     if (socVer_ == SOC_VER_950_CODE) {
         tilingKey = 9050000000000000ULL;
     }
-    
+
     // [位14-15] Data Type（百亿位）
     if (dataType_ == ge::DT_FLOAT16) {
         tilingKey += 0;  // 00 for FP16
@@ -1103,7 +1104,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (hasPagedCache) {
         tilingKey += 1000000ULL;  // 1 for WithCache
     }
-    
+
     // [位5-7] Softmax Precision（十万位）
     if (innerPrecise_ == 1) {
         tilingKey += 100000ULL;  // 1 for Half (FP16) Softmax
@@ -1111,13 +1112,13 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 400000ULL; // 4 for low prec online softmax & high prec rescale O
     }
     // innerPrecise_ == 0: 0 for Float Softmax（默认值）
-    
+
     // [位2-4] Mask Type（千位）
     if (maskType_ == 3) {  // Causal mask
         tilingKey += 3000ULL;
     }
     // maskType_ == 0: 0 for NoMask（默认值）
-    
+
     // [位0-1] Q Layout（个位）
     if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         tilingKey += 2; // 2 for TND
@@ -1131,7 +1132,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
-    
+
     return tilingKey;
 }
 
@@ -1156,7 +1157,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
         OP_LOGE(bsaContext->GetNodeName(), "ValidateTNDSeqlenSum failed");
         return ret;
     }
-    
+
     if (socVer_ == SOC_VER_950_CODE) {
         CalcSplitCoreTilingParams950();
         CalcMatmulPhaseL1TileInfo950();
