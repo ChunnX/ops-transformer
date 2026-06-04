@@ -346,6 +346,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::Process()
 
     // // // // ======= Phase C: Chunked gather + on-demand x DMA (all cores parallel) =======
     if (dropPadMode_ == DROP_PAD_MODE) {
+        SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+        PadZerosForDropPad();
         GatherAndWriteDroppad();
     } else {
         GatherAndWriteChunked();
@@ -1382,59 +1384,57 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 template <typename T>
 __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
 {
-    if (blockIdx_ != filterNeedCoreNum_ - 1) {
-        return;
-    }
+    // 多核并行 pad：按 expert 轮询分配
+    // 此时在 Phase C 之前执行，totalCountLocal 还有效
+    LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
 
-    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
-
-    int64_t outElemSize = (quantMode_ != -1) ? static_cast<int64_t>(sizeof(int8_t)) : static_cast<int64_t>(sizeof(T));
+    // zeroBuf 从 totalCountLocal 之后开始（避免覆盖 totalCountLocal）
+    int64_t zeroBufStart = totalCountLocalOffset_ +
+        OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    int64_t outElemSize = static_cast<int64_t>(sizeof(T));
     int64_t elemsPerBlock = BLOCK_BYTES / outElemSize;
-    int64_t zeroBufMaxBytes = totalBufSize_ - persistentSize_;
+    int64_t zeroBufMaxBytes = totalBufSize_ - zeroBufStart;
     int64_t zeroBufMaxElems = (zeroBufMaxBytes / outElemSize / elemsPerBlock) * elemsPerBlock;
     int64_t zeroBufElems = Min(OpsBaseCeilAlign(cols_, elemsPerBlock), zeroBufMaxElems);
 
-    LocalTensor<int32_t> zeroBufI32 = buf_.Get<int32_t>()[persistentSize_ / sizeof(int32_t)];
+    LocalTensor<int32_t> zeroBufI32 = buf_.Get<int32_t>()[zeroBufStart / sizeof(int32_t)];
     int64_t zeroBufBytes = OpsBaseCeilAlign(zeroBufElems * outElemSize, BLOCK_BYTES);
     int64_t zeroBufI32Elems = zeroBufBytes / static_cast<int64_t>(sizeof(int32_t));
+
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     Duplicate(zeroBufI32, static_cast<int32_t>(0), static_cast<int32_t>(zeroBufI32Elems));
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-    for (int64_t e = 0; e < actualExpertNum_; e++) {
-        int32_t cursor = expertCountLocal.GetValue(e);
-        int64_t basePos = (expertStart_ + e) * expertCapacity_;
-        int64_t actualWritten = static_cast<int64_t>(cursor) - basePos;
+    // 每个核处理自己负责的 expert（按核数轮询）
+    for (int64_t e = blockIdx_; e < actualExpertNum_; e += filterNeedCoreNum_) {
+        int32_t totalForExpert = totalCountLocal.GetValue(e);
+        int64_t actualWritten = Min(static_cast<int64_t>(totalForExpert), expertCapacity_);
         if (actualWritten >= expertCapacity_) {
             continue;
         }
         int64_t padCount = expertCapacity_ - actualWritten;
-        int64_t gmStart = static_cast<int64_t>(cursor) * cols_;
+        int64_t gmStart = ((expertStart_ + e) * expertCapacity_ + actualWritten) * cols_;
         int64_t totalPadElems = padCount * cols_;
 
-        if (quantMode_ != -1) {
-            LocalTensor<int8_t> zb = zeroBufI32.ReinterpretCast<int8_t>();
-            for (int64_t padOff = 0; padOff < totalPadElems; padOff += zeroBufElems) {
-                DataCopyExtParams cp{static_cast<uint16_t>(1),
-                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - padOff) * sizeof(int8_t)), 0, 0, 0};
-                DataCopyPad(expandedXInt8Gm_[gmStart + padOff], zb, cp);
-            }
-        } else {
-            LocalTensor<T> zb = zeroBufI32.ReinterpretCast<T>();
-            for (int64_t padOff = 0; padOff < totalPadElems; padOff += zeroBufElems) {
-                DataCopyExtParams cp{static_cast<uint16_t>(1),
-                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - padOff) * sizeof(T)), 0, 0, 0};
-                DataCopyPad(expandedXGm_[gmStart + padOff], zb, cp);
-            }
+        // Zero-fill expandedX
+        LocalTensor<T> zb = zeroBufI32.ReinterpretCast<T>();
+        for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
+            DataCopyExtParams cp{static_cast<uint16_t>(1),
+                static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0, 0};
+            DataCopyPad(expandedXGm_[gmStart + off], zb, cp);
         }
 
-        if (quantMode_ == 1 || (quantMode_ == -1 && isInputScale_)) {
+        // Zero-fill expandedScale
+        if (isInputScale_) {
+            int64_t scaleStart = (expertStart_ + e) * expertCapacity_ + actualWritten;
             LocalTensor<float> zf = zeroBufI32.ReinterpretCast<float>();
             DataCopyExtParams cp{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
             for (int64_t i = 0; i < padCount; i++) {
-                DataCopyPad(expandedScaleGm_[static_cast<int64_t>(cursor) + i], zf, cp);
+                DataCopyPad(expandedScaleGm_[scaleStart + i], zf, cp);
             }
         }
     }
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
 }
 
 } // namespace MoeInitRoutingV3
