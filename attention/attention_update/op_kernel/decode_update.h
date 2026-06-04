@@ -151,7 +151,8 @@ private:
         if (curLength % ALIGNED_TO_8 == 0) {
             for (int32_t i = 0; i < sp; i++) {
                 lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), static_cast<uint64_t>(totalLength) * hDim);
+                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)),
+                                     static_cast<uint64_t>(totalLength) * hDim);
                 DataCopy(lseLocal[curLength * i],
                          lseGm[static_cast<uint64_t>(gmStartOffset) + static_cast<uint64_t>(progress) * tileLength],
                          curLength);
@@ -177,7 +178,8 @@ private:
             uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
             for (int32_t i = 0; i < sp; i++) {
                 lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), static_cast<uint64_t>(totalLength) * hDim);
+                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)),
+                                     static_cast<uint64_t>(totalLength) * hDim);
                 DataCopyPad(lseLocal[curLengthAlig * i],
                             lseGm[static_cast<uint64_t>(gmStartOffset) + static_cast<uint64_t>(progress) * tileLength],
                             {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
