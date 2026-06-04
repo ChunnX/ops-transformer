@@ -192,7 +192,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckXDim()
         return ge::GRAPH_FAILED;
     }
     if (!(cuSeqLen_ >= CU_SEQ_LEN_MIN && cuSeqLen_ <= CU_SEQ_LEN_MAX)) {
-        std::string reasonMsg = "The value of cu_seq_len must be within the range [" + std::to_string(CU_SEQ_LEN_MIN) + ", " +
+        std::string reasonMsg = "The value of cu_seq_len must be within the range [" +
+                                std::to_string(CU_SEQ_LEN_MIN) + ", " +
                                 std::to_string(CU_SEQ_LEN_MAX) + "]";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x", std::to_string(cuSeqLen_).c_str(), reasonMsg.c_str());
@@ -213,7 +214,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
     uint64_t weightDimNum = weightShape_.GetDimNum();
     if (weightDimNum != WEIGHT_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            context_->GetNodeName(), "weight", std::to_string(weightDimNum).c_str(), "The shape dim of weight must be 2");
+            context_->GetNodeName(), "weight", std::to_string(weightDimNum).c_str(),
+            "The shape dim of weight must be 2");
         return ge::GRAPH_FAILED;
     }
     uint64_t weightDim = weightShape_.GetDim(DIM_1);
@@ -225,7 +227,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
     }
     if (kernelWidth_ != 3) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "weight", std::to_string(kernelWidth_).c_str(), "The value of kernel_width must be equal to 3");
+            context_->GetNodeName(), "weight", std::to_string(kernelWidth_).c_str(),
+            "The value of kernel_width must be equal to 3");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -242,7 +245,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
     }
     uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);
     if (cacheStatesDim1 < (kernelWidth_ - 1)) {
-        std::string reasonMsg = "Shape [1] of cache_states must be greater than or equal to " + std::to_string(kernelWidth_ - 1);
+        std::string reasonMsg =
+            "Shape [1] of cache_states must be greater than or equal to " + std::to_string(kernelWidth_ - 1);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             context_->GetNodeName(), "cache_states", std::to_string(cacheStatesDim1).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;

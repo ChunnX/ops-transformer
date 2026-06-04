@@ -332,8 +332,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
 {
     if (batchSize_ < MIN_BATCH || batchSize_ > MAX_BATCH) {
-        std::string reasonMsg = "The value of batch_size must be within the range [" + std::to_string(MIN_BATCH) + ", " +
-                                std::to_string(MAX_BATCH) + "]";
+        std::string reasonMsg =
+            "The value of batch_size must be within the range [" + std::to_string(MIN_BATCH) + ", " +
+            std::to_string(MAX_BATCH) + "]";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x", std::to_string(batchSize_).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -343,8 +344,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
         // seqLen = m+1，m 表示当前 decode 步数（BH 模板只支持短序列）
         int64_t m = seqLen_ - 1;
         if (m < MIN_M || m > MAX_M) {
-            std::string reasonMsg = "The value of seq_len must satisfy m in the range [" + std::to_string(MIN_M) + ", " +
-                                    std::to_string(MAX_M) + "], where m = seq_len - 1";
+            std::string reasonMsg =
+                "The value of seq_len must satisfy m in the range [" + std::to_string(MIN_M) + ", " +
+                std::to_string(MAX_M) + "], where m = seq_len - 1";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "x", std::to_string(seqLen_).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -353,7 +355,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
     if (xInputMode_ == X_INPUT_2D) {
         // 2D 模式下通过属性传入最大序列长度
         if (maxQueryLen_ < 1 || maxQueryLen_ > MAX_M + 1) {
-            std::string reasonMsg = "The value of max_query_len must be within the range [1, " + std::to_string(MAX_M + 1) + "]";
+            std::string reasonMsg =
+                "The value of max_query_len must be within the range [1, " +
+                std::to_string(MAX_M + 1) + "]";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "max_query_len", std::to_string(maxQueryLen_).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -401,7 +405,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
-
     if (convStatesOriginShape.GetDimNum() != DIM_3) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "conv_states",
@@ -415,7 +418,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
         int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2; // = (K-1) + (seqLen-1)
         int64_t state_len = convStatesOriginShape.GetDim(DIM_1);
         if (state_len < expectedCacheLen) {
-            std::string reasonMsg = "Shape [1] of conv_states must be greater than or equal to " + std::to_string(expectedCacheLen);
+            std::string reasonMsg =
+                "Shape [1] of conv_states must be greater than or equal to " +
+                std::to_string(expectedCacheLen);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 context_->GetNodeName(), "conv_states", std::to_string(state_len).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -425,7 +430,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
     // dim 维度必须与 x 一致
     int64_t convStatesDim = convStatesOriginShape.GetDim(DIM_2);
     if (convStatesDim != dim_) {
-        std::string reasonMsg = "Shape [2] of conv_states must be equal to shape [1] of x (" + std::to_string(dim_) + ")";
+        std::string reasonMsg =
+            "Shape [2] of conv_states must be equal to shape [1] of x (" + std::to_string(dim_) + ")";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             context_->GetNodeName(), "conv_states", std::to_string(convStatesDim).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -453,7 +459,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
         }
         int64_t indicesBatch = indicesOriginShape.GetDim(DIM_0);
         if (indicesBatch != batchSize_) {
-            std::string reasonMsg = "Shape [0] of cache_indices must be equal to batch_size (" + std::to_string(batchSize_) + ")";
+            std::string reasonMsg =
+                "Shape [0] of cache_indices must be equal to batch_size (" +
+                std::to_string(batchSize_) + ")";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 context_->GetNodeName(), "cache_indices", std::to_string(indicesBatch).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -469,7 +477,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
         }
         int64_t indicesLen = indicesOriginShape.GetDim(DIM_0);
         if (indicesLen != batchSize_) {
-            std::string reasonMsg = "Shape [0] of cache_indices must be equal to batch_size (" + std::to_string(batchSize_) + ")";
+            std::string reasonMsg =
+                "Shape [0] of cache_indices must be equal to batch_size (" +
+                std::to_string(batchSize_) + ")";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 context_->GetNodeName(), "cache_indices", std::to_string(indicesLen).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -488,7 +498,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
     auto acceptShape = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKEN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, acceptShape);
     auto acceptOriginShape = acceptShape->GetOriginShape();
-
     if (acceptOriginShape.GetDimNum() != DIM_1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "num_accepted_token",
@@ -499,7 +508,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
 
     int64_t acceptLen = acceptOriginShape.GetDim(DIM_0);
     if (acceptLen != batchSize_) {
-        std::string reasonMsg = "Shape [0] of num_accepted_token must be equal to batch_size (" + std::to_string(batchSize_) + ")";
+        std::string reasonMsg =
+            "Shape [0] of num_accepted_token must be equal to batch_size (" +
+            std::to_string(batchSize_) + ")";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             context_->GetNodeName(), "num_accepted_token", std::to_string(acceptLen).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -522,7 +533,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
     }
 
     auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
-
     if (queryStartLocOriginShape.GetDimNum() != DIM_1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "query_start_loc",
@@ -619,7 +629,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
     }
     if (numAcceptedTokenDtype_ != ge::DataType::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(
-            context_->GetNodeName(), "num_accepted_token", Ops::Base::ToString(numAcceptedTokenDtype_).c_str(), "INT32");
+            context_->GetNodeName(), "num_accepted_token",
+            Ops::Base::ToString(numAcceptedTokenDtype_).c_str(), "INT32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
