@@ -95,6 +95,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
@@ -368,10 +369,17 @@ ge::graphStatus LIInfoParser::GetN1Size()
         n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(1));
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
-
-    OP_CHECK_IF(n1Size_ > QUERY_HEAD_NUM_LIMIT, OP_LOGE(opName_, "N1 is %u, but N1 must be no greater than %u.",
-                n1Size_, QUERY_HEAD_NUM_LIMIT), return ge::GRAPH_FAILED);
-
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(n1Size_ != QUERY_HEAD_NUM_LIMIT_950_64 && n1Size_ != QUERY_HEAD_NUM_LIMIT_950_32 &&
+                    n1Size_ != QUERY_HEAD_NUM_LIMIT_950_24 && n1Size_ != QUERY_HEAD_NUM_LIMIT_950_16 &&
+                    n1Size_ != QUERY_HEAD_NUM_LIMIT_950_8,
+               OP_LOGE(opName_, "N1 is %u, N1 must equal 64 or 32 or 24 or 16 or 8.",
+                    n1Size_),
+               return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(n1Size_ > QUERY_HEAD_NUM_LIMIT, OP_LOGE(opName_, "N1 is %u, but N1 must be no greater than %u.",
+                    n1Size_, QUERY_HEAD_NUM_LIMIT), return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -671,6 +679,7 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.platformInfo = platformInfo_;
     liInfo.opParamInfo = opParamInfo_;
     liInfo.socVersion = socVersion_;
+    liInfo.npuArch = npuArch_;
 
     liInfo.bSize = bSize_;
     liInfo.n1Size = n1Size_;
