@@ -67,13 +67,11 @@ constexpr uint64_t MAX_M_VALUE = 128UL;
 constexpr uint32_t MTE_M_CORE_NUM = 2UL;
 
 // tilingKey
-constexpr uint32_t SOFT_SYNC_M = 128;
 constexpr uint32_t TILE_K_M = 65;
 constexpr uint32_t INIT_TILINGKEY = 10000UL;
 constexpr uint64_t TILINGKEY_SMOOTH_SCALE = 1UL;
 constexpr uint64_t TILINGKEY_OPTIONAL_OUTPUT = 10UL;
 constexpr uint64_t TILINGKEY_TILE_K = 100UL;
-constexpr uint64_t TILINGKEY_SOFT_SYNC = 1000UL;
 
 // matmul tiling 切分
 constexpr int32_t SINGLE_CORE_M = 128;

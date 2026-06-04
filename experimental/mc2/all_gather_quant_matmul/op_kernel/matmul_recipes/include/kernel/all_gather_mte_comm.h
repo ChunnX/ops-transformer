@@ -61,6 +61,10 @@ constexpr static uint64_t WIN_AIC_ZERONE_FLAG_OFFSET = 850UL * 1024UL; // C 核 
 constexpr static uint64_t ZERONE_STATUS_ALIGN = 64UL;   // 0/1 标志位 64B 对齐
 constexpr static uint32_t ZERONE_STATUS_POS = 0U;       // 0/1 标志位在 64B 块中的 index
 constexpr static uint32_t DATA_START_OFFSET = 1024UL * 1024UL; // 0 区数据起始偏移 1MB
+constexpr static uint32_t WIN_FLAG_MAX_VAL = 1UL;
+constexpr float UNINITIALIZED_FLAG_VAL = -1.0f;
+constexpr float STATUS_FLAG_VAL = 1.0f;
+constexpr float STATUS_FLAG_THREDSHOLD = 0.5f;
 
 // 状态区划分说明（见文件头注释中的 ASCII 图）
 
@@ -172,7 +176,7 @@ __aicore__ inline void MTECommunication<AllGatherTemplateType>::ReadAndFlipWinFl
     // }
 
     // 翻转标志位并写回
-    selfWinFlagGMTensor_.SetValue(ZERONE_STATUS_POS, 1 - winFlag_);
+    selfWinFlagGMTensor_.SetValue(ZERONE_STATUS_POS, WIN_FLAG_MAX_VAL - winFlag_);
     DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfWinFlagGMTensor_);
 }
 
@@ -224,7 +228,7 @@ __aicore__ inline void MTECommunication<AllGatherTemplateType>::WriteStatusToWin
     LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
     DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM);
     SyncFunc<AscendC::HardEvent::V_S>();
-    statusTensor.SetValue(0, (float)1.0);
+    statusTensor.SetValue(0, STATUS_FLAG_VAL);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
 
     // 循环内只发 MTE3，向所有 rank 写同一份 statusTensor
@@ -258,7 +262,7 @@ __aicore__ inline void MTECommunication<AllGatherTemplateType>::ReadStatus()
     uint32_t offset = aivId_ * rankSize_ * FLOAT_UB_ALIGN_NUM;
     selfStatusWinTensor.SetGlobalBuffer((__gm__ float*)(stateGM));
     LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
-    float flag = 0;
+    float flag = UNINITIALIZED_FLAG_VAL;
     uint32_t statusCnt = rankSize_ * FLOAT_UB_ALIGN_NUM;
     SumParams sumParams{1, statusCnt, statusCnt};
 
@@ -268,8 +272,8 @@ __aicore__ inline void MTECommunication<AllGatherTemplateType>::ReadStatus()
     // }
 
     // 容差范围：[rankSize - 0.5, rankSize + 0.5)，避免浮点精度问题
-    float minTarget = rankSize_ - (float)0.5;
-    float maxTarget = rankSize_ + (float)0.5;
+    float minTarget = rankSize_ - STATUS_FLAG_THREDSHOLD;
+    float maxTarget = rankSize_ + STATUS_FLAG_THREDSHOLD;
     uint32_t loopCnt = 0;
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();

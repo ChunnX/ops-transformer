@@ -36,6 +36,8 @@ using namespace AscendC;
 // ── 常量定义 ──────────────────────────────────────────────────────────
 constexpr static uint32_t NO_TILE_K = 1U;              // SyncMode 值：不切 K 路径
 constexpr static uint32_t X_PER_BLOCK_NUM = 512U;      // 单次搬运 x 元素数（8bit dtype 时 512 个 = 512B）
+constexpr static uint16_t CROSS_CORE_FLAG_NUM_NINE = 9;
+constexpr static uint16_t CROSS_CORE_INNER_CUBE_VEC_SYNC_MODE = 0x2;
 constexpr static uint64_t ALLOC_UB_SPACE = 200UL * 1024UL; // UB 可用空间上限 200KB
 
 /*!
@@ -74,7 +76,6 @@ public:
 private:
     __aicore__ inline void ReadDataBlock(uint64_t curXOffset, uint32_t mCnt);
     __aicore__ inline void ReadScales();
-    __aicore__ inline void SetCvAtomicFlag(uint32_t mBlockIdx, uint32_t kBlockIdx, uint32_t flagValue);
 
     // ── 基本维度参数 ──
     uint64_t rankSize_{0};              // 总 rank 数
@@ -119,7 +120,6 @@ private:
     MTECommunication<AllGatherTemplateType> mteComm_;   // MTE 底层通信（win 区地址、状态读写）
 
     // ── Tensor 资源 ──
-    LocalTensor<int32_t> atomicAddTensor_;             // CV 同步用原子加本地缓冲
     GlobalTensor<int8_t> remoteWinXTensor_;             // 远端 win 区 x 数据 GM 映射
     GlobalTensor<ScalesType> remoteWinScaleTensor_;     // 远端 win 区 scale GM 映射
     GlobalTensor<int8_t> localWinXTensor_;              // 本端 win 区 x 数据 GM 映射
@@ -133,7 +133,6 @@ private:
     // xInQueue: 双 buffer 队列，用于远端→UB→本端的数据中转
     // scaleInQue: 单 buffer 队列，用于 scale 的 UB 中转
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xInQueue_, scaleInQue;
-    TBuf<> atomicAddBuf_;              // CV 同步原子加缓冲（64B 对齐）
 };
 
 /*!
@@ -218,7 +217,6 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::InitParams(
  *
  * UB 空间分配优先级：
  *   1. scaleInQue: scaleSize_（scale 数据中转）
- *   2. atomicAddBuf_: 64B（CV 同步标志位）
  *   3. xInQueue_: 双 buffer，使用剩余空间（按 X_BLOCK_BYTES 对齐）
  *   4. mteComm_ 状态缓冲: writeStateBuf_ + readStateBuf_ + stateResetBuf_
  *
@@ -230,7 +228,7 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::InitBuffer(TPipe *tP
     tPipe->Reset(); // UB 资源复位（规避 Ascend C 已知问题）
 
     // 计算除 xInQueue 外已分配的 UB 空间
-    uint64_t usedSpace = scaleSize_ + CV_STATE_ALIGN * 2 + (rankSize_ * 2 + 1) * UB_ALIGN_BYTES;
+    uint64_t usedSpace = scaleSize_ + (rankSize_ * 2 + 1) * UB_ALIGN_BYTES;
 
     // xInQueue 双 buffer，每个 buffer 按 X_BLOCK_BYTES 对齐
     uint64_t availableSpaceForXInQueue = (ALLOC_UB_SPACE - usedSpace) / BUFFER_NUM / X_BLOCK_BYTES * X_BLOCK_BYTES;
@@ -241,9 +239,6 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::InitBuffer(TPipe *tP
 
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xInQueueSize_);
     tPipe->InitBuffer(scaleInQue, 1, scaleSize_);
-    tPipe->InitBuffer(atomicAddBuf_, CV_STATE_ALIGN); // 64B 对齐的原子加缓冲
-
-    atomicAddTensor_ = atomicAddBuf_.Get<int32_t>();
 
     // 初始化底层通信模块的 UB 缓冲（状态位读写用）
     mteComm_.InitBuffer(tPipe);
@@ -518,34 +513,6 @@ __aicore__ inline GM_ADDR AllGatherMte<AllGatherTemplateType>::GetWinStatusAddrG
 }
 
 /*!
- * \brief 设置 CV 同步标志位（通过 atomicAdd 累加已完成行数）
- *
- * CV 软同步机制：
- *   - 每个 (mBlock, kBlock) 对应一个 64B 对齐的标志位
- *   - 多个核可能向同一个标志位累加（同 mBlock 不同核各自搬运部分行）
- *   - AIC 侧轮询标志位，当累加值 == singleCoreM 时表示该块数据就绪
- *
- * @param mBlockIdx  M 方向块索引
- * @param kBlockIdx  K 方向块索引
- * @param flagValue  本次累加的值（搬运的行数）
- */
-template <AllGatherTemplateTypeClass>
-__aicore__ inline void AllGatherMte<AllGatherTemplateType>::SetCvAtomicFlag(uint32_t mBlockIdx, uint32_t kBlockIdx, uint32_t flagValue)
-{
-    GM_ADDR cvFlagAddr = CalcCvFlagAddr(mBlockIdx, kBlockIdx);
-    PipeBarrier<PIPE_ALL>();
-
-    // 将 flagValue 写入本地缓冲，然后通过 atomicAdd 累加到远端标志位
-    atomicAddTensor_.SetValue(0, flagValue);
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    remoteCvFlagTensor_.SetGlobalBuffer((__gm__ int32_t*)cvFlagAddr);
-    SetAtomicAdd<int32_t>();
-    DataCopy(remoteCvFlagTensor_, atomicAddTensor_, CV_STATE_ALIGN / sizeof(int32_t));
-    SetAtomicNone();
-    PipeBarrier<PIPE_ALL>();
-}
-
-/*!
  * \brief 执行 AllGather：从对端 win 区读取数据写入本端 win 区
  *
  * Win 区数据布局：
@@ -563,11 +530,6 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::SetCvAtomicFlag(uint
  *    K 方向分 kDim_ 段，每段 kMteCoreK_ 长。
  *    每个 K 块之间 PipeBarrier 硬同步，确保所有核完成当前 K 块后再继续。
  *    K 交错：curXOffset + curKBlock * X_PER_BLOCK_NUM * 2（stride=2 因为 kDim_=2）
- *
- * 3. CV 软同步（SyncMode>1）：
- *    与切 K 硬同步类似，但用 atomicAdd 写 CV 标志位替代 PipeBarrier。
- *    AIC 侧可细粒度轮询每个 (mBlock, kBlock) 的就绪状态，实现通信-计算重叠。
- *    如果当前核的 M 范围跨越 baseM 块边界，则分两轮搬运。
  *
  * @param allGatherDataAddr   AllGather 调试输出 x 缓冲区地址
  * @param allGatherScalesAddr AllGather 调试输出 scale 缓冲区地址
@@ -627,64 +589,28 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::ExecuteAllGather(
             ReadDataBlock(innerCurXOffset, mTail);
         }
         SyncAll<true>();
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(9);
+        CrossCoreSetFlag<CROSS_CORE_INNER_CUBE_VEC_SYNC_MODE, PIPE_MTE3>(CROSS_CORE_FLAG_NUM_NINE);
     } else {
+        // ── 模式 2：切 K 硬同步 ──
         // 当前 K 段的循环次数
         uint32_t kLoop = kMteCoreK_ / X_PER_BLOCK_NUM;
         if (kBlockIdx_ < tileK_ % kDim_) {
             kLoop++;
         }
-
         // 当前核数据在 win 区中的起始偏移
         uint32_t curXOffset = coreInnerMIndex_ * K_ + kStartIndex_;
-        if constexpr (SyncMode > NO_TILE_K) {
-            // ── 模式 3：CV 软同步 ──
-            // 检查 M 范围是否跨越 baseM 块边界
-            uint32_t mCurOffset = M_ / singleCoreM_;
-            uint32_t mTile = 1;
-            uint32_t mFlagCount = mMteCoreM_;
-            uint32_t baseMIndex = mStartIndex_ / singleCoreM_;
 
-            // 若跨越 baseM 边界，分两轮：第一轮到边界，第二轮从边界到 mEndIndex_
-            if (((mEndIndex_ - 1) / singleCoreM_ - mStartIndex_ / singleCoreM_) > 0) {
-                mTile = 2;
-                mFlagCount = Ceil(mStartIndex_, singleCoreM_) * singleCoreM_ - mStartIndex_;
-            }
-
-            // 第一轮：搬运并设置 CV 标志位
-            for (uint64_t curKBlock = 0; curKBlock < kLoop; ++curKBlock) {
-                // K 交错：步长 * 2（因为 kDim_=2，两个 K 块交错存储）
-                uint64_t innerCurXOffset = curXOffset + curKBlock * X_PER_BLOCK_NUM * 2;
-                ReadDataBlock(innerCurXOffset, mFlagCount);
-                SetCvAtomicFlag(baseMIndex, kStartIndex_ / X_PER_BLOCK_NUM + curKBlock * 2, mFlagCount);
-            }
-
-            // 第二轮：如果 M 范围跨越了 baseM 边界
-            if (mTile > 1) {
-                curXOffset += mFlagCount * K_;
-                mFlagCount = mEndIndex_ - Ceil(mStartIndex_, singleCoreM_) * singleCoreM_;
-                baseMIndex++;
-                for (uint64_t curKBlock = 0; curKBlock < kLoop; ++curKBlock) {
-                    uint64_t innerCurXOffset = curXOffset + curKBlock * X_PER_BLOCK_NUM * 2;
-                    ReadDataBlock(innerCurXOffset, mFlagCount);
-                    SetCvAtomicFlag(baseMIndex, kStartIndex_ / X_PER_BLOCK_NUM + curKBlock * 2, mFlagCount);
-                }
-            }
+        // 每个 K 块后 PipeBarrier 确保所有核同步
+        for (uint64_t curKBlock = 0; curKBlock < kLoop; ++curKBlock) {
+            uint64_t innerCurXOffset = curXOffset + curKBlock * X_PER_BLOCK_NUM * 2;
+            ReadDataBlock(innerCurXOffset, mMteCoreM_);
             PipeBarrier<PIPE_MTE3>();
-        } else {
-            // ── 模式 2：切 K 硬同步 ──
-            // 每个 K 块后 PipeBarrier 确保所有核同步
-            for (uint64_t curKBlock = 0; curKBlock < kLoop; ++curKBlock) {
-                uint64_t innerCurXOffset = curXOffset + curKBlock * X_PER_BLOCK_NUM * 2;
-                ReadDataBlock(innerCurXOffset, mMteCoreM_);
-                PipeBarrier<PIPE_MTE3>();
-                SyncAll<true>();
-                CrossCoreSetFlag<0x2, PIPE_MTE3>(9);
-            }
-            if (kLoop < ((tileK_ + kDim_ - 1) / kDim_)) {
-                SyncAll<true>();
-                CrossCoreSetFlag<0x2, PIPE_MTE3>(9);
-            }
+            SyncAll<true>();
+            CrossCoreSetFlag<CROSS_CORE_INNER_CUBE_VEC_SYNC_MODE, PIPE_MTE3>(CROSS_CORE_FLAG_NUM_NINE);
+        }
+        if (kLoop < ((tileK_ + kDim_ - 1) / kDim_)) {
+            SyncAll<true>();
+            CrossCoreSetFlag<CROSS_CORE_INNER_CUBE_VEC_SYNC_MODE, PIPE_MTE3>(CROSS_CORE_FLAG_NUM_NINE);
         }
     }
 }
