@@ -78,6 +78,12 @@ private:
         GlobalTensor<int32_t> &actualSeqLensGm, SLILayout layout, int64_t &accumLen);
     __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
     __aicore__ inline int64_t GetInvalidS1Size(int64_t actualSeqLensQ, int64_t actualSeqLensK);
+    __aicore__ inline void CalcCoreClearRange(int64_t totalSize, int64_t totalCoreNum,
+        int64_t &clearStart, int64_t &clearEnd);
+    template <typename CLEAR_T>
+    __aicore__ inline void ClearInvalidS1Output(GlobalTensor<CLEAR_T> &outputGm,
+        int64_t clearStart, int64_t clearEnd, int64_t invalidS1Base,
+        int64_t invalidS1Size, int64_t gmS1Base, int64_t rowSize);
     __aicore__ inline void InitInvalidS1Outputs();
     __aicore__ inline int64_t FindBIndex(int64_t bIndex, int64_t curIndex, int64_t &accumulateLen);
     __aicore__ inline int64_t GetEndS1(int64_t bIdx);
@@ -344,85 +350,106 @@ __aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::GetInvalid
 }
 
 template <typename SLIT>
+__aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::CalcCoreClearRange(
+    int64_t totalSize, int64_t totalCoreNum, int64_t &clearStart, int64_t &clearEnd)
+{
+    int64_t singleCoreSize = CeilDiv(totalSize, totalCoreNum);
+    clearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreSize, totalSize);
+    clearEnd = Min(clearStart + singleCoreSize, totalSize);
+}
+
+template <typename SLIT>
+template <typename CLEAR_T>
+__aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::ClearInvalidS1Output(
+    GlobalTensor<CLEAR_T> &outputGm, int64_t clearStart, int64_t clearEnd, int64_t invalidS1Base,
+    int64_t invalidS1Size, int64_t gmS1Base, int64_t rowSize)
+{
+    int64_t segmentStart = invalidS1Base * rowSize;
+    int64_t segmentEnd = segmentStart + invalidS1Size * rowSize;
+    int64_t localStart = Max(clearStart, segmentStart);
+    int64_t localEnd = Min(clearEnd, segmentEnd);
+    if (localStart < localEnd) {
+        int64_t gmOffset = gmS1Base * rowSize + localStart - segmentStart;
+        AscendC::InitOutput(outputGm[gmOffset], localEnd - localStart, static_cast<CLEAR_T>(0));
+    }
+}
+
+template <typename SLIT>
 __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1Outputs()
 {
     if ASCEND_IS_AIV {
         int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
-        int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
+        int64_t qRowSize = constInfo.gSizeQuery * constInfo.dSizeQuery;
+        int64_t dwRowSize = constInfo.gSizeQueryIndex;
+        int64_t softmaxRowSize = constInfo.n2Size * topKSize;
         int64_t totalInvalidS1Size = 0;
-        for (int64_t bIdx = 0; bIdx < constInfo.bSize; ++bIdx) {
-            int64_t accumS1Len = 0;
-            int64_t accumS2Len = 0;
-            int64_t actualSeqLensQ = 0;
-            int64_t actualSeqLensK = 0;
-            if constexpr (LAYOUT_T == SLILayout::TND) {
-                actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
-                actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
-            } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-                actualSeqLensQ = constInfo.s1Size;
-                actualSeqLensK = constInfo.s2Size;
-                accumS1Len = bIdx * constInfo.s1Size;
-            }
 
-            totalInvalidS1Size += GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize; ++bIdx) {
+                int64_t accumS1Len = 0;
+                int64_t accumS2Len = 0;
+                int64_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
+                    actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                int64_t actualSeqLensK = 0;
+                if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                    actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
+                        actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                } else {
+                    actualSeqLensK = constInfo.s2Size;
+                }
+                totalInvalidS1Size += GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+            }
+        } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+            totalInvalidS1Size = GetInvalidS1Size(constInfo.s1Size, constInfo.s2Size) * constInfo.bSize;
         }
 
-        int64_t dqTotalSize = totalInvalidS1Size * qBaseOffset;
-        int64_t dwTotalSize = totalInvalidS1Size * constInfo.gSizeQueryIndex;
-        int64_t softmaxTotalSize = totalInvalidS1Size * constInfo.n2Size * topKSize;
-        int64_t singleCoreDqSize = CeilDiv(dqTotalSize, totalCoreNum);
-        int64_t singleCoreDwSize = CeilDiv(dwTotalSize, totalCoreNum);
-        int64_t singleCoreSoftmaxSize = CeilDiv(softmaxTotalSize, totalCoreNum);
-        int64_t dqClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreDqSize, dqTotalSize);
-        int64_t dqClearEnd = Min(dqClearStart + singleCoreDqSize, dqTotalSize);
-        int64_t dwClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreDwSize, dwTotalSize);
-        int64_t dwClearEnd = Min(dwClearStart + singleCoreDwSize, dwTotalSize);
-        int64_t softmaxClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreSoftmaxSize, softmaxTotalSize);
-        int64_t softmaxClearEnd = Min(softmaxClearStart + singleCoreSoftmaxSize, softmaxTotalSize);
-        int64_t invalidS1Base = 0;
-        for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
-            int64_t accumS1Len = 0;
-            int64_t accumS2Len = 0;
-            int64_t actualSeqLensQ = 0;
-            int64_t actualSeqLensK = 0;
-            if constexpr (LAYOUT_T == SLILayout::TND) {
-                actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
-                actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
-            } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-                actualSeqLensQ = constInfo.s1Size;
-                actualSeqLensK = constInfo.s2Size;
-                accumS1Len = bIdx * constInfo.s1Size;
-            }
+        int64_t dqClearStart = 0;
+        int64_t dqClearEnd = 0;
+        int64_t dwClearStart = 0;
+        int64_t dwClearEnd = 0;
+        int64_t softmaxClearStart = 0;
+        int64_t softmaxClearEnd = 0;
+        CalcCoreClearRange(totalInvalidS1Size * qRowSize, totalCoreNum, dqClearStart, dqClearEnd);
+        CalcCoreClearRange(totalInvalidS1Size * dwRowSize, totalCoreNum, dwClearStart, dwClearEnd);
+        CalcCoreClearRange(totalInvalidS1Size * softmaxRowSize, totalCoreNum, softmaxClearStart, softmaxClearEnd);
 
-            int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
-            int64_t dqSegmentStart = invalidS1Base * qBaseOffset;
-            int64_t dqSegmentEnd = dqSegmentStart + invalidS1Size * qBaseOffset;
-            int64_t dqLocalStart = Max(dqClearStart, dqSegmentStart);
-            int64_t dqLocalEnd = Min(dqClearEnd, dqSegmentEnd);
-            if (dqLocalStart < dqLocalEnd) {
-                int64_t gmOffset = accumS1Len * qBaseOffset + dqLocalStart - dqSegmentStart;
-                AscendC::InitOutput(dQueryIndexGm[gmOffset], dqLocalEnd - dqLocalStart, static_cast<OUT_T>(0));
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            int64_t invalidS1Base = 0;
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
+                int64_t accumS1Len = 0;
+                int64_t accumS2Len = 0;
+                int64_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
+                    actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                int64_t actualSeqLensK = 0;
+                if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                    actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
+                        actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                } else {
+                    actualSeqLensK = constInfo.s2Size;
+                }
+                int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+                ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, qRowSize);
+                ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, dwRowSize);
+                ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, softmaxRowSize);
+                invalidS1Base += invalidS1Size;
             }
+        } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+            int64_t invalidS1Size = GetInvalidS1Size(constInfo.s1Size, constInfo.s2Size);
+            int64_t invalidS1Base = 0;
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
+                int64_t batchS1Base = bIdx * constInfo.s1Size;
 
-            int64_t dwSegmentStart = invalidS1Base * constInfo.gSizeQueryIndex;
-            int64_t dwSegmentEnd = dwSegmentStart + invalidS1Size * constInfo.gSizeQueryIndex;
-            int64_t dwLocalStart = Max(dwClearStart, dwSegmentStart);
-            int64_t dwLocalEnd = Min(dwClearEnd, dwSegmentEnd);
-            if (dwLocalStart < dwLocalEnd) {
-                int64_t gmOffset = accumS1Len * constInfo.gSizeQueryIndex + dwLocalStart - dwSegmentStart;
-                AscendC::InitOutput(dWeightGm[gmOffset], dwLocalEnd - dwLocalStart, static_cast<T>(0));
+                ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, qRowSize);
+                ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, dwRowSize);
+                ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, softmaxRowSize);
+                invalidS1Base += invalidS1Size;
             }
-
-            int64_t softmaxRowSize = constInfo.n2Size * topKSize;
-            int64_t softmaxSegmentStart = invalidS1Base * softmaxRowSize;
-            int64_t softmaxSegmentEnd = softmaxSegmentStart + invalidS1Size * softmaxRowSize;
-            int64_t softmaxLocalStart = Max(softmaxClearStart, softmaxSegmentStart);
-            int64_t softmaxLocalEnd = Min(softmaxClearEnd, softmaxSegmentEnd);
-            if (softmaxLocalStart < softmaxLocalEnd) {
-                int64_t gmOffset = accumS1Len * softmaxRowSize + softmaxLocalStart - softmaxSegmentStart;
-                AscendC::InitOutput(softmaxOutGm[gmOffset], softmaxLocalEnd - softmaxLocalStart, static_cast<T>(0));
-            }
-            invalidS1Base += invalidS1Size;
         }
     }
     SyncAll();
@@ -556,10 +583,16 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Process()
         int32_t actualSeqLensQ = 0;
         int32_t actualSeqLensK = 0;
         if constexpr (LAYOUT_T == SLILayout::TND) {
-            s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
-            s1EndIdxThisBatch = (!lastB) ? GetEndS1Etx(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T) : s1EndIdx;
             actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
-            actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+            if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T,
+                                                  accumS2Len);
+            } else {
+                actualSeqLensK = constInfo.s2Size;
+                accumS2Len = bIdx * constInfo.s2Size;
+            }
+            s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
+            s1EndIdxThisBatch = (!lastB) ? actualSeqLensQ : s1EndIdx;
         } else if constexpr (LAYOUT_T == SLILayout::BSND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
             s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;
