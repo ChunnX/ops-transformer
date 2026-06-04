@@ -19,7 +19,6 @@ using namespace AscendC;
 
 namespace fa_base_matmul {
 
-constexpr uint32_t UNITFLAG_DISABLE = 0;
 constexpr uint32_t UNITFLAG_ENABLE = 2;
 constexpr uint32_t UNITFLAG_EN_OUTER_LAST = 3;
 static constexpr uint32_t FP16_ONE_FRACTAL_ELEMENT = 16; // 一个分形512B,16*16个fp16
@@ -27,7 +26,6 @@ static constexpr uint32_t INT4_ONE_FRACTAL_ELEMENT = 64; // 一个分形512B,16*
 static constexpr uint32_t ONE_FRACTAL_H_ELEMENT = 16; // 一个分形512B,height方向为16个element
 static constexpr uint32_t ONE_FRACTAL_W_BYTE = 32; // 一个分形512B,weight方向为32B
 static constexpr uint32_t LOAD3D_L1W_SIZE = 16;
-static constexpr uint32_t MMAD_MN_SIZE_10 = 10;
 static constexpr uint8_t LOAD3D_STRIDE_W = 1;
 static constexpr uint8_t LOAD3D_STRIDE_H = 1;
 static constexpr uint8_t LOAD3D_FILTER_W = 1;
@@ -53,22 +51,6 @@ struct MMParam {
                             // 外部使用时，在外层k循环的最后一轮将该参数配置为3
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
-
-__aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
-                                      bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
-                                      uint32_t unitFlag = 0, uint32_t realM = 0)
-{
-    return {.singleM = singleM,
-            .singleN = singleN,
-            .singleK = singleK,
-            .isLeftTranspose = isLeftTranspose,
-            .isRightTranspose = isRightTranspose,
-            .cmatrixInitVal = cmatrixInitVal,
-            .isOutKFisrt = isOutKFisrt,
-            .unitFlag = unitFlag,
-            .realM = realM
-            };
-}
 
 enum class ABLayout {
     MK = 0,
