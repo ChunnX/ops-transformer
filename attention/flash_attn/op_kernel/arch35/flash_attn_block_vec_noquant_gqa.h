@@ -112,8 +112,9 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
-    // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
+    // 与 FA_MTE3_TO_V_0/1 错开，避免 ClearOutput 与 vec1/vec2 流水争用同一 MTE3_V id
+    static constexpr uint32_t initOutputEventId = 6U;
+    // 静态 event ID 常量（避开 6/7 为跨核 mode4；initOutput 已占用 MTE3_V-6）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
     static constexpr uint32_t FA_V_TO_MTE3_0     = 0U;
@@ -125,9 +126,22 @@ public:
     // stage1 双缓冲的 MTE3→V 反向同步（MTE3_V 通道 3/5）
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
     static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
-    // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
+    // attenMask ping/pong 的 MTE2→V（subBlock0: 0/1；subBlock1: 8/9，与 vec2=2、sink=4 错开）
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
+    static constexpr uint32_t FA_ATTEN_MASK_SB1_MTE2_V_0 = 8U;
+    static constexpr uint32_t FA_ATTEN_MASK_SB1_MTE2_V_1 = 9U;
+    // subBlock1 专用 pipe event（mode4 flagId 8/9；subBlock0 仍用 0/1/3/5）
+    static constexpr uint32_t FA_MTE3_TO_V_SB1_0 = 8U;
+    static constexpr uint32_t FA_MTE3_TO_V_SB1_1 = 9U;
+    static constexpr uint32_t FA_V_TO_MTE3_SB1_0 = 8U;
+    static constexpr uint32_t FA_V_TO_MTE3_SB1_1 = 9U;
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_SB1_0 = 8U;
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_SB1_1 = 9U;
+    static constexpr uint32_t FA_MTE2_TO_V_SB1_ID = 8U;
+    static constexpr uint32_t FA_V_TO_MTE2_SB1_ID = 8U;
+    static constexpr uint32_t FA_MTE3_TO_MTE2_SB1_ID = 8U;
+    static constexpr uint32_t FA_MTE2_TO_V_SINK_SB1 = 8U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -182,6 +196,7 @@ public:
     LocalTensor<uint8_t> commonBuf;
     LocalTensor<INPUT_T> stage1OutBuf[2];
     LocalTensor<uint8_t> attenMaskBuf[2];
+    LocalTensor<uint8_t> attenMaskSub1Buf[2];
     LocalTensor<T> stage2OutBuf;
     uint32_t mte3ToVId[2]; // 静态分配: {0,1} — Vec2 stage2OutBuf 的 MTE3→V
     uint32_t vToMte3Id[2]; // 静态分配: {0,1} — Vec1 stage1 的 V→MTE3 正向
@@ -288,12 +303,22 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
+            // initOutput 的 MTE3_V event 双 subblock 共享；仅 subBlock0 做 Set/Wait，避免并行 Wait 死锁
+            if (constInfo.subBlockIdx == 0) {
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                InitOutputSingleCore();
+                if (constInfo.isSoftmaxLseEnable) {
+                    InitLseOutputSingleCore();
+                }
+            }
+            PipeBarrier<PIPE_ALL>();
+            if (constInfo.subBlockIdx == 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
+            PipeBarrier<PIPE_ALL>();
             // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
             // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
             // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
@@ -494,7 +519,9 @@ public:
                                                   LocalTensor<float> &maxUb)
     {
         CopySinkIn(runInfo);
-        WaitFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
+        const uint32_t sinkMte2VId =
+            (constInfo.subBlockIdx == 0) ? FA_MTE2_TO_V_SINK : FA_MTE2_TO_V_SINK_SB1;
+        WaitFlag<HardEvent::MTE2_V>(sinkMte2VId);
         SinkSubExpAddGSFusedVF<float, INPUT_T>(this->sinkBuf, sumUb, maxUb, runInfo.actVecMSize);
     }
 
@@ -510,7 +537,9 @@ public:
 
         DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
         DataCopyPad(this->sinkBuf, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
-        SetFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
+        const uint32_t sinkMte2VId =
+            (constInfo.subBlockIdx == 0) ? FA_MTE2_TO_V_SINK : FA_MTE2_TO_V_SINK_SB1;
+        SetFlag<HardEvent::MTE2_V>(sinkMte2VId);
     }
 
     __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
@@ -522,9 +551,10 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
-            // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
-            PipeBarrier<PIPE_ALL>();
-            attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
+            const uint32_t maskBufIdx = runInfo.loop & (DB - 1);
+            attenMaskUb = (constInfo.subBlockIdx == 0) ? this->attenMaskBuf[maskBufIdx] :
+                                                         this->attenMaskSub1Buf[maskBufIdx];
+            // 各 subblock 按 vecMbaseIdx 搬各自 M 条带的 mask（runInfo 内已含偏移）
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
             PipeBarrier<PIPE_MTE2>();
             PipeBarrier<PIPE_V>();
@@ -615,14 +645,14 @@ public:
             }
         }
         if constexpr (hasAtten) {
-            // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
+            // 替代 attenMaskInQue.FreeTensor：双 subblock 均完成 V 读 mask 后再进入后续流水
             PipeBarrier<PIPE_V>();
             PipeBarrier<PIPE_ALL>();
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
-        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 MTE3 才能读 stage1OutBuf
+        // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 V/MTE3 握手再 DataCopy
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
@@ -723,9 +753,12 @@ public:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
-        constexpr uint32_t mte2ToV    = FA_MTE2_TO_V_ID;
-        constexpr uint32_t vToMte2    = FA_V_TO_MTE2_ID;
-        constexpr uint32_t mte3ToMte2 = FA_MTE3_TO_MTE2_ID;
+        const uint32_t mte2ToV =
+            (constInfo.subBlockIdx == 0) ? FA_MTE2_TO_V_ID : FA_MTE2_TO_V_SB1_ID;
+        const uint32_t vToMte2 =
+            (constInfo.subBlockIdx == 0) ? FA_V_TO_MTE2_ID : FA_V_TO_MTE2_SB1_ID;
+        const uint32_t mte3ToMte2 =
+            (constInfo.subBlockIdx == 0) ? FA_MTE3_TO_MTE2_ID : FA_MTE3_TO_MTE2_SB1_ID;
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
@@ -1036,8 +1069,10 @@ public:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
-        constexpr uint32_t mte2ToV = FA_MTE2_TO_V_ID;
-        constexpr uint32_t vToMte2 = FA_V_TO_MTE2_ID;
+        const uint32_t mte2ToV =
+            (constInfo.subBlockIdx == 0) ? FA_MTE2_TO_V_ID : FA_MTE2_TO_V_SB1_ID;
+        const uint32_t vToMte2 =
+            (constInfo.subBlockIdx == 0) ? FA_V_TO_MTE2_ID : FA_V_TO_MTE2_SB1_ID;
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
@@ -1151,27 +1186,37 @@ public:
         constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
         constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
 
-        // attenMask ping/pong（各 8192 bytes）
-        attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE,          8192U);
-        attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 8192U,  8192U);
+        // attenMask：subBlock0/1 各 ping/pong（各 8192 bytes，共 32768 bytes）
+        constexpr uint32_t MASK_OFF = BASE;
+        constexpr uint32_t MASK_SLOT = 8192U;
+        attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, MASK_OFF, MASK_SLOT);
+        attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, MASK_OFF + MASK_SLOT, MASK_SLOT);
+        if constexpr (hasAtten) {
+            attenMaskSub1Buf[0] = LocalTensor<uint8_t>(TPosition::VECIN, MASK_OFF + MASK_SLOT * 2U, MASK_SLOT);
+            attenMaskSub1Buf[1] = LocalTensor<uint8_t>(TPosition::VECIN, MASK_OFF + MASK_SLOT * 3U, MASK_SLOT);
+        }
         // stage2 输出（32768 bytes）
-        stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U).template ReinterpretCast<T>();
+        constexpr uint32_t STAGE2_OFF = MASK_OFF + MASK_SLOT * 4U;
+        stage2OutBuf = LocalTensor<uint8_t>(TPosition::VECIN, STAGE2_OFF, 32768U).template ReinterpretCast<T>();
         // stage1 输出 ping/pong（各 33024 bytes）
-        stage1OutBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 49152U, 33024U).template ReinterpretCast<INPUT_T>();
-        stage1OutBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 82176U, 33024U).template ReinterpretCast<INPUT_T>();
+        constexpr uint32_t STAGE1_OFF = STAGE2_OFF + 32768U;
+        stage1OutBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, STAGE1_OFF, 33024U).template ReinterpretCast<INPUT_T>();
+        stage1OutBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, STAGE1_OFF + 33024U, 33024U).template ReinterpretCast<INPUT_T>();
 
-        // Softmax 中间值：6400 bytes，紧跟 stage1[1] 末尾（BASE + 115200）
-        SoftmaxInitBuffer(BASE + 115200U);
+        // Softmax 中间值：6400 bytes，紧跟 stage1[1] 末尾
+        constexpr uint32_t SOFTMAX_OFF = STAGE1_OFF + 33024U * 2U;
+        SoftmaxInitBuffer(SOFTMAX_OFF);
 
-        // commonBuf：compile-time 条件，512 bytes（BASE + 121600）
+        // commonBuf：compile-time 条件，512 bytes
         constexpr bool hasCommonBuf = (s2BaseSize == 256U) ? (mBaseSize != 128U) : (!useDn);
+        constexpr uint32_t COMMON_OFF = SOFTMAX_OFF + 6400U;
         if constexpr (hasCommonBuf) {
-            commonBuf = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 121600U, 512U);
+            commonBuf = LocalTensor<uint8_t>(TPosition::VECIN, COMMON_OFF, 512U);
         }
 
-        // lseBuf / sinkBuf：runtime 条件，地址已在编译期固定（始终位于 commonBuf 区末尾之后）
+        // lseBuf / sinkBuf
         constexpr uint32_t commonBufSz = hasCommonBuf ? 512U : 0U;
-        constexpr uint32_t OFF_LSE = BASE + 121600U + commonBufSz;
+        constexpr uint32_t OFF_LSE = COMMON_OFF + commonBufSz;
         constexpr uint32_t LSE_BUF_SZ = (mBaseSize >> 1U) * 8U * sizeof(float);
         if (constInfo.isSoftmaxLseEnable) {
             lseBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE,
@@ -1183,26 +1228,46 @@ public:
         }
     }
 
+    // 进入 FD 前：仅用 PipeBarrier 排干 FA 流水（禁止 subBlock 不对称 WaitFlag，否则会与 SyncAll 互锁）
+    __aicore__ inline void DrainFaPipeEventsForFd()
+    {
+        if constexpr (hasAtten) {
+            PipeBarrier<PIPE_MTE2>();
+            PipeBarrier<PIPE_V>();
+        }
+        PipeBarrier<PIPE_ALL>();
+    }
+
     __aicore__ inline void AllocEventID()
     {
-        mte3ToVId[0] = FA_MTE3_TO_V_0;
-        mte3ToVId[1] = FA_MTE3_TO_V_1;
-        vToMte3Id[0] = FA_V_TO_MTE3_0;
-        vToMte3Id[1] = FA_V_TO_MTE3_1;
-        stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
-        stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        // 静态 event：每个 subblock 使用独立 id（对齐 TPipe AllocEventID 的 per-subblock 语义）
+        if (constInfo.subBlockIdx == 0) {
+            mte3ToVId[0] = FA_MTE3_TO_V_0;
+            mte3ToVId[1] = FA_MTE3_TO_V_1;
+            vToMte3Id[0] = FA_V_TO_MTE3_0;
+            vToMte3Id[1] = FA_V_TO_MTE3_1;
+            stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
+            stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        } else {
+            mte3ToVId[0] = FA_MTE3_TO_V_SB1_0;
+            mte3ToVId[1] = FA_MTE3_TO_V_SB1_1;
+            vToMte3Id[0] = FA_V_TO_MTE3_SB1_0;
+            vToMte3Id[1] = FA_V_TO_MTE3_SB1_1;
+            stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_SB1_0;
+            stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_SB1_1;
+        }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
@@ -1234,10 +1299,12 @@ public:
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
 
-        const uint32_t mte2ToVId =
-            (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_0 : FA_ATTEN_MASK_MTE2_V_1;
-        const uint32_t preMte2ToVId =
-            (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_1 : FA_ATTEN_MASK_MTE2_V_0;
+        const uint32_t mte2ToVId = (constInfo.subBlockIdx == 0) ?
+            ((bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_0 : FA_ATTEN_MASK_MTE2_V_1) :
+            ((bufIdx == 0U) ? FA_ATTEN_MASK_SB1_MTE2_V_0 : FA_ATTEN_MASK_SB1_MTE2_V_1);
+        const uint32_t preMte2ToVId = (constInfo.subBlockIdx == 0) ?
+            ((bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_1 : FA_ATTEN_MASK_MTE2_V_0) :
+            ((bufIdx == 0U) ? FA_ATTEN_MASK_SB1_MTE2_V_1 : FA_ATTEN_MASK_SB1_MTE2_V_0);
 
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
@@ -1253,7 +1320,8 @@ public:
 
         if (!IsSkipMaskForPre) {
             const uint32_t preBufIdx = 1U - bufIdx;
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
+            LocalTensor<uint8_t> attenMaskUbPre = (constInfo.subBlockIdx == 0) ?
+                this->attenMaskBuf[preBufIdx] : this->attenMaskSub1Buf[preBufIdx];
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
