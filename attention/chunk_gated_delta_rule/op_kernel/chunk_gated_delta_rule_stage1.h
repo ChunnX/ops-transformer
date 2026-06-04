@@ -2925,18 +2925,18 @@ private:
         (void)paraIdx;
 
         RawMmadOdd32LowerEven32InvPacked32(aicL0C_,
-                                             RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
+            RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         CopyL0CMatrixToHalfL1(aicHalfL1TileInv_, aicL0C_,
-                              C64_BLOCK32, C64_BLOCK32, RAW_MMAD_FINAL_UNIT_FLAG);
+            C64_BLOCK32, C64_BLOCK32, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToMte1();
 
         RawMmadOdd32InvOdd32TmpPacked32(aicHalfL1TileInv_, aicL0C_,
-                                              RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
+            RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         CopyL0CMatrixToPackedHalfL1(aicHalfL1PackedInv64_, aicL0C_, C64_BLOCK32, 0,
-                                    C64_BLOCK32, C64_BLOCK32, chunkSize_,
-                                    RAW_MMAD_FINAL_UNIT_FLAG);
+            C64_BLOCK32, C64_BLOCK32, chunkSize_,
+            RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToM();
         SyncFixToMte1();
     }
