@@ -68,7 +68,8 @@ if __name__ == "__main__":
         cases_list = [normalize_params(all_cases[name]) for name in run_cases]
         out = Path(args.perf_output)
 
-        script = build_perf_script(cases_list, args.perf_runs, args.perf_cold_thr)
+        script = build_perf_script(cases_list, args.perf_runs, args.perf_cold_thr,
+                                    case_names=run_cases)
         csv_path = run_msprof(script, out)
 
         if csv_path is None or not csv_path.exists():

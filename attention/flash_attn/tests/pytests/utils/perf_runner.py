@@ -8,12 +8,15 @@ from typing import Dict, List, Optional
 
 
 def build_perf_script(cases: List[Dict], runs: int, cold_thr: int,
-                      device_id: int = 0) -> str:
+                      device_id: int = 0, case_names: List[str] = None) -> str:
     """Build a single sweep script that uses flash_attn_inputs.generate()."""
-    hot = [c for c in cases if c.get("S1", 9999) > cold_thr]
-    cold = [c for c in cases if c.get("S1", 9999) <= cold_thr]
+    hot = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) > cold_thr]
+    cold = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) <= cold_thr]
+    names = case_names or [f"case_{i}" for i in range(len(cases))]
 
     case_dicts = _serialize_cases(cases)
+    hot_names = repr([names[i] for i, _ in hot])
+    cold_names = repr([names[i] for i, _ in cold])
 
     lines = [
         "import sys, traceback, os",
@@ -26,14 +29,16 @@ def build_perf_script(cases: List[Dict], runs: int, cold_thr: int,
         "device = torch.device('npu:0')",
         f"_hot_cases = {case_dicts['hot']}",
         f"_cold_cases = {case_dicts['cold']}",
+        f"_hot_names = {hot_names}",
+        f"_cold_names = {cold_names}",
         f"print(f'PERF total={len(cases)} hot={len(hot)} cold={len(cold)} runs={runs}')",
         "",
     ]
 
-    for i in range(len(hot)):
-        lines.extend(_gen_hot_v2(i, runs, len(hot)))
-    for i in range(len(cold)):
-        lines.extend(_gen_cold_v2(i, runs, len(cold)))
+    for idx, _ in enumerate(hot):
+        lines.extend(_gen_hot_v2(idx, runs, len(hot)))
+    for idx, _ in enumerate(cold):
+        lines.extend(_gen_cold_v2(idx, runs, len(cold)))
 
     lines.append("print('PERF_DONE')")
     return "\n".join(lines)
@@ -63,6 +68,8 @@ def _serialize_cases(cases):
 def _gen_hot_v2(idx, runs, total):
     return [
         f"c = _hot_cases[{idx}]",
+        f"name = _hot_names[{idx}]",
+        f"print(f'  [hot] {idx+1}/{total}  {{name}}')",
         f"print(f'[CASE_START] hot{idx}')",
         "try:",
         "    layout_q = c.get('layout_q', c.get('input_layout', 'BNSD'))",
@@ -111,6 +118,8 @@ def _gen_hot_v2(idx, runs, total):
 def _gen_cold_v2(idx, runs, total):
     return [
         f"c = _cold_cases[{idx}]",
+        f"name = _cold_names[{idx}]",
+        f"print(f'  [cold] {idx+1}/{total}  {{name}}')",
         f"print(f'[CASE_START] cold{idx}')",
         "try:",
         "    layout_q = c.get('layout_q', c.get('input_layout', 'BNSD'))",
