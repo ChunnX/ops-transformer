@@ -136,12 +136,12 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                                 IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                 IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop, s1BaseSize == 64, dTemplateType, hasRope, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool isMlaFullQuant = isFp8;
+    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop, s1BaseSize == 64, dTemplateType, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     static constexpr TPosition bmm2OutPos = GetC2Position(dVTemplateType,
-                                                          UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
+                                                          UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop,
                                                                                 s1BaseSize == 64), (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
@@ -158,11 +158,11 @@ public:
                                          __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                          __gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer, hasRope> &constInfo);
+        ConstInfo<isInfer> &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ,
         __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV);
 
@@ -170,25 +170,25 @@ private:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams, __gm__ int64_t *actualSeqQlenAddr,
         __gm__ int64_t *actualSeqKvlenAddr);
-    __aicore__ inline void CalcS1Coord(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void CalcS2Coord(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void GetKvByTensorList(RunInfo<isInfer> &runInfo, const ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void CalcS1Coord(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
+    __aicore__ inline void CalcS2Coord(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
+    __aicore__ inline void GetKvByTensorList(RunInfo<isInfer> &runInfo, const ConstInfo<isInfer> &constInfo,
         GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
-    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
+    __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
 
     __aicore__ inline void IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
     __aicore__ inline void IterateBmm1Nz(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
     __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void IterateBmm2Nz(mm2ResPos &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline bool IsGS1Merge(ConstInfo<isInfer, hasRope> &constInfo);
+        ConstInfo<isInfer> &constInfo);
+    __aicore__ inline bool IsGS1Merge(ConstInfo<isInfer> &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
     __gm__ uint8_t *currentKey; // pageattention需要
@@ -249,10 +249,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)query);
-        if constexpr (hasRope) {
-            this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)queryRope);
-            this->keyRopeGm.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)keyRope);
-        }
         if constexpr (!isInfer) {
             this->keyGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)key);
             this->valueGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)value);
@@ -346,27 +342,15 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
         this->queryGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
             sharedParams->s1Size, sharedParams->dSize);
-        if constexpr (hasRope) {
-            this->queryRopeGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
-                sharedParams->s1Size, sharedParams->dSizeRope);
-        }
     } else {  // GM_Q_OUT_TND
         GlobalTensor<uint64_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr);
         if constexpr (isInfer) {
             this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
                 actualSeqQLen, sharedParams->actualSeqLengthsSize);
-            if constexpr (hasRope) {
-                this->queryRopeGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize,
-                    sharedParams->dSizeRope, actualSeqQLen, sharedParams->actualSeqLengthsSize);
-            }
         } else {
             this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
                 actualSeqQLen, sharedParams->bSize);
-            if constexpr (hasRope) {
-                this->queryRopeGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize,
-                    sharedParams->dSizeRope, actualSeqQLen, sharedParams->bSize);
-            }
         }
     }
     if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
@@ -374,10 +358,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
             sharedParams->dSize);
         this->valueGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
             sharedParams->dSizeV);
-        if constexpr (hasRope) {
-            this->keyRopeGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
-                sharedParams->dSizeRope);
-        }
     } else { // GM_KV_TND
         GlobalTensor<uint64_t> actualSeqKVLen;
         actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
@@ -386,26 +366,18 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
                 sharedParams->actualSeqLengthsKVSize);
             this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
                 sharedParams->actualSeqLengthsKVSize);
-            if constexpr (hasRope) {
-                this->keyRopeGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeRope, actualSeqKVLen,
-                    sharedParams->actualSeqLengthsKVSize);
-            }
         } else {
             this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
                 sharedParams->bSize);
             this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
                 sharedParams->bSize);
-            if constexpr (hasRope) {
-                this->keyRopeGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeRope, actualSeqKVLen,
-                    sharedParams->bSize);
-            }
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
@@ -418,7 +390,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<isInfer>
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
@@ -429,10 +401,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer>
             if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
                 // 更新N2方向stride
                 this->keyGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSize);
-                if constexpr (hasRope) {
-                    this->keyRopeGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch,
-                                                          constInfo.dSizeRope);
-                }
             }
         }
     }
@@ -441,7 +409,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer>
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
@@ -459,7 +427,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     if constexpr (useNz) {
         IterateBmm2Nz(outputBuf, inputBuf, runInfo, constInfo);
@@ -614,7 +582,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitDequantParams(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo<isInfer>& runInfo, 
-    const ConstInfo<isInfer, hasRope> &constInfo,
+    const ConstInfo<isInfer> &constInfo,
     GlobalTensor<INPUT_T>& keyValueGm, GlobalTensor<INPUT_T>& tempKeyValueGm)
 {
     if (constInfo.isKvContinuous != 0) {
@@ -629,7 +597,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo<is
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 BSABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo<isInfer> &runInfo, 
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tempKeyGm = this->keyGm.gmTensor;
@@ -643,7 +611,7 @@ BSABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo<isInfer> &runInfo,
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 BSABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tempValueGm = this->valueGm.gmTensor;
@@ -657,7 +625,7 @@ BSABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
@@ -813,7 +781,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
     Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
@@ -902,7 +870,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPos &out
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
@@ -1030,7 +998,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+    ConstInfo<isInfer> &constInfo)
 {
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
@@ -1139,7 +1107,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 
 // 判断是否GS1合轴
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer> &constInfo)
 {
     return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
 }
@@ -1163,18 +1131,18 @@ public:
                                          __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                          __gm__ uint8_t *actualSharedPrefixLen) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo) {}
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo) {}
     __aicore__ inline void IterateBmm1Nz(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo) {}
+        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo) {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer, hasRope> &constInfo) {}
+        ConstInfo<isInfer> &constInfo) {}
     __aicore__ inline void IterateBmm2Nz(mm2ResPos &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer, hasRope> &constInfo) {}
+        ConstInfo<isInfer> &constInfo) {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ,
         __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV) {}
 };

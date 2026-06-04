@@ -22,7 +22,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "stdarg.h"
-#include "pse.h"
 #include "util_regbase.h"
 
 using matmul::MatmulType;
@@ -90,30 +89,6 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
-                  !IsSameType<INPUT_T, hifloat8_t>::value) {
-        return false;
-    }
-    if (hasRope) {
-        return true;
-    }
-    return false;
-}
-
-template <typename INPUT_T>
-__aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
-        return false;
-    }
-    if (hasRope) {
-        return true;
-    }
-    return false;
-}
-
-template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8OnlyWithAttenMask(
     regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
     if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
@@ -150,13 +125,13 @@ __aicore__ constexpr bool ContainOptionalInput(
 
 __aicore__ constexpr bool IsDn(
     bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
-    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool isInfer, bool isHiFp8) {
+    regbaseutil::DTemplateType dTemplateType, bool isInfer, bool isHiFp8) {
     if (!isInfer && isHiFp8) {
         return false;
     }
     if (((!isFp32 && !ContainOptionalInput(pseMode, hasAtten, hasDrop)) ||
         (isValidFp8 && !hasDrop && pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE)) && !isS1Base64 &&
-        (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256 && !hasRope) {
+        (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256) {
         return true;
     }
     return false;
@@ -164,10 +139,7 @@ __aicore__ constexpr bool IsDn(
 
 template <typename INPUT_T>
 __aicore__ constexpr bool UbOutCondition(
-    bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope, bool isS2Base64) {
-    if (IsFp8WithRope<INPUT_T>(hasRope) || IsInt8WithRope<INPUT_T>(hasRope)) {
-        return true;
-    }
+    bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS2Base64) {
     if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) || IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
         return true;
     }

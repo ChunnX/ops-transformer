@@ -17,7 +17,6 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../quant_block_sparse_attention_attenmask.h"
-#include "pse.h"
 
 constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
 
@@ -26,17 +25,17 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
 
 #define CHILD_SPEC_TEMPLATE_ARGS \
     INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa
+    pseMode, hasAtten, hasDrop, OUTPUT_T, isInfer, isPa
 
 #define TEMPLATE_INTF \
     template <typename INPUT_T, typename T, LayOutTypeEnum layout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
-    DTemplateType dVTemplateType, PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope,\
+    DTemplateType dVTemplateType, PseTypeEnum pseMode, bool hasAtten, bool hasDrop,\
     typename OUTPUT_T, bool isInfer, bool isPa, bool useDn>
 
 #define TEMPLATE_INTF_ARGS \
     INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa, useDn
+    pseMode, hasAtten, hasDrop, OUTPUT_T, isInfer, isPa, useDn
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_T) \

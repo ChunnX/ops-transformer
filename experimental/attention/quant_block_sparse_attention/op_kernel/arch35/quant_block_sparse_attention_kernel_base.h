@@ -33,7 +33,6 @@
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
 
-#include "common/pse.h"
 #include "common/infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
@@ -138,7 +137,7 @@ public:
     int32_t aicIdx;
 
     /* 初始化后不变的信息 */
-    ConstInfo<isInfer, hasRope> constInfo;
+    ConstInfo<isInfer> constInfo;
     AttenMaskInfo attenMaskInfo;
     PseInfo pseInfo;
     /* 其他正向独有的一些信息 */
@@ -375,11 +374,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.combineDim = (constInfo.dSize + constInfo.dSizeV + sizeof(float) + 31U) / 32U * 32U;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
-    if constexpr (hasRope) {
-        constInfo.dSizeRope = sharedParams.dSizeRope;
-    } else {
-        constInfo.dSizeRope = 0;
-    }
+    constInfo.dSizeRope = 0;
     constInfo.gSize = sharedParams.gSize;
     constInfo.s1OuterSize = sharedParams.s1OuterSize;
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
@@ -413,10 +408,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
@@ -439,10 +430,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
         // BSH/BSNGD
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
@@ -467,10 +454,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         constInfo.bN2GDv = sharedParams.bSize * constInfo.n2GDv;
         constInfo.s1BaseBN2GDv = s1BaseSize * constInfo.bN2GDv;
         constInfo.s2BaseBN2Dv = sharedParams.bSize * constInfo.s2BaseN2Dv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = sharedParams.bSize * constInfo.n2Size * constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = sharedParams.bSize * constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = sharedParams.bSize * constInfo.n2Dv;
@@ -482,10 +465,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         // bnsd
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.dSize;
         constInfo.mm1Kb = constInfo.dSize;
         constInfo.mm2Kb = constInfo.dSizeV;
@@ -496,10 +475,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         // NG(BS)D
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.dSize;
         constInfo.mm1Kb = constInfo.dSize;
         constInfo.mm2Kb = constInfo.dSizeV;
