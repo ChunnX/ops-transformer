@@ -311,7 +311,7 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyOut()
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.DeQue<int64_t>();
     LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.DeQue<int32_t>();
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
-        InitGlobalMemory(expertTokensCountGm_, keyValueOutputElements_, 0LL);
+        InitGlobalMemory(expertTokensCountGm_, keyValueOutputElements_, static_cast<int64_t>(0));
     }
     DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                  static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
