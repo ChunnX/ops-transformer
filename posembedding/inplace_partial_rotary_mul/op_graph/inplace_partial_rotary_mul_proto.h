@@ -21,26 +21,35 @@ namespace ge {
 /**
  * @brief Apply inplace partial rotary position embedding for a single tensor.
  * @par Inputs:
- * @li x: A 4D tensor which rotary position embedding is applied inplace, format supports ND, and data type must be
+ * @li x: A tensor which rotary position embedding is applied inplace, format supports ND, and data type must be
  * float16, float or bfloat16.
- * @li cos: A 4D tensor which is "cos" in rotary position embedding, format supports ND, data type must be the same as
+ * @li cos: A tensor which is "cos" in rotary position embedding, format supports ND, data type must be the same as
  * "x", and shape must be the same as "sin".
- * @li sin: A 4D tensor which is "sin" in rotary position embedding, format supports ND, data type must be the same as
+ * @li sin: A tensor which is "sin" in rotary position embedding, format supports ND, data type must be the same as
  * "x", and shape must be the same as "cos".
  * @par Outputs:
- * x: A 4D tensor which is the result of inplace rotary position embedding, format supports ND, data type must be
+ * x: A tensor which is the result of inplace rotary position embedding, format supports ND, data type must be
  * the same as input "x", and shape must be the same as input "x".
  * @par Attributes:
- * rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
- * 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0.
- * partial_slice: An optional attribute of type list int, specifying the slice range [start, end] for partial rotary.
- * Defaults to [0, 0].
+ * rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding. Currently only
+ * supports interleave mode (rotary_mode=1). Defaults to 0.
+ * partial_slice: An optional attribute of type list int, specifying the slice range [start, end) for partial rotary.
+ * Defaults to [0, 0]. When sliceEnd equals sliceStart, no rotary position embedding is performed.
  * @attention Constraints:
- * Let (B, S, N, D) represents the shape of the 4-D input "x". Under this representation, the shape constraints of each
+ * Let (B, S, N, D) represents the shape of the input "x". Under this representation, the shape constraints of each
  * parameter can be described as follows:
- * @li The D of "x", "cos", "sin" and output "x" must be equal.
- * @li In half, interleave and interleave-half mode, D must be a multiple of 2. In quarter mode, D must be a multiple
- * of 4.
+ * @li Non-contiguous tensors are not supported.
+ * @li The D of "x" must not exceed 1024.
+ * @li In interleave mode (rotary_mode=1), D of "x" must be a multiple of 2.
+ * @li The last dimension sizes of "cos" and "sin" must be equal, and must equal the partialSlice length
+ * (partialSlice[1] - partialSlice[0]).
+ * @li partialSlice constraints: sliceStart >= 0, sliceEnd >= 0, sliceEnd <= D of "x",
+ * sliceLength = sliceEnd - sliceStart >= 0.
+ * @li Only interleave mode (rotary_mode=1) is supported.
+ * @li Inplace execution: input "x" and output "x" share the same tensor, results are written back to input "x".
+ * @li cos/sin shapes must satisfy broadcast relationship with "x".
+ * @li On Ascend 950PR/Ascend 950DT: input "x" supports only BSND, B1ND, B11D, 111D layouts.
+ * @li On Atlas A3/A2 training and inference products: input "x" supports only BS1D, B11D layouts.
  */
 REG_OP(InplacePartialRotaryMul)
     .INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16, DT_FLOAT16, DT_BFLOAT16}))
