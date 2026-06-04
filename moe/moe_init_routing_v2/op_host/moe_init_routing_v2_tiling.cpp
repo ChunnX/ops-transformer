@@ -162,7 +162,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::CheckOutShape(bool isRegbase)
     OP_CHECK_IF(expandedRowIdxShapePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "expandedRowIdx", "nullptr",
                                                       "The output shape should not be nullptr"),
-              return ge::GRAPH_FAILED);
+               return ge::GRAPH_FAILED);
     const gert::Shape expandedRowIdxShape = expandedRowIdxShapePtr->GetStorageShape();
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
@@ -746,11 +746,6 @@ bool MoeInitRoutingV2TilingBase::CalculateGatherOutCoreAllocation(int64_t actual
     int64_t gatherPerCoreRows = CeilDiv(actualActivateRows, aivNum);
     int64_t gatherNeedCoreNum = CeilDiv(actualActivateRows, gatherPerCoreRows);
     gatherNeedCoreNum = std::min(gatherNeedCoreNum, aivNum);
-    if (gatherNeedCoreNum <= 0) {
-        tilingData->set_needCoreNum(0);
-        return false;
-    }
-
     gatherPerCoreRows = CeilDiv(actualActivateRows, gatherNeedCoreNum);
     int64_t gatherLastCoreRows = actualActivateRows - gatherPerCoreRows * (gatherNeedCoreNum - 1);
 
@@ -940,7 +935,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingPa
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF((compileInfo->aivNum <= 0), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "aivNum",
+    OP_CHECK_IF(
+        (compileInfo->aivNum <= 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "aivNum",
                                               std::to_string(compileInfo->aivNum).c_str(),
                                               "TilingPrepareForMoeInitRoutingV2 failed to get core num"),
                
@@ -949,7 +946,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingPa
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
-    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "ubSize",
+    OP_CHECK_IF(
+        (compileInfo->ubSize <= 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeInitRoutingV2", "ubSize",
                                               std::to_string(compileInfo->ubSize).c_str(),
                                               "TilingPrepareForMoeInitRoutingV2 failed to get ub size"),
                
