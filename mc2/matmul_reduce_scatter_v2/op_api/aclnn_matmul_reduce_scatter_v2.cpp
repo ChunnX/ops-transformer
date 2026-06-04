@@ -25,6 +25,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnn_matmul_reduce_scatter_v2.h"
@@ -151,8 +152,8 @@ static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2,
 static bool CheckAttr(int64_t streamMode)
 {
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be %ld, but got %ld.", NUM_ACL_STOP_ON_FAILURE,
-                streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "streamMode",
+            std::to_string(streamMode).c_str(), std::to_string(NUM_ACL_STOP_ON_FAILURE).c_str());
         return false;
     }
     return true;
@@ -192,20 +193,20 @@ static bool CheckShape(const aclTensor* x1, const aclTensor* x2, bool isTransA)
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
     int64_t kVal1 = 0, kVal2 = 0;
     if (isTransA) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not support transpose x1 matrix.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1", "transposed",
+            "Does not support transpose x1 matrix.");
         return false;
     }
     kVal1 = x1->GetViewShape().GetDim(1);
     kVal2 = x2->GetViewShape().GetDim(0);
     OP_API_CHECK((kVal1 != kVal2), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kVal1,
-                kVal2);
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1/x2",
+            (std::string("k=") + std::to_string(kVal1) + "/" + std::to_string(kVal2)).c_str(), "equal k values");
         return false;
     });
     OP_API_CHECK((kVal1 < KVALUE_MIN || kVal1 >= KVALUE_MAX), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis should be in range[%ld, %ld), but it is: %ld.", KVALUE_MIN,
-                KVALUE_MAX, kVal1);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "k-axis",
+            std::to_string(kVal1).c_str(), "[256, 65535)");
         return false;
     });
     return true;
@@ -217,7 +218,7 @@ static bool CheckEmptyTensor(const aclTensor* tensor, const char* tensorName)
         return false;
     }
     if (tensor->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Tensor %s should not be empty.\n", tensorName);
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMatmulReduceScatterV2GetWorkspaceSize", tensorName);
         return false;
     }
     return true;
@@ -271,7 +272,8 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
         //perblock其余判定放在tiling侧进行
         return CaseOption::LOW_ACCURACY_PER_BLOCK;
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid scene in low accuracy, please check input x1Scale.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1Scale",
+            "unexpected dim", "Invalid scene in low accuracy, please check input x1Scale.");
         return CaseOption::INVALID;
     }
 }
@@ -280,7 +282,8 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
                                  const aclTensor* amax, const aclTensor* x1Scale, const aclTensor* x2Scale)
 {
     if (amax != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not support non-nullptr amaxOutOptional.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "amaxOutOptional",
+            "non-nullptr", "Does not support non-nullptr amaxOutOptional.");
         return CaseOption::INVALID;
     }
     if (CheckType(x1->GetDataType(), INPUT_SUPPORT_TYPE_HIGH_ACCURACY) &&
@@ -291,9 +294,9 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
         return CheckLowAccuracyCase(x1, x2, x1Scale, x2Scale);
     } 
     else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not match any available case, "
-                "x1 datatype is %s, x1 datatype is %s, please read the documents and check the input.",
-                op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1/x2",
+            (std::string(op::ToString(x1->GetDataType()).GetString()) + "/" + op::ToString(x2->GetDataType()).GetString()).c_str(),
+            "Does not match any available case, please read the documents and check the input.");
         return CaseOption::INVALID;
     }
 }
@@ -367,8 +370,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
     CaseOption caseIndex =
         CheckCase(x1, x2, bias, output, amaxOutOptional, x1Scale, x2Scale);
     if (caseIndex >= CaseOption::INVALID) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Does not match any available case, "
-                "please read the documents and check the input.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "input case",
+            "invalid", "Does not match any available case, please read the documents and check the input.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     OP_LOGD("Input fit case %u.", static_cast<uint32_t>(caseIndex));
@@ -443,8 +446,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     // 【A2、A3】检查x2矩阵非连续合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-                    "but it is non-contiguous.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode", "x2",
+                "non-contiguous", "x2 without transpose must be contiguous.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -489,7 +492,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulReduceScatterV2", "This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

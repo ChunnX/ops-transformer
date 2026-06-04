@@ -16,6 +16,7 @@
 #include "external/aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "log/log.h"
 #include "aclnnInner_allto_all_all_gather_batch_mat_mul.h"
 
 using namespace op;
@@ -33,11 +34,11 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
     OP_CHECK_NULL(weight, return false);
     OP_CHECK_NULL(y1Out, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllAllGatherBatchMatMul", "groupEp");
         return false;
     }
     if ((groupTp == nullptr) || (strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupTp name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllAllGatherBatchMatMul", "groupTp");
         return false;
     }
     return true;
@@ -61,8 +62,8 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
         }
         if (x->GetDataType() == op::DataType::DT_BF16) {
             if (bias->GetDataType() != op::DataType::DT_FLOAT) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected bias dtype to be float32, but got %s.",
-                        ToString(bias->GetDataType()).GetString());
+                OP_LOGE_FOR_INVALID_DTYPE("AlltoAllAllGatherBatchMatMul", "bias",
+                        ToString(bias->GetDataType()).GetString(), "FLOAT32");
                 return false;
             }
         }
@@ -88,8 +89,8 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected bias dim to be 2 or 3, but got dim [%zu].",
-                    bias->GetViewShape().GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM("AlltoAllAllGatherBatchMatMul", "bias",
+                    (std::to_string(bias->GetViewShape().GetDimNum()) + "D").c_str(), "2D or 3D");
             return false;
         }
     }
@@ -108,23 +109,27 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
 {
     // E = E/ep * ep, x_0 == w_0 * ep
     if ((weight->GetViewShape().GetDim(DIM_0) * epWorldSize) != x->GetViewShape().GetDim(DIM_0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of weight multi epSize must equal the first dim of x, "
-                "but got x_0=[%ld], W_0=[%ld], ep=[%ld].", x->GetViewShape().GetDim(DIM_0),
-                weight->GetViewShape().GetDim(DIM_0), epWorldSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "x and weight",
+                (std::to_string(x->GetViewShape().GetDim(DIM_0)) + " vs " +
+                 std::to_string(weight->GetViewShape().GetDim(DIM_0))).c_str(),
+                ("The first dim of weight multiplied by ep(" + std::to_string(epWorldSize) +
+                 ") should equal the first dim of x").c_str());
         return false;
     }
     // y1_0 == w_0
     if (y1Out->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of y1Out must equal the first dim of weight, "
-                "but got y1_0=[%ld], W_0=[%ld].", y1Out->GetViewShape().GetDim(DIM_0),
-                weight->GetViewShape().GetDim(DIM_0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and weight",
+                (std::to_string(y1Out->GetViewShape().GetDim(DIM_0)) + " vs " +
+                 std::to_string(weight->GetViewShape().GetDim(DIM_0))).c_str(),
+                "The first dim of y1Out should equal the first dim of weight");
         return false;
     }
     // y1_2 == w_2
     if (y1Out->GetViewShape().GetDim(DIM_2) != weight->GetViewShape().GetDim(DIM_2)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The last dim of y1Out must equal the last dim of weight(without transpose), "
-                "but got y1_2=[%ld], W_2=[%ld].", y1Out->GetViewShape().GetDim(DIM_2),
-                weight->GetViewShape().GetDim(DIM_2));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and weight",
+                (std::to_string(y1Out->GetViewShape().GetDim(DIM_2)) + " vs " +
+                 std::to_string(weight->GetViewShape().GetDim(DIM_2))).c_str(),
+                "The last dim of y1Out should equal the last dim of weight(without transpose)");
         return false;
     }
     return true;
@@ -136,33 +141,41 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
     if (xShardType == 0) {
         // H = H/tp * tp, w_1 = x_2 * tp
         if ((x->GetViewShape().GetDim(DIM_2) * tpWorldSize) != weight->GetViewShape().GetDim(DIM_1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected H = H/tp * tp, but got W_1=[%ld], x_2=[%ld], tp=[%ld].",
-                    weight->GetViewShape().GetDim(DIM_1), x->GetViewShape().GetDim(DIM_2), tpWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "weight and x",
+                (std::to_string(weight->GetViewShape().GetDim(DIM_1)) + " vs " +
+                 std::to_string(x->GetViewShape().GetDim(DIM_2))).c_str(),
+                ("H = H/tp * tp, w_1 should equal x_2 * tp, tp=" + std::to_string(tpWorldSize)).c_str());
             return false;
         }
         // y1_1 == x_1 * ep
         if (y1Out->GetViewShape().GetDim(DIM_1) != (x->GetViewShape().GetDim(DIM_1) * epWorldSize)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected y1_1 = x_1 * ep, but got y1_1=[%ld], x_1=[%ld], ep=[%ld].",
-                    y1Out->GetViewShape().GetDim(DIM_1), x->GetViewShape().GetDim(DIM_1), epWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and x",
+                (std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + " vs " +
+                 std::to_string(x->GetViewShape().GetDim(DIM_1))).c_str(),
+                ("y1_1 should equal x_1 * ep, ep=" + std::to_string(epWorldSize)).c_str());
             return false;
         }
     } else if (xShardType == 1) {
         // w_1 == x_2
         if (x->GetViewShape().GetDim(DIM_2) != weight->GetViewShape().GetDim(DIM_1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The second dim of weight(without transpose) must equal the last dim of x, "
-                    "but got x_2=[%ld], W_1=[%ld].", x->GetViewShape().GetDim(DIM_2),
-                    weight->GetViewShape().GetDim(DIM_1));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "x and weight",
+                (std::to_string(x->GetViewShape().GetDim(DIM_2)) + " vs " +
+                 std::to_string(weight->GetViewShape().GetDim(DIM_1))).c_str(),
+                "The second dim of weight should equal the last dim of x");
             return false;
         }
         // y1_1 == x_1 * ep * tp
         if (y1Out->GetViewShape().GetDim(DIM_1) != (x->GetViewShape().GetDim(DIM_1) * epWorldSize * tpWorldSize)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The second dim of x multi ep multi tp must equal the second dim of "
-                    "y1Out, but got y1_1=[%ld], x_1=[%ld], ep=[%ld], tp=[%ld].", y1Out->GetViewShape().GetDim(DIM_1),
-                    x->GetViewShape().GetDim(DIM_1), epWorldSize, tpWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and x",
+                (std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + " vs " +
+                 std::to_string(x->GetViewShape().GetDim(DIM_1))).c_str(),
+                ("y1_1 should equal x_1 * ep * tp, ep=" + std::to_string(epWorldSize) +
+                 ", tp=" + std::to_string(tpWorldSize)).c_str());
             return false;
         }
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "xShardType [%ld] is invalid.", xShardType);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "xShardType",
+                std::to_string(xShardType).c_str(), "0 or 1");
         return false;
     }
     return true;
@@ -177,11 +190,12 @@ static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const a
             (bias->GetViewShape().GetDim(DIM_1) != 1)) ||
             (bias->GetViewShape().GetDim(bias->GetViewShape().GetDimNum() - 1) !=
             y1Out->GetViewShape().GetDim(DIM_2))) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Expected biasOptional shape to be [%ld,%ld] or [%ld,1,%ld], but got [%s].",
-                    weight->GetViewShape().GetDim(DIM_0), y1Out->GetViewShape().GetDim(DIM_2),
-                    weight->GetViewShape().GetDim(DIM_0), y1Out->GetViewShape().GetDim(DIM_2),
-                    ToString(bias->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("AlltoAllAllGatherBatchMatMul", "bias",
+                    ToString(bias->GetViewShape()).GetString(),
+                    (std::to_string(weight->GetViewShape().GetDim(DIM_0)) + "," +
+                     std::to_string(y1Out->GetViewShape().GetDim(DIM_2)) + " or " +
+                     std::to_string(weight->GetViewShape().GetDim(DIM_0)) + ",1," +
+                     std::to_string(y1Out->GetViewShape().GetDim(DIM_2))).c_str());
             return false;
         }
     }
@@ -196,9 +210,11 @@ static bool CheckOutOptionalDim(const aclTensor* weight, const aclTensor* y1Out,
         if ((y2OutOptional->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
             (y2OutOptional->GetViewShape().GetDim(DIM_1) != y1Out->GetViewShape().GetDim(DIM_1)) ||
             (y2OutOptional->GetViewShape().GetDim(DIM_2) != weight->GetViewShape().GetDim(DIM_1))) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected y2OutOptional shape to be [%ld,%ld,%ld], but got [%s].",
-                    weight->GetViewShape().GetDim(DIM_0), y1Out->GetViewShape().GetDim(DIM_1),
-                    weight->GetViewShape().GetDim(DIM_1), ToString(y2OutOptional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("AlltoAllAllGatherBatchMatMul", "y2OutOptional",
+                    ToString(y2OutOptional->GetViewShape()).GetString(),
+                    (std::to_string(weight->GetViewShape().GetDim(DIM_0)) + "," +
+                     std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + "," +
+                     std::to_string(weight->GetViewShape().GetDim(DIM_1))).c_str());
             return false;
         }
     }
@@ -207,9 +223,11 @@ static bool CheckOutOptionalDim(const aclTensor* weight, const aclTensor* y1Out,
         if ((y3OutOptional->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
             (y3OutOptional->GetViewShape().GetDim(DIM_1) != y1Out->GetViewShape().GetDim(DIM_1)) ||
             (y3OutOptional->GetViewShape().GetDim(DIM_2) != y1Out->GetViewShape().GetDim(DIM_2))) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected y3OutOptional shape to be [%ld,%ld,%ld], but got [%s].",
-                    weight->GetViewShape().GetDim(DIM_0), y1Out->GetViewShape().GetDim(DIM_1),
-                    y1Out->GetViewShape().GetDim(DIM_2), ToString(y3OutOptional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("AlltoAllAllGatherBatchMatMul", "y3OutOptional",
+                    ToString(y3OutOptional->GetViewShape()).GetString(),
+                    (std::to_string(weight->GetViewShape().GetDim(DIM_0)) + "," +
+                     std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + "," +
+                     std::to_string(y1Out->GetViewShape().GetDim(DIM_2))).c_str());
             return false;
         }
     }
@@ -252,22 +270,26 @@ static bool CheckAttr(int64_t epWorldSize, int64_t tpWorldSize, int64_t xShardTy
 {
     // xShardType 当前支持 0 或 1
     if ((xShardType != 0) && (xShardType != 1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected xShardType to be 0 or 1, but got [%ld].", xShardType);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "xShardType",
+                std::to_string(xShardType).c_str(), "0 or 1");
         return false;
     }
     // actType 当前支持 NONE/GELU/SILU/FASTGELU/RELU
     if (std::find(ops::ACT_TYPE_SUPPORT_VEC.begin(), ops::ACT_TYPE_SUPPORT_VEC.end(), actType) ==
         ops::ACT_TYPE_SUPPORT_VEC.end()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unexpected actType [%ld].", actType);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "actType",
+                std::to_string(actType).c_str(), "one of NONE/GELU/SILU/FASTGELU/RELU");
         return false;
     }
     // ep和tp 仅支持2、4、8、16、32
     if ((epWorldSize != WORLD_SIZE_PAIR) && (epWorldSize != WORLD_SIZE_QUAD) && (epWorldSize != WORLD_SIZE_OCTET) && (epWorldSize != WORLD_SIZE_SEXTET) && (epWorldSize != WORLD_SIZE_THIRTYTWO)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected epWorldSize to be 2, 4, 8, 16, or 32, but got [%ld].", epWorldSize);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "epWorldSize",
+                std::to_string(epWorldSize).c_str(), "2, 4, 8, 16, or 32");
         return false;
     }
     if ((tpWorldSize != WORLD_SIZE_PAIR) && (tpWorldSize != WORLD_SIZE_QUAD) && (tpWorldSize != WORLD_SIZE_OCTET) && (tpWorldSize != WORLD_SIZE_SEXTET) && (tpWorldSize != WORLD_SIZE_THIRTYTWO)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tpWorldSize to be 2, 4, 8, 16, or 32, but got [%ld].", tpWorldSize);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "tpWorldSize",
+                std::to_string(tpWorldSize).c_str(), "2, 4, 8, 16, or 32");
         return false;
     }
     return true;
@@ -279,33 +301,39 @@ static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight)
     // 暂不支持空tensor场景
     // M/tp in [1, 65535], 空tensor N校验
     if ((weight->GetViewShape().GetDim(DIM_2) <= 0) || (weight->GetViewShape().GetDim(DIM_2) > MATMUL_K_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected M/tp in range of [1, %ld], but got [%ld].", MATMUL_K_LIMIT,
-                weight->GetViewShape().GetDim(DIM_2));
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "weight(DIM_2)",
+                std::to_string(weight->GetViewShape().GetDim(DIM_2)).c_str(),
+                ("range of [1, " + std::to_string(MATMUL_K_LIMIT) + "]").c_str());
         return false;
     }
     // E/ep in [1, 32], 空tensor E校验
     if ((weight->GetViewShape().GetDim(DIM_0) <= 0) ||
         (weight->GetViewShape().GetDim(DIM_0) > MATMUL_E_OVER_EP_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected E/ep in range of [1, %ld], but got [%ld].", MATMUL_E_OVER_EP_LIMIT,
-                weight->GetViewShape().GetDim(DIM_0));
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "weight(DIM_0)",
+                std::to_string(weight->GetViewShape().GetDim(DIM_0)).c_str(),
+                ("range of [1, " + std::to_string(MATMUL_E_OVER_EP_LIMIT) + "]").c_str());
         return false;
     }
     // E in [2, 512]
     if ((x->GetViewShape().GetDim(DIM_0) < EXPERT_LOWER_LIMIT) ||
         (x->GetViewShape().GetDim(DIM_0) > EXPERT_UPPER_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected E in range of [%ld, %ld], but got [%ld].", EXPERT_LOWER_LIMIT,
-                EXPERT_UPPER_LIMIT, x->GetViewShape().GetDim(DIM_0));
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "x(DIM_0)",
+                std::to_string(x->GetViewShape().GetDim(DIM_0)).c_str(),
+                ("range of [" + std::to_string(EXPERT_LOWER_LIMIT) + ", " +
+                 std::to_string(EXPERT_UPPER_LIMIT) + "]").c_str());
         return false;
     }
     // C > 0, C/tp > 0, 空tensor M校验
     if (x->GetViewShape().GetDim(DIM_1) <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected C > 0, but got [%ld].", x->GetViewShape().GetDim(DIM_1));
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "x(DIM_1)",
+                std::to_string(x->GetViewShape().GetDim(DIM_1)).c_str(), "greater than 0");
         return false;
     }
     // H in [1, 65535], 空tensor K校验
     if ((weight->GetViewShape().GetDim(DIM_1) <= 0) || (weight->GetViewShape().GetDim(DIM_1) > MATMUL_K_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected H in range of [1, %ld], but got [%ld].", MATMUL_K_LIMIT,
-                weight->GetViewShape().GetDim(DIM_1));
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "weight(DIM_1)",
+                std::to_string(weight->GetViewShape().GetDim(DIM_1)).c_str(),
+                ("range of [1, " + std::to_string(MATMUL_K_LIMIT) + "]").c_str());
         return false;
     }
     return true;
@@ -320,11 +348,15 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, cons
     CHECK_RET(CheckNotNull(x, weight, groupEp, groupTp, y1Out), ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "groupEp",
+                std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+                ("max length " + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE("AlltoAllAllGatherBatchMatMul", "groupTp",
+                std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+                ("max length " + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -389,7 +421,8 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(const aclTensor *x
     bool transposeWeight = Ops::Transformer::IsTransposeLastTwoDims(weight);
     if (isY3Out && (actType ==
         static_cast<int64_t>(ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected y3OutOptional and actType not NONE, but got actType [NONE].");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "actType", "NONE",
+                "actType must not be NONE when y3OutOptional is provided");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if(transposeWeight){

@@ -14,6 +14,7 @@
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -99,11 +100,11 @@ static bool CheckDtypeValid(
 static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquantGroupSize, const aclTensor* x1)
 {
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduce", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduce", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
     }
 
@@ -122,9 +123,10 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquan
     if (antiquantGroupSize % ANTIQUANT_GROUP_SIZE_MIN_VALUE != 0 ||
         antiquantGroupSize < ANTIQUANT_GROUP_SIZE_MIN_VALUE ||
         antiquantGroupSize > std::min(static_cast<int32_t>(kLen - 1), INT32_MAX)) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID, "antiquantGroupSize should be in range [%ld, min(%ld, INT_MAX)], Actual is %ld.",
-            ANTIQUANT_GROUP_SIZE_MIN_VALUE, (kLen - 1), antiquantGroupSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "antiquantGroupSize",
+            std::to_string(antiquantGroupSize).c_str(),
+            std::string("should be in range [" + std::to_string(ANTIQUANT_GROUP_SIZE_MIN_VALUE) +
+                ", min(" + std::to_string(kLen - 1) + ", INT_MAX)]").c_str());
         return false;
     }
     return true;
@@ -188,12 +190,10 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    // tensor维度始终非负，安全转换为uint64_t进行比较
-    if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -204,8 +204,8 @@ static bool CheckShape(
 
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
-            op::ToString(output->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnWeightQuantMatmulAllReduce", "output",
+            op::ToString(output->GetViewShape()).GetString(), "non-empty tensor");
         return false;
     }
 
@@ -232,20 +232,17 @@ static bool CheckShape(
     OP_CHECK_MAX_DIM(scale, TWO_DIMS, return false);
     if (!IsAntiquantScaleShapeValid(scale, x1, output, antiquantGroupSize)) {
         if (antiquantGroupSize == 0) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected shape of antiquantScale to be [1] or [n] or [1,n] for per-tensor/per-channel."
-                " in this case, n is %ld, last dim of scale should be %ld or 1, "
-                "but got scale shape: %s.",
-                output->GetViewShape().GetDim(x1Len - 1), output->GetViewShape().GetDim(x1Len - 1),
-                op::ToString(scale->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("aclnnWeightQuantMatmulAllReduce", "antiquantScale",
+                op::ToString(scale->GetViewShape()).GetString(),
+                std::string("[1] or [n] or [1,n], last dim should be " +
+                    std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
         }
         if (antiquantGroupSize != 0) {
             size_t kValueGroup = CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected shape of antiquantScale to be [%zu,%ld] for per-group calculation, but got scale shape: %s.",
-                kValueGroup, output->GetViewShape().GetDim(x1Len - 1), op::ToString(scale->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("aclnnWeightQuantMatmulAllReduce", "antiquantScale",
+                op::ToString(scale->GetViewShape()).GetString(),
+                std::string("[" + std::to_string(kValueGroup) + "," +
+                    std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + "] for per-group calculation").c_str());
         }
         return false;
     }
@@ -281,11 +278,13 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
         return true;
     }
     if (IsAffineInconsistent(scale, transposeX2)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, scale should be consistent with it.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "scale", "inconsistent",
+            "When x2 is contiguous or transpose, scale should be consistent with it");
         return false;
     }
     if (IsAffineInconsistent(offset, transposeX2)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, offset should be consistent with it.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "offset", "inconsistent",
+            "When x2 is contiguous or transpose, offset should be consistent with it");
         return false;
     }
     return true;
@@ -377,7 +376,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     aclTensor* commQuantScale2 = nullptr;
     aclTensor* dequantScale = nullptr;
     if(x2->GetTensor() == nullptr){
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnWeightQuantMatmulAllReduce", "x2");
         return ACLNN_ERR_INNER_NULLPTR;
     }
     auto copyX2 = CopyTensor(x2);
@@ -423,7 +422,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("WeightQuantMatmulAllReduce, aclnnWeightQuantMatmulAllReduce ret %d", ret);
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "WeightQuantMatmulAllReduce, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnWeightQuantMatmulAllReduce", "WeightQuantMatmulAllReduce, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
 

@@ -16,6 +16,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
 #include "opdev/format_utils.h"
@@ -59,11 +60,13 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
 {
     // // 检查必选入参出参为非空
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "should be null");
         return false;
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Optional output flag does not match optional output ptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "permuteOutFlag/permuteOutOptional", "mismatched", "flag and ptr should match");
         return false;
     }
     return true;
@@ -75,29 +78,29 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
                          int64_t gmmWeightQuantMode)
 {
     if (gmmX == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input gmmX should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmX");
         return false;
     }
     if (gmmWeight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input gmmWeight should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeight");
         return false;
     }
     if (gmmY == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmY should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmY");
         return false;
     }
     if (gmmXScale == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXScale should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmXScale");
         return false;
     }
     if (gmmWeightScale == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeightScale should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeightScale");
         return false;
     }
     if ((gmmXQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) &&
         (gmmXQuantMode != static_cast<int64_t>(QuantModeType::MX_QUANT))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmXQuantMode should be 1(pertensor quant) or 6(mx quant), "
-            "but actual is %ld.", gmmXQuantMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmXQuantMode",
+            std::to_string(gmmXQuantMode).c_str(), "1 or 6");
         return false;
     }
     return true;
@@ -105,7 +108,7 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
 
 static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
     if (gmmWeight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeight");
         return false;
     }
     OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
@@ -147,7 +150,7 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclnnStatus dtypeRet = aclGetDataType(gmmWeight, &dataType);
     if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeight, ret=%d", dtypeRet);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "aclGetDataType failed for gmmWeight, ret=%d", dtypeRet);
         return nullptr;
     }
     auto transStride = gmmWeight->GetViewStrides();
@@ -194,7 +197,7 @@ static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScal
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclnnStatus dtypeRet = aclGetDataType(gmmWeightScale, &dataType);
     if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeightScale, ret=%d", dtypeRet);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "aclGetDataType failed for gmmWeightScale, ret=%d", dtypeRet);
         return nullptr;
     }
     auto transStride = gmmWeightScale->GetViewStrides();
@@ -236,7 +239,7 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclnnStatus dtypeRet = aclGetDataType(mmWeightOptional, &dataType);
     if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightOptional, ret=%d", dtypeRet);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "aclGetDataType failed for mmWeightOptional, ret=%d", dtypeRet);
         return nullptr;
     }
     auto transStride = mmWeightOptional->GetViewStrides();
@@ -283,7 +286,7 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclnnStatus dtypeRet = aclGetDataType(mmWeightScale, &dataType);
     if (dtypeRet != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightScale, ret=%d", dtypeRet);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "aclGetDataType failed for mmWeightScale, ret=%d", dtypeRet);
         return nullptr;
     }
     auto transStride = mmWeightScale->GetViewStrides();
@@ -333,11 +336,11 @@ static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeig
         bool gmmWeightNotContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
         bool gmmWeightScaleNotContiguous = IsTransposeTwoDims(gmmWeightScale, -2, -3);
         if (gmmWeightNotContiguous != gmmWeightScaleNotContiguous) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "gmmWeight and gmmWeightScale transpose state must be consistent. "
-                    "gmmWeight is %s, but gmmWeightScale is %s.",
-                    gmmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
-                    gmmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+                "gmmWeight/gmmWeightScale",
+                (std::string(gmmWeightNotContiguous ? "transposed" : "not transposed") + "/" +
+                 std::string(gmmWeightScaleNotContiguous ? "transposed" : "not transposed")).c_str(),
+                "gmmWeight and gmmWeightScale transpose state must be consistent");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -348,11 +351,11 @@ static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeig
         bool mmWeightNotContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         bool mmWeightScaleNotContiguous = IsTransposeTwoDims(mmWeightScaleOptional, -2, -3);
         if (mmWeightNotContiguous != mmWeightScaleNotContiguous) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "mmWeight and mmWeightScale transpose state must be consistent. "
-                    "mmWeight is %s, but mmWeightScale is %s.",
-                    mmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
-                    mmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+                "mmWeight/mmWeightScale",
+                (std::string(mmWeightNotContiguous ? "transposed" : "not transposed") + "/" +
+                 std::string(mmWeightScaleNotContiguous ? "transposed" : "not transposed")).c_str(),
+                "mmWeight and mmWeightScale transpose state must be consistent");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -430,7 +433,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
     auto transposeGmmWeight = gmmWeight;    // 复制一个gmmWeight
     if (notContiguous && transGmmWeight) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+            "gmmWeight", "not contiguous and transpose set", "contiguous tensor or transpose disabled");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
@@ -459,8 +463,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         int64_t mmStride0 = mmWeightOptional->GetViewStrides()[0];
         int64_t mmStride1 = mmWeightOptional->GetViewStrides()[1];
         if (notContiguous && transMmWeight) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "mmWeightOptional not contiguous, and set mmWeightOptional transpose, it is error!");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
+                "mmWeightOptional", "not contiguous and transpose set", "contiguous tensor or transpose disabled");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
