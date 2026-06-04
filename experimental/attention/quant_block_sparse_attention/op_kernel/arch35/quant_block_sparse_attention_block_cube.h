@@ -137,8 +137,7 @@ public:
                                 IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                 IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
-                                       s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop, s1BaseSize == 64, dTemplateType, hasRope, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     static constexpr TPosition bmm2OutPos = GetC2Position(dVTemplateType,
@@ -289,10 +288,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(
                 this->keyGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)key);
                 this->valueGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)value);
             }
-            if constexpr (enableKVPrefix) {
-                this->keySharedPrefixGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)keySharedPrefix);
-                this->valueSharedPrefixGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)valueSharedPrefix);
-            }
             attenMaskInfo->preTokens = sharedParams->preTokens;
             attenMaskInfo->nextTokens = sharedParams->nextTokens;
             attenMaskInfo->compressMode = sharedParams->compressMode;
@@ -379,10 +374,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
             sharedParams->dSize);
         this->valueGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
             sharedParams->dSizeV);
-        if constexpr (enableKVPrefix) {
-            this->keySharedPrefixGm.offsetCalculator.Init(1, sharedParams->n2Size, sharedParams->kvPrefixSize, sharedParams->dSize);
-            this->valueSharedPrefixGm.offsetCalculator.Init(1, sharedParams->n2Size, sharedParams->kvPrefixSize, sharedParams->dSizeV);
-        }
         if constexpr (hasRope) {
             this->keyRopeGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
                 sharedParams->dSizeRope);
@@ -506,26 +497,14 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
         } else {
-            if constexpr (enableKVPrefix) {
-                if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-                    uint64_t gmOffset = runInfo.prefixOffset;
-                    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, this->valueSharedPrefixGm.gmTensor[gmOffset],
-                                            runInfo.s2RealSize, constInfo.dSizeV, constInfo.mm2Kb);
-                } else {
-                    uint64_t gmOffset = runInfo.keyOffset;
-                    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
-                                            constInfo.dSizeV, constInfo.mm2Kb);
-                }
-            } else {
-                uint64_t gmOffset = runInfo.keyOffset;
-                if (constInfo.dSize != constInfo.dSizeV) {
-                    gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx,
-                                                                        runInfo.n2oIdx,
-                                                                        coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-                }
-                CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
-                                        constInfo.dSizeV, constInfo.mm2Kb);
+            uint64_t gmOffset = runInfo.keyOffset;
+            if (constInfo.dSize != constInfo.dSizeV) {
+                gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx,
+                                                                    runInfo.n2oIdx,
+                                                                    coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             }
+            CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
+                                    constInfo.dSizeV, constInfo.mm2Kb);
         }
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
@@ -992,25 +971,10 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
-        if constexpr (enableKVPrefix) {
-            if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-                runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
-                    0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->keySharedPrefixGm.gmTensor[runInfo.prefixOffset],
-                                       runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
-            } else {
-                runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                    coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                       constInfo.dSize, constInfo.mm1Kb);
-            }
-        } else {
-            runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                   constInfo.dSize, constInfo.mm1Kb);
-        }
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
+            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+                                constInfo.dSize, constInfo.mm1Kb);
     }
     mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
 

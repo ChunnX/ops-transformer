@@ -40,21 +40,12 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
             runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
             if constexpr (!(hasRope && (dTemplateType == DTemplateType::Aligned576))) {
                 runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
-                if constexpr (enableKVPrefix) {
-                    runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
-                }
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
                     runParam.nextTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
                     runParam.nextTokensOfMlaPerBatch = runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
-                    if constexpr (enableKVPrefix) {
-                        runParam.nextTokensOfMlaPerBatch += constInfo.actualKVPrefixSize;
-                    }
                 } else {
                     runParam.nextTokensOfMlaPerBatch = runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
-                    if constexpr (enableKVPrefix) {
-                        runParam.nextTokensOfMlaPerBatch += constInfo.actualKVPrefixSize;
-                    }
                     runParam.nextTokensPerBatch = runParam.nextTokensOfMlaPerBatch * constInfo.gSize;
                 }
             }
@@ -75,10 +66,6 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
                     runParam.actualS1Size;
                 runParam.nextTokensPerBatch = attenMaskInfo.nextTokens + runParam.actualS2Size -
                     runParam.actualS1Size;
-                if constexpr (enableKVPrefix) {
-                    runParam.preTokensPerBatch -= constInfo.actualKVPrefixSize;
-                    runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
-                }
             }
         }
     }

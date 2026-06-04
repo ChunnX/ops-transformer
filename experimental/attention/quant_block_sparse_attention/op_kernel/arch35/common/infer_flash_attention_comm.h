@@ -25,18 +25,18 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
 // T       - means data type when calc
 
 #define CHILD_SPEC_TEMPLATE_ARGS \
-    INPUT_T, T, implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
     pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa
 
 #define TEMPLATE_INTF \
-    template <typename INPUT_T, typename T, ImplModeEnum implMode, LayOutTypeEnum layout, \
+    template <typename INPUT_T, typename T, LayOutTypeEnum layout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
     DTemplateType dVTemplateType, PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope,\
-    typename OUTPUT_T, bool isInfer, bool isPa, bool useDn, bool enableKVPrefix>
+    typename OUTPUT_T, bool isInfer, bool isPa, bool useDn>
 
 #define TEMPLATE_INTF_ARGS \
-    INPUT_T, T, implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa, useDn, enableKVPrefix
+    INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa, useDn
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_T) \
@@ -44,20 +44,14 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(implMode, ImplModeEnum, ImplModeEnum::AA_HIGH_PRECISION) \
     X(layout, LayOutTypeEnum, LayOutTypeEnum::None) \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128) \
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
-    X(pseMode, PseTypeEnum, PseTypeEnum::PSE_NONE_TYPE) \
     X(hasAtten, bool, false) \
-    X(hasDrop, bool, false) \
-    X(hasRope, bool, false) \
     X(isInfer, bool, false) \
     X(isPa, bool, false) \
-    X(enableKVPrefix, bool, false) \
-    X(enableS1OutSplit, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

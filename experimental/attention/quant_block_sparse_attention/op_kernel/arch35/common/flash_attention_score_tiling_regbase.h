@@ -45,7 +45,6 @@ public:
     uint8_t attenMaskShapeType;  // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
     uint8_t attenMaskDataType;  // 0: fp16, 1: bool(uint8)
     uint8_t attenMaskCompressMode;  // ALL: 0, NONE: 1, ANY: 2, CAUSAL: 3, BAND: 4
-    uint8_t implMode;  // 0: high precise, 1: high performance, 2: invalid line high precise
     uint8_t sparseType;
     uint8_t needDropMaskOp;
     uint8_t dropMaskOuter;
@@ -145,8 +144,6 @@ public:
     void set_attenMaskDataType(uint8_t attenMaskDataTypeParam) {this->attenMaskDataType = attenMaskDataTypeParam;}
     uint8_t get_attenMaskCompressMode() const {return attenMaskCompressMode;}
     void set_attenMaskCompressMode(uint8_t attenMaskCompressModeParam) {this->attenMaskCompressMode = attenMaskCompressModeParam;}
-    uint8_t get_implMode() const {return implMode;}
-    void set_implMode(uint8_t implModeParam) {this->implMode = implModeParam;}
     uint8_t get_sparseType() const {return sparseType;}
     void set_sparseType(uint8_t sparseTypeParam) {this->sparseType = sparseTypeParam;}
     uint8_t get_needDropMaskOp() const {return needDropMaskOp;}
