@@ -42,6 +42,7 @@
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现| 默认确定性实现 |
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现| - |
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
+|[aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
 |[aclnnFusedCausalConv1d](../../attention/fused_causal_conv1d/docs/aclnnFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。| - | 默认确定性实现 |
 |[aclnnInplaceFusedCausalConv1d](../../attention/inplace_fused_causal_conv1d/docs/aclnnInplaceFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。| - | 默认确定性实现 |
@@ -102,6 +103,7 @@
 |[aclnnMaskedCausalConv1d](../../attention/masked_causal_conv1d/docs/aclnnMaskedCausalConv1d.md)|对hidden层的token之间进行带mask的因果一维分组卷积操作。| - | 默认确定性实现 |
 |[aclnnMaskedCausalConv1dBackward](../../attention/masked_causal_conv1d_backward/docs/aclnnMaskedCausalConv1dBackward.md)|对hidden层的token之间进行一维分组卷积操作的反向梯度计算。| - | 默认确定性实现 |
 |[aclnnMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAll.md)|完成MatMul计算与AlltoAll通信融合。|默认确定性实现| 默认确定性实现 |
+|[aclnnMatmulAlltoAllV2](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAllV2.md)|兼容[aclnnMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAll.md)支持的功能，在此基础上新增commMode参数，供用户指定通信引擎参数。|默认确定性实现| 默认确定性实现 |
 |[aclnnMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnMatmulAllReduce.md)|完成MatMul计算与AllReduce通信融合。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnMatmulAllReduceV2.md)|完成MatMul计算与AllReduce通信融合。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnMatmulReduceScatter](../../mc2/matmul_reduce_scatter/docs/aclnnMatmulReduceScatter.md)|完成mm + reduce_scatter_base计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |
@@ -177,6 +179,7 @@
 |[aclnnQuantMatmulAllReduceV3](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV3.md)|aclnnQuantMatmulAllReduceV3接口是对[aclnnQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV2.md)接口的功能扩展。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnQuantMatmulAllReduceV4](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV4.md)|兼容[aclnnQuantMatmulAllReduceV3](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV3.md)支持的功能，在此基础上新增perblock量化方式的支持。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnQuantMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnQuantMatmulAlltoAll.md)|对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，最后做AlltoAll通信。|默认确定性实现| 默认确定性实现 |
+|[aclnnQuantMatmulAlltoAllV2](../../mc2/matmul_allto_all/docs/aclnnQuantMatmulAlltoAllV2.md)|兼容[aclnnQuantMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnQuantMatmulAlltoAll.md)支持的功能，在此基础上新增commMode参数，供用户指定通信引擎参数。|默认确定性实现| 默认确定性实现 |
 |[aclnnQuantGroupedMatmulDequant](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequant.md)|对输入x进行量化，分组矩阵乘以及反量化。|默认确定性实现| 默认确定性实现 |
 |[aclnnQuantReduceScatter](../../mc2/quant_reduce_scatter/docs/aclnnQuantReduceScatter.md)|实现quant + reduceScatter融合计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnRainFusionAttention](../../attention/rain_fusion_attention/docs/aclnnRainFusionAttention.md)|RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
@@ -194,6 +197,8 @@
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnSparseFlashMlaGrad](../../attention/sparse_flash_mla_grad/docs/aclnnSparseFlashMlaGrad.md)|计算SparseFlashMla训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认非确定性实现，不支持配置开启| - |
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启| 默认确定性实现 |
+|[aclnnSparseLightningIndexerKLLossGrad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/aclnnSparseLightningIndexerKLLossGrad.md)|LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。|默认非确定性实现，不支持配置开启| 默认确定性实现 |
+|[aclnnSwigluGatedMlp](../../experimental/ffn/swiglu_gated_mlp/docs/aclnnSwigluGatedMlp.md)|完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。|默认确定性实现| - |
 |[aclnnSwinAttentionScoreQuant](../../attention/swin_attention_score_quant/docs/aclnnSwinAttentionScoreQuant.md)|完成swin-transformer场景的Attention计算。|默认确定性实现| - |
 |[aclnnSwinTransformerLnQkvQuant](../../ffn/swin_transformer_ln_qkv_quant/docs/aclnnSwinTransformerLnQkvQuant.md)|Swin Transformer网络模型完成 Q、K、V 的计算。| - | - |
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |

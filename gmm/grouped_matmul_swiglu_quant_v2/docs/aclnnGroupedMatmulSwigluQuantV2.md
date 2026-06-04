@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
+- 接口功能：融合GroupedMatmul、dequant、swiglu和quant，详细解释见计算公式。
 
   相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
     
@@ -68,7 +68,7 @@
           >
           >则第一个输出Q的shape为[30，:]，其中Q[18:，：]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
           >
-          >同理，第二个输出Q的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
+          >同理，第二个输出Q_scale的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
           >
           >即输出的Q[:grouplist[-1],:]和Q\_scale[:grouplist[-1]]为有效数据部分。
 
@@ -1435,4 +1435,3 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
-    

@@ -49,7 +49,7 @@
 
 ## 功能说明
 
-- 算子功能：全量推理场景的FlashAttention算子，支持sparse优化、支持actualSeqLengthsKv优化、支持int8量化功能，支持高精度或者高性能模式选择。
+- 算子功能：swin transformer场景下的ffn算子，用于将输入 x1 与 x2 做矩阵乘法，加上 bias 偏置后与 x3 做残差加法，输出最终结果。仅支持 float16 数据类型。
 
 - 计算公式：
 

@@ -127,10 +127,10 @@ private:
     uint64_t k_ = 0;
     uint64_t n_ = 0;
     uint64_t nSizeOri_ = 0;
-    int32_t groupType_ = 0;
+    int64_t groupType_ = 0;
     int64_t splitItem_ = 0;
     uint32_t groupNum_ = 0;
-    uint32_t groupListType_ = 0;
+    int64_t groupListType_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t xKDim_ = 0;
     uint32_t weightNDim_ = 0;

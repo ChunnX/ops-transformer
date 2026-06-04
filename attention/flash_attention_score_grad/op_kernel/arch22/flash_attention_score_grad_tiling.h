@@ -1115,6 +1115,8 @@ public:
     uint64_t dsinksumDataSizeOffset = 0;
     uint32_t baseMN = 0;
     uint32_t sinkDataSize = 0;
+    int64_t t1 = 0;
+    int64_t t2 = 0;
 
     uint32_t get_coreNum() const
     {
@@ -1536,6 +1538,22 @@ public:
     {
         this->sinkDataSize = sinkDataSize_val;
     }
+    uint64_t get_t1() const
+    {
+        return t1;
+    }
+    void set_t1(uint64_t t1_val)
+    {
+        this->t1 = t1_val;
+    }
+        uint64_t get_t2() const
+    {
+        return t2;
+    }
+    void set_t2(uint64_t t2_val)
+    {
+        this->t2 = t2_val;
+    }
 
     void reset()
     {
@@ -1586,6 +1604,8 @@ public:
         dsinksumDataSizeOffset = 0;
         baseMN = 0;
         sinkDataSize = 0;
+        t1 = 0;
+        t2 = 0;
     }
 };
 

@@ -268,13 +268,9 @@ public:
     uint32_t qkHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND时生效
 
-    uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
-    uint32_t actualLenDimsOriKV = 0;
-    uint32_t actualLenDimsCmpKV = 0;
-    uint32_t cmpResidualKVSize = 0;
 
     int64_t kvQuantMode = 0;
     int64_t tileSize = 0;
@@ -358,7 +354,6 @@ public:
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
-    ge::graphStatus GetSinks();
     void GenerateInfo(QSMLATilingInfo &qsmlaInfo);
     ge::graphStatus Parse(QSMLATilingInfo &qsmlaInfo);
 
@@ -387,10 +382,6 @@ public:
     int64_t sparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
-    uint32_t actualLenDimsOriKV_ = 0;
-    uint32_t actualLenDimsCmpKV_ = 0;
-    uint32_t cmpResidualKVSize_ = 0;
-    uint32_t actualLenDimsQ_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
     uint32_t oriKvStride_ = 0;
@@ -540,8 +531,6 @@ private:
 
     uint32_t oriBlockNum_ = 0;
     uint32_t cmpBlockNum_ = 0;
-
-    uint32_t actualLenDimsQ_ = 0;
 
     uint32_t oriBlockSize_ = 0;
     uint32_t cmpBlockSize_ = 0;

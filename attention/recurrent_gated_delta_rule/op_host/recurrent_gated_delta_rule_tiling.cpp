@@ -310,8 +310,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
     // blockNum >= T
     OP_CHECK_IF(tilingData_.sBlockNum < tilingData_.t,
         OP_LOGE(inputParams_.opName,
-                "BlockNum should be greater than or equal to T, Current values: BlockNum=%u, T=%u.",
-                tilingData_.sBlockNum, tilingData_.t),
+            "BlockNum should be greater than or equal to T, Current values: BlockNum=%u, T=%u.",
+            tilingData_.sBlockNum, tilingData_.t),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
