@@ -317,8 +317,6 @@ struct RunInfo<false> {
     int64_t s1BaseBN2GDR; \
     int64_t s1BaseDR; \
     int64_t s2BaseDR; \
-    int64_t mm1RopeKa; /* rope matmul 跳读参数*/ \
-    int64_t mm1RopeKb
 
 #define KVPREFIX_INFO \
     /* prefix参数 */ \
@@ -401,34 +399,17 @@ struct FagCVSharedParams {
     FAG_CV_SHARED_PARAMS;
 };
  
-template<bool isInfer = false, bool hasRope = false>
+template<bool isInfer = false>
 struct ConstInfo;
 
 template<>
-struct ConstInfo<true, true> {
+struct ConstInfo<true> {
     COMMON_CONST_INFO;
     INFER_CONST_INFO;
-    ROPE_INFO;
-    KVPREFIX_INFO;
 };
 
 template <>
-struct ConstInfo<true, false> {
-    COMMON_CONST_INFO;
-    INFER_CONST_INFO;
-    KVPREFIX_INFO;
-};
-
-template <>
-struct ConstInfo<false, true> {
-    COMMON_CONST_INFO;
-    ROPE_INFO;
-    int64_t n2GS1o; // 训练特有
-    int64_t gS1o;
-};
-
-template <>
-struct ConstInfo<false, false> {
+struct ConstInfo<false> {
     COMMON_CONST_INFO;
     int64_t n2GS1o; // 训练特有
     int64_t gS1o;
