@@ -175,7 +175,7 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetRequiredAttrAndSetTi
 {
     OP_LOGD("GetRequiredAttrAndSetTilingData");
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName_, "attrs is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "attrs"), return ge::GRAPH_FAILED);
 
     auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
@@ -183,10 +183,10 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetRequiredAttrAndSetTi
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
 
     // 判空
-    OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE(nodeName_, "groupEp is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName_, "epWorldSize is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName_, "epRankId is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE(nodeName_, "moeExpertNum is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "groupEp"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epWorldSize"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epRankId"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "moeExpertNum"), return ge::GRAPH_FAILED);
 
     if (CheckRequiredAttrValue() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -203,7 +203,7 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetRequiredAttrAndSetTi
 const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckOptionalAttrValue()
 {
     auto xShape = context_->GetInputShape(INPUT_X_INDEX);
-    OP_TILING_CHECK((xShape == nullptr), OP_LOGE(nodeName_, "Get input x is null"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((xShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "x"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "x",
@@ -274,7 +274,7 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetOptionalAttrAndSetTi
 {
     OP_LOGD("GetOptionalAttrAndSetTilingData");
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName_, "attrs is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "attrs"), return ge::GRAPH_FAILED);
 
     auto expertShardPtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
@@ -286,17 +286,17 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::GetOptionalAttrAndSetTi
     auto commAlgPtr = attrs->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX);
 
     // 判空
-    OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE(nodeName_, "expertShardType is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertShardType"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        sharedExpertNumPtr == nullptr, OP_LOGE(nodeName_, "sharedExpertNum is null."), return ge::GRAPH_FAILED);
+        sharedExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertNum"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        sharedExpertRankNumPtr == nullptr, OP_LOGE(nodeName_, "sharedExpertRankNum is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE(nodeName_, "quantMode is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE(nodeName_, "globalBs is null."), return ge::GRAPH_FAILED);
+        sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertRankNum"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "quantMode"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "globalBs"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        expertTokenNumsType == nullptr, OP_LOGE(nodeName_, "expertTokenNumsType is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE(nodeName_, "commType is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE(nodeName_, "commAlg is null."), return ge::GRAPH_FAILED);
+        expertTokenNumsType == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertTokenNumsType"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commType"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commAlg"), return ge::GRAPH_FAILED);
 
     if (CheckOptionalAttrValue() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -332,23 +332,23 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckTensorShape(
         context_->GetOutputShape(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
     const gert::StorageShape* expertTokenNumsOutShape = context_->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
 
-    OP_TILING_CHECK((xShape == nullptr), OP_LOGE(nodeName_, "Get input x is null"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((yShape == nullptr), OP_LOGE(nodeName_, "Get input y is null"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((xShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "x"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "y"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (expertIdsShape == nullptr), OP_LOGE(nodeName_, "Get input expertIds is null"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((commCmdInfoShape == nullptr), OP_LOGE(nodeName_, "Get input commCmdInfo is null"), return ge::GRAPH_FAILED);
+        (expertIdsShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertIds"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((commCmdInfoShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commCmdInfo"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (expandXOutShape == nullptr), OP_LOGE(nodeName_, "Get output expandXOut is null"), return ge::GRAPH_FAILED);
+        (expandXOutShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandXOut"), return ge::GRAPH_FAILED);
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
 
     OP_TILING_CHECK(
         ((quantMode != UNQUANT) && (quantMode != STATIC_QUANT) && (dynamicScalesOutShape == nullptr)),
-        OP_LOGE(nodeName_, "Get output dynamicScalesOut is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "dynamicScalesOut"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (assitInfoForCombineOutShape == nullptr), OP_LOGE(nodeName_, "Get output assitInfoForCombineOut is null"),
+        (assitInfoForCombineOutShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "assistInfoForCombineOut"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (expertTokenNumsOutShape == nullptr), OP_LOGE(nodeName_, "Get output expertTokenNumsOut is null"),
+        (expertTokenNumsOutShape == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertTokenNumsOut"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!CheckInputTensorShapeDim(), OP_LOGE(nodeName_, "Check input dims failed!"), return ge::GRAPH_FAILED);
@@ -613,15 +613,15 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
 const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorDataType()
 {
     OP_TILING_CHECK(
-        (context_->GetInputDesc(INPUT_X_INDEX) == nullptr), OP_LOGE(nodeName_, "Get input x is null!"), return false);
+        (context_->GetInputDesc(INPUT_X_INDEX) == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "x"), return false);
     OP_TILING_CHECK(
-        (context_->GetInputDesc(INPUT_Y_INDEX) == nullptr), OP_LOGE(nodeName_, "Get input y is null!"), return false);
+        (context_->GetInputDesc(INPUT_Y_INDEX) == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "y"), return false);
     OP_TILING_CHECK(
-        (context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX) == nullptr), OP_LOGE(nodeName_, "Get input expertIds is null!"),
+        (context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX) == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertIds"),
         return false);
     OP_TILING_CHECK(
         (context_->GetInputDesc(INPUT_COMM_CMD_INFO_INDEX) == nullptr),
-        OP_LOGE(nodeName_, "Get input commCmdInfo is null!"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commCmdInfo"), return false);
 
     OP_TILING_CHECK(
         ((context_->GetInputDesc(INPUT_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
@@ -673,19 +673,19 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckRelationTensorDataType(
 {
     OP_TILING_CHECK(
         (context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX) == nullptr),
-        OP_LOGE(nodeName_, "Get output expandXOut is null!"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandXOut"), return false);
     OP_TILING_CHECK(
         (context_->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX) == nullptr),
-        OP_LOGE(nodeName_, "Get output dynamicScalesOut is null!"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "dynamicScalesOut"), return false);
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     if ((quantMode != UNQUANT) && (quantMode != STATIC_QUANT)) {
         OP_TILING_CHECK(
             (context_->GetOutputDesc(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX) == nullptr),
-            OP_LOGE(nodeName_, "Get output assistInfoForCombineOut is null, when quantMode is 2."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(nodeName_, "assistInfoForCombineOut"), return false);
     }
     OP_TILING_CHECK(
         (context_->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX) == nullptr),
-        OP_LOGE(nodeName_, "Get output expertTokenNumsOut is null!"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertTokenNumsOut"), return false);
 
     if ((quantMode == PERTOKEN_DYNAMIC_QUANT) && (quantMode = PERGROUP_DYNAMIC_QUANT)) {
         OP_TILING_CHECK(

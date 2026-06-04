@@ -224,7 +224,7 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(MatmulAllReduce910TilingDataA5) % sizeof(uint64_t)) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(sizeof(MatmulAllReduce910TilingDataA5)).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", sizeof(MatmulAllReduce910TilingDataA5)),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),

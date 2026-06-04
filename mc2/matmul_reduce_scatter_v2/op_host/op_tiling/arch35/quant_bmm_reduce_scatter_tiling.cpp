@@ -155,7 +155,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
                 "groupSizeM=128, groupSizeN=128, groupSizeK=128 in perblock scene"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(opName_, "Quant mode should be pertensor or perblock or mxfp!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "unknown", "must be pertensor or perblock or mxfp");
         return ge::GRAPH_FAILED;
     }
 
@@ -500,7 +500,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     OP_LOGI(opName_, "set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
-        OP_LOGE(opName_, "WorkspaceSizes is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "WorkspaceSizes");
         return ge::GRAPH_FAILED;
     }
     workspaces[0] = myWorkSpaceSize_;
@@ -563,7 +563,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr),
-                    OP_LOGE(opName_, "rawTilingDataPtr is nullptr."),
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
             sizeof(QuantBatchMatmulV3ReduceScatterTilingData), rawTilingDataPtr->GetCapacity());

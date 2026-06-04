@@ -139,8 +139,9 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2ub() const
 {
     OP_TILING_CHECK(
         inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8,
-        OP_LOGE(inputParams_.opName, "Input x1 and x2 dtype should be INT8, actual dtype are %s and %s.",
-                DType2Str(inputParams_.aDtype).c_str(), DType2Str(inputParams_.bDtype).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1 and x2",
+            (std::string(DType2Str(inputParams_.aDtype)) + " and " + DType2Str(inputParams_.bDtype)).c_str(),
+            "The dtype of x1 and x2 should both be INT8."),
         return false);
     OP_TILING_CHECK(
         inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64,
@@ -182,9 +183,9 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForSupportedList() cons
     OP_TILING_CHECK(
         !(inputParams_.aDtype == ge::DT_INT8 || inputParams_.aDtype == ge::DT_INT4) ||
             !(inputParams_.bDtype == ge::DT_INT8 || inputParams_.bDtype == ge::DT_INT4),
-        OP_LOGE(inputParams_.opName, "Input dtype should be INT8 or DT_INT4, actual dtype are %s and %s",
-                DType2Str(inputParams_.aDtype).c_str(),
-                DType2Str(inputParams_.bDtype).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1 and x2",
+            (std::string(DType2Str(inputParams_.aDtype)) + " and " + DType2Str(inputParams_.bDtype)).c_str(),
+            "The dtype of x1 and x2 should both be INT8 or INT4."),
         return false);
     OP_TILING_CHECK(!(inputParams_.scaleDtype == ge::DT_UINT64 || inputParams_.scaleDtype == ge::DT_BF16 ||
                       inputParams_.scaleDtype == ge::DT_INT64 || inputParams_.scaleDtype == ge::DT_FLOAT),
@@ -297,8 +298,9 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForPertoken() const
         OP_TILING_CHECK(
             (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_FLOAT16) &&
                 inputParams_.scaleDtype == ge::DT_FLOAT,
-            OP_LOGE(inputParams_.opName,
-                    "When output dtype is int8 or float16 without pertokenScale, scale dtype should not be float."),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "scale",
+                DType2Str(inputParams_.scaleDtype).c_str(),
+                "When output dtype is int8 or float16 without pertokenScale, scale dtype should not be float."),
             return false);
     }
     return true;
@@ -479,10 +481,10 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, 
     if (inputParams_.aDtype == ge::DT_INT4) {
         // remainder by 2 to check if it is a even number
         OP_TILING_CHECK(x1Inner < 0 || x1Inner % 2 != 0 || x2Inner < 0 || x2Inner % 2 != 0,
-                        OP_LOGE(inputParams_.opName, "if input dtype is int4, \
-                                              last axis of input x1 and x2 has to be a positive even number, \
-                                              but actually last axis of x1 is [%ld], last axis of x2 is [%ld].",
-                                              x1Inner, x2Inner), return false);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                            (std::to_string(x1Inner) + " and " + std::to_string(x2Inner)).c_str(),
+                            "If input dtype is int4, last axis of x1 and x2 has to be a positive even number."),
+                        return false);
     }
     return true;
 }
@@ -518,8 +520,9 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtype() const
     //无芯片差异的公共校验
     OP_TILING_CHECK(
         inputParams_.aDtype != inputParams_.bDtype,
-        OP_LOGE(inputParams_.opName, "Input dtype of x1 and x2 must be same, actual dtype are %s and %s",
-                DType2Str(inputParams_.aDtype).c_str(), DType2Str(inputParams_.bDtype).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(inputParams_.opName, "x1 and x2",
+            (std::string(DType2Str(inputParams_.aDtype)) + " and " + DType2Str(inputParams_.bDtype)).c_str(),
+            "The dtype of x1 and x2 must be the same."),
         return false);
 
     if (!compileInfo_.supportL0c2Out && !CheckDtypeOnOnlyL0c2ub()) {

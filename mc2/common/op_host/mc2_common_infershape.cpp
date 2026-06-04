@@ -43,13 +43,15 @@ ge::graphStatus CommonParamCheck(
     const int64_t* rankSizeAttr = attrs->GetAttrPointer<int64_t>(RANK_SIZE);
 
     const char* groupStr = attrs->GetAttrPointer<char>(GROUP);
-    OP_LOGE_IF(groupStr == nullptr, GRAPH_FAILED, context->GetNodeName(), "Get group failed.");
+    if (groupStr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupStr");
+        return ge::GRAPH_FAILED;
+    }
     commParas.rankSize = -1;
     uint32_t rankNum = 0;
     if (*rankSizeAttr <= 0) {
         if ((Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(groupStr, &rankNum)) != HCCL_SUCCESS || rankNum == 0) {
-            OP_LOGE(
-                context->GetNodeName(), "Get rank size failed, group [%s], rankSize [%u]", groupStr, rankNum);
+            OP_LOGE(context->GetNodeName(), "Get rank size failed, group [%s], rankSize [%u]", groupStr, rankNum);
             return ge::GRAPH_FAILED;
         } else {
             commParas.rankSize = rankNum;
