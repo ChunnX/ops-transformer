@@ -25,9 +25,12 @@
 
 | 参数名           |输入/输出/属性|    描述    | 数据类型    |数据格式|
 |-------------|------------|------|-----|-----|
-|q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_q, headdim_q)，layout_q为TND时shape为(total_q, nheads_q, headdim_q)。|BFLOAT16|ND|
-|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_orikv, block_size_orikv, nheads_kv, headdim_kv)|FLOAT8_E4M3FN|ND|
-|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_cmpkv, block_size_cmpkv, nheads_kv, headdim_kv)|FLOAT8_E4M3FN|ND|
+|q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_q, headdim_q)，layout_q为TND时shape为(total_q, nheads_q, headdim_q)。|HIFLOAT8|ND|
+|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_orikv, block_size_orikv, nheads_kv, headdim_kv)|HIFLOAT8|ND|
+|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_cmpkv, block_size_cmpkv, nheads_kv, headdim_kv)|HIFLOAT8|ND|
+|q_descale|输入|输入q的反量化值，shape固定为(1,)。|FLOAT|ND|
+|ori_kv_descale|可选输入|输入ori_kv的反量化值，shape固定为(1,)。|FLOAT|ND|
+|cmp_kv_descale|可选输入|输入cmp_kv的反量化值，shape固定为(1,)。|FLOAT|ND|
 |ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_orikv)，layout_q为TND时shape为(total_q, nheads_kv, topk_orikv)|INT32|ND|
 |cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_cmpkv)，layout_q为TND时shape为(total_q, nheads_kv, topk_cmpkv)|INT32|ND|
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
@@ -43,8 +46,7 @@
 |cmp_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |sinks|可选输入|注意力下沉tensor|FLOAT32|ND|
 |metadata|可选输入|aicpu算子（npu_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
-|quant_mode|可选属性|默认值为None，表示K、V nope的量化模式，当前仅支持1、2，1表示K、V nope为per_token_group量化，scale类型为bfloat16，2表示K、V nope为per_token_group量化，scale类型为float8_e8m0|INT32|-|
-|rope_head_dim|可选属性|默认值为None，当前仅支持64|INT32|-|
+|qkv_quant_mode|可选属性|默认值为1，表示Q、K、V 的量化模式，当前仅支持1，1表示Q、K、V 输入为HIFLOAT8类型的per_tensor量化。|INT32|-|
 |softmax_scale|可选属性|默认值为None，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值|FLOAT32|-|
 |cmp_ratio|可选属性|默认值为None，表示对ori_kv的压缩率，kv压缩场景支持1~128，非kv压缩场景仅支持传1|INT32|-|
 |ori_mask_mode|可选属性|默认值为0，表示q和ori_kv计算的mask模式，当前仅支持4，代表band模式的mask，需与ori_win_left和ori_win_right配合使用|INT32|-|
@@ -60,9 +62,7 @@
 
 ## 约束说明
 -   该接口支持aclgraph模式。
--   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值支持两种组织形式：
-    -   quant_mode为1时：KV的D支持608，布局为block\_size\*(rope[64\*2]+nope[448]+scale[448/64\*2]+pad[18])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为bf16。
-    -   quant_mode为2时：KV的D支持584，布局为block\_size\*(nope+rope)+block\_size\*(scale+pad[1])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为e8m0。
+-   参数q、ori_kv和cmp_kv中的D仅支持512。
 -   参数ori\_kv、cmp\_kv的数据类型必须保持一致，且不可同时为空。
 -   参数q中的N1当前支持64/128，ori\_kv、cmp\_kv中的KV\_N仅支持1。
 -   参数ori\_kv和cmp\_kv中的block\_size1和block\_size2需为16的倍数，最大支持1024；block\_num1及block_num2为PageAttention时block总数。

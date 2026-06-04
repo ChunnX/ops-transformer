@@ -802,6 +802,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     template_run_mode = params["template_run_mode"]
     topk_value_mode = params.get("topk_value_mode", 1)
     return_softmax_lse = params.get("return_softmax_lse", False)
+    qkv_quant_mode = params.get("qkv_quant_mode", False)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
@@ -811,7 +812,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if seqused_cmp_kv is not None
         else None
     )
-
+    assert qkv_quant_mode == 1, f"qkv_quant_mode only support 1, but got {qkv_quant_mode}"
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
         q, q_npu, q_descale = _gen_hif8_q_tensor((B, S1, N1, D))
@@ -1019,6 +1020,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_cmp_kv": max_seqlen_cmp_kv,
             "topk": K if template_run_mode == "SCFA" else 0,
             "cmp_ratio": cmp_ratio if template_run_mode != "SWA" else 1,
+            "qkv_quant_mode": qkv_quant_mode,
             "ori_mask_mode": ori_mask_mode,
             "cmp_mask_mode": cmp_mask_mode,
             "ori_win_left": ori_win_left,
@@ -1047,6 +1049,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "ori_kv_descale": ori_kv_descale,
             "cmp_kv_descale": cmp_kv_descale,
             "softmax_scale": softmax_scale,
+            "qkv_quant_mode": qkv_quant_mode,
             "cmp_ratio": cmp_ratio if template_run_mode != "SWA" else 1,
             "ori_mask_mode": ori_mask_mode,
             "cmp_mask_mode": cmp_mask_mode,
