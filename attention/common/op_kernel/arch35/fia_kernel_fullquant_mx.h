@@ -508,7 +508,12 @@ public:
 
     __aicore__ inline bool IsSpecialBandSparse()
     {
-        return USE_DN && HAS_MASK && constInfo.sparseMode == fa_base_vector::BAND;
+        if constexpr (USE_DN && HAS_MASK) {
+            if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
+                return true;
+            }
+        }
+        return false;
     }
 
     __aicore__ inline bool ShouldDispatchBandTask(uint32_t s2Cur)
@@ -524,13 +529,13 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
-        if (constInfo.sparseMode == fa_base_vector::BAND) {
+        if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
         if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
+        } else if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
