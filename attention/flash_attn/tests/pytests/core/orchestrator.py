@@ -31,12 +31,12 @@ def run_case(params: dict,
     print(f"  [primary] {primary.name} 计算...")
     primary_out = primary.compute(inputs, params)
 
-    # 4. 精度对比 —— 统一到 target output_layout 再比
+    # 4. 精度对比 —— CPU golden 始终 BNSD，统一转 target layout
     cpu_raw = golden_out["out"]
     dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
 
     cpu_out = trans_bnsd_to_layout(cpu_raw, out_layout, **params) if out_layout != "BNSD" else cpu_raw
-    dev_out = trans_bnsd_to_layout(dev_raw, out_layout, **params) if out_layout != "BNSD" else dev_raw
+    dev_out = dev_raw  # NPU/GPU 已经按 layout_out 返回，不需要再转
 
     print(f"  [compare] CPU vs {primary.name}")
     attn_result = check_result(f"CPU_vs_{primary.name}",
