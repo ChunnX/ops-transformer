@@ -56,9 +56,9 @@ void CheckStemIndexerInputs(const at::Tensor &qflat, const at::Tensor &kflat, co
 std::tuple<at::Tensor, at::Tensor> npu_stem_indexer(
     const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
     const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens, const c10::optional<at::Tensor> &num_prompt_tokens,
-    const c10::optional<at::Tensor> &metadata, bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha,
-    int64_t initial_blocks, int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-    double k_block_num_rate_large, int64_t k_block_num_bias_large)
+    const c10::optional<at::Tensor> &metadata, bool causal, int64_t stem_block_size, int64_t stem_stride, float alpha,
+    int64_t inital_blocks, int64_t window_size, float k_block_num_rate_medium, int64_t k_block_num_bias_medium,
+    float k_block_num_rate_large, int64_t k_block_num_bias_large)
 {   
     const at::Tensor &num_prompt_tokens_const = num_prompt_tokens.value_or(at::Tensor());
     const at::Tensor &metadata_const = metadata.value_or(at::Tensor());
@@ -72,7 +72,7 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer(
         qflat.options().dtype(at::kInt));
 
     ACLNN_CMD(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens_const, metadata_const, causal,
-              stem_block_size, stem_stride, alpha, initial_blocks, window_size, k_block_num_rate_medium,
+              stem_block_size, stem_stride, alpha, inital_blocks, window_size, k_block_num_rate_medium,
               k_block_num_bias_medium, k_block_num_rate_large, k_block_num_bias_large, sparse_indices, sparse_seq_len);
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices, sparse_seq_len);

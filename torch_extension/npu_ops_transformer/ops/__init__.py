@@ -32,3 +32,4 @@
 # )
 
 from .stem_indexer import npu_stem_indexer
+from .stem_indexer_metadata import npu_stem_indexer_metadata

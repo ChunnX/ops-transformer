@@ -29,7 +29,7 @@ class StemIndexerOpBuilder(OpBuilder):
             "Tensor qflat, Tensor kflat, Tensor vbias, Tensor q_seq_lens, Tensor kv_seq_lens, "
             "Tensor num_prompt_tokens, Tensor metadata, *, "
             "bool causal=True, int stem_block_size=128, int stem_stride=16, float alpha=1.0, "
-            "int initial_blocks=4, int window_size=4, float k_block_num_rate_medium=0.2, "
+            "int inital_blocks=4, int window_size=4, float k_block_num_rate_medium=0.2, "
             "int k_block_num_bias_medium=30, float k_block_num_rate_large=0.1, "
             "int k_block_num_bias_large=30) -> (Tensor, Tensor)"
         )
@@ -53,7 +53,7 @@ class StemIndexerOpBuilder(OpBuilder):
             stem_block_size=128,
             stem_stride=16,
             alpha=1.0,
-            initial_blocks=4,
+            inital_blocks=4,
             window_size=4,
             k_block_num_rate_medium=0.2,
             k_block_num_bias_medium=30,
@@ -95,7 +95,11 @@ def npu_stem_indexer(
     stem_block_size=128,
     stem_stride=16,
     alpha=1.0,
+<<<<<<< HEAD
     initial_blocks=4,
+=======
+    inital_blocks=4,
+>>>>>>> Add StemIndexer Torch Extension
     window_size=4,
     k_block_num_rate_medium=0.2,
     k_block_num_bias_medium=30,
@@ -118,7 +122,11 @@ def npu_stem_indexer(
         stem_block_size,
         stem_stride,
         alpha,
+<<<<<<< HEAD
         initial_blocks,
+=======
+        inital_blocks,
+>>>>>>> Add StemIndexer Torch Extension
         window_size,
         k_block_num_rate_medium,
         k_block_num_bias_medium,
