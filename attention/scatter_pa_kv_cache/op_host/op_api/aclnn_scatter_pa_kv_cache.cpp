@@ -120,10 +120,10 @@ static aclnnStatus CheckDtypeValid(
     auto keyDtype = key->GetDataType();
     auto keyCacheDtype = keyCacheRef->GetDataType();
     if (keyDtype != keyCacheDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The data type of key[%s] and keyCacheRef[%s] are not equal.",
-                op::ToString(DataType(keyDtype)).GetString(),
-                op::ToString(DataType(keyCacheDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "key, keyCacheRef",
+            (op::ToString(DataType(keyDtype)).GetString() + std::string(", ") +
+                op::ToString(DataType(keyCacheDtype)).GetString()).c_str(),
+            "The data type of key and keyCacheRef must be equal");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -148,18 +148,18 @@ static aclnnStatus CheckDtypeValid(
         bool isPaNz = (cacheModeOptional != nullptr && strcmp(cacheModeOptional, "PA_NZ") == 0);
 
         if (valueDtype != valueCacheDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of value[%s] and valueCacheRef[%s] are not equal.",
-                    op::ToString(DataType(valueDtype)).GetString(),
-                    op::ToString(DataType(valueCacheDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "value, valueCacheRef",
+                (op::ToString(DataType(valueDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(valueCacheDtype)).GetString()).c_str(),
+                "The data type of value and valueCacheRef must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         if (!isPaNz && keyDtype != valueDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of key[%s] and value[%s] are not equal when cacheMode is not PA_NZ.",
-                    op::ToString(DataType(keyDtype)).GetString(),
-                    op::ToString(DataType(valueDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "key, value",
+                (op::ToString(DataType(keyDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(valueDtype)).GetString()).c_str(),
+                "The data type of key and value must be equal when cacheMode is not PA_NZ");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -167,30 +167,30 @@ static aclnnStatus CheckDtypeValid(
     auto slotMappingDtype = slotMapping->GetDataType();
     if (compressLensOptional != nullptr) {
         if (slotMappingDtype != compressLensOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and compressLensOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(compressLensOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, compressLensOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(compressLensOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and compressLensOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
     if (compressSeqOffsetOptional != nullptr) {
         if (slotMappingDtype != compressSeqOffsetOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and compressSeqOffsetOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(compressSeqOffsetOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, compressSeqOffsetOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(compressSeqOffsetOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and compressSeqOffsetOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
     if (seqLensOptional != nullptr) {
         if (slotMappingDtype != seqLensOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and seqLensOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(seqLensOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, seqLensOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(seqLensOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and seqLensOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -204,16 +204,14 @@ static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value)
     auto valueDimNum = value != nullptr ? value->GetViewShape().GetDimNum() : 0;
 
     if (keyDimNum != 3 && keyDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The dim num of key must be 3 or 4, but got %ld.",
-                keyDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key",
+            std::to_string(keyDimNum).c_str(), "The dim num of key must be 3 or 4");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (value != nullptr && valueDimNum != 0 && valueDimNum != 3 && valueDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The dim num of value must be 0, 3 or 4, but got %ld.",
-                valueDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value",
+            std::to_string(valueDimNum).c_str(), "The dim num of value must be 0, 3 or 4");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
