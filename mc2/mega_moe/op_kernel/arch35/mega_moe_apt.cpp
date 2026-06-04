@@ -24,7 +24,7 @@ template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType>
 __global__ __aicore__ void mega_moe(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
-    GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workSpaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
@@ -32,7 +32,7 @@ __global__ __aicore__ void mega_moe(
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
         MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
+                scales, yOut, expertTokenNumsOut, workSpaceGM, &tilingData);
         op.Process();
     }
 }
