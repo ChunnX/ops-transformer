@@ -476,8 +476,13 @@ public:
             if (curS2Start >= curS2End) {
                 return TASK_DEAL_MODE::SKIP;
             }
+
             if (!ShouldDispatchBandTask(s2Cur)) {
-                return TASK_DEAL_MODE::S2_END;
+                return TASK_DEAL_MODE::SKIP;
+            }
+
+            if (s2Cur == 0) {
+                mloop++;
             }
         } else {
             if (curS2Start < curS2End && s2Cur >= curS2End) {
@@ -487,18 +492,14 @@ public:
             if (s2Cur < curS2Start || s2Cur >= curS2End) {
                 return TASK_DEAL_MODE::SKIP;
             }
-        }
 
-        // if (IsSpecialBandSparse() ? IsBandFirstS2Loop(bN2Cur, gS1Cur, s2Cur) : (s2Cur == curS2Start)) {
-        //     mloop++;
-        // }
+            if (s2Cur == curS2Start) {
+                mloop++;
+            }
 
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
-        }
-
-        if (s2Cur == curS2Start || s2Cur == 0) {
-            mloop++;
+            if (SkipForS1OutSplit()) {
+                return TASK_DEAL_MODE::SKIP_S1OUT;
+            }
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
@@ -509,31 +510,16 @@ public:
         return USE_DN && HAS_MASK && constInfo.sparseMode == fa_base_vector::BAND;
     }
 
-    __aicore__ inline bool IsValidS2Range(uint32_t s2Start, uint32_t s2End)
-    {
-        return s2Start < s2End;
-    }
-
-    __aicore__ inline bool IsCurS2InBandRange(uint32_t s2Cur)
-    {
-        return IsValidS2Range(curS2Start, curS2End) && s2Cur >= curS2Start && s2Cur < curS2End;
-    }
-
-    __aicore__ inline bool IsBandInitialS2Loop(uint32_t s2Cur)
-    {
-        return IsSpecialBandSparse() && s2Cur == 0U;
-    }
-
     __aicore__ inline bool ShouldDispatchBandTask(uint32_t s2Cur)
     {
-        return s2Cur == 0U || IsCurS2InBandRange(s2Cur);
+        return s2Cur == 0U || (curS2Start < curS2End && s2Cur >= curS2Start && s2Cur < curS2End);
     }
 
     __aicore__ inline bool IsBandFirstS2Loop(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         bool isHeadS2Split =
             (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (constInfo.s2OStart > 0U);
-        return IsBandInitialS2Loop(s2Cur) || (isHeadS2Split && s2Cur == curS2Start);
+        return s2Cur == 0U || (isHeadS2Split && s2Cur == curS2Start);
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
@@ -732,13 +718,12 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        bool isBandInitialS2Loop = IsBandInitialS2Loop(s2Cur);
-        bool isBandS2Loop = IsCurS2InBandRange(s2Cur);
-        info.isBandGlobalOnlyS2Loop = isBandInitialS2Loop && !isBandS2Loop;
+        info.isBandGlobalOnlyS2Loop =
+            IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End);
         if (info.isBandGlobalOnlyS2Loop) {
-            uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
-            info.actSingleLoopS2Size = globalTokenEnd;
+            info.actSingleLoopS2Size = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
         }
+
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
@@ -769,9 +754,8 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         if (IsSpecialBandSparse()) {
-            bool hasBandS2Range = IsValidS2Range(curS2Start, curS2End);
-            info.isLastS2Loop = (isBandS2Loop && (s2Cur + 1 == curS2End)) ||
-                                (isBandInitialS2Loop && !hasBandS2Range);
+            info.isLastS2Loop = ((s2Cur >= curS2Start && s2Cur < curS2End) && (s2Cur + 1 == curS2End)) ||
+                                (s2Cur == 0U && curS2Start >= curS2End);
         } else {
             info.isLastS2Loop = (s2Cur + 1 == curS2End);
         }
