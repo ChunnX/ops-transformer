@@ -770,13 +770,12 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVa
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
     int64_t outputBufferSizePerBuffer =
         (ubRowsVal * cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    int64_t totalOutputBufferSize = outputBufferSizePerBuffer * NUM_TWO;
 
-    int64_t remainingUbSize = ubSize - totalOutputBufferSize;
-    int64_t indicesBufferSizePerBuffer = remainingUbSize > 0 ? remainingUbSize / NUM_TWO : 0;
+    int64_t remainingUbSize = ubSize - outputBufferSizePerBuffer;
+    int64_t indicesBufferSizePerBuffer = remainingUbSize > 0 ? remainingUbSize : 0;
     int64_t maxRowsPerLoop = indicesBufferSizePerBuffer / sizeof(int32_t);
 
-    if (maxRowsPerLoop <= 0 || totalOutputBufferSize > ubSize) {
+    if (maxRowsPerLoop <= 0 || outputBufferSizePerBuffer > ubSize) {
         maxRowsPerLoop = ubRowsVal;
     }
 
