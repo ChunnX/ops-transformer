@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_workspace_info.h
- * \brief
+ * \brief Workspace 全局内存布局定义
  */
 
 #ifndef MEGA_MOE_WORKSPACE_INFO_H
@@ -25,6 +25,7 @@
 #endif
 
 namespace {
+// problem shape 与 block-offset 的 tuple 索引
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
@@ -39,9 +40,13 @@ constexpr uint64_t IDX_B2_OFFSET = 8UL;
 constexpr uint64_t IDX_B2_SCALE_OFFSET = 9UL;
 constexpr uint64_t IDX_Y2_OFFSET = 10UL;
 constexpr uint64_t IDX_M_OFFSET = 11UL;
+
+// AIC/AIV 跨核同步常量
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+
+// 量化 / tiling 常量
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
@@ -54,8 +59,10 @@ constexpr int64_t ALIGN_256 = 256LL;
 constexpr int64_t ALIGN_512 = 512LL;
 constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
-// wave-grain dispatch flag: must match MegaMoeImpl::L1_TILE_M
+
+// wave-grain dispatch：tile 高度，必须与 MegaMoeImpl::L1_TILE_M 一致
 constexpr int64_t DISPATCH_WAVE_TILE_M = 256;
+
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
@@ -66,54 +73,62 @@ constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
 } // namespace
 
-struct WorkspaceInfo {
-    GM_ADDR gmCtx;
-    GM_ADDR ptrA;
-    GM_ADDR ptrAScale;
-    GM_ADDR ptrA2;
-    GM_ADDR ptrA2Scale;
-    GM_ADDR ptrcumsumMM;
+// Workspace 全局内存布局：按顺序分配以下连续 GM 区域 —
+//   GMM1 输入 data + scale（dispatch 目标）
+//   SwiGLU 量化输出 data + scale（GMM2 的 A 矩阵输入）
+//   Cumsum 工作区（epWorldSize × expertPerRank 的 int32 矩阵）
+//   展开后的 row 索引（routing 输出，bs×topK 个 int32）
+//   各 rank 的前缀和（dispatch 时 per-expert 偏移）
+//   SwiGluToGmm2 flag 区（每 expert INT_CACHELINE 个 int32 槽位）
+//   DispatchToGmm1 flag 区（wave-grain：每 expert maxWavesPerExpert 个槽位，INT_CACHELINE 对齐）
+// 注：expandedRowIdxGather 复用 ptrGmm1InputData 内存（dispatch 完成后不再需要）。
+struct WorkSpaceInfo {
+    GM_ADDR ptrGmm1InputData;
+    GM_ADDR ptrGmm1InputScale;
+    GM_ADDR ptrSwiGluQuantData;
+    GM_ADDR ptrSwiGluQuantScale;
+    GM_ADDR ptrCumsumWorkSpace;
     GM_ADDR expandedRowIdx;
     GM_ADDR expandedRowIdxGather;
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagSwiGluToGmm2;
     GM_ADDR ptrFlagDispatchToGmm1;
-    int64_t workspaceSize;
-    HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    int64_t workSpaceSize;
+    HOST_DEVICE WorkSpaceInfo() = default;
+    HOST_DEVICE WorkSpaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
-        workspaceSize = 0;
-        ptrA = base;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
-        ptrAScale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
+        workSpaceSize = 0;
+        ptrGmm1InputData = base;
+        workSpaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+        ptrGmm1InputScale = base + workSpaceSize;
+        workSpaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrA2 = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
+        ptrSwiGluQuantData = base + workSpaceSize;
+        workSpaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
             tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
-        ptrA2Scale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
+        ptrSwiGluQuantScale = base + workSpaceSize;
+        workSpaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
             SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrcumsumMM = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
+        ptrCumsumWorkSpace = base + workSpaceSize;
+        workSpaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
             tilingData->expertPerRank, ALIGN_512);
-        expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
+        expandedRowIdx = base + workSpaceSize;
+        workSpaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
             tilingData->topK;
-        ptrSumBeforeRank = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
+        ptrSumBeforeRank = base + workSpaceSize;
+        workSpaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
             tilingData->expertPerRank, ALIGN_128);
-        ptrFlagSwiGluToGmm2 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        ptrFlagDispatchToGmm1 = base + workspaceSize;
-        // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
+        ptrFlagSwiGluToGmm2 = base + workSpaceSize;
+        workSpaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        ptrFlagDispatchToGmm1 = base + workSpaceSize;
+        // wave-grain dispatch：每 expert 每 wave (L1_TILE_M=256行) 分配一个槽位，INT_CACHELINE 对齐
         // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
         int64_t maxWavesPerExpert = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
             DISPATCH_WAVE_TILE_M);
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
-        expandedRowIdxGather = ptrA;
+        workSpaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+        expandedRowIdxGather = ptrGmm1InputData;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
