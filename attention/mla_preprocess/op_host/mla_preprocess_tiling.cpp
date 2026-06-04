@@ -596,53 +596,53 @@ void MlaPreprocessTiling::PrintFirstTilingData(gert::TilingContext *context)
 
 void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddtenState is %ld.", mlaTilingData.get_hiddtenState());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCore2 is %ld.", mlaTilingData.get_rmsNumCore2());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCol2 is %ld.", mlaTilingData.get_rmsNumCol2());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumRow2 is %ld.", mlaTilingData.get_rmsNumRow2());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsQuantMin2 is %ld.", mlaTilingData.get_rmsQuantMin2());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddenSizeQ is %ld.", mlaTilingData.get_hiddenSizeQ());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headNumQ is %ld.", mlaTilingData.get_headNumQ());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headDim is %ld.", mlaTilingData.get_headDim());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: concatSize is %ld.", mlaTilingData.get_concatSize());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rotaryCoeff is %ld.", mlaTilingData.get_rotaryCoeff());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: ntokens is %ld.", mlaTilingData.get_ntokens());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: realCore is %ld.", mlaTilingData.get_realCore());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: nlCoreRun is %ld.", mlaTilingData.get_nlCoreRun());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lCoreRun is %ld.", mlaTilingData.get_lCoreRun());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxNPerLoopForUb  is %ld.",	 
-              mlaTilingData.get_maxNPerLoopForUb());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopTime   is %ld.",	 
-              mlaTilingData.get_preCoreLoopTime());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopNLast  is %ld.",	 
-              mlaTilingData.get_preCoreLoopNLast());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopTime  is %ld.",	 
-              mlaTilingData.get_lastCoreLoopTime());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopNLast is %ld.",	 
-              mlaTilingData.get_lastCoreLoopNLast());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCore      is %ld.",	 
-              mlaTilingData.get_esqFrontCore());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCore       is %ld.",	 
-              mlaTilingData.get_esqTailCore());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCoreBatch is %ld.",	 
-              mlaTilingData.get_esqFrontCoreBatch());	 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCoreBatch  is %ld.", 
-              mlaTilingData.get_esqTailCoreBatch()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadNum        is %ld.", 
-              mlaTilingData.get_esqHeadNum()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColNum         is %ld.", mlaTilingData.get_esqColNum()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqUbHeadLoop     is %ld.", 
-              mlaTilingData.get_esqUbHeadLoop()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadPerLoop    is %ld.", 
-              mlaTilingData.get_esqHeadPerLoop()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadTail       is %ld.", 
-              mlaTilingData.get_esqHeadTail()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColLoop        is %ld.", 
-              mlaTilingData.get_esqColLoop()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColTail        is %ld.", 
-              mlaTilingData.get_esqColTail()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: epsilon           is %f.", mlaTilingData.get_epsilon()); 
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxWorkspaceSize  is %ld.", 
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddtenState is %ld.", mlaTilingData.get_hiddtenState());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCore2 is %ld.", mlaTilingData.get_rmsNumCore2());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCol2 is %ld.", mlaTilingData.get_rmsNumCol2());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumRow2 is %ld.", mlaTilingData.get_rmsNumRow2());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsQuantMin2 is %ld.", mlaTilingData.get_rmsQuantMin2());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddenSizeQ is %ld.", mlaTilingData.get_hiddenSizeQ());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headNumQ is %ld.", mlaTilingData.get_headNumQ());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headDim is %ld.", mlaTilingData.get_headDim());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: concatSize is %ld.", mlaTilingData.get_concatSize());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rotaryCoeff is %ld.", mlaTilingData.get_rotaryCoeff());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: ntokens is %ld.", mlaTilingData.get_ntokens());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: realCore is %ld.", mlaTilingData.get_realCore());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: nlCoreRun is %ld.", mlaTilingData.get_nlCoreRun());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lCoreRun is %ld.", mlaTilingData.get_lCoreRun());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxNPerLoopForUb  is %ld.",
+              mlaTilingData.get_maxNPerLoopForUb());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopTime   is %ld.",
+              mlaTilingData.get_preCoreLoopTime());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopNLast  is %ld.",
+              mlaTilingData.get_preCoreLoopNLast());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopTime  is %ld.",
+              mlaTilingData.get_lastCoreLoopTime());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopNLast is %ld.",
+              mlaTilingData.get_lastCoreLoopNLast());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCore      is %ld.",
+              mlaTilingData.get_esqFrontCore());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCore       is %ld.",
+              mlaTilingData.get_esqTailCore());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCoreBatch is %ld.",
+              mlaTilingData.get_esqFrontCoreBatch());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCoreBatch  is %ld.",
+              mlaTilingData.get_esqTailCoreBatch());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadNum        is %ld.",
+              mlaTilingData.get_esqHeadNum());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColNum         is %ld.", mlaTilingData.get_esqColNum());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqUbHeadLoop     is %ld.",
+              mlaTilingData.get_esqUbHeadLoop());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadPerLoop    is %ld.",
+              mlaTilingData.get_esqHeadPerLoop());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadTail       is %ld.",
+              mlaTilingData.get_esqHeadTail());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColLoop        is %ld.",
+              mlaTilingData.get_esqColLoop());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColTail        is %ld.",
+              mlaTilingData.get_esqColTail());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: epsilon           is %f.", mlaTilingData.get_epsilon());
+    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxWorkspaceSize  is %ld.",
               mlaTilingData.get_maxWorkspaceSize());
     OP_LOGD(context->GetNodeName(),
     "MlaPreprocess_tiling: kvCacheBlock=%ld, kvStride0=%ld, kvRopeStride0=%ld",
