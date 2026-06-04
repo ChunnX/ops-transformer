@@ -46,6 +46,7 @@ private:
     GlobalTensor<int32_t> sortedExpertIdxGm_;
     GlobalTensor<int32_t> expertCountTempGm_;
     GlobalTensor<int64_t> expertTokensCountGm_;
+    GlobalTensor<int32_t> expertTokensCountInitGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
@@ -152,6 +153,8 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
     expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertTokensOutputElements_);
+    expertTokensCountInitGm_.SetGlobalBuffer((__gm__ int32_t *)expertTokensCount,
+                                             expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)));
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
@@ -215,7 +218,8 @@ __aicore__ inline void ExpertTokensCount::Process()
 
     if (blockIdx_ == 0) {
         if (expertTokensNumType_ == KEY_VALUE_MODE) {
-            InitGlobalMemory(expertTokensCountGm_, expertTokensOutputElements_, 0);
+            InitGlobalMemory(expertTokensCountInitGm_, expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)),
+                             0);
             SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
             SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
         }

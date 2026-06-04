@@ -138,6 +138,7 @@ protected:
     GlobalTensor<int32_t> expertIdxGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int64_t> expertTokensCountOrCumsumGm_;
+    GlobalTensor<int32_t> expertTokensCountOrCumsumInitGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
 
     TPipe *pipe_;
@@ -197,6 +198,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     } else {
         expertCountElements_ = actualExpertNum_;
         expertTokensOutputElements_ = expertCountElements_;
+    }
+    if (this->expertTokensNumFlag_ > 0) {
+        expertTokensCountOrCumsumInitGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)expertTokensCountOrCumsum,
+            expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)));
     }
 
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);
@@ -463,7 +469,8 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
     LocalTensor<int64_t> expertTokensOutLocal = expertTokensCopyOutQueue_.AllocTensor<int64_t>();
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-        InitGlobalMemory(expertTokensCountOrCumsumGm_, expertTokensOutputElements_, 0);
+        InitGlobalMemory(expertTokensCountOrCumsumInitGm_,
+                         expertTokensOutputElements_ * (sizeof(int64_t) / sizeof(int32_t)), 0);
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
         SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
