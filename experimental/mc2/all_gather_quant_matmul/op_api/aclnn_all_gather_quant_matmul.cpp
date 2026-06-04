@@ -49,18 +49,18 @@ const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
 };
 
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2,
-    const aclTensor* scaleInv1, const aclTensor* scaleInv2, const aclTensor* output)
+    const aclTensor* x1Scale, const aclTensor* x2Scale, const aclTensor* output)
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(scaleInv1, return false);
-    OP_CHECK_NULL(scaleInv2, return false);
+    OP_CHECK_NULL(x1Scale, return false);
+    OP_CHECK_NULL(x2Scale, return false);
     OP_CHECK_NULL(output, return false);
     return true;
 }
 
 static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
-    const aclTensor* scaleInv1, const aclTensor* scaleInv2, const aclTensor* output)
+    const aclTensor* x1Scale, const aclTensor* x2Scale, const aclTensor* output)
 {
     if (!CheckType(x1->GetDataType(), X2_DTYPE_SUPPORT_LIST)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1 support only [DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2].");
@@ -70,12 +70,12 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2,
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 support only [DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2].");
         return false;
     }
-    if (!CheckType(scaleInv1->GetDataType(), SCALES_DTYPE_SUPPORT_LIST)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scaleInv1 support only [DT_FLOAT8_E8M0].");
+    if (!CheckType(x1Scale->GetDataType(), SCALES_DTYPE_SUPPORT_LIST)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1Scale support only [DT_FLOAT8_E8M0].");
         return false;
     }
-    if (!CheckType(scaleInv2->GetDataType(), SCALES_DTYPE_SUPPORT_LIST)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scaleInv2 support only [DT_FLOAT8_E8M0].");
+    if (!CheckType(x2Scale->GetDataType(), SCALES_DTYPE_SUPPORT_LIST)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2Scale support only [DT_FLOAT8_E8M0].");
         return false;
     }
     if (!CheckType(output->GetDataType(), OUTPUT_DTYPE_SUPPORT_LIST)) {
@@ -126,8 +126,8 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
 }
 
 extern "C" aclnnStatus aclnnInnerAllGatherQuantMatmulGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* scaleInv1, const aclTensor* scaleInv2,
-    const char* group, int64_t rankSize, bool transposeX2,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
+    const char* group, int64_t rankSize, bool transposeX2, bool optionalOutput,
     aclTensor* output, aclTensor* allGatherDataOut, aclTensor* allGatherScalesOut,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 extern "C" aclnnStatus aclnnInnerAllGatherQuantMatmul(
@@ -135,8 +135,8 @@ extern "C" aclnnStatus aclnnInnerAllGatherQuantMatmul(
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnAllGatherQuantMatmulGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* scaleInv1, const aclTensor* scaleInv2,
-    const char* group, int64_t rankSize, bool transposeX2,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
+    const char* group, int64_t rankSize, bool transposeX2, bool optionalOutput,
     aclTensor* output, aclTensor* allGatherDataOut, aclTensor* allGatherScalesOut,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
@@ -146,7 +146,7 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulGetWorkspaceSize(
     }
     OP_LOGD("Invoking aclnnInnerAllGatherQuantMatmulGetWorkspaceSize...");
     aclnnStatus ret = aclnnInnerAllGatherQuantMatmulGetWorkspaceSize(
-        x1, tempX2, scaleInv1, scaleInv2, group, rankSize, transposeX2,
+        x1, tempX2, x1Scale, x2Scale, group, rankSize, transposeX2, optionalOutput,
         output, allGatherDataOut, allGatherScalesOut, workspaceSize, executor);
     OP_LOGD("AllGatherQuantMatmul, aclnnGetWorkspaceSize ret %d.", ret);
     return ret;

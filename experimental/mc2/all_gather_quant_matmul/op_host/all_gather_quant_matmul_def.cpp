@@ -59,7 +59,7 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("rank_size").AttrType(OPTIONAL).Int(0);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
-        this->Attr("is_optional_output").AttrType(OPTIONAL).Bool(false);
+        this->Attr("optional_output").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)

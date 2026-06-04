@@ -31,11 +31,12 @@ extern "C" {
  * @domain aclnn_ops_infer
  * @param [in] x1: AllGather的fp8输入A，数据类型支持 FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持 ND。
  * @param [in] x2: QBMM的fp8权重B，数据类型支持 FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持 ND、FRACTAL_NZ。
- * @param [in] scaleInv1: A矩阵的e8m0 scale，数据类型支持 FLOAT8_E8M0，数据格式支持 ND。
- * @param [in] scaleInv2: B矩阵的e8m0 scale，数据类型支持 FLOAT8_E8M0，数据格式支持 ND。
+ * @param [in] x1Scale: A矩阵的e8m0 scale，数据类型支持 FLOAT8_E8M0，数据格式支持 ND。
+ * @param [in] x2Scale: B矩阵的e8m0 scale，数据类型支持 FLOAT8_E8M0，数据格式支持 ND。
  * @param [in] group: 通信域标识，数据类型支持：string。
  * @param [in] rankSize: 通信域大小，数据类型支持：int64。
  * @param [in] transposeX2: x2是否转置，数据类型支持：bool，当前只支持false。
+ * @param [in] optionalOutput: 是否可选输出。
  * @param [out] output: QBMM bf16输出，数据类型支持 BFLOAT16、FLOAT16，数据格式支持 ND。
  * @param [out] allGatherDataOut: AllGather后的fp8数据，数据类型支持 FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持 ND。
  * @param [out] allGatherScalesOut: AllGather后的e8m0 scales，数据类型支持 FLOAT8_E8M0，数据格式支持 ND。
@@ -44,8 +45,8 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnAllGatherQuantMatmulGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* scaleInv1, const aclTensor* scaleInv2,
-    const char* group, int64_t rankSize, bool transposeX2,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
+    const char* group, int64_t rankSize, bool transposeX2, bool optionalOutput,
     aclTensor* output, aclTensor* allGatherDataOut, aclTensor* allGatherScalesOut,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
