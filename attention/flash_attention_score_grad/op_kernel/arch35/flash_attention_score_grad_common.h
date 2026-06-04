@@ -39,7 +39,8 @@ constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
 constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
-constexpr uint8_t SYNC_SINK_UB_REUSE_FLAG = 11;
+constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
+constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -360,13 +361,6 @@ struct DeterConstInfo {
     uint32_t deterDkVecCoreS2Offset;
     uint32_t deterDvVecCoreS2Offset;
     bool noNeedDeter;
-    // fp32 old deter
-    uint64_t dqGmBaseAddr = 0;
-    uint64_t dkGmBaseAddr = 0;
-    uint64_t dvGmBaseAddr = 0;
-    uint64_t dqGmLimitOffset = 0;
-    uint64_t dkGmLimitOffset = 0;
-    uint64_t dvGmLimitOffset = 0;
     // event_id
     event_t eventIDScalarToMte2;
     event_t eventIDMte2ToScalar;

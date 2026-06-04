@@ -350,7 +350,7 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CalcMaxRows()
     int64_t bufk4IndexPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk4RecipSumPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk4MaskPerTokenSpace = k_ * SIZE_OF_FLOAT32;
-    int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
+    int64_t bufsPerTokenSpace = k_ * SIZE_OF_FLOAT32;
 
     int64_t available_space = aicoreParams_.ubSize - UB_RESERVE_SPACE;
     int64_t quePerTokenSpace =

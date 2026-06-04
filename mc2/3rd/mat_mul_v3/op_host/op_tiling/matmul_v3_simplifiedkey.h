@@ -28,7 +28,7 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
     static const int32_t INPUT1_INDEX = 1;
     static const int32_t BIAS_INDEX = 2;
     OP_LOGI(context->GetNodeName(), "Enter genSimplifiedKey.");
-    OP_TILING_CHECK(simplifiedKey == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "simplifiedKey is null"),
+    OP_TILING_CHECK(simplifiedKey == nullptr, OP_LOGE(context->GetNodeName(), "simplifiedKey is null."),
         return ge::GRAPH_FAILED);
 
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(INPUT0_INDEX));
@@ -71,7 +71,7 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
     }
 
     OP_TILING_CHECK(strlen(simplifiedKey) > MAX_LEN_SIMPLIFIED_KEY,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "len of simplifiedKey exceeds max length."),
+        OP_LOGE(context->GetNodeName(), "len of simplifiedKey exceeds max length."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

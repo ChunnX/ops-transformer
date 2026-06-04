@@ -167,16 +167,16 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckQuantMode() const
     // check gmmXQuantMode
     int64_t gmmXQuantMode = *gmmXQuantModePtr_;
     OP_TILING_CHECK(gmmXQuantMode != static_cast<int64_t>(PERTENSOR_QUANT_MODE),
-        OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXQuantMode should be 1, but actual is %lu.", \
-            gmmXQuantMode), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmXQuantMode",
+        std::to_string(gmmXQuantMode), "1"), return ge::GRAPH_FAILED);
     // check gmmWeightQuantMode null
     OP_TILING_CHECK(gmmWeightQuantModePtr_ == nullptr,
         OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightQuantMode attr can not be null."), return ge::GRAPH_FAILED);
     // check gmmWeightQuantMode
     int64_t gmmWeightQuantMode = *gmmWeightQuantModePtr_;
     OP_TILING_CHECK(gmmWeightQuantMode != static_cast<int64_t>(PERTENSOR_QUANT_MODE),
-        OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightQuantMode should be 1, but actual is %lu.", \
-            gmmWeightQuantMode), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmWeightQuantMode",
+        std::to_string(gmmWeightQuantMode), "1"), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // mmXQuantMode(same as gmmXQuantMode)
         int64_t mmXQuantMode = *mmXQuantModePtr_;
@@ -196,8 +196,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckQuantMode() const
         return ge::GRAPH_FAILED);
     uint64_t groupSize = *groupSizePtr;
     OP_TILING_CHECK(groupSize != 0,
-        OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, the groupSize should be 0, "
-        "but actual is %lu.", groupSize), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupSize",
+        std::to_string(groupSize), "0"), return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckQuantMode.");
     return ge::GRAPH_SUCCESS;
 }
@@ -207,38 +207,38 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleFormatAndDtype() const
     OP_LOGD(context_->GetNodeName(), "start CheckScaleFormatAndDtype.");
     // check gmmXScale null
     auto gmmXScaleDesc = context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX);
-    OP_TILING_CHECK(gmmXScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale should not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmXScale"), return ge::GRAPH_FAILED);
     // check gmmXScale format
-    OP_TILING_CHECK(gmmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmXScale storage format should be ND, but actual is %s.", \
-        Ops::Base::ToString(gmmXScaleDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmXScale",
+        Ops::Base::ToString(gmmXScaleDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
     // check gmmXScale dataType
-    OP_TILING_CHECK(gmmXScaleDesc->GetDataType() != ge::DT_FLOAT,OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale should be float32, but actual is %s.", \
-        ge::TypeUtils::DataTypeToSerialString(gmmXScaleDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXScaleDesc->GetDataType() != ge::DT_FLOAT, OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXScale",
+        ge::TypeUtils::DataTypeToSerialString(gmmXScaleDesc->GetDataType()).c_str(), "float32"), return ge::GRAPH_FAILED);
     // check gmmWeightScale null
     auto gmmWeightScaleDesc = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
-    OP_TILING_CHECK(gmmWeightScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale should not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeightScale"), return ge::GRAPH_FAILED);
     // check gmmWeightScale format
-    OP_TILING_CHECK(gmmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmWeightScale storage format should be ND, but actual is %s.", \
-        Ops::Base::ToString(gmmWeightScaleDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);    
+    OP_TILING_CHECK(gmmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmWeightScale",
+        Ops::Base::ToString(gmmWeightScaleDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);    
     // check gmmWeightScale dataType
-    OP_TILING_CHECK(gmmWeightScaleDesc->GetDataType() != ge::DT_FLOAT, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale should be float32, but actual is %s.", \
-        ge::TypeUtils::DataTypeToSerialString(gmmWeightScaleDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightScaleDesc->GetDataType() != ge::DT_FLOAT, OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeightScale",
+        ge::TypeUtils::DataTypeToSerialString(gmmWeightScaleDesc->GetDataType()).c_str(), "float32"), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // check mmXScale null
         auto mmXScaleDesc = context_->GetOptionalInputDesc(MM_X_SCALE_INDEX);
-        OP_TILING_CHECK(mmXScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, mmXScale should not be null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmXScale"), return ge::GRAPH_FAILED);
         // check mmXScale format
-        OP_TILING_CHECK(mmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "mmXScale storage format should be ND, but actual is %s.", \
-            Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmXScale",
+            Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
         // check mmXScale dataType(same as gmmXScale)
         OP_TILING_CHECK(mmXScaleDesc->GetDataType() != gmmXScaleDesc->GetDataType(), OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, "
             "mmXScale should be same as gmmXScale(float32), but actual is %s.",ge::TypeUtils::DataTypeToSerialString(mmXScaleDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
         // check mmWeightScale null
         auto mmWeightScaleDesc = context_->GetOptionalInputDesc(MM_WEIGHT_SCALE_INDEX);
-        OP_TILING_CHECK(mmWeightScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, mmWeightScale should not be null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmWeightScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeightScale"), return ge::GRAPH_FAILED);
         // check mmWeightScale format
-        OP_TILING_CHECK(mmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "mmWeightScale storage format should be ND, but actual is %s.", \
-            Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str()), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmWeightScale",
+            Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
         // check mmWeightScale dataType(same as gmmWeightScale)
         OP_TILING_CHECK(mmWeightScaleDesc->GetDataType() != gmmWeightScaleDesc->GetDataType(),
             OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, mmWeightScale should be same as gmmWeightScale(float32), but actual is %s.", \
@@ -253,16 +253,16 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckInputDtype() const
     OP_LOGD(context_->GetNodeName(), "start CheckInputDtype.");
     // check gmmX datatype
     ge::DataType gmmXDataType = context_->GetInputDesc(GMM_X_INDEX)->GetDataType();
-    OP_TILING_CHECK(gmmXDataType != ge::DT_HIFLOAT8, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmX should be hifloat8, but actual is %s.", \
-                ge::TypeUtils::DataTypeToSerialString(gmmXDataType).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXDataType != ge::DT_HIFLOAT8, OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmX",
+                ge::TypeUtils::DataTypeToSerialString(gmmXDataType).c_str(), "hifloat8"), return ge::GRAPH_FAILED);
     // check gmmWeight datatype
     ge::DataType gmmWeightDataType = context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
-    OP_TILING_CHECK(gmmWeightDataType != ge::DT_HIFLOAT8, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeight should be hifloat8, but actual is %s.", \
-                ge::TypeUtils::DataTypeToSerialString(gmmWeightDataType).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightDataType != ge::DT_HIFLOAT8, OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmWeight",
+                ge::TypeUtils::DataTypeToSerialString(gmmWeightDataType).c_str(), "hifloat8"), return ge::GRAPH_FAILED);
     // check gmmY dataType
     ge::DataType gmmYDataType = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX)->GetDataType();
-    OP_TILING_CHECK(gmmYDataType != ge::DT_FLOAT16 && gmmYDataType != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmY should be float16 or bfloat16, "
-        "but actual is %s.", ge::TypeUtils::DataTypeToSerialString(gmmYDataType).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmYDataType != ge::DT_FLOAT16 && gmmYDataType != ge::DT_BF16, OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmY",
+        ge::TypeUtils::DataTypeToSerialString(gmmYDataType).c_str(), "float16 or bfloat16"), return ge::GRAPH_FAILED);
     if (permuteOutFlag_) {
         // check permuteOut dtype
         ge::DataType permuteOutDataType = context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX)->GetDataType();
@@ -292,22 +292,22 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     OP_LOGD(context_->GetNodeName(), "start CheckScaleShape.");
     // check gmmXScale dimNum
     size_t gmmXScaleDimNum = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(gmmXScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale input dimNum should be 1, "
-                    "but actual dimNum is %lu.", gmmXScaleDimNum), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXScaleDimNum != DIM_ONE, OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "gmmXScale",
+                    std::to_string(gmmXScaleDimNum), "1"), return ge::GRAPH_FAILED);
     // check gmmXScale shape
     int64_t gmmXScaleShape = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    OP_TILING_CHECK(gmmXScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale input shape should be [1], "
-                    "but actual shape is [%lu].", gmmXScaleShape), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXScaleShape != DIM_ONE, OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmXScale dim0",
+                    std::to_string(gmmXScaleShape), "1"), return ge::GRAPH_FAILED);
     // check gmmWeightScale dimNum
     size_t gmmWeightScaleDimNum =
         context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(gmmWeightScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input dimNum should be 1, "
-                    "but actual dimNum is %lu.", gmmWeightScaleDimNum), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightScaleDimNum != DIM_ONE, OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "gmmWeightScale",
+                    std::to_string(gmmWeightScaleDimNum), "1"), return ge::GRAPH_FAILED);
     // check gmmWeightScale shape
     int64_t gmmWeightScaleShape =
         context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    OP_TILING_CHECK(gmmWeightScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input shape should be [1], "
-                    "but actual shape is [%lu].", gmmWeightScaleShape), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightScaleShape != DIM_ONE, OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "gmmWeightScale dim0",
+                    std::to_string(gmmWeightScaleShape), "1"), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
         // check mmXScale dimNum(same as gmmXScale)
         size_t mmXScaleDimNum = context_->GetOptionalInputShape(MM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();

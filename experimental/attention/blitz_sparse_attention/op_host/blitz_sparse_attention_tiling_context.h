@@ -117,6 +117,9 @@ struct ContextParamsForPFATiling {
     uint32_t isBSNDOut = 0;
     const bool *softmaxLseFlag = nullptr;
     bool isSoftMaxLseEnable = false;
+    // block_shape attr: [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128. Default 128/128.
+    int32_t qBlockSize = 128;
+    int32_t kvBlockSize = 128;
     uint32_t fromTilingSink = 0; // Flag indicating whether it is the step to enter the workspace calculation from tiling sinking
     bool hasKeyAntiquantScale = 0;
     bool hasValueAntiquantScale = 0;

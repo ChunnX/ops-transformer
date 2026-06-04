@@ -150,9 +150,11 @@ private:
     uint32_t quantGroupSize;
     uint32_t cubeCount = 0;
     uint32_t vecCount = 0;
-    uint32_t xRowSumCount;
-    uint32_t withOffset;
+    uint32_t xRowSumCount = 0;
+    uint32_t withOffset = 0;
     int64_t isSingleTensor = 0;
+    uint32_t isA8W4MSDPreNZ = 0;
+    uint32_t A8W4preM = 0;
     GM_ADDR weightTensorPtr;
     GM_ADDR scaleTensorPtr;
     GM_ADDR biasTensorPtr;
@@ -171,13 +173,19 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
     xRowSumCount = tiling->m;
     withOffset = tiling->withOffset;
     isSingleTensor = tiling->isSingleTensor;
+    isA8W4MSDPreNZ = tiling->isA8W4MSDPreNZ;
+    A8W4preM = AlignUp<8>(xRowSumCount) * 2;
 
     weightTensorPtr = weight;
     scaleTensorPtr = scale;
     biasTensorPtr = bias;
     offsetTensorPtr = offset;
 
-    xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
+    if (isA8W4MSDPreNZ) {
+        xGm.SetGlobalBuffer((__gm__ DTYPE_X_DEV_A8W4MSD*) x);
+    } else {
+        xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
+    }
     weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(0, weight));
     biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD>(0, bias));
     scaleGm.SetGlobalBuffer(GetTensorAddr<DTYPE_SCALE_DEV_A8W4MSD>(0, scale));
@@ -258,7 +266,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
          }
         mnConfig.m = static_cast<uint32_t>(m) * 2;      // 2: int8 has been split in 2 int4
         mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
-        mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
+        mm.SetOrgShape(A8W4preM, tiling->n, tiling->k);
         uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
         uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
 
@@ -291,9 +299,15 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
         if (unlikely(mnConfig.mIdx == mnConfig.blockDimM - 1)) {
             curSingleM = mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
         }
-
-        uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
-        uint64_t weightOffset;
+        GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightSlice;
+        GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> xSlice;
+        uint64_t xOffset;
+        if (isA8W4MSDPreNZ) {
+            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * 64;
+        } else {
+            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+        }
+        uint64_t weightOffset = 0;
         if (isSingleTensor == 0) {
             weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(groupIdx, weightTensorPtr));
             if constexpr (mmType::BT::format == CubeFormat::NZ) {
@@ -312,9 +326,14 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
             CrossCoreWaitFlag(SYNC_AIV_TO_AIC);
         }
         mm.SetSingleShape(curSingleM, curSingleN, quantGroupSize); // 8, 256, 512 --> 514us
-        GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightSlice;
+
         for (uint32_t loopK = 0; loopK < tiling->quantGroupNum; loopK++) {
-            mm.SetTensorA(xGm[xOffset + loopK * quantGroupSize]);
+            if (tiling->isA8W4MSDPreNZ) {
+                xSlice = xGm[xOffset + loopK * quantGroupSize * A8W4preM];
+            } else {
+                xSlice = xGm[xOffset + loopK * quantGroupSize];
+            }
+            mm.SetTensorA(xSlice);
             if constexpr (mmType::BT::format == CubeFormat::NZ) { 
                 weightSlice = weightGm[weightOffset + loopK * quantGroupSize * 64];
             } else {

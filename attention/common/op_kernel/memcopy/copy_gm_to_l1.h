@@ -73,7 +73,6 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         }
     }
 }
-
 template <typename T>
 __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
                                              uint32_t srcNdMatrixNum, uint32_t srcNdMatrixStride,

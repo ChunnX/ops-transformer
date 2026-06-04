@@ -77,7 +77,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
+        OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
@@ -92,7 +92,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(context->GetNodeName(), ret);
     
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeCombine Tiling func");

@@ -43,7 +43,7 @@ ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62cm12a")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -59,6 +59,7 @@ ONNX_PLUGIN=FALSE
 OP_KERNEL=FALSE
 SOC_ARRAY=()
 ENABLE_UT_EXEC=TRUE
+ENABLE_RULE_LAUNCH=""
 ENABLE_GENOP=FALSE
 ENABLE_GENOP_AICPU=FALSE
 GENOP_TYPE=""
@@ -323,7 +324,7 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascend910_93)"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -851,7 +852,6 @@ package_static() {
 
 function process_soc_input(){
     local input_string="$1"
-    input_string=$(echo "$input_string" | sed 's/ascend950/ascend950/g')
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 
@@ -1043,6 +1043,10 @@ set_ut_mode() {
     UT_TEST_ALL=FALSE
     OP_KERNEL_UT=FALSE
   fi
+  if [[ "$OP_KERNEL_UT" == "TRUE" ]] && [[ -z "$ascend_op_name" ]]; then
+    echo "Warning: Please use --ops when running Opkernel UT."
+    ascend_op_name="recurrent_gated_delta_rule,chunk_gated_delta_rule"
+  fi
 }
 parse_changed_files() {
     if [[ -z "$PR_CHANGED_FILES" ]]; then
@@ -1180,6 +1184,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     -u|--test)
         ENABLE_TEST=TRUE
+        shift
+        ;;
+    --rule_launch=*)
+        OPTARG=$1
+        ENABLE_RULE_LAUNCH=${OPTARG#*=}
         shift
         ;;
     --simulator=*)
@@ -1525,6 +1534,9 @@ if [[ "$UT_TEST_ALL" == "TRUE" ]]; then
 fi
 if [[ "$ENABLE_UT_EXEC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_UT_EXEC=TRUE"
+fi
+if [[ "x$ENABLE_RULE_LAUNCH" != "x" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DRULE_LAUNCH=${ENABLE_RULE_LAUNCH}"
 fi
 
 if [ -n "${TEST}" ];then

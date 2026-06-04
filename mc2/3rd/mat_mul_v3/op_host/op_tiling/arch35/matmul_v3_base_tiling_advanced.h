@@ -138,7 +138,7 @@ protected:
         if (tiling.workspaceSize.size() > 0) {
             size_t *workspaces = context_->GetWorkspaceSizes(1); // set workapce
             OP_TILING_CHECK(workspaces == nullptr,
-                CUBE_INNER_ERR_REPORT(context_->GetNodeName(), "workspace is nullptr"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "workspace is nullptr."), return ge::GRAPH_FAILED);
             workspaces[0] = tiling.workspaceSize[0];
         }
         return ge::GRAPH_SUCCESS;

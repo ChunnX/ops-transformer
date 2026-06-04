@@ -13,6 +13,9 @@
  * \brief
  */
 
+#ifndef NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
+#define NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
+
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
@@ -917,3 +920,5 @@ auto DecodeDevice(Ts&... args) -> at::Device
             unInitMemFunc(nullptr, false);                                                                  \
         }                                                                                                   \ 
     } while (false)
+
+#endif  // NPU_OPS_TRANSFORMER_ACLNN_COMMON_H

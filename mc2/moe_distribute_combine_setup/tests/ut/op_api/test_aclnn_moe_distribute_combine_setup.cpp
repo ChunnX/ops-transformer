@@ -266,4 +266,27 @@ TEST_F(TestAclnnMoeDistributeCombineSetup, TestUnsupportedNpuArch)
     op::SetPlatformNpuArch(NpuArch::DAV_3510);
 }
 
+TEST_F(TestAclnnMoeDistributeCombineSetup, ExecuteCall)
+{
+    aclnnStatus ret = aclnnMoeDistributeCombineSetup(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestEmptyDimTensor)
+{
+    aclTensor *expandX = CreateAclTensor({}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expertIds = CreateAclTensor({16, 6}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *assistInfo = CreateAclTensor({24576}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *quantExpandXOut = CreateAclTensor({192, 6144}, ACL_INT8, ACL_FORMAT_ND);
+    aclTensor *commCmdInfoOut = CreateAclTensor({3104}, ACL_INT32, ACL_FORMAT_ND);
+    std::string groupEp = "test_group";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus ret = aclnnMoeDistributeCombineSetupGetWorkspaceSize(
+        expandX, expertIds, assistInfo, groupEp.c_str(),
+        8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+        quantExpandXOut, commCmdInfoOut, &workspaceSize, &executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
 } // namespace MoeDistributeCombineSetupUT
