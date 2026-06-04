@@ -394,10 +394,10 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                  const std::string &actualSeqLenName) const
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+                                                  const std::string &liSeqLenName) const
 {
-    return LiGetActualSeqLenSize(size, tensor, actualSeqLenName, opName_);
+    return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);
 }
 
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
@@ -718,12 +718,14 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
 
 ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 {
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
+        ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetAndCheckInOutDataType() || ge::GRAPH_SUCCESS != GetQueryKeyAndOutLayout() ||
+    if (ge::GRAPH_SUCCESS != GetAndCheckInOutDataType() ||
+        ge::GRAPH_SUCCESS != GetQueryKeyAndOutLayout() ||
         ge::GRAPH_SUCCESS != GetAndCheckOptionalInput()) {
         return ge::GRAPH_FAILED;
     }
@@ -733,8 +735,8 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size()) {
+    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
+        ge::GRAPH_SUCCESS != GetHeadDim() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch()) {
