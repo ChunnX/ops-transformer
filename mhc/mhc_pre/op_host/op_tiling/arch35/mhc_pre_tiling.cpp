@@ -475,11 +475,11 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 {
     auto attrs = context_->GetAttrs();
 
-    auto normEpsPtr = attrs->GetAttrPointer<double>(1);
-    normEps_ = (normEpsPtr != nullptr) ? static_cast<float>(*normEpsPtr) : DEFAULT_NORM_EPS;
+    auto normEpsPtr = attrs->GetAttrPointer<float>(1);
+    normEps_ = (normEpsPtr != nullptr) ? *normEpsPtr : DEFAULT_NORM_EPS;
 
-    auto hcEpsPtr = attrs->GetAttrPointer<double>(2);
-    hcEps_ = (hcEpsPtr != nullptr) ? static_cast<float>(*hcEpsPtr) : DEFAULT_HC_EPS;
+    auto hcEpsPtr = attrs->GetAttrPointer<float>(2);
+    hcEps_ = (hcEpsPtr != nullptr) ? *hcEpsPtr : DEFAULT_HC_EPS;
 
     return ge::GRAPH_SUCCESS;
 }
