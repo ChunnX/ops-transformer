@@ -397,6 +397,18 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ComputeGradXVector(
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::Process()
 {
+    // grad_phi/grad_alpha/grad_bias are accumulated via atomic-add across cores/tiles,
+    // so the output GM must be zero-initialized before any accumulation. The output
+    // memory provided by the framework (or test harness) is not guaranteed to be zero.
+    if ASCEND_IS_AIV {
+        if (blkIdx_ == 0) {
+            InitOutput<T>(gradPhiGlobal_, (n_ * n_ + 2 * n_) * n_ * c_, 0);
+            InitOutput<T>(gradAlphaGlobal_, 3, 0);
+            InitOutput<T>(gradBiasGlobal_, n_ * n_ + 2 * n_, 0);
+        }
+    }
+    SyncAll<false>();
+
     if ASCEND_IS_AIV {
         int8_t ping = 0;
         GetAlphaAndBias();
