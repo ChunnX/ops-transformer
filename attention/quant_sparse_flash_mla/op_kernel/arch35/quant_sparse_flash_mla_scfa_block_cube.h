@@ -260,7 +260,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
         v0ResGm.WaitCrossCore(); // N1 > 64 时出核，v0将kv直接搬运至GM
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        DataCopy(dst, v0ResGmTensor, (runInfo.s2RealSize + 31) >> 5 << 5 * constInfo.dSize);
+        DataCopy(dst, v0ResGmTensor, ((runInfo.s2RealSize + 31) >> 5 << 5) * constInfo.dSize);
         SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
         WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     } else {
