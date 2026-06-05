@@ -345,7 +345,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX2QuantMode(BasicQuantMode &x2QuantMode
     } else {
         auto x2QuantModeList = X2_QUANT_MODE_MAP.find(inputParams_.bDtype);
         OP_TILING_CHECK(x2QuantModeList == X2_QUANT_MODE_MAP.end(),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", "", "The dtype of x2 is invalid."), return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "The dtype of x2 must be within the supported range."), return false);
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "The dtype of x2 and the shape of x2 and scale do not match any supported quantification, dtype: %s, quantification: %s.");
         return false;
     }
@@ -371,7 +371,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX1QuantMode(BasicQuantMode &x1QuantMode
     } else {
         auto x1QuantModeList = X1_QUANT_MODE_MAP.find(inputParams_.aDtype);
         OP_TILING_CHECK(x1QuantModeList == X1_QUANT_MODE_MAP.end(),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", "", "The dtype of x1 is invalid."), return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "The dtype of x1 must be within the supported range."), return false);
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "The dtype of x1 and the shape of x1 and pertokenScale do not match any supported quantification, dtype: %s, quantification: %s.");
         return false;
     }
@@ -452,7 +452,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     inputParams_.batchB = GetBatchSize(x2Shape);
     AnalyzeBatchInfo(context_->GetInputShape(0)->GetOriginShape(), context_->GetInputShape(1)->GetOriginShape());
     OP_TILING_CHECK(!InferOutBatchDim(x1Shape, x2Shape),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", "", "The batch dimension cannot be broadcasted."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", (std::to_string(inputParams_.batchA) + ", " + std::to_string(inputParams_.batchB)).c_str(), "The value of the batch dimension must be broadcastable."), return false);
     if (!SetQuantMode(scaleShape, pertokenShape)) {
         return false;
     }

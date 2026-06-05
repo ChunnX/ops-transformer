@@ -937,8 +937,10 @@ bool Mc2WeightQuantBatchMatmulV2BasicBlockTiling::GetDefaultBasicBlockTiling()
 bool Mc2WeightQuantBatchMatmulV2BasicBlockTiling::GetBasicBlockTiling()
 {
     OP_TILING_CHECK(
-        !ValidateInputParam(), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "input param", "",
-            "The value of input param is invalid."), return false);
+        !ValidateInputParam(), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "input param",
+            (std::to_string(basicBlockParam_.mSize) + ", " + std::to_string(basicBlockParam_.nSize) + ", " +
+             std::to_string(basicBlockParam_.kSize)).c_str(),
+            "The value of input param must be valid."), return false);
 
     Reset();
     std::unique_ptr<Mc2WeightQuantBatchMatmulV2BasicBlockTable> basicBlockTablePtr =

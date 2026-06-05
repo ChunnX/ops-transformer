@@ -197,7 +197,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     uint64_t mmYDim0 = mmYStorageShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(localParams_.Bs != mmYDim0,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "mmX/mmY",
-                        std::to_string(localParams_.Bs).c_str(), "mmX DIM0 should equal mmY DIM0"),
+                        std::to_string(localParams_.Bs).c_str(), "Shape dim 0 of mmX must be equal to shape dim 0 of mmY."),
                     return ge::GRAPH_FAILED);
     localParams_.N2 = mmYStorageShape->GetStorageShape().GetDim(DIM_ONE);
 

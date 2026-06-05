@@ -1027,7 +1027,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         std::string dtypeMsg = Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype) +
                                ", " + Ops::Base::ToString(biasDtype) + " and " + Ops::Base::ToString(yDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, bias and y",
-            dtypeMsg.c_str(), "The dtypes of x1, x2, bias and y are not supported in combination");
+            dtypeMsg.c_str(), "The dtypes of x1, x2, bias and y must be one of the supported combinations.");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -1040,7 +1040,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         std::string dtypeMsg = Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype) +
                                " and " + Ops::Base::ToString(yDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2 and y",
-            dtypeMsg.c_str(), "The dtypes of x1, x2 and y are not supported in combination");
+            dtypeMsg.c_str(), "The dtypes of x1, x2 and y must be one of the supported combinations.");
         return ge::GRAPH_FAILED;
     }
 

@@ -198,7 +198,7 @@ bool MatmulAllReduceCheckShape(
     if (x1->GetViewShape().GetDim(x1_len - 1) != x2->GetViewShape().GetDim(0)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " +
+            std::string("The last dim of x1 must be equal to the first dim of x2, but x2 shape is " +
                 std::string(op::ToString(x2->GetViewShape()).GetString())).c_str());
         return false;
     }
@@ -401,7 +401,7 @@ bool QuantMatmulAllReduceCheckShape(
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
+            std::string("The last dim of x1 must be equal to the first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
     // output的最后一维与x2的最后一维相同

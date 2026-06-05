@@ -125,7 +125,7 @@ void MMAllReduceFitBalanceTiling::AlignLongTileLen()
     }
     uint64_t baseM = matmulPerf_.GetBaseM();
     if (baseM == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MMAllReduceFitBalanceTiling", "baseM", "0", "The value of baseM cannot be 0");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MMAllReduceFitBalanceTiling", "baseM", std::to_string(baseM).c_str(), "The value of baseM cannot be 0");
         return;
     }
     if (tilingM_.cutRes.longTileLen % baseM == 0) {

@@ -212,7 +212,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
     auto is_support_op = MC2_OP_CONTEXT.find(op);
     if (is_support_op == MC2_OP_CONTEXT.end()) {
         // 不支持的算子
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "op", op, "The value of op is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "op", op, "The value of op must be within the supported range.");
         return -1;
     }
     const std::string& context_type = is_support_op->second;
@@ -259,7 +259,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
         }
         winAddr = reinterpret_cast<void *>(winContext->epHcclBuffer_[winContext->epRankId]);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "context_type", context_type.c_str(), "The value of context_type is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "context_type", context_type.c_str(), "The value of context_type must be within the supported range.");
         return -1;
     }
     if (winAddr == nullptr) {
@@ -311,7 +311,7 @@ inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
 {
     if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
         strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupName", groupName, "The value of groupName is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupName", groupName, "The value of groupName must be within the supported range.");
         return -1;
     }
     uint64_t size;

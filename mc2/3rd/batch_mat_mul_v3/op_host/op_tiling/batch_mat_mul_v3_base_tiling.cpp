@@ -128,7 +128,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBatchInfo()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "batch dims",
             (std::to_string(batchInfo_.batchA3) + ", " + std::to_string(batchInfo_.batchA2) + ", " +
              std::to_string(batchInfo_.batchA1) + " and " + std::to_string(batchInfo_.batchA0)).c_str(),
-            "M broadcast to N situation is not supported.");
+            "The batch dims must not use M broadcast to N mode.");
         return false;
     }
     return GetBiasWithBatchInfo();

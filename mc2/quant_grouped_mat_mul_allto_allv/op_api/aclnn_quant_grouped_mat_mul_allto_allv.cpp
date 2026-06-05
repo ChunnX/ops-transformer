@@ -242,7 +242,7 @@ static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, 
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
             "mmXQuantMode,mmWeightQuantMode",
             values.c_str(),
-            "When mm inputs are set, mm quant modes should match gmm quant modes.");
+            "When mm inputs are set, the values of mmXQuantMode and mmWeightQuantMode must be the same as gmmXQuantMode and gmmWeightQuantMode.");
         return false;
     }
     if (!CheckQuantMode(mmXQuantMode, mmWeightQuantMode, mmXScaleOptional, mmWeightScaleOptional, mmXOptional,
@@ -279,7 +279,7 @@ static aclnnStatus CheckMxScaleShape(const aclTensor *scale, const char *name)
     if (scaleDimNum < DIM_THREE) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv", name,
             std::to_string(scaleDimNum).c_str(),
-            std::string("In MX quant mode, dim num should be >= 3.").c_str());
+            std::string("In MX quant mode, the shape dim of " + std::string(name) + " must be greater than or equal to 3.").c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t lastDim = scale->GetViewShape().GetDim(scaleDimNum - 1);
@@ -287,7 +287,7 @@ static aclnnStatus CheckMxScaleShape(const aclTensor *scale, const char *name)
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
             std::string(name).append(" last dim").c_str(),
             std::to_string(lastDim).c_str(),
-            "In MX quant mode, last dim should be 2.");
+            "In MX quant mode, the value of the last dim must be 2.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

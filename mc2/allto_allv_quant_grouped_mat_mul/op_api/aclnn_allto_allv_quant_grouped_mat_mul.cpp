@@ -66,7 +66,7 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
-            "permuteOutFlag/permuteOutOptional", "mismatched", "flag and ptr should match");
+            "permuteOutFlag/permuteOutOptional", "mismatched", "The values of permuteOutFlag and permuteOutOptional must be the same.");
         return false;
     }
     return true;

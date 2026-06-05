@@ -405,13 +405,15 @@ bool CheckAntiQuantShape(
 {
     OP_TILING_CHECK(
         !CheckAntiQuantScaleShape(inputParams, antiQuantScaleShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant scale", "",
-            "The shape of antiquant scale is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant scale",
+            Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+            "The shape of antiquant scale must be valid."),
         return false);
     OP_TILING_CHECK(
         !CheckAntiQuantOffsetShape(inputParams, antiQuantScaleShape, antiQuantOffsetShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant offset", "",
-            "The shape of antiquant offset is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant offset",
+            Ops::Base::ToString(antiQuantOffsetShape->GetStorageShape()).c_str(),
+            "The shape of antiquant offset must be valid."),
         return false);
     return true;
 }
@@ -422,7 +424,8 @@ bool CheckQuantShape(
 {
     if (!Mc2CheckOptionalInputByShape(quantScaleShape)) {
         if (Mc2CheckOptionalInputByShape(quantOffsetShape)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant offset", "",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant offset",
+                Ops::Base::ToString(quantOffsetShape->GetStorageShape()).c_str(),
                 "The value of quant offset must exist when quant scale is provided.");
             return false;
         }
@@ -581,28 +584,34 @@ bool CheckShape(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inp
         return false);
     OP_TILING_CHECK(
         !CheckInputShape(inputParams, xShape, weightShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "x/weight shape", "",
-            "The shape of x/weight is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "x/weight shape",
+            (Ops::Base::ToString(xShape->GetStorageShape()) + ", " +
+             Ops::Base::ToString(weightShape->GetStorageShape())).c_str(),
+            "The shape of x/weight must be valid."),
         return false);
     OP_TILING_CHECK(
         !CheckAntiQuantShape(inputParams, antiQuantScaleShape, antiQuantOffsetShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant shape", "",
-            "The shape of antiquant is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant shape",
+            Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+            "The shape of antiquant must be valid."),
         return false);
     OP_TILING_CHECK(
         !CheckQuantShape(inputParams, quantScaleShape, quantOffsetShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant shape", "",
-            "The shape of quant is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant shape",
+            Ops::Base::ToString(quantScaleShape->GetStorageShape()).c_str(),
+            "The shape of quant must be valid."),
         return false);
     OP_TILING_CHECK(
         !CheckBiasShape(inputParams, biasShape),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "bias shape", "",
-            "The shape of bias is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "bias shape",
+            Ops::Base::ToString(biasShape->GetStorageShape()).c_str(),
+            "The shape of bias must be valid."),
         return false);
     OP_TILING_CHECK(
         !CheckShapeDims(inputParams, npuArch),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "shape dims", "",
-            "The shape dims are invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "shape dims",
+            Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
+            "The shape dims must be valid."),
         return false);
     return true;
 }
@@ -661,7 +670,7 @@ bool CheckAntiQuantDtype(
             socVersion != platform_ascendc::SocVersion::ASCEND910B,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiQuantScaleDtype",
                 ge::TypeUtils::DataTypeToAscendString(inputParams->antiQuantScaleDtype).GetString(),
-                "The value of antiQuantScaleDtype is not supported for int64/uint64 on this SoC version."),
+                "The value of antiQuantScaleDtype must be within the supported range for int64/uint64 on this SoC version."),
             return false);
         OP_TILING_CHECK(
             inputParams->aDtype != ge::DT_FLOAT16,
@@ -748,18 +757,21 @@ bool CheckDtype(
     inputParams->cDtype = context->GetOutputDesc(0)->GetDataType();
     OP_TILING_CHECK(
         !CheckInputDtype(context, inputParams, socVersion),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "input dtype", "",
-            "The dtype of input is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "input dtype",
+            ge::TypeUtils::DataTypeToAscendString(inputParams->aDtype).GetString(),
+            "The dtype of input must be within the supported range."),
         return false);
     OP_TILING_CHECK(
         !CheckAntiQuantDtype(context, inputParams, socVersion),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant dtype", "",
-            "The dtype of antiquant is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiquant dtype",
+            ge::TypeUtils::DataTypeToAscendString(inputParams->antiQuantScaleDtype).GetString(),
+            "The dtype of antiquant must be within the supported range."),
         return false);
     OP_TILING_CHECK(
         !CheckQuantDtype(context, inputParams),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant dtype", "",
-            "The dtype of quant is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "quant dtype",
+            ge::TypeUtils::DataTypeToAscendString(inputParams->cDtype).GetString(),
+            "The dtype of quant must be within the supported range."),
         return false);
     return true;
 }
@@ -839,7 +851,8 @@ bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
         OP_TILING_CHECK(
             inputParams->antiQuantType != Mc2QuantType::PER_CHANNEL,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiQuantType",
-                "", "The value of antiQuantType must be perchannel for A16F8."),
+                std::to_string(static_cast<int>(inputParams->antiQuantType)).c_str(),
+                "The value of antiQuantType must be perchannel for A16F8."),
             return false);
     }
     // A16F4 support Mx and pergroup
@@ -847,7 +860,8 @@ bool CheckTempLimit(Mc2WeightQuantBatchMatmulInfo* inputParams)
         inputParams->bDtype == ge::DT_FLOAT) {
         OP_TILING_CHECK(
             inputParams->antiQuantType == Mc2QuantType::PER_TENSOR || inputParams->antiQuantType == Mc2QuantType::PER_CHANNEL,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiQuantType", "",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "antiQuantType",
+                std::to_string(static_cast<int>(inputParams->antiQuantType)).c_str(),
                 "The value of antiQuantType must be Mx or pergroup for A16F4."), return false);
     }
 
@@ -879,16 +893,24 @@ bool CheckNzSupportedScenarios(Mc2WeightQuantBatchMatmulInfo* inputParams, NpuAr
                ((inputParams->antiQuantType == Mc2QuantType::MX || inputParams->antiQuantType == Mc2QuantType::PER_GROUP) &&
                 (inputParams->bDtype == ge::DT_FLOAT4_E2M1 || inputParams->bDtype == ge::DT_FLOAT4_E1M2 ||
                  inputParams->bDtype == ge::DT_FLOAT)))),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "weightNz scenarios", "",
-                "The value of weightNz scenarios is not supported. Only S4/FP4 with non-transposed A/B, no C8, and non-per-tensor are supported."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "weightNz scenarios",
+                (std::string("transA=") + std::to_string(inputParams->transA) +
+                 ", transB=" + std::to_string(inputParams->transB) +
+                 ", bDtype=" + std::to_string(static_cast<int>(inputParams->bDtype)) +
+                 ", antiQuantType=" + std::to_string(static_cast<int>(inputParams->antiQuantType))).c_str(),
+                "The value of weightNz scenarios must be S4/FP4 with non-transposed A/B, no C8, and non-per-tensor."),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             (inputParams->antiQuantType == Mc2QuantType::PER_GROUP && inputParams->transA &&
              inputParams->bDtype != ge::DT_INT4) ||
                 inputParams->cDtype == ge::DT_INT8 || inputParams->antiQuantType == Mc2QuantType::PER_TENSOR,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "weightNz scenarios", "",
-                "The value of weightNz scenarios is not supported for per-group with transA int8, int8 output or per-tensor."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams->opName, "weightNz scenarios",
+                (std::string("transA=") + std::to_string(inputParams->transA) +
+                 ", bDtype=" + std::to_string(static_cast<int>(inputParams->bDtype)) +
+                 ", cDtype=" + std::to_string(static_cast<int>(inputParams->cDtype)) +
+                 ", antiQuantType=" + std::to_string(static_cast<int>(inputParams->antiQuantType))).c_str(),
+                "The value of weightNz scenarios must not be per-group with transA int8, int8 output or per-tensor."),
             return ge::GRAPH_FAILED);
     }
     return true;
@@ -915,37 +937,51 @@ ge::graphStatus Mc2CheckPara(gert::TilingContext* context, platform_ascendc::Soc
     // check the input and output dtype
     OP_TILING_CHECK(
         !CheckDtype(context, &inputParams, socVersion),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "input dtype", "",
-            "The dtype of input is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "input dtype",
+            std::to_string(static_cast<int>(inputParams.aDtype)).c_str(),
+            "The dtype of input must be within the supported range."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckAttr(context, &inputParams),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "attr", "",
-            "The value of attr is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "attr",
+            (std::string("transA=") + std::to_string(inputParams.transA) +
+             ", transB=" + std::to_string(inputParams.transB)).c_str(),
+            "The value of attr must be within the supported range."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckShape(context, &inputParams, socVersion),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "shape", "",
-            "The shape is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "shape",
+            (std::to_string(inputParams.mSize) + "x" + std::to_string(inputParams.kSize) +
+             "x" + std::to_string(inputParams.nSize)).c_str(),
+            "The shape must be within the supported range."),
         return ge::GRAPH_FAILED);
     if (inputParams.bFormat == ge::FORMAT_FRACTAL_NZ) {
         OP_TILING_CHECK(
             !CheckNzSupportedScenarios(&inputParams, npuArch),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "weightNz scenario", "",
-                "The value of weightNz scenario is not supported in this scenario."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "weightNz scenario",
+                (std::string("bFormat=") + std::to_string(static_cast<int>(inputParams.bFormat)) +
+                 ", bDtype=" + std::to_string(static_cast<int>(inputParams.bDtype)) +
+                 ", antiQuantType=" + std::to_string(static_cast<int>(inputParams.antiQuantType))).c_str(),
+                "The value of weightNz scenario must be supported in this scenario."),
             return ge::GRAPH_FAILED);
     }
     if (inputParams.bDtype == ge::DT_FLOAT8_E5M2 || inputParams.bDtype == ge::DT_FLOAT8_E4M3FN ||
         inputParams.bDtype == ge::DT_HIFLOAT8) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "weight FP8",
-                "", "The value of weight FP8 is not supported with transA, int8 output or weightNz.");
+                (std::string("bDtype=") + std::to_string(static_cast<int>(inputParams.bDtype)) +
+                 ", transA=" + std::to_string(inputParams.transA) +
+                 ", cDtype=" + std::to_string(static_cast<int>(inputParams.cDtype)) +
+                 ", bFormat=" + std::to_string(static_cast<int>(inputParams.bFormat))).c_str(),
+                "The value of weight FP8 must not be used with transA, int8 output or weightNz.");
             return ge::GRAPH_FAILED;
     }
     if (npuArch == NpuArch::DAV_3510) {
         OP_TILING_CHECK(
             !CheckTempLimit(&inputParams),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "input params", "",
-                "The value of input params is not supported in this version."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opName, "input params",
+                (std::to_string(inputParams.mSize) + "x" + std::to_string(inputParams.kSize) +
+                 "x" + std::to_string(inputParams.nSize)).c_str(),
+                "The value of input params must be within the supported range for this version."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
