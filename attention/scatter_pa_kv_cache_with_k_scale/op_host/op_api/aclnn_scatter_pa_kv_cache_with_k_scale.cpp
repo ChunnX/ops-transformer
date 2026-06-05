@@ -137,8 +137,8 @@ static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value, cons
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (slotMappingDimNum != 1 && slotMappingDimNum != 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of slotMapping must be 1 or 2, but got %ld.", slotMappingDimNum);
+    if (slotMappingDimNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of slotMapping must be 1, but got %ld.", slotMappingDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
