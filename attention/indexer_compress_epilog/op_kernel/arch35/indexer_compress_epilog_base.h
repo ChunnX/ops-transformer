@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file swiglu_block_quant_base.h
+ * \file indexer_compress_epilog_base.h
  * \brief
  */
 
-#ifndef SWIGLU_BLOCK_QUANT_BASE_H
-#define SWIGLU_BLOCK_QUANT_BASE_H
+#ifndef INDEXER_COMPRESS_EPILOG_BASE_H
+#define INDEXER_COMPRESS_EPILOG_BASE_H
 
 #include "kernel_operator.h"
 
@@ -445,6 +445,6 @@ __aicore__ inline void CopyOut(
     DataCopyPad<T, mode>(outputGm, outputTensor, dataCopyParams);
 }
 
-} // namespace SwigluBlockQuant
+} // namespace IndexerCompressEpilog
 
 #endif

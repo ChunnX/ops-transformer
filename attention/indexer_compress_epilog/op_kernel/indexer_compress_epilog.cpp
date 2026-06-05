@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file swiglu_clip_quant.cpp
+ * \file indexer_compress_epilog.cpp
  * \brief
  */
 

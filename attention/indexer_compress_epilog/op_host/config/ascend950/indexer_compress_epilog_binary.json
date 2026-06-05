@@ -2,12 +2,12 @@
   "op_type": "IndexerCompressEpilog",
   "op_list": [
     {
-      "bin_filename": "IndexerCompressEpilog_1",
+      "bin_filename": "IndexerCompressEpilog_float8_e4m3fn_float_fp16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e4m3fn",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -15,9 +15,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "float16",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -25,9 +25,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
           "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -37,9 +47,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -49,19 +69,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
           "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_2",
+      "bin_filename": "IndexerCompressEpilog_float8_e4m3fn_float_bf16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "bfloat16",
+          "dtype": "float8_e4m3fn",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -69,9 +99,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "bfloat16",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -79,9 +109,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
           "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -91,9 +131,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "bfloat16",
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -103,19 +153,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
           "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_3",
+      "bin_filename": "IndexerCompressEpilog_float8_e5m2_float_fp16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float32",
+          "dtype": "float8_e5m2",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -123,7 +183,7 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
           "dtype": "float32",
           "format": "ND",
@@ -133,9 +193,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
-          "dtype": "float32",
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -145,8 +215,18 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
+          "dtype": "float8_e5m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
@@ -157,19 +237,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
           "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_4",
+      "bin_filename": "IndexerCompressEpilog_float8_e5m2_float_bf16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e5m2",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -177,115 +267,7 @@
           ]
         },
         {
-          "name": "cos",
-          "index": 1,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "sin",
-          "index": 2,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y",
-          "index": 0,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        }
-      ],
-      "attrs": [
-        {
-          "name": "mode",
-          "dtype": "int",
-          "value": 0
-        }
-      ]
-    },
-    {
-      "bin_filename": "IndexerCompressEpilog_5",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "cos",
-          "index": 1,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "sin",
-          "index": 2,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y",
-          "index": 0,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        }
-      ],
-      "attrs": [
-        {
-          "name": "mode",
-          "dtype": "int",
-          "value": 0
-        }
-      ]
-    },
-    {
-      "bin_filename": "IndexerCompressEpilog_6",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "float32",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
           "dtype": "float32",
           "format": "ND",
@@ -295,9 +277,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
-          "dtype": "float32",
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -307,8 +299,18 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
+          "dtype": "float8_e5m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
@@ -319,19 +321,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 0
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_7",
+      "bin_filename": "IndexerCompressEpilog_float8_e4m3fn_float8_e8m0_fp16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e4m3fn",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -339,9 +351,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "float16",
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -349,9 +361,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
           "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -361,9 +383,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -373,19 +405,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 2
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_8",
+      "bin_filename": "IndexerCompressEpilog_float8_e4m3fn_float8_e8m0_bf16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "bfloat16",
+          "dtype": "float8_e4m3fn",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -393,9 +435,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "bfloat16",
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -403,9 +445,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
           "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -415,9 +467,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "bfloat16",
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -427,19 +489,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 2
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_9",
+      "bin_filename": "IndexerCompressEpilog_float8_e5m2_float8_e8m0_fp16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float32",
+          "dtype": "float8_e5m2",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -447,9 +519,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "float32",
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -457,9 +529,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
-          "dtype": "float32",
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -469,9 +551,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float32",
+          "dtype": "float8_e5m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -481,19 +573,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 2
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_10",
+      "bin_filename": "IndexerCompressEpilog_float8_e5m2_float8_e8m0_bf16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float16",
+          "dtype": "float8_e5m2",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -501,9 +603,9 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
-          "dtype": "float16",
+          "dtype": "float8_e8m0",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -511,9 +613,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
-          "dtype": "float16",
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -523,51 +635,81 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
+          "dtype": "float8_e5m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        }
+      ],
+      "attrs": [
+        {
+          "name": "quant_mode",
+          "dtype": "int",
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "bin_filename": "IndexerCompressEpilog_uint8_float_fp16",
+      "inputs": [
+        {
+          "name": "indexer_compress_cache",
+          "index": 0,
+          "dtype": "uint8",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "x",
+          "index": 2,
           "dtype": "float16",
           "format": "ND",
           "paramType": "required",
           "shape": [
             -2
           ]
-        }
-      ],
-      "attrs": [
-        {
-          "name": "mode",
-          "dtype": "int",
-          "value": 3
-        }
-      ]
-    },
-    {
-      "bin_filename": "IndexerCompressEpilog_11",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
         },
         {
-          "name": "cos",
-          "index": 1,
-          "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ]
-        },
-        {
-          "name": "sin",
-          "index": 2,
-          "dtype": "bfloat16",
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -577,9 +719,19 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "bfloat16",
+          "dtype": "uint8",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -589,19 +741,29 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 3
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     },
     {
-      "bin_filename": "IndexerCompressEpilog_12",
+      "bin_filename": "IndexerCompressEpilog_uint8_float_bf16",
       "inputs": [
         {
-          "name": "x",
+          "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "float32",
+          "dtype": "uint8",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -609,7 +771,7 @@
           ]
         },
         {
-          "name": "cos",
+          "name": "indexer_compress_cache_scale",
           "index": 1,
           "dtype": "float32",
           "format": "ND",
@@ -619,9 +781,19 @@
           ]
         },
         {
-          "name": "sin",
+          "name": "x",
           "index": 2,
-          "dtype": "float32",
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -631,8 +803,18 @@
       ],
       "outputs": [
         {
-          "name": "y",
+          "name": "indexer_compress_cache",
           "index": 0,
+          "dtype": "uint8",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
           "dtype": "float32",
           "format": "ND",
           "paramType": "required",
@@ -643,9 +825,19 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "quant_mode",
           "dtype": "int",
-          "value": 3
+          "value": 1
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
         }
       ]
     }
