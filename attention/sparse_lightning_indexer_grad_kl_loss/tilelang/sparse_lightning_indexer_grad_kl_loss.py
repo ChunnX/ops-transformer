@@ -2,11 +2,8 @@ import torch
 import torch_npu
 import math
 import numpy as np
-import logging
 from typing import Optional, Tuple
 from dataclasses import dataclass
-
-logger = logging.getLogger(__name__)
 
 import tilelang
 import tilelang.language as T
@@ -867,23 +864,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad = results[2]
         loss_out = results[3]
 
-        # KL Loss: computed in NPU kernel
         kl_loss = loss_out[0, 0, 0]
-
-        # Debug: compare NPU Loss with Python reference
-        ref_bmm1 = torch.matmul(query, gather_key.transpose(-1, -2)).float()
-        if query_rope is not None and d_rope > 0:
-            ref_bmm1_rope = torch.matmul(query_rope, gather_key_rope.transpose(-1, -2)).float()
-            ref_bmm1 = ref_bmm1 + ref_bmm1_rope
-        ref_bmm2_raw = torch.matmul(query_index, gather_key_index.transpose(-1, -2)).float()
-        ref_bmm2 = torch.relu(ref_bmm2_raw)
-        _, _, ref_loss = _compute_vector_outputs(
-            ref_bmm1, ref_bmm2, weights, softmax_max, softmax_sum,
-            scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
-            input_dtype,
-        )
-        logger.warning(f"[DEBUG] Loss: npu={kl_loss.item():.6f}, py_ref={ref_loss.item():.6f}, diff={abs(kl_loss.item() - ref_loss.item()):.6f}")
-        logger.warning(f"[DEBUG] LossOut raw: {loss_out[0, 0, :8].tolist()}")
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
