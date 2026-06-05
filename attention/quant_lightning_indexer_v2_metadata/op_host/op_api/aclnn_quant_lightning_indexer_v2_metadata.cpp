@@ -41,6 +41,14 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     char *layoutQOptional, char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (workspaceSize == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "workspaceSize is nullptr");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "executor is nullptr");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
     L2_DFX_PHASE_1(aclnnQuantLightningIndexerV2Metadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
                           cmpResidualKOptional, numHeadsQ, numHeadsK, headDim, topk, quantMode, batchSize, maxSeqlenQ,

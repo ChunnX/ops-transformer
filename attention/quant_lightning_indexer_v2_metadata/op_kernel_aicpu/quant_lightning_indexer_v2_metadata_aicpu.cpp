@@ -72,27 +72,43 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
         return false;
     }
     int32_t batchSize = GetQueryBatchSize();
-    // 校验 cu_seqlens_q 元素非负
+    // 校验 cu_seqlens_q 元素
     if (layoutQ_ == "TND") {
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
             for (int i = 0; i < batchSize + 1; i++) {
+                // 校验 cu_seqlens_q 元素非负
                 if (cuSeqlensQPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
                         i, cuSeqlensQPtr[i]);
                     return false;
                 }
+                // 校验 cu_seqlens_q 元素递增
+                if (i > 0 && cuSeqlensQPtr[i - 1] > cuSeqlensQPtr[i]) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q must be in ascending order, "
+                        "but got cu_seqlens_q[%d] = %d, cu_seqlens_q[%d] = %d",
+                        i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
+                    return false;
+                }
             }
         }
     }
+    // 校验 cu_seqlens_k 元素
     if (layoutK_ == "TND") {
-        // 校验 cu_seqlens_k 元素非负
         if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
             const int32_t *cuSeqlensKPtr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
             for (int i = 0; i < batchSize + 1; i++) {
+                // 校验 cu_seqlens_k 元素非负
                 if (cuSeqlensKPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in cu_seqlens_k should be >= 0, but got cu_seqlens_k[%d] = %d",
                         i, cuSeqlensKPtr[i]);
+                    return false;
+                }
+                // 校验 cu_seqlens_k 元素递增
+                if (i > 0 && cuSeqlensKPtr[i - 1] > cuSeqlensKPtr[i]) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k must be in ascending order, "
+                        "but got cu_seqlens_k[%d] = %d, cu_seqlens_k[%d] = %d",
+                        i - 1, cuSeqlensKPtr[i - 1], i, cuSeqlensKPtr[i]);
                     return false;
                 }
             }
@@ -805,7 +821,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &spli
 
 bool QuantLightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::qliV2Metadata* metadataPtr = (optiling::detail::qliV2Metadata*)metadata_->GetData();
+    optiling::detail::qliV2Metadata* metadataPtr = static_cast<optiling::detail::qliV2Metadata*>(metadata_->GetData());
+    *metadataPtr = {};
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
         if (i >= splitRes.usedCoreNum) {

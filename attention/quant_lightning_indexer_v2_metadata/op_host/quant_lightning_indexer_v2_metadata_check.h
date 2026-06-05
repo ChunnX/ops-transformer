@@ -94,11 +94,11 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
     int64_t maskMode, int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // num_heads_q 校验
-    CHECK_COND(numHeadsQ >= 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_q should not be negative, but got %ld", numHeadsQ);
+    CHECK_COND(numHeadsQ > 0, ACLNN_ERR_PARAM_INVALID,
+        "num_heads_q should be > 0, but got %ld", numHeadsQ);
     // num_heads_k 校验
-    CHECK_COND(numHeadsK >= 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_kv should not be negative, but got %ld", numHeadsK);
+    CHECK_COND(numHeadsK == 1, ACLNN_ERR_PARAM_INVALID,
+        "num_heads_kv should only be 1, but got %ld", numHeadsK);
     // topk 校验
     CHECK_COND(topk >= 0, ACLNN_ERR_PARAM_INVALID,
         "topk should not be negative, but got %ld", topk);
