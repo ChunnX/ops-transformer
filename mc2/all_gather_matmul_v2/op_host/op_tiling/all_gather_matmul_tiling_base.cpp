@@ -616,9 +616,14 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     gatherIndex_ = gatherIndexPtr ? static_cast<uint32_t>(*gatherIndexPtr) : 0;
     OP_TILING_CHECK((args_.isATrans != 0), OP_LOGE_WITH_INVALID_ATTR(opName_, "isTransA", "true", "false"),
         return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
-    OP_TILING_CHECK(blockSize != 0,
-        OP_LOGE_WITH_INVALID_ATTR(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"), return false);
+    // blockSize 语义:
+    //   0      - 非量化 (V2 路径, IsCapable 已用 inputIsBf16Fp16_ 过滤至 fp16/bf16)
+    //   32     - MX 量化  (QuantBmm 路径, FLOAT8_E8M0 scale, README §情形4)
+    //   packed - PerBlock 量化 (M | N<<16 | K<<32, FLOAT scale)
+    // 子类 IsCapable + AllGatherQuantBmmHelper::GetShapeAttrsInfo 区分校验,
+    // base 不在此处硬拒非零值, 否则 MX/PerBlock 路径不可达。
+    [[maybe_unused]] auto blockSize =
+        *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
     OP_LOGD(opName_,
         " group=%s, rankSize=%ld, is_trans_a=%u, is_trans_b=%d, gather_index=%u,"
         " comm_turn=%lu",
