@@ -44,33 +44,13 @@ namespace QuantBlockSparseAttentionCube {
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-        return GmFormat::BSNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-        return GmFormat::BNGSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::TNGD;
-    } else {
-        return GmFormat::NGTD;
-    }
+    return GmFormat::TNGD;
 }
 
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-        return GmFormat::BSND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-        return GmFormat::BNSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::TND;
-    } else {
-        return GmFormat::NTD;
-    }
+    return GmFormat::TND;
 }
 
 /* ============确定Query的L1类型============= */
@@ -386,10 +366,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer>
         coordInfo[runInfo.taskIdMod3].s2Coord += runInfo.kvLeftPaddingSize;  // 左padding
         if (constInfo.isKvContinuous == 0) {
             coordInfo[runInfo.taskIdMod3].curBIdx = 0;
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-                // 更新N2方向stride
-                this->keyGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSize);
-            }
         }
     }
 }
@@ -411,11 +387,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer> &constInfo)
 {
-    if constexpr (isInfer && layout == LayOutTypeEnum::LAYOUT_BNSD) {
-        if (constInfo.isKvContinuous == 0) {
-            this->valueGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSizeV);
-        }
-    }
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
     Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
     mm2A.WaitCrossCore();
@@ -615,15 +586,8 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                 CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
                     constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
             } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
-                     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
-                         coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
-                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                         constInfo.mm1Ka);	 
-                 } else { 
-                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                         constInfo.mm1Ka); 
-                 }
+                CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                    constInfo.mm1Ka); 
             }
         } else {
             uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
