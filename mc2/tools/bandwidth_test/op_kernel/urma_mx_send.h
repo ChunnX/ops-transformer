@@ -235,10 +235,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         aivNumUsedCompute_ = aivNum_ - COMM_MAX_USE_AIV_NUM;
     }
 
-    for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
-        urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
-    }
-
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
