@@ -27,7 +27,6 @@
 #include "common/memcopy/gm_layout.h"
 #include "common/memcopy/parser.h"
 #include "common/memcopy/offset_calculator_v2.h"
-#include "common/memcopy/fa_gm_tensor.h"
 
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
@@ -307,10 +306,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams,
     __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
 {
-    if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
-        this->queryGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
-            sharedParams->s1Size, sharedParams->dSize);
-    } else {  // GM_Q_OUT_TND
+    if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
         GlobalTensor<uint64_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr);
         if constexpr (isInfer) {
@@ -321,25 +317,19 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
                 actualSeqQLen, sharedParams->bSize);
         }
     }
-    if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-        this->keyGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
-            sharedParams->dSize);
-        this->valueGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
-            sharedParams->dSizeV);
-    } else { // GM_KV_TND
-        GlobalTensor<uint64_t> actualSeqKVLen;
-        actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
-        if constexpr (isInfer) {
-            this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
-                sharedParams->actualSeqLengthsKVSize);
-            this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
-                sharedParams->actualSeqLengthsKVSize);
-        } else {
-            this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
-                sharedParams->bSize);
-            this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
-                sharedParams->bSize);
-        }
+    // cube侧 KV地址访存  需要适配算子需求重新实现
+    GlobalTensor<uint64_t> actualSeqKVLen;
+    actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
+    if constexpr (isInfer) {
+        this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
+            sharedParams->actualSeqLengthsKVSize);
+        this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
+            sharedParams->actualSeqLengthsKVSize);
+    } else {
+        this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
+            sharedParams->bSize);
+        this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
+            sharedParams->bSize);
     }
 }
 
@@ -690,7 +680,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer> &constInfo)
 {
-    return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
+    return (Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
 }
 
 
