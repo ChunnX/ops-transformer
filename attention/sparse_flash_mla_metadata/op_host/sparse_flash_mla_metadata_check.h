@@ -69,57 +69,57 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
 {
     // batch_size >= 0
     if (batchSize < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "batch_size should be >= 0, but got %ld", batchSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "batch_size should be >= 0, but got %lld", batchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_q >= 0
     if (maxSeqlenQ < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should be >= 0, but got %ld", maxSeqlenQ);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should be >= 0, but got %lld", maxSeqlenQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_ori_kv >= 0
     if (maxSeqlenOriKv < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_ori_kv should be >= 0, but got %ld", maxSeqlenOriKv);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_ori_kv should be >= 0, but got %lld", maxSeqlenOriKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_cmp_kv >= 0
     if (maxSeqlenCmpKv < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_cmp_kv should be >= 0, but got %ld", maxSeqlenCmpKv);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_cmp_kv should be >= 0, but got %lld", maxSeqlenCmpKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_q >= 0
     if (numHeadsQ <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be > 0, but got %ld", numHeadsQ);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be > 0, but got %lld", numHeadsQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_kv: 1
     if (numHeadsKv != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %ld", numHeadsKv);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %lld", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (hasOriKv) {
         // ori_topk >= 0
         if (oriTopk < 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk should be >= 0, but got %ld", oriTopk);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk should be >= 0, but got %lld", oriTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_mask_mode: 0, 3, or 4
         if (oriMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
             oriMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL) &&
             oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode should be 0, 3 or 4, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode should be 0, 3 or 4, but got %lld",
                 oriMaskMode);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_win_left >= -1
         if (oriWinLeft < -1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_left should be >= -1, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_left should be >= -1, but got %lld",
                 oriWinLeft);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_win_right >= -1
         if (oriWinRight < -1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_right should be >= -1, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_right should be >= -1, but got %lld",
                 oriWinRight);
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -127,19 +127,19 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if (hasCmpKv) {
         // cmp_topk >= 0
         if (cmpTopk < 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_topk should be >= 0, but got %ld", cmpTopk);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_topk should be >= 0, but got %lld", cmpTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // cmp_mask_mode: 0 or 3
         if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
             cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_mask_mode should be 0 or 3, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_mask_mode should be 0 or 3, but got %lld",
                 cmpMaskMode);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // cmp_ratio: 1~128
         if (cmpRatio < SMLA_CMP_RATIO_LOWER_BOUND || cmpRatio > SMLA_CMP_RATIO_UPPER_BOUND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [1, 128], but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [1, 128], but got %lld",
                 cmpRatio);
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -344,7 +344,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 cu_seqlens_q 维度
         dimNum = GetDimNumSmla(cuSeqlensQOptional);
         if (dimNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", dimNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %lld", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 cu_seqlens_q 数据类型
@@ -359,7 +359,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 seqused_q 维度
         dimNum = GetDimNumSmla(sequsedQOptional);
         if (dimNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", dimNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %lld", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 seqused_q 数据类型
@@ -376,7 +376,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cu_seqlens_ori_kv 维度
             dimNum = GetDimNumSmla(cuSeqlensOriKvOptional);
             if (dimNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %ld",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %lld",
                     dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -392,7 +392,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 seqused_ori_kv 维度
             dimNum = GetDimNumSmla(sequsedOriKvOptional);
             if (dimNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_ori_kv must be 1, but got %ld",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_ori_kv must be 1, but got %lld",
                     dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -410,13 +410,13 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (strcmp(layoutQOptional, "TND") == 0) {
                 if (dimNum != 2) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of ori_topk_length must be 2, "
-                            "but got %ld", dimNum);
+                            "but got %lld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
                 if (dimNum != 3) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of ori_topk_length must be 3, "
-                            "but got %ld", dimNum);
+                            "but got %lld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
@@ -435,7 +435,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cu_seqlens_cmp_kv 维度
             dimNum = GetDimNumSmla(cuSeqlensCmpKvOptional);
             if (dimNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_cmp_kv must be 1, but got %ld",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_cmp_kv must be 1, but got %lld",
                     dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -451,7 +451,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 seqused_cmp_kv 维度
             dimNum = GetDimNumSmla(sequsedCmpKvOptional);
             if (dimNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_cmp_kv must be 1, but got %ld",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_cmp_kv must be 1, but got %lld",
                     dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -467,7 +467,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             // 校验 cmp_residual_kv 维度
             dimNum = GetDimNumSmla(cmpResidualKvOptional);
             if (dimNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_kv must be 1, but got %ld",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_kv must be 1, but got %lld",
                     dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -485,13 +485,13 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             if (strcmp(layoutQOptional, "TND") == 0) {
                 if (dimNum != 2) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of cmp_topk_length must be 2, "
-                            "but got %ld", dimNum);
+                            "but got %lld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
                 if (dimNum != 3) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of cmp_topk_length must be 3, "
-                            "but got %ld", dimNum);
+                            "but got %lld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
@@ -508,12 +508,12 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         // 校验 metadata 维度
         dimNum = GetDimNumSmla(metadata);
         if (dimNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %ld", dimNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lld", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
         if (metadata->GetViewShape().GetDim(0) != optiling::SMLA_METADATA_TOTAL_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %lld",
                 optiling::SMLA_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -531,7 +531,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                                        batchSize);
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
-                    "the same as that obtained from ori_kv, but got %ld and %ld", queryBatchSize,
+                    "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
                     oriKvBatchSize);
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -541,7 +541,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                                        batchSize);
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
-                    "the same as that obtained from cmp_kv, but got %ld and %ld", queryBatchSize,
+                    "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,
                     cmpKvBatchSize);
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -549,7 +549,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         if (IsTensorExistSmla(cmpResidualKvOptional)) {
             if (cmpResidualKvOptional->GetViewShape().GetDim(0) != queryBatchSize) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The elements num of cmp_residual_kv should match the valid batch "
-                    "size, but got %ld and %ld", cmpResidualKvOptional->GetViewShape().GetDim(0), queryBatchSize);
+                    "size, but got %lld and %lld", cmpResidualKvOptional->GetViewShape().GetDim(0), queryBatchSize);
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }

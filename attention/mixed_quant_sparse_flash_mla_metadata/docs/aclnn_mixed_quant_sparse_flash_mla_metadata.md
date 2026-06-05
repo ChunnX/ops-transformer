@@ -506,6 +506,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 // 参考 mixed_quant_sparse_flash_mla_metadata.h
 constexpr uint32_t AIC_CORE_MAX_NUM = 36;
 constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t QSMLA_METADATA_TOTAL_SIZE = 1024;
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
@@ -567,7 +568,6 @@ struct Tensor {
 struct ArgScenario {
     bool hasCuSeq { false };
     bool hasSeqused { false };
-    bool hasResidualKv { false };
 };
 
 struct ArgContext {
@@ -647,7 +647,7 @@ aclnnStatus CreateTensor(aclDataType dataType, const std::vector<int64_t> &shape
     // 调用aclCreateTensor接口创建aclTensor
     tensor.data = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
         shape.data(), shape.size(), tensor.deviceAddr);
-
+    CHECK_LOG_RET(tensor.data != nullptr, ACL_ERROR_FAILURE, "aclCreateTensor failed");
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(tensor.deviceAddr, size, tensor.hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
@@ -697,13 +697,12 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
 {
     ScopeGuard argsGuard([&] { DestroyArgs(context); });
     aclnnStatus ret;
-    int64_t batchSize = 4;
 
     context.numHeadsQ = 64;
     context.numHeadsKv = 1;
     context.headDim = 512;
     context.quantMode = 1;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
+    ret = CreateTensor(aclDataType::ACL_INT32, { QSMLA_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
     context.oriTopk = 0;
     context.cmpTopk = 0;
@@ -715,42 +714,41 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.oriWinRight = 0;
     context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
     context.layoutKvOptional = (char *)malloc(sizeof(char) * 16);
+    CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
+    CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
     strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BNBD
     context.hasOriKv = true;
     context.hasCmpKv = true;
 
-    if (!scenario.hasCuSeq && !scenario.hasSeqused) {
-        context.batchSize = batchSize;
-        context.maxSeqlenOriKv = 1024;
-        context.maxSeqlenCmpKv = 1024;
-        context.maxSeqlenQ = 1024;
-        return ACL_SUCCESS;
-    }
+    context.batchSize = 4;
+    context.maxSeqlenOriKv = 1024;
+    context.maxSeqlenCmpKv = 1024;
+    context.maxSeqlenQ = 1024;
 
     if (scenario.hasCuSeq) {
         // (B+1,), first element is always 0
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqlensQOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensQOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensQOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqlensOriKvOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensOriKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensOriKvOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqlensCmpKvOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensCmpKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensCmpKvOptional failed. Error: %d", ret);
     }
 
     if (scenario.hasSeqused) {
         // (B,)
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize }, context.sequsedQOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedQOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedQOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize }, context.sequsedOriKvOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedOriKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedOriKvOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize }, context.sequsedCmpKvOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedCmpKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedCmpKvOptional failed. Error: %d", ret);
     }
 
-    if (scenario.hasResidualKv) {
+    if (context.hasCmpKv && context.cmpRatio != 1 && context.cmpMaskMode == 3) {
         // (B,)
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize }, context.cmpResidualKvOptional);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.cmpResidualKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cmpResidualKvOptional failed. Error: %d", ret);
     }
 
@@ -769,9 +767,8 @@ int main() {
 
     // 2. 构造输入与输出，需要根据API的接口定义构造
     ArgScenario scenario {};
-    scenario.hasCuSeq = true;
-    scenario.hasSeqused = true;
-    scenario.hasResidualKv = true;
+    scenario.hasCuSeq = false;
+    scenario.hasSeqused = false;
     ArgContext context {};
     ret = CreateArgs(scenario, context);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create input arguments failed. ERROR: %d", ret);
@@ -788,8 +785,8 @@ int main() {
         context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data, 
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.quantMode, context.batchSize,
         context.maxSeqlenQ, context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk,
-        context.ropeHeadDim, context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft = 127,
-        context.oriWinRight = 0, context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv,
+        context.ropeHeadDim, context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft,
+        context.oriWinRight, context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv,
         context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
