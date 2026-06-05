@@ -115,21 +115,34 @@ struct FusedInferHostTensorParams {
 static graphStatus FiaFillTensorParams(const OpExecuteContext *host_api_ctx, FusedInferHostTensorParams &fiaTensors)
 {
     fiaTensors.query = host_api_ctx->GetInputTensor(QUERY_INDEX);
-    OP_CHECK_IF(fiaTensors.query == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "query is null"), return GRAPH_FAILED);
-    
+    OP_CHECK_IF(fiaTensors.query == nullptr,
+                OP_LOGE(host_api_ctx->GetNodeName(),
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [query is null]"),
+                return GRAPH_FAILED);
+
     fiaTensors.key = host_api_ctx->GetDynamicInputTensor(KEY_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.key == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "key is null"), return GRAPH_FAILED);
-    
+    OP_CHECK_IF(fiaTensors.key == nullptr,
+                OP_LOGE(host_api_ctx->GetNodeName(),
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [key is null]"),
+                return GRAPH_FAILED);
+
     fiaTensors.value = host_api_ctx->GetDynamicInputTensor(VALUE_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.value == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "value is null"), return GRAPH_FAILED);
-    
+    OP_CHECK_IF(fiaTensors.value == nullptr,
+                OP_LOGE(host_api_ctx->GetNodeName(),
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [value is null]"),
+                return GRAPH_FAILED);
+
     fiaTensors.output = host_api_ctx->GetOutputTensor(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF(fiaTensors.output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return GRAPH_FAILED);
-    
+    OP_CHECK_IF(fiaTensors.output == nullptr,
+                OP_LOGE(host_api_ctx->GetNodeName(),
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [output is null]"),
+                return GRAPH_FAILED);
+
     fiaTensors.softmaxLse = host_api_ctx->GetOutputTensor(SOFTMAX_LSE_INDEX);
-    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "softmaxLse is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr,
+                OP_LOGE(host_api_ctx->GetNodeName(),
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [softmaxLse is null]"),
+                return GRAPH_FAILED);
 
     fiaTensors.pseShiftGe = host_api_ctx->GetOptionalInputTensor(PSE_SHIFT_INDEX);
     fiaTensors.attenMaskGe = host_api_ctx->GetOptionalInputTensor(ATTEN_MASK_INDEX);
@@ -269,10 +282,17 @@ static void GetFusedInferHostScalarParams(const FusedInferHostAttrPtrs &attrPoin
 
 static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
 {
-    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(host_api_ctx == nullptr,
+                OP_LOGE("aclnnfallback",
+                        "The op [FusedInferAttentionScore] received bad params, the reason is: [host_api_ctx is null]"),
+                return GRAPH_FAILED);
     FusedInferHostTensorParams fiaTensors{};
     auto apiRet = FiaFillTensorParams(host_api_ctx, fiaTensors);
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "Input Tensors invalid"), return GRAPH_FAILED);
+    OP_CHECK_IF(
+        apiRet != GRAPH_SUCCESS,
+        OP_LOGE("aclnnfallback",
+                "The op [FusedInferAttentionScore] received bad params, the reason is: [input tensors invalid]"),
+        return GRAPH_FAILED);
 
     std::vector<const gert::Tensor *> ge_tenserListKey;
     ge_tenserListKey.push_back(fiaTensors.key);
@@ -285,14 +305,21 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
 
     FusedInferHostAttrPtrs attrPointers{};
     auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx Attrs is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(
+        attrs == nullptr,
+        OP_LOGE("aclnnfallback",
+                "The op [FusedInferAttentionScore] received bad params, the reason is: [host_api_ctx Attrs is null]"),
+        return GRAPH_FAILED);
     FillAttrPointers(attrs, attrPointers);
 
     FusedInferHostScalarParams scalarParams{};
     GetFusedInferHostScalarParams(attrPointers, scalarParams);
 
     if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) { // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
-        OP_LOGE(host_api_ctx->GetNodeName(), "invalid innerPrecise(%ld). Only support 0~3 now.", scalarParams.innerPrecise);
+        OP_LOGE(host_api_ctx->GetNodeName(),
+                "The op [FusedInferAttentionScore] received bad params, the reason is: "
+                "[invalid innerPrecise(%ld). only support 0~3 now.]",
+                scalarParams.innerPrecise);
         return GRAPH_FAILED;
     }
     OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
@@ -324,7 +351,9 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
         scalarParams.softmaxLseFlag, scalarParams.keyAntiquantMode, scalarParams.valueAntiquantMode,
         scalarParams.queryQuantMode, scalarParams.pseType, fiaTensors.output, fiaTensors.softmaxLse);
 
-    OP_CHECK_IF(apiRet != GRAPH_SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "apiRet faild:%u", apiRet), return GRAPH_FAILED);
+    OP_CHECK_IF(apiRet != GRAPH_SUCCESS,
+                OP_LOGE(host_api_ctx->GetNodeName(), "The op [FusedInferAttentionScore] apiRet failed:%u", apiRet),
+                return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }
