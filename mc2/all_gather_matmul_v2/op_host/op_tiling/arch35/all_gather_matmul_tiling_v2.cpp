@@ -238,12 +238,12 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
     OP_TILING_CHECK(x1ScaleShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale", "not nullptr",
-        "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+        "If the dtype of x1 and x2 is fp16 or bf16, x1Scale must be nullptr"),
         return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
     OP_TILING_CHECK(x2ScaleShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2Scale", "not nullptr",
-        "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+        "If the dtype of x1 and x2 is fp16 or bf16, x2Scale must be nullptr"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

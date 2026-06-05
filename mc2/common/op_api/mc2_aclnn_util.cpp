@@ -11,6 +11,7 @@
 #include "mc2_aclnn_util.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "log/log.h"
 
 namespace MC2Aclnn {
 
@@ -42,7 +43,8 @@ bool IsTensorContiguous(const aclTensor *tensor)
 
     int dimNum = tensor->GetViewShape().GetDimNum();
     if (dimNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Got a %d dimension tensor before contiguous check.", dimNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("IsTensorContiguous", "tensor",
+            std::to_string(dimNum).c_str(), "The dimension of tensor must be greater than 0");
         return false;
     }
     

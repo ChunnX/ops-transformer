@@ -334,7 +334,7 @@ __aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> d
             uint64_t tileRows = maxTileRows < (determinLen - processed) ? maxTileRows : (determinLen - processed);
             uint64_t dkCoreWorkspaceOffset;
             if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                dkCoreWorkspaceOffset = core * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+                dkCoreWorkspaceOffset = static_cast<uint64_t>(core) * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
             } else {
                 dkCoreWorkspaceOffset = core * runInfo.actualSeqK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
             }
@@ -380,8 +380,8 @@ __aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dat
     uint64_t blockGroupBegin = (GetBlockIdx() % 2 == 0) ? 0 : constInfo.groupNum / 2;
     uint64_t blockGroupNum = (GetBlockIdx() % 2 == 0) ? constInfo.groupNum / 2 : (constInfo.groupNum + 1) / 2;
 
-    uint32_t dweightsGmOffset;
-    uint32_t dqGmOffset;
+    uint64_t dweightsGmOffset = 0;
+    uint64_t dqGmOffset = 0;
     if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
         dweightsGmOffset = runInfo.bIdx * constInfo.seqlenQ * constInfo.headNumQ + runInfo.s1Idx *
             constInfo.headNumQ + runInfo.n2Idx * constInfo.groupNum + blockGroupBegin;
@@ -407,11 +407,11 @@ __aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dat
 template <typename LIGT>
 __aicore__ inline void LIGVector<LIGT>::InitOutputDkcoreGm(GlobalTensor<float> dkCoreWorkspaceGM, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
 {
-    uint32_t dkCorePerSize;
+    uint64_t dkCorePerSize;
     if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-        dkCorePerSize =  constInfo.seqlenK * constInfo.headDim / 2;
+        dkCorePerSize = static_cast<uint64_t>(constInfo.seqlenK) * constInfo.headDim / 2;
     } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        dkCorePerSize =  runInfo.actualSeqK * constInfo.headDim / 2;
+        dkCorePerSize = runInfo.actualSeqK * constInfo.headDim / 2;
     }
 
     LocalTensor<float> zeroDataTensor = unifiedBuffer.GetWithOffset<float>(MAX_UB_SIZE, gatherPingUbOffset);

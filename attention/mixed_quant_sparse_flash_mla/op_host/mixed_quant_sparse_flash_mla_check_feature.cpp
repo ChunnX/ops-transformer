@@ -70,8 +70,8 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
         OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dSizeVInput_ != 640, // 640:当前不泛化
-        OP_LOGE(opName_, "dSizeVInput only support 640, but got %u", dSizeVInput_),
+    OP_CHECK_IF(dSizeVInput_ != 608, // 608:当前不泛化
+        OP_LOGE(opName_, "dSizeVInput only support 608, but got %u", dSizeVInput_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

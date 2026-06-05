@@ -34,13 +34,15 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 ## ⬇️源码下载
 
-环境准备好后，下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
-
-> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码 。
+环境准备好后，下载与CANN版本配套的分支源码，通用命令如下，\$\{tag\_version\}替换为分支标签名。以9.0.0分支源码下载为例：
 
 ```bash
-git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+# 通用命令：git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ```
+
+> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码。
+
 ## 📖学习教程
 
 - [快速入门](docs/QUICKSTART.md)：从零开始快速体验项目核心基础能力，涵盖源码编译、算子调用、开发与调试等操作。

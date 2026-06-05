@@ -639,11 +639,6 @@ mc2_infer@ops-transformer:
                 - ops/ops-transformer/mc2/quant_reduce_scatter/op_kernel/
                 - ops/ops-transformer/mc2/quant_reduce_scatter/CMakeLists.txt
                 - ops/ops-transformer/mc2/quant_reduce_scatter/README.md
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_host/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_api/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_graph/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_kernel/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/CMakeLists.txt
                 - ops/ops-transformer/mc2/3rd/common/
                 - ops/ops-transformer/mc2/3rd/ops_legacy/
                 - ops/ops-transformer/mc2/3rd/CMakeLists.txt
@@ -749,6 +744,10 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_re_routing/op_host/moe_re_routing_tiling.h
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/arch35
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/moe_re_routing_apt.cpp
+                - ops/ops-transformer/moe/moe_token_permute/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_unpermute/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_unpermute_grad/op_host/op_api
             opensource_style: null 
             kernel_style: null  
         unrelease:
@@ -786,6 +785,10 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/tests/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/examples/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/docs/
+                - ops/ops-transformer/moe/moe_init_routing_v3/tests/
+                - ops/ops-transformer/moe/moe_re_routing/tests/
+                - ops/ops-transformer/moe/moe_token_permute/tests/
+                - ops/ops-transformer/moe/moe_token_permute_grad/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/examples/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/docs/

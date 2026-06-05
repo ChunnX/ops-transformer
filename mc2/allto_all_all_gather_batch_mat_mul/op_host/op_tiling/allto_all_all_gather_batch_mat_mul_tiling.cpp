@@ -610,18 +610,20 @@ static bool ActTypeCheck(const char *nodeName, const int64_t actType, const bool
 {
     if (std::find(ops::ACT_TYPE_SUPPORT_VEC.begin(), ops::ACT_TYPE_SUPPORT_VEC.end(), actType) ==
         ops::ACT_TYPE_SUPPORT_VEC.end()) {
-        OP_LOGE(nodeName, "actType [%ld] is unsupported, support range is [%ld, %ld]", actType,
-                static_cast<int64_t>(
-                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE),
-                static_cast<int64_t>(
-                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU));
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "actType",
+            std::to_string(actType).c_str(),
+            "range [" + std::to_string(static_cast<int64_t>(
+                ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) +
+            ", " + std::to_string(static_cast<int64_t>(
+                ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU)) + "]");
         return false;
     }
 
     if (y3Flag &&
         (actType == static_cast<int64_t>(
                         ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE))) {
-        OP_LOGE(nodeName, "actType should be non-none when need_activation_feature is true, but got actType = none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType", "none",
+            "actType should be non-none when need_activation_feature is true");
         return false;
     }
 
@@ -633,13 +635,15 @@ static bool CommonCheckTensorShape(const char *nodeName, const gert::Shape *xSha
 {
     // 检查每个维度: x dim C >= 1，dim E H M 会在后面限制, 这里不再做校验
     if (xShape->GetDim(X_DIM_C) < VALUE_C_MIN) {
-        OP_LOGE(nodeName, "The second dim of x should not < %ld, but got x[1] = %ld.", VALUE_C_MIN,
-                xShape->GetDim(X_DIM_C));
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[1]",
+            std::to_string(xShape->GetDim(X_DIM_C)).c_str(),
+            "should not < " + std::to_string(VALUE_C_MIN));
         return false;
     }
     // x[2]、w[wDimH] 是 H 轴 (reduce 轴)，不能为 0
     if ((xShape->GetDim(X_DIM_H) == 0) || (weightShape->GetDim(wDimH) == 0)) {
-        OP_LOGE(nodeName, "The second dim of weight or the last dim of x = 0 is unsupported.");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[H] or weight[H]",
+            "0", "non-zero value is required");
         return false;
     }
 
@@ -654,53 +658,54 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
     // 检查 shape 维度的范围
     // x[DIM_E] = E, value E should = [2, 512]
     if (((xShape->GetDim(DIM_E) < VALUE_E_MIN) || (xShape->GetDim(DIM_E) > VALUE_E_MAX))) {
-        OP_LOGE(nodeName, "Value E should in [%ld, %ld], but got %ld.", VALUE_E_MIN, VALUE_E_MAX,
-                xShape->GetDim(DIM_E));
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "E",
+            std::to_string(xShape->GetDim(DIM_E)).c_str(),
+            "[" + std::to_string(VALUE_E_MIN) + ", " + std::to_string(VALUE_E_MAX) + "]");
         return false;
     }
     // w[wDimM] = M / Tp, its range should same with H, so it meets M / Tp * H <= 65535 * 65535
     if ((weightShape->GetDim(wDimM) < VALUE_H_MIN) || (weightShape->GetDim(wDimM) > VALUE_H_MAX)) {
-        OP_LOGE(nodeName, "Value M / Tp should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                weightShape->GetDim(wDimM));
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "M / Tp",
+            std::to_string(weightShape->GetDim(wDimM)).c_str(),
+            "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
         return false;
     }
     // x[DIM_E] = E, w[DIM_E] = E / Ep, 所以需要满足 x[DIM_E] = w[DIM_E] * Ep
     if (weightShape->GetDim(DIM_E) * epSize != xShape->GetDim(DIM_E)) {
-        OP_LOGE(nodeName,
-                "The first dim of weight multi epSize should equal the first dim of x,"
-                "but got x[0] = %ld, w[0] = %ld, epSize = %ld",
-                xShape->GetDim(DIM_E), weightShape->GetDim(DIM_E), epSize);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "x and weight",
+            (std::to_string(xShape->GetDim(DIM_E)) + " and " + std::to_string(weightShape->GetDim(DIM_E))).c_str(),
+            "x[0] should equal weight[0] * epSize");
         return false;
     }
 
     if (xShard == 0) {
         // x[X_DIM_H] = H / tp, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) {
-            OP_LOGE(nodeName, "Value H should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                    xShape->GetDim(X_DIM_H) * tpSize);
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H",
+                std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
+                "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
             return false;
         }
         // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以 x[X_DIM_H] * tp 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) {
-            OP_LOGE(nodeName,
-                    "The last dim of x (H / tp) multi tp should equal the corresponding dim of weight, "
-                    "but got x[2] * tp = %ld, w[%lu] = %ld.",
-                    xShape->GetDim(X_DIM_H), wDimH, weightShape->GetDim(wDimH));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
+                std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
+                "x[H] * tp should equal weight[H]");
             return false;
         }
     } else if (xShard == 1) {
         // x[X_DIM_H] = H, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) {
-            OP_LOGE(nodeName, "Value H should in [%ld, %ld], but got %ld.", VALUE_H_MIN, VALUE_H_MAX,
-                    xShape->GetDim(X_DIM_H));
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H",
+                std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
+                "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
             return false;
         }
         // x[X_DIM_H] = H, w[wDimH] = H, 所以 x[X_DIM_H] 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
-            OP_LOGE(nodeName,
-                    "The last dim of x should equal the corresponding dim of weight, "
-                    "but got x[2] = %ld, w[%lu] = %ld.",
-                    xShape->GetDim(X_DIM_H), wDimH, weightShape->GetDim(wDimH));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
+                std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
+                "x[H] should equal weight[H]");
             return false;
         }
     }
@@ -713,33 +718,34 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
 {
     // 检查 dimNum
     if ((biasShape->GetDimNum() != SUPPORT_DIM_NUM) && (biasShape->GetDimNum() != BIAS_SUPPORT_DIM_NUM)) {
-        OP_LOGE(nodeName, "Dim of input bias must be the 2 or 3.");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "bias",
+            (std::to_string(biasShape->GetDimNum()) + "D").c_str(), "2D or 3D");
         return false;
     }
 
     // 检查 shape
     if (biasShape->GetDim(0) != weightShape->GetDim(0)) {
-        OP_LOGE(nodeName,
-                "The first dim of bias must be equal the first dim of weight, "
-                "but got bias[0] = %ld, w[0] = %ld.",
-                biasShape->GetDim(0), weightShape->GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
+            std::to_string(biasShape->GetDim(0)).c_str(),
+            "bias[0] should equal weight[0]");
         return false;
     }
 
     size_t biasLastDimIdx = 1U; // 默认 bias 是二维，所以最后一维的 index 是 1
     if (biasShape->GetDimNum() == SUPPORT_DIM_NUM) {
         if (biasShape->GetDim(1) != 1) { // 三维时候，中间维度为 1
-            OP_LOGE(nodeName, "The second dim of bias must be 1 when dim num is 3.");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
+                std::to_string(biasShape->GetDim(1)).c_str(),
+                "The second dim of bias must be 1 when dim num is 3");
             return false;
         }
         biasLastDimIdx = 2; // 三维时候，bias 的最后一维是 2
     }
 
     if (biasShape->GetDim(biasLastDimIdx) != weightShape->GetDim(wDimM)) {
-        OP_LOGE(nodeName,
-                "The last dim of bias must equal the corresponding dim of weight, "
-                "but got bias[2] = %ld, w[%lu] = %ld.",
-                biasShape->GetDim(biasLastDimIdx), wDimM, weightShape->GetDim(wDimM));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
+            std::to_string(biasShape->GetDim(biasLastDimIdx)).c_str(),
+            "bias last dim should equal weight corresponding dim");
         return false;
     }
 
@@ -751,29 +757,34 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
                              const size_t wDimH, const size_t wDimM, const int64_t xShard)
 {
     if ((xShape == nullptr) || (weightShape == nullptr)) {
-        OP_LOGE(nodeName, "xShape or weightShape is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape or weightShape");
         return false;
     }
     if (!DimNumCheck(nodeName, xShape, weightShape)) {
-        OP_LOGE(nodeName, "Dim num check failed.");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "x and weight",
+            (std::to_string(xShape->GetDimNum()) + "D and " + std::to_string(weightShape->GetDimNum()) + "D").c_str(),
+            "Dim num check failed");
         return false;
     }
 
     if (!CommonCheckTensorShape(nodeName, xShape, weightShape, wDimH)) {
-        OP_LOGE(nodeName, "common tensor shape check failed.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
+            "common", "common tensor shape check failed");
         return false;
     }
 
     if (xShard == 0 || xShard == 1) {
         if (!XShardCheckTensorShape(nodeName, xShard, xShape, weightShape, epSize, tpSize, wDimH, wDimM)) {
-            OP_LOGE(nodeName, "xShard = [%ld] tensor shape check failed.", xShard);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
+                std::to_string(xShard).c_str(), "xShard tensor shape check failed");
             return false;
         }
     }
 
     if (biasShape != nullptr) {
         if (!(CheckBiasShape(nodeName, weightShape, biasShape, wDimM))) {
-            OP_LOGE(nodeName, "Bias shape check failed.");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
+                "bias", "Bias shape check failed");
             return false;
         }
     }
@@ -782,22 +793,22 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
     return true;
 }
 
-static bool CheckIsAttrNull(const char *nodeName, const int64_t *tpWorldSize, const int64_t *epWorldSize, 
-                            const int64_t *xShardType, const int64_t *actTypePtr, const bool *outputY2Flag, 
+static bool CheckIsAttrNull(const char *nodeName, const int64_t *tpWorldSize, const int64_t *epWorldSize,
+                            const int64_t *xShardType, const int64_t *actTypePtr, const bool *outputY2Flag,
                             const bool *outputY3Flag)
 {
     if ((tpWorldSize == nullptr) || (epWorldSize == nullptr)) {
-        OP_LOGE(nodeName, "tpWorldSize or epWorldSize in context is invalid or out of range, attrs got nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpWorldSize or epWorldSize");
         return false;
     }
 
     if ((xShardType == nullptr) || (actTypePtr == nullptr)) {
-        OP_LOGE(nodeName, "xShardType or actTypePtr in context is invalid or out of range, attrs got nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShardType or actTypePtr");
         return false;
     }
 
     if ((outputY2Flag == nullptr) || (outputY3Flag == nullptr)) {
-        OP_LOGE(nodeName, "outputY2Flag or outputY3Flag in context is invalid or out of range, attrs got nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "outputY2Flag or outputY3Flag");
         return false;
     }
     return true;
@@ -808,7 +819,7 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is null"), return false);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return false);
     // get 只有在 index 超出 attr num 的时候才会返回 nullptr
     const char *groupEp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_EP));
     const char *groupTp = attrs->GetStr(static_cast<size_t>(ops::AlltoAllAllGatherBmmAttrIdx::K_GROUP_TP));
@@ -831,20 +842,22 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
     const int64_t actType = *actTypePtr;
 
     if (!GroupCheck(nodeName, groupEp, groupTp)) {
-        OP_LOGE(nodeName, "group size check failed.");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "groupEp or groupTp", "invalid", "valid group");
         return false;
     }
     if (!EpTpSizeCheck(epSize, tpSize)) {
-        OP_LOGE(nodeName, "rank size error, tpSize=[%ld], valid=[2/4/8/16/32], epSize=[%ld], valid=[2/4/8/16/32].",
-                tpSize, epSize);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpSize and epSize",
+            (std::to_string(tpSize) + " and " + std::to_string(epSize)).c_str(),
+            "valid tpSize=[2/4/8/16/32], epSize=[2/4/8/16/32]");
         return false;
     }
     if (xShard != 0 && xShard != 1) { // 当前支持 0, 1
-        OP_LOGE(nodeName, "x shard type [%ld] is invalid.", xShard);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "xShard", std::to_string(xShard).c_str(), "0 or 1");
         return false;
     }
     if (!ActTypeCheck(nodeName, actType, y3Flag)) {
-        OP_LOGE(nodeName, "actType check failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType",
+            std::to_string(actType).c_str(), "actType check failed");
         return false;
     }
     OP_LOGI(nodeName, "attrs info: groupEp %s, groupTp %s, tpSize %ld, epSize %ld, xShard %ld, y2Flag %d, y3Flag %d.",
@@ -855,21 +868,21 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
 // 入参校验
 static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingContext *context)
 {
-    OP_TILING_CHECK(context == nullptr, OP_LOGE(K_INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "context"), return ge::GRAPH_FAILED);
 
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter AlltoAllAllGatherBmm tiling check impl.");
 
     // 检查 shape 是否为空
     const gert::StorageShape *xStorageShape = context->GetInputShape(static_cast<size_t>(ops::MC2MoeInputIdx::K_X));
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "xShape is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
     const gert::StorageShape *weightStorageShape =
         context->GetInputShape(static_cast<size_t>(ops::MC2MoeInputIdx::K_WEIGHT));
-    OP_TILING_CHECK(weightStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "weightShape is null."),
+    OP_TILING_CHECK(weightStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "weight"),
                     return ge::GRAPH_FAILED);
     const gert::StorageShape *y1StorageShape =
         context->GetOutputShape(static_cast<size_t>(ops::AlltoAllAllGatherBmmOutIdx::K_Y1));
-    OP_TILING_CHECK(y1StorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "y1Shape is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(y1StorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y1"), return ge::GRAPH_FAILED);
 
     // 检查属性
     int64_t epSize = -1;
@@ -878,7 +891,7 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
     bool y2Flag = false;
     bool y3Flag = false;
     if (!CheckAttrs(context, epSize, tpSize, xShard, y2Flag, y3Flag)) {
-        OP_LOGE(nodeName, "attrs check failed.");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "attrs", "invalid", "valid attrs");
         return ge::GRAPH_FAILED;
     }
 
@@ -886,12 +899,12 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
     if (y2Flag) {
         const gert::StorageShape *y2StorageShape =
             context->GetOutputShape(static_cast<size_t>(ops::AlltoAllAllGatherBmmOutIdx::K_Y2));
-        OP_TILING_CHECK(y2StorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "y2Shape is null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(y2StorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y2"), return ge::GRAPH_FAILED);
     }
     if (y3Flag) {
         const gert::StorageShape *y3StorageShape =
             context->GetOutputShape(static_cast<size_t>(ops::AlltoAllAllGatherBmmOutIdx::K_Y3));
-        OP_TILING_CHECK(y3StorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "y3Shape is null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(y3StorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y3"), return ge::GRAPH_FAILED);
     }
 
     //  设 w = [E, H, M], dimH 指 H 轴, dimM 指 M 轴; w_trans = [E, M, H]
@@ -909,7 +922,8 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
 
     // tensor shape 检查
     if (!CheckTensorShape(nodeName, xShape, weightShape, biasShape, epSize, tpSize, wDimH, wDimM, xShard)) {
-        OP_LOGE(nodeName, "tensor shape check failed.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x, weight and bias",
+            "invalid", "tensor shape check failed");
         return ge::GRAPH_FAILED;
     }
 
@@ -1125,8 +1139,7 @@ static void SetHcclTiling(const gert::TilingContext *context, AlltoAllAllGatherB
     std::string allGatherConfig = "AllGather=level0:doublering";
 
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(),
-        "GetAttrs returned nullptr!"), return);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return);
     auto epGroup = attrs->GetAttrPointer<char>(ATTR_EP_GROUP_INDEX);
     auto tpGroup = attrs->GetAttrPointer<char>(ATTR_TP_GROUP_INDEX);
 
