@@ -179,7 +179,7 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckQuantMode() const
     if (hasSharedExpertFlag_) {
         // mmXQuantMode(same as gmmXQuantMode)
         int64_t mmXQuantMode = *mmXQuantModePtr_;
-        OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
+        OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode_,
             OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, mmXQuantMode should be same as gmmXQuantMode(1), but actual is %lu.", \
                 mmXQuantMode), return ge::GRAPH_FAILED);
         // mmWeightQuantMode

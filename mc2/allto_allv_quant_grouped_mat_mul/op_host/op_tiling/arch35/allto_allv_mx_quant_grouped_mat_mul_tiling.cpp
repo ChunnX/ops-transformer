@@ -190,7 +190,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
             "attr can not be null."), return ge::GRAPH_FAILED);
         // mmXQuantMode(same as gmmXQuantMode)
         int64_t mmXQuantMode = *mmXQuantModePtr_;
-        OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
+        OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode_,
             OP_LOGE(context_->GetNodeName(), "When mx quant mode and has shared expert, mmXQuantMode "
             "should be same as gmmXQuantMode(6), but actual is %ld.", mmXQuantMode), return ge::GRAPH_FAILED);
         // check mmWeightQuantMode null
