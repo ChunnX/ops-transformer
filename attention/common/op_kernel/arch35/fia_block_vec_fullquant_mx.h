@@ -1017,11 +1017,6 @@ public:
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
-            if constexpr (!USE_DN) {
-                if (constInfo.sparseMode == static_cast<uint32_t>(BAND)) {
-                    tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // 256 * 64
-                }
-            }
         }
 
         if (constInfo.isSoftmaxLseEnable) {
@@ -1088,10 +1083,6 @@ public:
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
         }
-        if (runInfo.isBandGlobalOnlyS2Loop) {
-            isSkipMask = true;
-            return;
-        }
 
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
@@ -1129,11 +1120,11 @@ public:
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1].template AllocTensor<uint8_t>();
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
                 maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
-            this->attenMaskInQue[1].template FreeTensor(attenMaskUbPre);
+            this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
         }
     }
 
@@ -1144,10 +1135,6 @@ public:
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
-        }
-        if (runInfo.isBandGlobalOnlyS2Loop) {
-            isSkipMask = true;
-            return;
         }
 
         MaskInfo maskInfo;
