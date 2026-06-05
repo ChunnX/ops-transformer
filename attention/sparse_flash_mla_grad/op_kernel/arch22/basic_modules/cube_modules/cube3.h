@@ -48,7 +48,8 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
         dsL1CachedSize = 0;
         // selectedBlockSize较小时，nIdx需要+2或者更多
         for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
-            int32_t l1Offset = (nIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
+            int64_t l1Offset = static_cast<int64_t>(nIdx - blkCntOffset) *
+                selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
             bool isFirstLoop = (nIdx == blkCntOffset);
             bool isLastLoop = (nIdx + blockOffset >= blkCntOffset + selectedCntOffset);
 
