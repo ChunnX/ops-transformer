@@ -19,8 +19,6 @@
 #define IS_BLAZE false
 #endif
 
-#include <stdio.h>
-
 #include "grouped_matmul_utils.h"
 #include "arch35/grouped_matmul_tiling_data_apt.h"
 using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
@@ -107,15 +105,6 @@ using weightType = MatmulType<AscendC::TPosition::GM, wFormat, DTYPE_X, trans>;
 using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, MM_DTYPE_Y>;
 
 using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
-
-#define GMM_MX_ROUTE_PRINT(routeName)                                                                               \
-    do {                                                                                                            \
-        if ASCEND_IS_AIC {                                                                                          \
-            if (AscendC::GetBlockIdx() == 0) {                                                                      \
-                printf("[zzzlog][grouped_matmul][gmm_mx] route=%s\n", routeName);                                   \
-            }                                                                                                       \
-        }                                                                                                           \
-    } while (0)
 
 #define INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(templateClass, ...)                                           \
     do {                                                                                                               \
@@ -226,7 +215,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GMM_MX_ROUTE_PRINT("basic_api");                                                                               \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,  \
                          cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,   \
                                                         &gmmQuantParams_, &mmTilingData_, &tPipe);                    \
@@ -236,7 +224,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GMM_MX_ROUTE_PRINT("tensor_api");                                                                              \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
