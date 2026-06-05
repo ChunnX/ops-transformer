@@ -57,14 +57,13 @@ constexpr int32_t BLOCK_DIM = 40;
             }                                        \
             break;                                   \
         }                                            \
-        default: {                                   \
-            using DType = bfloat16_t;                \
-            {                                        \
-                __VA_ARGS__                          \
-            }                                        \
-            break;                                   \
-        }                                            \
     }
+
+void check_acl_dtype(const int32_t dtype)
+{
+    TORCH_CHECK(dtype == ACL_DTYPE_FLOAT16 || dtype == ACL_DTYPE_BFLOAT16,
+                "moe_gate_silu only supports ACL dtype 1 (float16) and 27 (bfloat16), got ", dtype);
+}
 
 int32_t get_acl_dtype(const at::ScalarType dtype)
 {
@@ -279,6 +278,7 @@ extern "C" __global__ __aicore__ void moe_gate_silu_kernel(GM_ADDR x, GM_ADDR to
 void moe_gate_silu_launch(uint8_t *x, uint8_t *totalRows, uint8_t *out, int32_t rows, int32_t perCount,
                           int32_t perTotalCount, int32_t blockDim, aclrtStream stream, int32_t dtype)
 {
+    check_acl_dtype(dtype);
     if (rows <= 0) {
         return;
     }
