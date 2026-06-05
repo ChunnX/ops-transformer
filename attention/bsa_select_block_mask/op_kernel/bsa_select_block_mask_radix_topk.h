@@ -1182,22 +1182,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         PipeBarrier<PIPE_V>();
 
-        // Cast uint8_t to OUT_T (int8_t) if needed
-        if constexpr (!IsSameType<uint8_t, OUT_T>::value) {
-            LocalTensor<OUT_T> maskLocalOut = maskLocal8.template ReinterpretCast<OUT_T>();
-            Cast<OUT_T, uint8_t>(maskLocalOut, maskLocal8, RoundMode::CAST_NONE, alignLen);
-            PipeBarrier<PIPE_V>();
-
-            // Write to maskOutGm
-            VToMTE3Sync();
-            DataCopyPad(maskOutGm[outputOffset + tileGmOffset], maskLocalOut,
-                        DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(OUT_T)), 0, 0));
-        } else {
-            // Direct copy if types are the same
-            VToMTE3Sync();
-            DataCopyPad(maskOutGm[outputOffset + tileGmOffset], maskLocal8,
-                        DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-        }
+        // Write to maskOutGm
+        // Note: uint8_t and int8_t have identical memory layout (1 byte each)
+        // Values 0 and 1 are the same in both types
+        // Create a uint8_t view of the int8_t output tensor
+        VToMTE3Sync();
+        GlobalTensor<uint8_t> maskOutGmU8;
+        maskOutGmU8.SetGlobalBuffer(
+            reinterpret_cast<__gm__ uint8_t*>(maskOutGm.GetPhyAddr()) + 
+            (outputOffset + tileGmOffset) * sizeof(OUT_T));
+        DataCopyPad(maskOutGmU8, maskLocal8,
+                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     }
 }
 
