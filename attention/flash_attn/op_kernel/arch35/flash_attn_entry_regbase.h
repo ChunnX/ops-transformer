@@ -89,9 +89,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                                                        hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
     // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
     using VecBlockDummy =
-        BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType,
-                              dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
-                              bmm2Write2Ub, splitD>;
+        BaseApi::FANoQuantGqaBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                           s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false,
+                                           KvLayoutType, useDn, bmm2Write2Ub, splitD>;
     using CubeBlockDummy =
         BaseApi::FANoQuantGqaBlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
                                             dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
