@@ -17,8 +17,6 @@
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
 
-#include <stdio.h>
-
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
@@ -38,14 +36,6 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     (void)que;
     if ASCEND_IS_AIV {
         return;
-    }
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf(
-                "[zzzlog][gqmm_tensor_api][L42] raw enter x=%p w=%p bias=%p scale=%p groupList=%p perTokenScale=%p "
-                "y=%p workspace=%p gmmBaseParamsIn=%p mmTilingDataIn=%p que=%p\n",
-                x, weight, bias, scale, groupList, perTokenScale, y, workspace, gmmBaseParamsIn, mmTilingDataIn, que);
-        }
     }
     using AType = xType;
     using BType = wType;
@@ -79,19 +69,6 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                         static_cast<int8_t>(gmmBaseParamsIn->groupType),
                         static_cast<uint8_t>(gmmBaseParamsIn->groupListType)};
 
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf(
-                "[zzzlog][gqmm_tensor_api][L74] enter groupNum=%u m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u "
-                "kAL1=%u kBL1=%u scaleKAL1=%u scaleKBL1=%u isBias=%u dbL0C=%u groupType=%d groupListType=%u "
-                "x=%p w=%p bias=%p scale=%p groupList=%p perTokenScale=%p y=%p\n",
-                gmmParams.groupNum, gmmParams.m, gmmParams.n, gmmParams.k, gmmParams.baseM, gmmParams.baseN,
-                gmmParams.baseK, gmmParams.kAL1, gmmParams.kBL1, gmmParams.scaleKAL1, gmmParams.scaleKBL1,
-                gmmParams.isBias, gmmParams.dbL0C, static_cast<int>(gmmParams.groupType), gmmParams.groupListType, x,
-                weight, bias, scale, groupList, perTokenScale, y);
-        }
-    }
-
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
     GM_ADDR bDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight));
     GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
@@ -104,15 +81,6 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                          : reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
     GM_ADDR groupListDataAddr = groupList;
 
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf(
-                "[zzzlog][gqmm_tensor_api][L101] resolved addr a=%p b=%p y=%p bias=%p scaleA=%p scaleB=%p "
-                "groupList=%p\n",
-                aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr, groupListDataAddr);
-        }
-    }
-
     Params params = {
         {static_cast<int64_t>(gmmParams.m), static_cast<int64_t>(gmmParams.n), static_cast<int64_t>(gmmParams.k),
          static_cast<int64_t>(1)},
@@ -120,18 +88,8 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
         groupListDataAddr,
         gmmParams};
 
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf("[zzzlog][gqmm_tensor_api][L111] before gmm(params)\n");
-        }
-    }
     QgmmKernel gmm;
     gmm(params);
-    if ASCEND_IS_AIC {
-        if (AscendC::GetBlockIdx() == 0) {
-            AscendC::printf("[zzzlog][gqmm_tensor_api][L118] after gmm(params)\n");
-        }
-    }
 }
 
 #endif
