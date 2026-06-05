@@ -126,8 +126,8 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>query</td>
         <td>输入</td>
         <td>公式中的query。</td>
-        <td>数据类型与key/value的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>数据类型与key/value的数据类型一致。HIFLOAT8有严格组合约束，详见约束说明。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、HIFLOAT8</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -136,8 +136,8 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>key</td>
         <td>输入</td>
         <td>公式中的key。</td>
-        <td>数据类型与query/value的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>数据类型与query/value的数据类型一致。HIFLOAT8有严格组合约束，详见约束说明。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、HIFLOAT8</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -146,8 +146,8 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>value</td>
         <td>输入</td>
         <td>公式中的value。</td>
-        <td>数据类型与query/key的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>数据类型与query/key的数据类型一致。HIFLOAT8有严格组合约束，详见约束说明。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、HIFLOAT8</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dScaleVOptional</td>
         <td>输入</td>
         <td>value的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
+        <td>输入shape为[B,N2,Ceil(Skv/512),1]。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -456,8 +456,8 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>attentionOutOut</td>
         <td>输出</td>
         <td>计算公式的最终输出。</td>
-        <td>数据类型和shape类型与query保持一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>数据类型和shape类型与query保持一致。HIFLOAT8有严格组合约束，详见约束说明。</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32、HIFLOAT8</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -614,6 +614,24 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
+- queryRopeOptional和keyRopeOptional必须同时传入或同时不传入，不支持仅传入其中一个。
+- GQA（Grouped Query Attention）约束：N1必须是N2的整数倍，即N1 % N2 == 0。
+- TND布局下：
+  - actualSeqQLenOptional和actualSeqKvLenOptional的长度（即batch数）必须相等。
+  - query的T维度必须大于等于actualSeqQLenOptional中各sequence length的总和，key的T维度必须大于等于actualSeqKvLenOptional中各sequence length的总和。
+- AttenMask压缩模式下（sparseMode为1、2、3、4、7、8），attenMaskOptional的shape必须为\[2048, 2048\]。
+- Prefix压缩模式下（sparseMode=6），attenMaskOptional的shape必须为\[3072, 2048\]。
+- sparseMode=2（RIGHT_DOWN_CAUSAL）时，每个batch的query的S长度不能大于key的S长度，即actualSeqQLen\[i\] <= actualSeqKvLen\[i\]。
+- preTokens和nextTokens不能同时小于0，否则无有效数据块参与计算。
+- kvStartIdxOptional与qStartIdxOptional的差值必须在int32范围内，即INT32_MIN <= kvStartIdx - qStartIdx <= INT32_MAX。
+- preTokens和nextTokens超出int32范围时，算子会自动将其调整到int32边界值并输出warning，不会报错。
+- HIFLOAT8数据类型约束：
+  - 仅支持BSND布局。
+  - 不支持任何可选输入（attenMaskOptional、realShiftOptional、dropMaskOptional、queryRopeOptional/keyRopeOptional均不可传入）。
+  - bSize必须为1，N1必须等于N2，dSize和dSizeV必须为128。
+  - 仅支持以下两种shape组合：
+    - query:\[1, 57600, 5, 128\]、key:\[1, 57600, 5, 128\]、value:\[1, 57600, 5, 128\]
+    - query:\[1, 7200, 40, 128\]、key:\[1, 512, 40, 128\]、value:\[1, 512, 40, 128\]
 
 ## 调用示例
 
