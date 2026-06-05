@@ -152,12 +152,12 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
     const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(m > static_cast<uint64_t>(INT32_MAX),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
-                        std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
+                        std::to_string(m).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
                     return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(k > static_cast<uint64_t>(UINT16_MAX),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
-                        std::to_string(k).c_str(), "exceeds upper limit UINT16_MAX"),
+                        std::to_string(k).c_str(), "The value of k of x1 exceeds the upper limit UINT16_MAX"),
                     return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     uint64_t x2FirstDim = args_.isBTrans ? n : k;
@@ -166,7 +166,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
         x2FirstDim > static_cast<uint64_t>(INT32_MAX)  || (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
             (std::to_string(x2FirstDim) + "/" + std::to_string(x2LastDim)).c_str(),
-            "exceeds upper limit"),
+            "The value of x2 dimensions exceeds the upper limit"),
         return ge::GRAPH_FAILED);
 
     return CheckQuantEmptyTensor();
@@ -184,19 +184,19 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckDequantScaleType()
     if (yType == ge::DT_BF16) {
         OP_TILING_CHECK(dequantScaleType != ge::DT_BF16,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "dequantScale",
-                            std::to_string(static_cast<int32_t>(dequantScaleType)).c_str(), "should be bf16"),
+                            std::to_string(static_cast<int32_t>(dequantScaleType)).c_str(), "The value of dequantScale dtype must be bf16"),
                         return ge::GRAPH_FAILED);
     } else if (pertokenScaleShape == nullptr) {
         OP_TILING_CHECK(
             !(dequantScaleType == ge::DT_UINT64 || dequantScaleType == ge::DT_INT64),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "dequantScale",
                 std::to_string(static_cast<int32_t>(dequantScaleType)).c_str(),
-                "should be uint64 or int64"),
+                "The value of dequantScale dtype must be uint64 or int64"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(dequantScaleType != ge::DT_FLOAT,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "dequantScale",
-                            std::to_string(static_cast<int32_t>(dequantScaleType)).c_str(), "should be fp32"),
+                            std::to_string(static_cast<int32_t>(dequantScaleType)).c_str(), "The value of dequantScale dtype must be fp32"),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -210,21 +210,21 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO && x2DimNum != DIM_NUM_FOUR,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x2",
                         (std::to_string(x2DimNum) + "D").c_str(),
-                        "Expect x2 dim to be 2 or 4"),
+                        "The shape dim of x2 must be 2 or 4"),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(x1Type != x2Type,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
-                        std::to_string(static_cast<int32_t>(x2Type)).c_str(), "should be same as x1"),
+                        std::to_string(static_cast<int32_t>(x2Type)).c_str(), "The value of x2 dtype must be the same as that of x1"),
                     return ge::GRAPH_FAILED);
     // bias数据类型为int32
     if (mmrCtxInfo_.bias_shape != nullptr) {
         auto biasType = mmrCtxInfo_.bias->GetDataType();
         OP_TILING_CHECK(biasType != ge::DT_INT32,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "bias",
-                            std::to_string(static_cast<int32_t>(biasType)).c_str(), "should be int32"),
+                            std::to_string(static_cast<int32_t>(biasType)).c_str(), "The value of bias dtype must be int32"),
                         return ge::GRAPH_FAILED);
     }
     // dequantScale数据类型范围
@@ -239,7 +239,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
                             context_->GetNodeName(), "comm_quant_scale",
                             (std::to_string(static_cast<int32_t>(commQuantScaleType1)) + "/" +
                              std::to_string(static_cast<int32_t>(commQuantScaleType2))).c_str(),
-                            ("should be same as cType " + std::to_string(static_cast<int32_t>(cType))).c_str()),
+                            "The value of comm_quant_scale dtype must be the same as that of output"),
                         return ge::GRAPH_FAILED);
     }
 

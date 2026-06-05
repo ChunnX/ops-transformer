@@ -84,11 +84,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x1Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
+                    "x1Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x1Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x2Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
+                    "x2Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x2Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

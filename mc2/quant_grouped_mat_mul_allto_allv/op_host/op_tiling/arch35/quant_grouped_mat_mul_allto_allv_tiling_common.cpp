@@ -85,13 +85,13 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "sendCountsTensor, recvCountsTensor",
                             "not null",
-                            "should all be nullptr now"),
+                            "sendCountsTensor and recvCountsTensor must be nullptr"),
                     return ge::GRAPH_FAILED);
     auto commQuantScaleTensorShape = context_->GetOptionalInputShape(COMM_QUANT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(commQuantScaleTensorShape != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantScale",
                                                           "not null",
-                                                          "should be nullptr now"), return ge::GRAPH_FAILED);
+                                                          "commQuantScale must be nullptr"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -107,7 +107,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "gmmXScale, gmmWeightScale",
                             "null",
-                            "should all not be nullptr"),
+                            "gmmXScale and gmmWeightScale cannot be nullptr"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -130,8 +130,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
     OP_TILING_CHECK(!isAllSame,
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "mmXTensor, mmWeightTensor, mmYTensor",
-                            "not all in same existence state",
-                            "must exist or not exist at same time"),
+                            (std::string(isMmXNull ? "null" : "not null") + ", " +
+                             std::string(isMmWeightNull ? "null" : "not null") + ", " +
+                             std::string(isMmYNull ? "null" : "not null")).c_str(),
+                            "The values of mmXTensor, mmWeightTensor and mmYTensor must be the same in existence state"),
                     return ge::GRAPH_FAILED);
     if (!isMmXNull) {
         localParams_.hasSharedMm = true;
@@ -650,7 +652,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
         localParams_.groupSize != 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
                                                std::to_string(localParams_.groupSize),
-                                               "Group quant is not supported yet, must be 0"),
+                                               "The value of groupSize must be 0 as group quant is not supported"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
