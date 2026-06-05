@@ -521,7 +521,7 @@ ge::graphStatus MatmulAllReduceTilingBase::PostTiling()
     OP_LOGD(opName_, "Final tiling data size: %zu.", tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "Tiling data size[%s] not aligned to 8.", std::to_string(tilingDataSize).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -800,7 +800,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
                 "not null", "not support 310p"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(context_->GetNodeName(), "Unsupported SocVersion.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "socVersion", "current", "unsupported SoC version");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1016,9 +1016,11 @@ bool MatmulAllReduceTilingBase::SetArgs(
         args_.cType = D_TYPE_MAP.at(cType);
         args_.biasType = D_TYPE_MAP.at(biasType);
     } catch (const std::out_of_range& e) {
-        OP_LOGE(
-            opName_, "Unsupported{ aType: %d bType: %d cType: %d biasType %d }.", static_cast<int32_t>(aType),
-            static_cast<int32_t>(bType), static_cast<int32_t>(cType), static_cast<int32_t>(biasType));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "aType/bType/cType/biasType",
+            (std::to_string(static_cast<int32_t>(aType)) + "/" + std::to_string(static_cast<int32_t>(bType)) + "/" +
+             std::to_string(static_cast<int32_t>(cType)) + "/" + std::to_string(static_cast<int32_t>(biasType))).c_str(),
+            "unsupported dtype combination");
         return false;
     }
 

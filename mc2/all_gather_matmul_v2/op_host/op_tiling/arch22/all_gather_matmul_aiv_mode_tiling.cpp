@@ -283,7 +283,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
                                                                    CoCTiling &coctiling)
 {
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "AivMode attrs is null."),
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
 
     // Attr相关tilingdata的设置、校验、打印
@@ -292,11 +292,11 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
     auto isTransposeX2 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X2);
 
     OP_TILING_CHECK(groupPtr == nullptr || strlen(groupPtr) == 0,
-                    OP_LOGE(context->GetNodeName(), "AivMode group is invalid."),
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(
         isTransposeX2 == nullptr,
-        OP_LOGE(context->GetNodeName(), "AivMode, is_trans_a or is_trans_b is invalid."),
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransposeX2"),
         return GRAPH_FAILED);
 
     info.isTransposeX1 = *isTransposeX1 ? *isTransposeX1 : false;
@@ -321,15 +321,15 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     const auto aType = context->GetInputTensor(A_INDEX)->GetDataType();
     const auto bType = context->GetInputTensor(B_INDEX)->GetDataType();
     OP_TILING_CHECK(aType != bType,
-                    OP_LOGE(context->GetNodeName(), "x1 and x2 must have the same data type."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1/x2",
+                        Ops::Base::ToString(aType).c_str(), "x1 and x2 must have the same data type"),
                     return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
         OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
-                        OP_LOGE(
-                            context->GetNodeName(),
-                            "When the data types of inputs x1 and x2 are int4, the contiguous dimension of x1 and x2 "
-                            "must be divisible by 2."),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K/N",
+                            (std::string("K=") + std::to_string(K) + " N=" + std::to_string(N)).c_str(),
+                            "contiguous dimension must be divisible by 2 for int4"),
                         return GRAPH_FAILED);
     }
 
@@ -347,7 +347,8 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
 
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
     OP_TILING_CHECK(matrixBias != nullptr,
-                    OP_LOGE(context->GetNodeName(), "AivMode, bias must be nullptr."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "bias",
+                        "not nullptr", "bias must be nullptr in AivMode"),
                     return GRAPH_FAILED);
 
     // shape相关校验与约束写在这里
@@ -542,7 +543,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
 
     // 1. tilingData
     AllGatherMatmulAIVModeTilingData *tilingData = context->GetTilingData<AllGatherMatmulAIVModeTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"),
                     return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "AllGatherMatmulAIVMode get tilingData.");
     AllGatherMatmulAIVModeInfo &info = tilingData->allGatherMatmulInfo;
@@ -595,7 +596,8 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     if (info.quantFlag) {
         OP_TILING_CHECK(
             !CheckDtypeX2(context, info, cType),
-            OP_LOGE(context->GetNodeName(), "AllGatherMatmulV2 AIV mode invalid x2Scale."),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale", "invalid dtype",
+                "AllGatherMatmulV2 AIV mode invalid x2Scale"),
             return ge::GRAPH_FAILED);
         info.dequantType = DequantType::PER_CHANNEL;
         if (CheckDtypeX1(context)) {

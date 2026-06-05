@@ -24,6 +24,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
@@ -100,7 +101,7 @@ static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclT
 static bool CheckNotEmptyTensor(const aclTensor* x1) {
   auto kValue = x1->GetViewShape().GetDim(1);
   OP_API_CHECK((kValue == 0), {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X1 is empty tensor with zero dimK, which is unsupported.");
+    OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
     return false;
   });
   return true;
@@ -109,7 +110,8 @@ static bool CheckNotEmptyTensor(const aclTensor* x1) {
 // 检查传入的reduction数值是否在可选范围内
 static bool CheckAttr(int64_t streamMode) {
   if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+    OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterGetWorkspaceSize", "streamMode",
+        std::to_string(streamMode).c_str(), "1");
     return false;
   }
   return true;
@@ -140,27 +142,29 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
   OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
   OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x1 should not be transposed, but it is transposed.");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x1", "transposed",
+        "The x1 should not be transposed, but it is transposed.");
     return false;
   });
   auto kVal1 = x1->GetViewShape().GetDim(1);
   auto kVal2 = x2->GetViewShape().GetDim(0);
   if (GetDebugMode() != 4) { // 4 ONLY_AICPU
     OP_API_CHECK((kVal1 != kVal2), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-      "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kVal1, kVal2);
+      OP_LOGE_FOR_INVALID_SHAPE("aclnnMatmulReduceScatterGetWorkspaceSize", "x1/x2",
+          (std::string("k=") + std::to_string(kVal1) + "/" + std::to_string(kVal2)).c_str(), "equal k values");
       return false;
     });
     OP_API_CHECK((kVal1 >= KVALUE_MAX || kVal1 < KVALUE_MIN), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis should be in range[256, 65535), but it is: %ld.", kVal1);
+      OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterGetWorkspaceSize", "k-axis",
+          std::to_string(kVal1).c_str(), "[256, 65535)");
       return false;
     });
 
     auto nVal2 = output->GetViewShape().GetDim(1);
     auto nVal1 = x2->GetViewShape().GetDim(1);
     OP_API_CHECK((nVal1 != nVal2), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-      "The n-axis of x2 and output should be same, but x2's n-axis is: %ld and output's n-axis is: %ld.", nVal1, nVal2);
+      OP_LOGE_FOR_INVALID_SHAPE("aclnnMatmulReduceScatterGetWorkspaceSize", "x2/output",
+          (std::string("n=") + std::to_string(nVal1) + "/" + std::to_string(nVal2)).c_str(), "equal n values");
       return false;
     });
   }
@@ -196,8 +200,8 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
   // 【A2】检查x2矩阵非连续合法性
   if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
     if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-              "but it is non-contiguous.");
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x2",
+          "non-contiguous", "x2 without transpose must be contiguous.");
       return ACLNN_ERR_PARAM_INVALID;
     }
   }
@@ -227,7 +231,7 @@ aclnnStatus aclnnMatmulReduceScatter(void *workspace, uint64_t workspaceSize, ac
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   auto ret = aclnnInnerMatmulReduceScatter(workspace, workspaceSize, executor, stream);
   if (ret != 0) {
-    OP_LOGE(ACLNN_ERR_INNER, "MatmulReduceScatter launch task failed.");
+    OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulReduceScatter", "MatmulReduceScatter launch task failed.");
     return ACLNN_ERR_INNER;
   }
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};

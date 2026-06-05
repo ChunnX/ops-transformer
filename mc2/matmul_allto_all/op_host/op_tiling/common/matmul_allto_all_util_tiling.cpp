@@ -71,7 +71,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(indexSchema.commMode);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "comm_mode attr"),
                     return ge::GRAPH_FAILED);
 
     const size_t maxLength = 6UL;
@@ -84,7 +84,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
         commMode = (rankDim <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(opName, "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr, "only supports '', 'ai_cpu', 'ccu'");
         return ge::GRAPH_FAILED;
     }
 
@@ -132,7 +132,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_INPUT(opName, "group"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "comm_mode attr"),
                     return ge::GRAPH_FAILED);
     // 判断group是否超过127
     size_t groupLen = strlen(group);

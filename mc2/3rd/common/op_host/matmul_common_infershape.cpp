@@ -346,7 +346,7 @@ ge::graphStatus UpdateX2NewShape(
     if (is_packed) {
         auto* desc = context->GetInputDesc(1);
         OP_CHECK_IF(
-            desc == nullptr, OP_LOGE(op_name, "[InferShape] x2 tensor descriptor is null"), return ge::GRAPH_FAILED);
+            desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x2 desc"), return ge::GRAPH_FAILED);
         size_t dim_num = new_shape.GetDimNum();
         size_t x2_dim_num = new_shape.GetDimNum();
         size_t k_x2_dim = trans_x2 ? (x2_dim_num - 1UL) : (x2_dim_num - 2UL);
@@ -389,7 +389,7 @@ ge::graphStatus InferShapeForBatchMatMul(
     OP_CHECK_IF(
         shape_x2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x2"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        shape_out == nullptr, OP_LOGE(op_name, "[InferShape] output shape is null"), return ge::GRAPH_FAILED);
+        shape_out == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "output shape"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"), return ge::GRAPH_FAILED);
 
@@ -460,9 +460,9 @@ bool InitializeRange(
     }
     for (size_t i = 0; i < range.size(); ++i) {
         if (range.at(i).first < 0) {
-            OP_LOGE(
-                "MatMulCommon", "[InferShapeRange] range[%ld, %ld] is incorrect.", range.at(i).first,
-                range.at(i).second);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MatMulCommon", "range",
+                (std::to_string(range.at(i).first) + ", " + std::to_string(range.at(i).second)).c_str(),
+                "Range value is incorrect.");
             return false;
         }
         if (range.at(i).second == INFINITE_RANGE) {
@@ -502,9 +502,10 @@ bool GetBatchIntersection(
     out.second = std::min(a.second, b.second);
     // 交集不存在
     if (out.first > out.second || out.first == NORMALIZE_INFINITE_RANGE) {
-        OP_LOGE(
-            op_name, "[GetBatchIntersection] range[%ld, %ld] and range[%ld, %ld] don't have intersection.", a.first,
-            a.second, b.first, b.second);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "batch range",
+            (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
+             std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
+            "Ranges don't have intersection.");
         return false;
     }
     return true;
@@ -519,9 +520,10 @@ bool GetKNIntersection(
     out.second = std::min(a.second, b.second);
     // 交集不存在
     if (out.first > out.second || out.first == NORMALIZE_INFINITE_RANGE) {
-        OP_LOGE(
-            op_name, "[GetKNIntersection] range[%ld, %ld] and range[%ld, %ld] don't have intersection.", a.first,
-            a.second, b.first, b.second);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "KN range",
+            (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
+             std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
+            "Ranges don't have intersection.");
         return false;
     }
     return true;
@@ -572,7 +574,7 @@ bool InferRangeBias(
         auto bias_max_shape = bias_shape_range->GetMax();
         OP_CHECK_IF(
             bias_min_shape == nullptr || bias_max_shape == nullptr,
-            OP_LOGE(op_name, "[InferShapeRange] bias min/max shape is null"), return false);
+            OP_LOGE_WITH_INVALID_INPUT(op_name, "bias min/max shape"), return false);
         size_t num_dim_bias = bias_min_shape->GetDimNum();
         // 数组长度为0，也是bias不存在，直接返回true不进行校验
         if (num_dim_bias == 0) {
@@ -654,7 +656,7 @@ bool InferShapeRangeBatchMatMul::Init()
 {
     OP_CHECK_IF(
         x1_shape_range == nullptr || x2_shape_range == nullptr || out_shape_range == nullptr,
-        OP_LOGE(op_name, "[InferShapeRange] shape range is null"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(op_name, "x1/x2/out shape range"), return false);
 
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"), return false);
@@ -673,7 +675,7 @@ bool InferShapeRangeBatchMatMul::Init()
     x2_max_shape = x2_shape_range->GetMax();
     OP_CHECK_IF(
         x1_min_shape == nullptr || x1_max_shape == nullptr || x2_min_shape == nullptr || x2_max_shape == nullptr,
-        OP_LOGE(op_name, "[InferShapeRange] min/max shape is null"), return false);
+        OP_LOGE_WITH_INVALID_INPUT(op_name, "x1/x2 min/max shape"), return false);
     num_dim_x1 = x1_min_shape->GetDimNum();
     num_dim_x2 = x2_min_shape->GetDimNum();
     // 初始化x1和x2，转为vector的形式

@@ -88,7 +88,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
             context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
-                    OP_LOGE(opName_, "tiling data size[%s] not aligned to 8", std::to_string(tilingDataSize).c_str()),
+                    OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -279,7 +279,7 @@ const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     if (tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr) {
-        OP_LOGE(inputParams_.opName, "Op is quant, but has no quant shape");
+        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dequant_scale");
         return defaultShape;
     }
     return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();

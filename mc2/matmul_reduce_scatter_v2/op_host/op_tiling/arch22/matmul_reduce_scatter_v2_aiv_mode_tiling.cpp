@@ -1090,7 +1090,8 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     if (info.quantFlag) {
         OP_TILING_CHECK(
             !CheckDtype_X2(context, info, cType),
-            OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode Invalid x2Scale."),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale",
+                Ops::Base::ToString(context->GetInputDesc(X2_SCALE_INDEX)->GetDataType()).c_str(), "float or int64"),
             return ge::GRAPH_FAILED);
         info.dequant_type = DequantType::PER_CHANNEL;
         if (CheckDtype_X1(context)) {

@@ -25,6 +25,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -94,15 +95,11 @@ static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, con
     bool isAllDtypesValid = false;
     isAllDtypesValid = CheckKGAllDtypesValid(x, scales, output) || CheckMXAllDtypesValid(x, scales, output);
     if (!isAllDtypesValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "In KG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT]"
-            "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
-            "In MX quantMode, x support [DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT8_E8M0]"
-            "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
-            "Input tensors x: %s, scales: %s and output: %s are not simultaneously supported.",
-            op::ToString(x->GetDataType()).GetString(),
-            op::ToString(scales->GetDataType()).GetString(),
-            op::ToString(output->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnQuantReduceScatter", "x/scales/output",
+            (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
+             op::ToString(scales->GetDataType()).GetString() + "/" +
+             op::ToString(output->GetDataType()).GetString()).c_str(),
+            "Tensors x, scales and output are not simultaneously supported");
     }
     return isAllDtypesValid;
 }
@@ -110,14 +107,15 @@ static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, con
 static bool CheckGroupLength(const char* group)
 {
     if (group == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "QuantReduceScatter, group is nullptr !");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantReduceScatter", "group");
         return false;
     }
 
     size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX); // group长度≥128字符, 返回HCCL_GROUP_NAME_LENGTH_MAX
     if (groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantReduceScatter, Limit the length of the group to less than %lu characters.",
-                HCCL_GROUP_NAME_LENGTH_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantReduceScatter", "group",
+            "length exceeds " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX),
+            "Limit the length of the group to less than " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + " characters");
         return false;
     }
 
@@ -166,7 +164,7 @@ extern "C" aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspa
     }
     aclnnStatus ret = aclnnInnerQuantReduceScatter(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantReduceScatter", "This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

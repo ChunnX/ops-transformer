@@ -99,7 +99,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetAttrsInfo.");
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "can not get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     // group
     groupPtr_ = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     OP_TILING_CHECK(groupPtr_ == nullptr,
@@ -196,20 +196,19 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
     uint64_t recvCountsSize = recvCountsPtr_->GetSize();
     if (e_ > E_MIN_VALUE && e_ <= E_MAX_VALUE) {
         OP_TILING_CHECK(sendCountsSize != recvCountsSize,
-            OP_LOGE(context_->GetNodeName(),
-            "The size of sendCounts(e * epWorldSize) %lu should be equal to recvCounts(e * epWorldSize) %lu !",
-            sendCountsSize, recvCountsSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCounts and recvCounts",
+                (std::to_string(sendCountsSize) + " and " + std::to_string(recvCountsSize)).c_str(),
+                "sendCounts size should equal recvCounts size"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(e_ * epWorldSize_ != sendCountsSize,
-            OP_LOGE(context_->GetNodeName(),
-            "The first dim of gmmWeight(e, H1, N1) %lu  multiplied by epWorldSize %lu should be equal to the size of "
-            "sendCounts(e * ep) %lu!",
-            e_, epWorldSize_, sendCountsSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCounts",
+                std::to_string(sendCountsSize).c_str(),
+                "sendCounts size should equal e * epWorldSize"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((e_ * epWorldSize_ <= EXPERT_MIN_VALUE) || (e_ * epWorldSize_ > EXPERT_MAX_VALUE),
-            OP_LOGE(context_->GetNodeName(),
-            "The size of send_counts(e * ep) and recv_counts(e * ep) should be in (%lu, %lu], but got %lu!",
-            EXPERT_MIN_VALUE, EXPERT_MAX_VALUE, e_ * epWorldSize_),
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "e * epWorldSize",
+                std::to_string(e_ * epWorldSize_).c_str(),
+                "should be in (" + std::to_string(EXPERT_MIN_VALUE) + ", " + std::to_string(EXPERT_MAX_VALUE) + "]"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -373,7 +372,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmWeightShapeInfo()
     uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
     n1_ = context_->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(n1DimIndex);
     OP_TILING_CHECK(context_->GetInputDesc(GMM_WEIGHT_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "can not get gmmWeight input desc."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeight"), return ge::GRAPH_FAILED);
     gmmWeightDataType_ = context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
     OP_LOGD(context_->GetNodeName(), "end GetGmmWeightShapeInfo.");
     return ge::GRAPH_SUCCESS;
@@ -393,8 +392,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
         context_->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_TWO) :
         context_->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     OP_TILING_CHECK(h1_ != gmmWeightH1,
-        OP_LOGE(context_->GetNodeName(),
-        "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of gmmWeight(e, H1, N1) !", h1_, gmmWeightH1),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "gmmX H1",
+            std::to_string(h1_).c_str(),
+            ("should equal gmmWeight H1(" + std::to_string(gmmWeightH1) + ")").c_str()),
         return ge::GRAPH_FAILED);
     // check e range
     OP_TILING_CHECK((e_ <= E_MIN_VALUE) || (e_ > E_MAX_VALUE),
@@ -419,10 +419,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCountsTensorShapeInfo()
     OP_LOGD(context_->GetNodeName(), "start CheckCountsTensorShapeInfo.");
     // sendCountsTensor only support nullptr
     OP_TILING_CHECK(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX) != nullptr,
-        OP_LOGE(context_->GetNodeName(), "sendCountsTensor should all be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCountsTensor",
+            "non-null", "should be null"), return ge::GRAPH_FAILED);
     // recvCountsTensor only support nullptr
     OP_TILING_CHECK(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX) != nullptr,
-        OP_LOGE(context_->GetNodeName(), "recvCountsTensor should all be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "recvCountsTensor",
+            "non-null", "should be null"), return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckCountsTensorShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }
@@ -435,7 +437,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmxShapeInfo()
         hasSharedExpertFlag_ = true;
         bs_ = context_->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
         OP_TILING_CHECK(context_->GetOptionalInputDesc(MM_X_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "can not get mmX input desc."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmX"), return ge::GRAPH_FAILED);
         mmXDataType_ = context_->GetOptionalInputDesc(MM_X_INDEX)->GetDataType();
         h2_ = context_->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     }
@@ -463,7 +465,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmxShapeInfo()
         return ge::GRAPH_FAILED);
     // check BSK divisible by BS
     OP_TILING_CHECK((bsk_ % bs_ != 0),
-        OP_LOGE(context_->GetNodeName(), "BSK should be divisible by BS, but got BSK[%lu] and BS[%lu].", bsk_, bs_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "BSK",
+            std::to_string(bsk_).c_str(),
+            ("should be divisible by BS(" + std::to_string(bs_) + ")").c_str()),
         return ge::GRAPH_FAILED);
     k_ = bsk_ / bs_;
     // check K range
@@ -492,7 +496,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmWeightShapeInfo()
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(transMmWeight_ == true,
-            OP_LOGE(context_->GetNodeName(), "The transMmWeight should be false when mmWeight is null!"), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "transMmWeight", "true", "should be false when mmWeight is null"), return ge::GRAPH_FAILED);
     }
     OP_LOGD(context_->GetNodeName(), "end GetMmWeightShapeInfo.");
     return ge::GRAPH_SUCCESS;
@@ -509,8 +513,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo()
         context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ONE) :
         context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(h2_ != mmWeightH2,
-        OP_LOGE(context_->GetNodeName(), "The H2 %lu of mmX(BS, H2) should be equal to the H2 %lu of mmWeight(H2, N2)!",
-        h2_, mmWeightH2),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmX H2",
+            std::to_string(h2_).c_str(),
+            ("should equal mmWeight H2(" + std::to_string(mmWeightH2) + ")").c_str()),
         return ge::GRAPH_FAILED);
     // check dim
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDimNum() != DIM_TWO) {
@@ -564,7 +569,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
         (outputMmYStorageShape == nullptr || outputMmYStorageShape->GetStorageShape().GetDimNum() == DIM_ZERO)) &&
         !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr) &&
         (outputMmYStorageShape != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != DIM_ZERO))) {
-        OP_LOGE(context_->GetNodeName(), "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmX/mmWeight/mmY",
+            "inconsistent", "should all be nullptr or all be not nullptr");
         return ge::GRAPH_FAILED;
     }
     if (context_->GetOutputShape(OUTPUT_MM_Y_INDEX) != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != DIM_ZERO) {
@@ -577,7 +583,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
         // check BS equal
         uint64_t mmYBS = context_->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
         OP_TILING_CHECK(bs_ != mmYBS,
-            OP_LOGE(context_->GetNodeName(), "The BS %lu of mmX(BS, H2) should be equal to the BS %lu of mmY(BS, N2)!", bs_, mmYBS), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmY BS",
+                std::to_string(bs_).c_str(),
+                ("should equal mmX BS(" + std::to_string(mmYBS) + ")").c_str()), return ge::GRAPH_FAILED);
         uint64_t mmYdim2 = context_->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDim(DIM_ONE);
         OP_TILING_CHECK(mmYdim2 != n2_, OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mmY dim1",
             std::to_string(mmYdim2), std::to_string(n2_)), return ge::GRAPH_FAILED);
@@ -605,7 +613,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
     if (!permuteOutFlag_) {
         if (context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) != nullptr &&
             context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum() != DIM_ZERO) {
-            OP_LOGE(context_->GetNodeName(), "The permuteOut should be null when permuteOutFlag is false!");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "permuteOut", "present", "should be null");
             return ge::GRAPH_FAILED;
         }
         OP_LOGD(context_->GetNodeName(), "end CheckPermuteOutShapeInfo.");
@@ -614,7 +622,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
     // check not null
     if (context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) == nullptr ||
         context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum() == DIM_ZERO) {
-        OP_LOGE(context_->GetNodeName(), "The permuteOut should not be null when permuteOutFlag is true!");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "permuteOut");
         return ge::GRAPH_FAILED;
     }
     // check dim
@@ -631,11 +639,11 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckFormat()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckFormat.");
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
-    OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmX tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmX"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmX",
         Ops::Base::ToString(gmmXDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
     auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
-    OP_TILING_CHECK(gmmWeightDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmWeight tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmWeightDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeight"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmWeight",
         Ops::Base::ToString(gmmWeightDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
     auto mmXDesc = context_->GetOptionalInputDesc(MM_X_INDEX);
@@ -649,7 +657,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckFormat()
             Ops::Base::ToString(mmWeightDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
     }
     auto gmmYDesc = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX);
-    OP_TILING_CHECK(gmmYDesc == nullptr, OP_LOGE(context_->GetNodeName(), "gmmY tensor desc can not be null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gmmYDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmY"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmY",
         Ops::Base::ToString(gmmYDesc->GetStorageFormat()), "ND"), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
