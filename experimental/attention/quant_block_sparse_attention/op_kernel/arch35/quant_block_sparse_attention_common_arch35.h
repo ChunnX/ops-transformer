@@ -7,80 +7,43 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
- * \file flash_attention_score_common_regbase.h
+ * \file quant_block_sparse_attention_common_arch35.h
  * \brief
  */
-#ifndef FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
-#define FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
-
+#ifndef QUANT_BLOCK_SPARSE_ATTENTION_COMMON_ARCH35_H
+#define QUANT_BLOCK_SPARSE_ATTENTION_COMMON_ARCH35_H
+#include <type_traits>
+#include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "stdarg.h"
-#include "pse.h"
-#include "util_regbase.h"
+#include "common/pse.h"
+#include "common/util_regbase.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
 using namespace regbaseutil;
 
-constexpr uint64_t BLOCK_BYTE = 32;
-constexpr int32_t SOFTMAX_M_ALIGNED_SIZE = 8;
-constexpr int32_t SOFTMAX_K_ALIGNED_SIZE = 64;
-constexpr uint64_t DATACOPYPAD_PADDING_VALUE_ZERO = 0;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP16 = 0xFBFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP32 = 0x7F7FFFFF;
 constexpr uint32_t POSITIVE_MAX_VALUE_FP16 = 0x7BFF;
-constexpr int64_t pse1NS1S2 = 2;
 constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
 
-constexpr int64_t attenMaskBN2GS1S2 = 0;
-constexpr int64_t attenMaskBS1S2 = 1;
-constexpr int64_t attenMaskS1S2 = 2;
-constexpr int64_t attenMaskTT = 99;
-constexpr uint16_t PREFIX_N_MAX_B = 32;
-constexpr int32_t fp32BaseSize = 8;
-
-constexpr uint32_t attenMaskNoCompress = 0;
-constexpr uint32_t attenMaskLeftUpCausalCompress = 1;
-constexpr uint32_t attenMaskRightDownCausalCompress = 2;
-constexpr uint16_t SHIFT_NUM_2 = 2;
 constexpr uint16_t SHIFT_NUM_6 = 6;
 constexpr uint16_t ADD_NUM_63 = 63;
 
-constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
-constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
-constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8}; // mm2ResIntraEvent
-constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; //mm1ResIntraEvent
 constexpr uint64_t KB_TO_BYTES = 1024;
 constexpr uint64_t L0C_SIZE = 256;
-constexpr uint64_t MLA_L0A_SIZE = 64;
-constexpr uint64_t MLA_L0B_SIZE = 64; 
-constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
-constexpr uint64_t BT_PP_SIZE = 4;
-constexpr uint64_t BT_AVAL_SIZE = 16;
-constexpr uint64_t BT_BVAL_SIZE = 16;
-enum class SparseModeEnum {
-    ALL = 0,
-    NONE = 1,
-    ANY = 2,
-    CAUSAL = 3,
-    BAND = 4,
-    PREFIX = 5,
-    BAND_COMPRESS = 6,
-    RIGHT_DOWN_CAUSAL = 7,
-    RIGHT_DOWN_CAUSAL_BAND = 8,
-    BAND_LEFT_UP_CAUSAL = 9,
-};
 
 enum class ImplModeEnum {
     AA_HIGH_PRECISION = 0,
@@ -94,8 +57,6 @@ struct CubeCoordInfo {
     uint32_t s1Coord;
     uint32_t s2Coord;
 };
-
-static constexpr uint32_t FA_BYTE_BLOCK = 32;
 
 __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
@@ -208,4 +169,89 @@ __aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplat
     }
 }
 }
-#endif // FLASH_ATTENTION_SCORE_COMMON_REGBASE_H
+
+#include "quant_block_sparse_attention_attenmask.h"
+#include "../quant_block_sparse_attention_common.h"
+
+constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
+constexpr ImplModeEnum kBsaImplMode = ImplModeEnum::AA_HIGH_PRECISION;
+constexpr PseTypeEnum kBsaPseMode = PseTypeEnum::PSE_NONE_TYPE;
+constexpr bool kBsaHasDrop = false;
+constexpr bool kBsaHasRope = false;
+constexpr bool kBsaIsInfer = true;
+constexpr bool kBsaEnableKVPrefix = false;
+
+// INPUT_T - means data type for input
+// T       - means data type when calc
+
+#define CHILD_SPEC_TEMPLATE_ARGS \
+    INPUT_T, T, kBsaImplMode, q_layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    kBsaPseMode, hasAtten, kBsaHasDrop, kBsaHasRope, OUTPUT_T, kBsaIsInfer, isPa
+
+#define TEMPLATE_INTF \
+    template <typename INPUT_T, typename T, ImplModeEnum implMode, LayOutTypeEnum layout, \
+    S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
+    DTemplateType dVTemplateType, PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope,\
+    typename OUTPUT_T, bool isInfer, bool isPa, bool useDn, bool enableKVPrefix>
+
+#define TEMPLATE_INTF_ARGS \
+    INPUT_T, T, implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa, useDn, enableKVPrefix
+
+#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
+    X(INPUT_T) \
+    X(T) \
+    X(OUTPUT_T)
+
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
+    X(q_layout, LayOutTypeEnum, LayOutTypeEnum::None) \
+    X(kv_layout, BSAKvLayout, BSAKvLayout::PA_BNSD) \
+    X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
+    X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
+    X(dTemplateType, DTemplateType, DTemplateType::Aligned128) \
+    X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
+    X(hasAtten, bool, false) \
+    X(isPa, bool, false) \
+    X(enableS1OutSplit, bool, false)
+
+/* 1. 生成带默认值的模版Template */
+#define GEN_TYPE_PARAM(name) typename name,
+#define GEN_CONST_PARAM(name, type, default_val) type name = default_val,
+
+#define TEMPLATES_DEF \
+template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+
+/* 2. 生成不带带默认值的模版Template */
+#define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
+#define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
+#define TEMPLATES_DEF_NO_DEFAULT \
+template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+
+/* 3. 生成有默认值, 不带ChildClass的Args */
+#define GEN_ARG_NAME(name, ...) name,
+#define TEMPLATE_ARGS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+
+/* 4. 生成BASE的有默认值的Template, BASE带ChildClass*/
+#define TEMPLATES_DEF_BASE \
+template < \
+    typename ChildClass, \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+
+/* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
+#define TEMPLATES_DEF_BASE_NO_DEFAULT \
+template <\
+    typename ChildClass, \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+
+/* 6. 生成BASE的BaseArgs, BASE带ChildClass */
+#define TEMPLATE_BASE_ARGS \
+    ChildClass, \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+#endif  // QUANT_BLOCK_SPARSE_ATTENTION_COMMON_ARCH35_H

@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file infer_flash_attention_sparse.h
+ * \file quant_block_sparse_attention_sparse.h
  * \brief
  */
-#ifndef INFER_FLASH_ATTENTION_SPARSE_H
-#define INFER_FLASH_ATTENTION_SPARSE_H
+#ifndef QUANT_BLOCK_SPARSE_ATTENTION_SPARSE_H
+#define QUANT_BLOCK_SPARSE_ATTENTION_SPARSE_H
 
-#include "infer_flash_attention_comm.h"
+#include "quant_block_sparse_attention_common_arch35.h"
 
 TEMPLATE_INTF
 __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constInfo,
@@ -84,4 +84,4 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
     }
 }
 
-#endif  // INFER_FLASH_ATTENTION_SPARSE_H
+#endif  // QUANT_BLOCK_SPARSE_ATTENTION_SPARSE_H

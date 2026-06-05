@@ -20,7 +20,9 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_ATTENMASK_H_
 
 #include "common/util_regbase.h"
-#include "common/flash_attention_score_common_regbase.h"
+
+constexpr int64_t attenMaskBN2GS1S2 = 0;
+constexpr int64_t attenMaskBS1S2 = 1;
 
 using namespace AscendC;
 using namespace AscendC::MicroAPI;
