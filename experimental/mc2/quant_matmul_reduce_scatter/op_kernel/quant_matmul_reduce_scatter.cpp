@@ -12,8 +12,6 @@
 #include "include/tensor_api/tensor.h"
 #include "kernel_operator.h"
 #include "adv_api/hccl/hccl.h"
-#include "adv_api/reduce/sum.h"
-#include "adv_api/pad/broadcast.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel/quant_matmul_mx_kernel_swat.h"
 #include "kernel_utils/common_utils.h"
@@ -22,8 +20,8 @@
 using namespace AscendC;
 
 __global__ __aicore__ void quant_matmul_reduce_scatter(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR dScaleB, GM_ADDR dScaleA,
-    GM_ADDR x, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR dScaleA, GM_ADDR dScaleB,
+    GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(QuantMatmulReduceScatterTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantMatmulReduceScatterTilingData, tilingData, tilingGM);
@@ -60,7 +58,7 @@ __global__ __aicore__ void quant_matmul_reduce_scatter(
         using OutputParams = typename KernelImpl::OutputParams;
 
         ProblemShape problemShape{tilingData.qbmmTilingdata.m, tilingData.qbmmTilingdata.n, tilingData.qbmmTilingdata.k, 1UL};
-        BlockMmad::Params mmadParams{x1, x2, x, dScaleA, dScaleB};
+        BlockMmad::Params mmadParams{x1, x2, y, dScaleA, dScaleB};
         KernelImpl::L1Params l1Params{
             static_cast<uint64_t>(tilingData.qbmmTilingdata.stepK) * tilingData.qbmmTilingdata.baseK,
             tilingData.qbmmTilingdata.scaleKL1};
@@ -75,7 +73,7 @@ __global__ __aicore__ void quant_matmul_reduce_scatter(
         CommParams commParams{
             problemShape.m / tilingData.quantMatmulReduceScatterTilingInfo.rankSize,
             static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
-        OutputParams outputParams{x};
+        OutputParams outputParams{y};
 
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams, outputParams};
@@ -110,7 +108,7 @@ __global__ __aicore__ void quant_matmul_reduce_scatter(
 
         ProblemShape problemShape{tilingData.qbmmTilingdata.m, tilingData.qbmmTilingdata.n, tilingData.qbmmTilingdata.k, 1UL};
         BlockMmad::Params mmadParams{x1, x2, workspaceGM, dScaleA, dScaleB};
-        // BlockMmad::Params mmadParams{x1, x2, x, dScaleA, dScaleB};
+        // BlockMmad::Params mmadParams{x1, x2, y, dScaleA, dScaleB};
         KernelImpl::L1Params l1Params{
             static_cast<uint64_t>(tilingData.qbmmTilingdata.stepK) * tilingData.qbmmTilingdata.baseK,
             tilingData.qbmmTilingdata.scaleKL1};
@@ -125,7 +123,7 @@ __global__ __aicore__ void quant_matmul_reduce_scatter(
         CommParams commParams{
             problemShape.m / tilingData.quantMatmulReduceScatterTilingInfo.rankSize,
             static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
-        OutputParams outputParams{x};
+        OutputParams outputParams{y};
 
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams, outputParams};

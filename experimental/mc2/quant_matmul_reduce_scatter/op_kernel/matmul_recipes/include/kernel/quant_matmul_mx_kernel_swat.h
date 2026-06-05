@@ -51,11 +51,7 @@ constexpr static uint64_t UB_ALIGN_BYTES = 32UL;
 constexpr static int64_t AIV_UB_TILE_M = 32;
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;
 constexpr uint32_t STATE_ALIGN_BYTES = 32U;
-constexpr uint32_t REDUCE_BUF_BYTES = 256U;
 constexpr uint32_t BUFFER_NUM = 1U;
-
-constexpr float EPSILON = 1e-6f;
-constexpr float ONE = 1;
 
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc() {
@@ -116,7 +112,7 @@ public:
     };
 
     struct OutputParams {
-        GM_ADDR xOut = nullptr;
+        GM_ADDR yOut = nullptr;
     };
 
     struct Params {
@@ -159,17 +155,6 @@ private:
     __aicore__ inline void CommProcess(
         int64_t mPos, int64_t nPos, const BlockShape& singleShape, const Params& params);
 
-    __aicore__ inline void AddRmsNormAddCompute(uint32_t tokenIndex, uint32_t numCol,
-                                                LocalTensor<float>& x1TmpFloatLocal,
-                                                LocalTensor<float>& x2TmpFloatLocal,
-                                                LocalTensor<float>& addOutTmpFloatLocal,
-                                                const DataCopyExtParams& copyExtParams,
-                                                const DataCopyPadExtParams<bfloat16_t>& copyPadExtParams);
-    __aicore__ inline void AddRmsNormRmsNormCompute(uint32_t tokenIndex, uint32_t numCol,
-                                                    LocalTensor<float>& xFp32, LocalTensor<float>& sqx,
-                                                    LocalTensor<float>& gammaLocal,
-                                                    const DataCopyExtParams& copyExtParams);
-
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
     __aicore__ inline void ReadRemoteDataAdd(const Params& params);
@@ -184,11 +169,7 @@ private:
     __gm__ CType* cGmAddr_;
     __gm__ fp8_e8m0_t* scaleAGmAddr_;
     __gm__ fp8_e8m0_t* scaleBGmAddr_;
-    __gm__ float* y1GmAddr_;
-    __gm__ bfloat16_t* y2GmAddr_;
-    __gm__ bfloat16_t* xGmAddr_;
     __gm__ bfloat16_t* yGmAddr_;
-    __gm__ float* gammaGmAddr_;
     __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
     TPipe *tpipe_{nullptr};
     uint32_t rankId_{0};
@@ -199,9 +180,6 @@ private:
     uint32_t n_;
     uint32_t k_;
 
-    float armAvgFactor_;
-    float epsilon_;
-
     TQueBind<TPosition::VECIN, TPosition::VECOUT,BUFFER_NUM> inQueue_;
     // TQueBind<TPosition::VECIN, TPosition::VECOUT, BUFFER_NUM> tokenQueue_;
     AscendC::TQue<AscendC::TPosition::VECIN, 1> tokenQueue_;
@@ -210,26 +188,10 @@ private:
     TBuf<> resetStateBuf_;
     TBuf<> sumFp32Buf_;
     TBuf<> tokenFp32Buf_;
-
-    // addrmsnormcast
     TBuf<> tokenBuf_;
-    TBuf<> gammaBuf_;
-    TBuf<> gammaFp32Buf_;
-    TBuf<> rowTmpFloatBuf_;
-    TBuf<> mulBuf_;
-    TBuf<> resFp32Buf_;
-    TBuf<TPosition::VECCALC> reduceFp32Buf_;
 
-    GlobalTensor<bfloat16_t> yGM_;
-    GlobalTensor<float> gammaGM_;
-    GlobalTensor<float> y1OutGM_;
-    GlobalTensor<bfloat16_t> y2OutGM_;
-    GlobalTensor<bfloat16_t> xOutGM_;
-
+    GlobalTensor<bfloat16_t> yOutGM_;
     LocalTensor<bfloat16_t> tokenTensor_;
-    LocalTensor<float> rowTmpFloatLocal_;
-    LocalTensor<float> mulBufLocal_;
-    
 };
 
 QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
@@ -265,16 +227,10 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         m_ = params.problemShape.m;
         n_ = params.problemShape.n;
         tpWorldSize_ = params.commParams.tpWorldSize;
-        armAvgFactor_ = ONE / n_;
-        epsilon_ = EPSILON;
         // PRINTF("[DBG] AIV rank=%u core=%u m=%u n=%u baseN=%u\n", rankId_, coreVid_, m_, n_, params.qbmmParams.baseN);
         // if (coreVid_ == 0) { PRINTF("[DBG_ND] rank%u core%u n_=%u m_=%u tpWorldSize=%u\n", rankId_, coreVid_, n_, m_, tpWorldSize_); }
 
-        yGM_.SetGlobalBuffer(yGmAddr_);
-        gammaGM_.SetGlobalBuffer(gammaGmAddr_);
-        y1OutGM_.SetGlobalBuffer(y1GmAddr_);
-        y2OutGM_.SetGlobalBuffer(y2GmAddr_);
-        xOutGM_.SetGlobalBuffer(xGmAddr_);
+        yOutGM_.SetGlobalBuffer(yGmAddr_);
 
         // uint32_t tileCount = 0;
         BlockCoord blockIdx;
@@ -304,17 +260,10 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         // PRINTF("[DBG] AIV rank=%u core=%u SyncAll2 done\n", rankId_, coreVid_);
         
         tpipe_->Reset();
-        tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, params.problemShape.n * sizeof(float));   //涉及到Cast的src和dst记得，小cast大要分配大的空间
+        tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, params.problemShape.n * sizeof(float));
         tpipe_->InitBuffer(sumFp32Buf_, params.problemShape.n * sizeof(float));
         tpipe_->InitBuffer(tokenFp32Buf_, params.problemShape.n * sizeof(float));
-
         tpipe_->InitBuffer(tokenBuf_, params.problemShape.n * sizeof(bfloat16_t));
-        tpipe_->InitBuffer(rowTmpFloatBuf_, params.problemShape.n * sizeof(float));
-        tpipe_->InitBuffer(mulBuf_, params.problemShape.n * sizeof(float));
-        tpipe_->InitBuffer(reduceFp32Buf_, REDUCE_BUF_BYTES);
-        tpipe_->InitBuffer(resFp32Buf_, params.problemShape.n * sizeof(float));
-        tpipe_->InitBuffer(gammaBuf_, params.problemShape.n * sizeof(float));
-        tpipe_->InitBuffer(gammaFp32Buf_, params.problemShape.n * sizeof(float));
 
         ReadRemoteDataAdd(params);
         // PRINTF("[DBG] AIV rank=%u core=%u ReadRemoteDataAdd done\n", rankId_, coreVid_);
@@ -333,11 +282,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     cGmAddr_ = reinterpret_cast<__gm__ CType*>(params.mmadParams.cGmAddr);
     scaleAGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t*>(params.mmadParams.scaleAGmAddr);
     scaleBGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t*>(params.mmadParams.scaleBGmAddr);
-    y1GmAddr_ = nullptr;
-    y2GmAddr_ = nullptr;
-    xGmAddr_ = reinterpret_cast<__gm__ bfloat16_t*>(params.outputParams.xOut);
-    yGmAddr_ = nullptr;
-    gammaGmAddr_ = nullptr;
+    yGmAddr_ = reinterpret_cast<__gm__ bfloat16_t*>(params.outputParams.yOut);
 }
 
 QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
@@ -551,64 +496,6 @@ QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::CommProcess
     }
 }
 
-QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::AddRmsNormAddCompute(uint32_t tokenIndex, uint32_t numCol,
-                                                                                LocalTensor<float>& x1TmpFloatLocal,
-                                                                                LocalTensor<float>& x2TmpFloatLocal,
-                                                                                LocalTensor<float>& addOutTmpFloatLocal,
-                                                                                const DataCopyExtParams& copyExtParams,
-                                                                                const DataCopyPadExtParams<bfloat16_t>& copyPadExtParams)
-{
-    // 计算x + residual_x
-    LocalTensor<bfloat16_t> x2 = tokenBuf_.Get<bfloat16_t>();
-    DataCopyPad(x2, yGM_[tokenIndex * n_], copyExtParams, copyPadExtParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    Cast(x2TmpFloatLocal, x2, AscendC::RoundMode::CAST_NONE, numCol);
-    PipeBarrier<PIPE_V>();
-    AscendC::Add(addOutTmpFloatLocal, x1TmpFloatLocal, x2TmpFloatLocal, numCol);
-}
-
-QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::AddRmsNormRmsNormCompute(uint32_t tokenIndex, uint32_t numCol,
-                                                    LocalTensor<float>& xFp32, LocalTensor<float>& sqx,
-                                                    LocalTensor<float>& gammaLocal,
-                                                    const DataCopyExtParams& copyExtParams)
-{
-    // 计算rstd
-    LocalTensor<float> reduceBufLocal = reduceFp32Buf_.Get<float>();
-    LocalTensor<float> resFp32Tensor = resFp32Buf_.Get<float>();
-    Mul(sqx, xFp32, xFp32, numCol);
-    PipeBarrier<PIPE_V>();
-    Muls(sqx, sqx, armAvgFactor_, numCol);
-    PipeBarrier<PIPE_V>();
-    ReduceSum(sqx, sqx, reduceBufLocal, numCol);
-    PipeBarrier<PIPE_V>();
-    Adds(sqx, sqx, epsilon_, 1);
-    PipeBarrier<PIPE_V>();
-    Sqrt(sqx, sqx, 1);
-    Duplicate(reduceBufLocal, ONE, 1);
-    PipeBarrier<PIPE_V>();
-    Div(reduceBufLocal, reduceBufLocal, sqx, 1);
-    // 计算y
-    SyncFunc<AscendC::HardEvent::V_S>();
-    float rstdValue = reduceBufLocal.GetValue(0);
-    SyncFunc<AscendC::HardEvent::S_V>();
-    Muls(xFp32, xFp32, rstdValue, numCol);
-    PipeBarrier<PIPE_V>();
-    LocalTensor<bfloat16_t> yLocal = rowTmpFloatBuf_.Get<bfloat16_t>();
-    PipeBarrier<PIPE_V>();
-    Mul(xFp32, xFp32, gammaLocal, numCol);
-    PipeBarrier<PIPE_V>();
-    Cast(yLocal, xFp32, RoundMode::CAST_RINT, numCol);
-    // y结果搬出
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(y2OutGM_[tokenIndex * n_], yLocal, n_);
-    PipeBarrier<PIPE_V>();
-    Cast(resFp32Tensor, yLocal, RoundMode::CAST_NONE, numCol);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(y1OutGM_[tokenIndex * n_], resFp32Tensor, n_);
-}
-
 
 QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::ReadRemoteDataAdd(const Params& params)
@@ -625,7 +512,6 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
 
     LocalTensor<float> sumFp32Tensor = sumFp32Buf_.Get<float>();
     LocalTensor<float> tokenFp32Tensor = tokenFp32Buf_.Get<float>();
-    mulBufLocal_ = mulBuf_.Get<float>();
     uint32_t curVidOffset = startRowId * n_;
     GlobalTensor<bfloat16_t> localWinTensor;
     localWinTensor.SetGlobalBuffer((__gm__ bfloat16_t*)GetWindAddrByRankId(rankId_));
@@ -637,14 +523,6 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     // }
 
     DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(n_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
-    DataCopyExtParams gammaCopyParams{1U, static_cast<uint32_t>(n_ * sizeof(float)), 0U, 0U, 0U};
-    const DataCopyPadExtParams<bfloat16_t> copyPadXTypeParams{false, 0U, 0U, 0U};
-    const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
-
-    // GlobalTensor<bfloat16_t> xOutTensor;
-    // // xGmAddr_
-    // // xOutTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params.outputParams.xOut);
-    // xOutTensor.SetGlobalBuffer(xGmAddr_);
 
     for(uint32_t tileIdx = 0; tileIdx < rowNum; ++tileIdx) {
         Duplicate<float>(sumFp32Tensor, (float)0.0, n_);
@@ -660,21 +538,18 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
             Cast(tokenFp32Tensor, tokenTensor_, RoundMode::CAST_NONE, n_);
             PipeBarrier<PIPE_V>();
             Add(sumFp32Tensor, sumFp32Tensor, tokenFp32Tensor, n_);
-            // DataCopy(xOutTensor[curOffset], tokenTensor_, n_);
-            // DumpTensor(xOutTensor[curOffset], 888, n_);
+            // DataCopy(yOutTensor[curOffset], tokenTensor_, n_);
+            // DumpTensor(yOutTensor[curOffset], 888, n_);
             tokenQueue_.FreeTensor<bfloat16_t>(tokenTensor_);
             // PipeBarrier<PIPE_V>();
         }
         
-        // ReduceScatter only — 不做 Add(residual y) / RmsNorm / Cast 后处理。
-        // 把跨 rank Reduce 累加后的 fp32 直接 Cast 回 bf16 写到 xOutGM_。
-        // y1 / y2 / y(residual) / gamma 这一路不参与计算，仅作为 OpDef 中
         // 占位输入输出存在；上层调用方对应位置可以传 nullptr / 0 字节缓冲。
         LocalTensor<bfloat16_t> sumBufLocal = tokenBuf_.Get<bfloat16_t>();
         PipeBarrier<PIPE_V>();
         Cast(sumBufLocal, sumFp32Tensor, AscendC::RoundMode::CAST_RINT, n_);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(xOutGM_[tokenIndex * n_], sumBufLocal, expandXCopyParams);
+        DataCopyPad(yOutGM_[tokenIndex * n_], sumBufLocal, expandXCopyParams);
     }
 }
 

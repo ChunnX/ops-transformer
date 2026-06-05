@@ -23,8 +23,6 @@ struct QuantMatmulReduceScatterTilingInfo {
     uint32_t aivNum;
     uint32_t aicNum;
     uint32_t rankSize;
-    float epsilon;
-    float avgFactor;
     // qbmmParams
     uint32_t ubCalcM;
     uint32_t ubCalcN;

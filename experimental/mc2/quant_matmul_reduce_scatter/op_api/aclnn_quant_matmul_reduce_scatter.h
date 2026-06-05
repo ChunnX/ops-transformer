@@ -23,18 +23,18 @@ extern "C" {
  * @brief QBMM + ReduceScatter 融合算子
  * @param [in] x1: fp8 A 矩阵 [M, K]，数据类型 FLOAT8_E4M3FN，格式 ND
  * @param [in] x2: fp8 B/权重矩阵，数据类型 FLOAT8_E4M3FN，格式 ND 或 FRACTAL_NZ
- * @param [in] scale: B 矩阵 e8m0 scale，数据类型 FLOAT8_E8M0，格式 ND
- * @param [in] pertokenScale: A 矩阵 per-token e8m0 scale (可选)，数据类型 FLOAT8_E8M0，格式 ND
+ * @param [in] x1Scale: A 矩阵 e8m0 scale，数据类型 FLOAT8_E8M0，格式 ND
+ * @param [in] x2Scale: B 矩阵 e8m0 scale，数据类型 FLOAT8_E8M0，格式 ND
  * @param [in] group: 通信域标识，字符串
  * @param [in] rankSize: 通信域大小，int64
  * @param [in] transposeX2: x2 是否转置，bool
- * @param [out] x: ReduceScatter 输出 bf16 [M/rs, N]，数据类型 BFLOAT16，格式 ND
+ * @param [out] y: ReduceScatter 输出 bf16 [M/rs, N]，数据类型 BFLOAT16，格式 ND
  * @param [out] workspaceSize: Device 侧 workspace 大小
  * @param [out] executor: op 执行器
  * @return aclnnStatus: 状态码
  */
 ACLNN_API aclnnStatus aclnnQuantMatmulReduceScatterGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* scale, const aclTensor* pertokenScale,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
     const char* group, int64_t rankSize, bool transposeX2,
     aclTensor* x, uint64_t* workspaceSize, aclOpExecutor** executor);
 

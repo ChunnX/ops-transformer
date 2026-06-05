@@ -68,9 +68,9 @@ extern "C" aclnnStatus aclnnInnerQuantMatmulReduceScatter(
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnQuantMatmulReduceScatterGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* scale, const aclTensor* pertokenScale,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* x1Scale, const aclTensor* x2Scale,
     const char* group, int64_t rankSize, bool transposeX2,
-    aclTensor* x, uint64_t* workspaceSize, aclOpExecutor** executor)
+    aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnQuantMatmulReduceScatterGetWorkspaceSize start");
     auto tempX2 = x2;
@@ -78,7 +78,7 @@ extern "C" aclnnStatus aclnnQuantMatmulReduceScatterGetWorkspaceSize(
         tempX2 = CopyTensor(x2);
     }
     aclnnStatus ret = aclnnInnerQuantMatmulReduceScatterGetWorkspaceSize(
-        x1, tempX2, scale, pertokenScale, group, rankSize, transposeX2, x, workspaceSize, executor);
+        x1, tempX2, x1Scale, x2Scale, group, rankSize, transposeX2, y, workspaceSize, executor);
     return ret;
 }
 

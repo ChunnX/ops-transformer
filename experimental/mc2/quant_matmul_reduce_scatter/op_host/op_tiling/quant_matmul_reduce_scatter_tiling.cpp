@@ -29,10 +29,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr size_t X1_INDEX = 0;
 constexpr size_t X2_INDEX = 1;
-constexpr size_t SCALE_INDEX = 2;
-constexpr size_t PER_TOKEN_SCALE_INDEX = 3;
-constexpr size_t X_INDEX = 0;
-constexpr size_t OUTPUT_INDEX = 0;
+
 constexpr size_t GROUP_INDEX = 0;
 constexpr size_t RANK_SIZE_INDEX = 1;
 constexpr size_t TRANSPOSE_X2_INDEX = 2;
@@ -191,10 +188,6 @@ static ge::graphStatus SetTilingData(
     uint32_t rankSize = *rankSizePtr;
     tilingData->quantMatmulReduceScatterTilingInfo.rankSize = rankSize;
     
-    // avgFactor
-    tilingData->quantMatmulReduceScatterTilingInfo.avgFactor = 1.0f / rankSize;
-    tilingData->quantMatmulReduceScatterTilingInfo.epsilon = 1e-6f;
-    
     // ubCalcM, ubCalcN（V核 UB 计算参数）
     tilingData->quantMatmulReduceScatterTilingInfo.ubCalcM = tilingData->qbmmTilingdata.baseM;
     tilingData->quantMatmulReduceScatterTilingInfo.ubCalcN = tilingData->qbmmTilingdata.baseN;
@@ -209,14 +202,14 @@ static ge::graphStatus SetTilingData(
     context->SetBlockDim(ascendcPlatform.GetCoreNumAic()); 
     
     OP_LOGD(nodeName, "Custom tiling parameters filled:");
-    OP_LOGD(nodeName, "  rankSize=%u, epsilon=1e-6f, avgFactor=%f", rankSize, tilingData->quantMatmulReduceScatterTilingInfo.avgFactor);
-    OP_LOGD(nodeName, "  ubCalcM=%u, ubCalcN=%u, needUbBuffer=%u", 
-            tilingData->quantMatmulReduceScatterTilingInfo.ubCalcM,
-            tilingData->quantMatmulReduceScatterTilingInfo.ubCalcN,
-            tilingData->quantMatmulReduceScatterTilingInfo.needUbBuffer);
+    OP_LOGD(nodeName, "  rankSize=%u, ubCalcM=%u, ubCalcN=%u, needUbBuffer=%u",
+        rankSize,
+        tilingData->quantMatmulReduceScatterTilingInfo.ubCalcM,
+        tilingData->quantMatmulReduceScatterTilingInfo.ubCalcN,
+        tilingData->quantMatmulReduceScatterTilingInfo.needUbBuffer);
     OP_LOGD(nodeName, "  aivNum=%u, aicNum=%u", 
-            tilingData->quantMatmulReduceScatterTilingInfo.aivNum,
-            tilingData->quantMatmulReduceScatterTilingInfo.aicNum);
+        tilingData->quantMatmulReduceScatterTilingInfo.aivNum,
+        tilingData->quantMatmulReduceScatterTilingInfo.aicNum);
     
     return ge::GRAPH_SUCCESS;
 }
