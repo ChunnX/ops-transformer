@@ -44,9 +44,11 @@ constexpr uint32_t COMMTURN_INDEX = 4;
 constexpr uint32_t BIAS_INDEX = 2;
 constexpr uint32_t RECV_ARG_INDEX = 3;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
+constexpr uint32_t COMMMODE_INDEX = 10;
 constexpr uint32_t IS_TRANS_A = 2;
 constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
+constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt) const
@@ -252,7 +254,7 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
         false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
-        Mc2Comm::GetCommModeFromEnv());
+        commMode_);
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;
@@ -273,8 +275,12 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
+    // 根据入参commMode设置hccl通信方式
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
+    commMode_ = isAicpu ? Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
     // AICPU时不走All2All + Vec Reduce通路
-    if (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) {
+    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
         isA2APath_ = false;
     }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -339,6 +345,7 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
 {
     if (context_->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs");
+        return false;
     } else {
         auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(
@@ -376,6 +383,11 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     OP_TILING_CHECK(
         blockSize != 0,
         OP_LOGE_FOR_INVALID_VALUE(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
+        return false);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    OP_TILING_CHECK(
+        commMode == nullptr,
+        OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
         return false);
     return CheckInputScale();
 }
