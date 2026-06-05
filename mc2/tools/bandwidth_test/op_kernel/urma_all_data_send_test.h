@@ -85,20 +85,12 @@ private:
                                        
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
-        if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
-        }
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
+         return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-        }
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)context_->epHcclBuffer_[rankId];
     }
 
         // 获取指定 rank 的通信窗口数据区地址
@@ -215,7 +207,23 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
     }
-
+    if (aivId_== 1) {
+        for (uint32_t i = 0; i < epWorldSize_; i++) {
+            if (i == epRankId_) {
+                continue;
+            }
+            uint32_t index = i > epRankId_ ? i - 1 : i;
+            uint64_t remoteBufferAddr = urmaCommHandle_[index]->remoteBufferAddr->bufferInfo.rma.addr;
+            uint64_t localBufferAddr = urmaCommHandle_[index]->localBufferAddr->bufferInfo.rma.addr;
+            printf("eprankid_: %u,  remote rank id: %u, remoteBufferAddr: %u, localBufferAddr: %u\n", epRankId_, i, remoteBufferAddr, localBufferAddr);
+        }
+    }
+    if (aivId_== 2) {
+        for (uint32_t i = 0; i < epWorldSize_; i++) {
+            printf("epHcclBuffer_[%u]: %u\n", i, context_->epHcclBuffer_[i]);
+        }
+    }
+    
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
