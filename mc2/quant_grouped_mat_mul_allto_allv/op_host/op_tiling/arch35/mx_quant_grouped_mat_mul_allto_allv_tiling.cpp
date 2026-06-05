@@ -442,20 +442,20 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantDtypeConstraint
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmXDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX",
                                                           Ops::Base::ToString(localParams_.mmXDtype).c_str(),
-                                                          "mmX dtype should be equal to gmmX dtype"),
+                                                          "The dtype of mmX must be the same as that of gmmX"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(localParams_.gmmWeightDtype != localParams_.mmWeightDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmWeight",
                                                           Ops::Base::ToString(localParams_.mmWeightDtype).c_str(),
-                                                          "mmWeight dtype should be equal to gmmWeight dtype"),
+                                                          "The dtype of mmWeight must be the same as that of gmmWeight"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         localParams_.yDtype != localParams_.mmYDtype,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmY",
                                               Ops::Base::ToString(localParams_.mmYDtype).c_str(),
-                                              "mmY dtype should be equal to y dtype"),
+                                              "The dtype of mmY must be the same as that of y"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -590,7 +590,7 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstrain
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "gmmX, gmmWeight",
                                                            (Ops::Base::ToString(localParams_.gmmXDtype) + ", " +
                                                             Ops::Base::ToString(localParams_.gmmWeightDtype)).c_str(),
-                                                           "In MXFP4 mode, gmmX and gmmWeight dtypes must be the same"),
+                                                           "When the quantization mode is MXFP4, the dtypes of gmmX and gmmWeight must be the same"),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "MXFP4 mode enabled: gmmXDtype=%s", Ops::Base::ToString(localParams_.gmmXDtype).c_str());
     // non-transposed: weight shape is(e,H1,N1)，N must be even

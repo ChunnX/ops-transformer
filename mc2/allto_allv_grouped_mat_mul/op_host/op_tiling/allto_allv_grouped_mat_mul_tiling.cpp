@@ -550,7 +550,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     if (gmmXDtype != gmmWeightDtype) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "gmmX and gmmWeight",
             (Ops::Base::ToString(gmmXDtype) + " and " + Ops::Base::ToString(gmmWeightDtype)).c_str(),
-            "The dtype of gmmX should be the same as gmmWeight");
+            "The dtypes of gmmX and gmmWeight must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -566,7 +566,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         if (mmXDtype != mmWeightDtype) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "mmX and mmWeight",
                 (Ops::Base::ToString(mmXDtype) + " and " + Ops::Base::ToString(mmWeightDtype)).c_str(),
-                "The dtype of mmX should be the same as mmWeight");
+                "The dtypes of mmX and mmWeight must be the same");
             return ge::GRAPH_FAILED;
         }
 
@@ -579,7 +579,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         if (gmmXDtype != mmXDtype) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "gmmX and mmX",
                 (Ops::Base::ToString(gmmXDtype) + " and " + Ops::Base::ToString(mmXDtype)).c_str(),
-                "The dtype of gmmX should be the same as mmX");
+                "The dtypes of gmmX and mmX must be the same");
             return ge::GRAPH_FAILED;
         }
     }

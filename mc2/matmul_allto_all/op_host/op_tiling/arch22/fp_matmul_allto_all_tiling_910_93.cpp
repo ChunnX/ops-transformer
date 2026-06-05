@@ -117,7 +117,7 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null", "must be null in non-quant mode"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null", "x1Scale and x2Scale must be nullptr in non-quant mode"), return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);

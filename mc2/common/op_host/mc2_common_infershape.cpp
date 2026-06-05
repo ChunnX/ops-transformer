@@ -74,7 +74,7 @@ ge::graphStatus CommonParamCheck(
         commParas.x2MatrixShape->GetDim(0), commParas.x2MatrixShape->GetDim(1), commParas.rankSize);
     if (commParas.dimKX1 != commParas.dimKX2) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "x1.k, x2.k",
-            std::to_string(commParas.dimKX1) + ", " + std::to_string(commParas.dimKX2), "dim k must be same");
+            std::to_string(commParas.dimKX1) + ", " + std::to_string(commParas.dimKX2), "The values of x1.k and x2.k must be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

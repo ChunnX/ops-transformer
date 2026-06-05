@@ -456,7 +456,7 @@ static ge::graphStatus CheckInitTilingData(
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "topk_ids and x",
             (std::string("[") + std::to_string(expertIdxShape.size()) + "D, dim0=" +
              std::to_string(expertIdxShape[0]) + "]").c_str(),
-            (std::string("topk_ids should be 2D, dim0 should equal x dim0=") + std::to_string(xShape[0])).c_str()),
+            "The shape of topk_ids must be 2D, and dim0 must be equal to dim0 of x"),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
@@ -1090,7 +1090,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     OP_TILING_CHECK(weightOneDim0 != weightTwoDim0,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "weight1 and weight2",
         (std::string("[") + std::to_string(weightOneDim0) + ", " + std::to_string(weightTwoDim0) + "]").c_str(),
-        "dim0 of weight1 and weight2 should be equal"),
+        "Dim0 of weight1 and weight2 must be equal"),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
@@ -1099,13 +1099,13 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "weight1, weight2 and x",
         (std::string("[") + std::to_string(weightOneDim2) + ", " + std::to_string(weightTwoDim1) +
          ", " + std::to_string(h) + "]").c_str(),
-        "dim2 of weight1 and dim1 of weight2 should equal h of x"),
+        "Dim2 of weight1 and dim1 of weight2 must be equal to h of x"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(weightOneDim1 != weightTwoDim2 * NUM_TWO,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "weight1 and weight2",
         (std::string("[") + std::to_string(weightOneDim1) + ", " + std::to_string(weightTwoDim2) + "]").c_str(),
-        "dim1 of weight1 should equal dim2 of weight2 * 2"),
+        "Dim1 of weight1 must be equal to dim2 of weight2 multiplied by 2"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

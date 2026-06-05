@@ -344,17 +344,17 @@ static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, co
     uint64_t nAxis = (x2TransFlag) ? x2Dim0 : x2Dim1;
     uint64_t kAxis = (x2TransFlag) ? x2Dim1 : x2Dim0;
     // 校验M,当前M为0的话，走公式化tiling切分实际是不支持的,后面可去除
-    OP_TILING_CHECK(x1Dim0 == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", "0", "dim 0(m) cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x1Dim0 == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(x1Dim0).c_str(), "The value of dim 0 (m) of x1 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验M不能大于int32的最大值
-    OP_TILING_CHECK(x1Dim0 > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(x1Dim0).c_str(), "must not exceed INT32_MAX"),
+    OP_TILING_CHECK(x1Dim0 > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(x1Dim0).c_str(), "The value of dim 0 (m) of x1 must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
     // 校验K,K的范围应该在[1, 65535]
-    OP_TILING_CHECK(kAxis > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "k", std::to_string(kAxis).c_str(), "must not exceed 65535"),
+    OP_TILING_CHECK(kAxis > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "k", std::to_string(kAxis).c_str(), "The value of k must not exceed 65535"),
                     return ge::GRAPH_FAILED);
     // 校验N, N不为空
-    OP_TILING_CHECK(nAxis == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2", "0", "N cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(nAxis == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2", std::to_string(nAxis).c_str(), "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验N不能大雨int32的
-    OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2", std::to_string(nAxis).c_str(), "N must not exceed INT32_MAX"),
+    OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2", std::to_string(nAxis).c_str(), "The value of N of x2 must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

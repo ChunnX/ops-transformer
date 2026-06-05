@@ -212,8 +212,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOutputDataType(const gert::TilingCon
     OP_TILING_CHECK(balancedExpertIdsDesc->GetDataType() != expertIdsDesc->GetDataType(),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balancedExpertIds",
             Ops::Base::ToString(balancedExpertIdsDesc->GetDataType()).c_str(),
-            (std::string("must equal expertIds datatype: ") +
-             Ops::Base::ToString(expertIdsDesc->GetDataType())).c_str()),
+            "The dtype of balancedExpertIds must be the same as that of expertIds"),
         return ge::GRAPH_FAILED);
 
     auto balancedActiveMaskDesc = context->GetOutputDesc(OUTPUT_ACTIVE_MASK_IDS);
@@ -305,8 +304,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckExpertScalesShape(const gert::Tiling
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "expert_scales",
                 (std::string("[") + std::to_string(expertScalesShape->GetStorageShape().GetDim(0)) +
                  ", " + std::to_string(expertScalesShape->GetStorageShape().GetDim(1)) + "]").c_str(),
-                (std::string("[") + std::to_string(tilingData->bs) + ", " +
-                 std::to_string(tilingData->k) + "]").c_str()),
+                "The shape of expert_scales must be [bs, k]"),
             return ge::GRAPH_FAILED);
         tailorCfg_ += (1U << EXPERT_SCALES_INDEX);
     }
@@ -323,7 +321,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckPruningThresholdShape(const gert::Ti
             OP_TILING_CHECK((pruningThresholdShape->GetStorageShape().GetDim(0) != tilingData->k),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "pruning_threshold",
                     (std::string("dim0=") + std::to_string(pruningThresholdShape->GetStorageShape().GetDim(0))).c_str(),
-                    (std::string("k=") + std::to_string(tilingData->k)).c_str()),
+                    "Dim0 of pruning_threshold must be equal to k"),
                 return ge::GRAPH_FAILED);
         } else if (pruningThresholdShape->GetStorageShape().GetDimNum() == NUM_TWO) {
             OP_TILING_CHECK(((pruningThresholdShape->GetStorageShape().GetDim(0) != 1) ||
@@ -331,7 +329,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckPruningThresholdShape(const gert::Ti
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "pruning_threshold",
                     (std::string("[") + std::to_string(pruningThresholdShape->GetStorageShape().GetDim(0)) +
                      ", " + std::to_string(pruningThresholdShape->GetStorageShape().GetDim(1)) + "]").c_str(),
-                    (std::string("[1, ") + std::to_string(tilingData->k) + "]").c_str()),
+                    "The shape of pruning_threshold must be [1, k]"),
                 return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_SHAPEDIM(MOE_UPDATE_EXPERT_DEBUG, "pruning_threshold",
@@ -357,7 +355,7 @@ ge::graphStatus MoeUpdateExpertTiling::CheckActiveMaskShape(const gert::TilingCo
         OP_TILING_CHECK((activeMaskShape->GetStorageShape().GetDim(0) != tilingData->bs),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "active_mask",
                 (std::string("dim0=") + std::to_string(activeMaskShape->GetStorageShape().GetDim(0))).c_str(),
-                (std::string("bs=") + std::to_string(tilingData->bs)).c_str()),
+                "Dim0 of active_mask must be equal to bs"),
             return ge::GRAPH_FAILED);
         tailorCfg_ += (1U << ACTIVE_MASK_INDEX);
         tilingData->isActiveMask = 1;
@@ -416,11 +414,10 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOutputShape(const gert::TilingContex
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((balancedExpertIdsStorageShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
         (balancedExpertIdsStorageShape->GetStorageShape().GetDim(1) != tilingData->k)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanced_expert_ids",
-            (std::string("[") + std::to_string(balancedExpertIdsStorageShape->GetStorageShape().GetDim(0)) +
-             ", " + std::to_string(balancedExpertIdsStorageShape->GetStorageShape().GetDim(1)) + "]").c_str(),
-            (std::string("[") + std::to_string(tilingData->bs) + ", " +
-             std::to_string(tilingData->k) + "]").c_str()),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanced_expert_ids",
+                (std::string("[") + std::to_string(balancedExpertIdsStorageShape->GetStorageShape().GetDim(0)) +
+                 ", " + std::to_string(balancedExpertIdsStorageShape->GetStorageShape().GetDim(1)) + "]").c_str(),
+                "The shape of balanced_expert_ids must be [bs, k]"),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape* balancedActiveMaskShape = context->GetOutputShape(OUTPUT_ACTIVE_MASK_IDS);
@@ -432,11 +429,10 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOutputShape(const gert::TilingContex
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((balancedActiveMaskShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
         (balancedActiveMaskShape->GetStorageShape().GetDim(1) != tilingData->k)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanced_active_mask",
-            (std::string("[") + std::to_string(balancedActiveMaskShape->GetStorageShape().GetDim(0)) +
-             ", " + std::to_string(balancedActiveMaskShape->GetStorageShape().GetDim(1)) + "]").c_str(),
-            (std::string("[") + std::to_string(tilingData->bs) + ", " +
-             std::to_string(tilingData->k) + "]").c_str()),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanced_active_mask",
+                (std::string("[") + std::to_string(balancedActiveMaskShape->GetStorageShape().GetDim(0)) +
+                 ", " + std::to_string(balancedActiveMaskShape->GetStorageShape().GetDim(1)) + "]").c_str(),
+                "The shape of balanced_active_mask must be [bs, k]"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

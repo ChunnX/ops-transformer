@@ -146,32 +146,32 @@ static bool CheckAndSetShapeAttrs(gert::TilingContext* context, AttentionToFFNTi
     OP_TILING_CHECK(ffnTokenInfoTableShape[0] != ffnTokenDataShape[0],
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "ffn_token_info_table_shape",
         (std::string("[") + std::to_string(ffnTokenInfoTableShape[0]) + "]").c_str(),
-        (std::string("dim0 should equal ffn_token_data_shape dim0=") + std::to_string(ffnTokenDataShape[0])).c_str()),
+        "Dim0 of ffn_token_info_table_shape must be equal to dim0 of ffn_token_data_shape"),
         return false);
     OP_TILING_CHECK(ffnTokenInfoTableShape[1] != ffnTokenDataShape[1],
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "ffn_token_info_table_shape",
         (std::string("[") + std::to_string(ffnTokenInfoTableShape[1]) + "]").c_str(),
-        (std::string("dim1 should equal ffn_token_data_shape dim1=") + std::to_string(ffnTokenDataShape[1])).c_str()),
+        "Dim1 of ffn_token_info_table_shape must be equal to dim1 of ffn_token_data_shape"),
         return false);
     OP_TILING_CHECK(ffnTokenDataShape[DIM2] != bs,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "ffn_token_data_shape",
         (std::string("[") + std::to_string(ffnTokenDataShape[DIM2]) + "]").c_str(),
-        (std::string("dim2 should equal bs=") + std::to_string(bs)).c_str()),
+        "Dim2 of ffn_token_data_shape must be equal to bs"),
         return false);
     OP_TILING_CHECK(attnTokenDataShape[0] != ffnTokenInfoTableShape[1],
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "attn_token_info_table_shape",
         (std::string("[") + std::to_string(attnTokenDataShape[0]) + "]").c_str(),
-        (std::string("dim0 should equal ffn_token_data_shape dim1=") + std::to_string(ffnTokenInfoTableShape[1])).c_str()),
+        "Dim0 of attn_token_info_table_shape must be equal to dim1 of ffn_token_info_table_shape"),
         return false);
     OP_TILING_CHECK(attnTokenDataShape[1] != bs,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "attn_token_info_table_shape",
         (std::string("[") + std::to_string(attnTokenDataShape[1]) + "]").c_str(),
-        (std::string("dim1 should equal xDim1=") + std::to_string(bs)).c_str()),
+        "Dim1 of attn_token_info_table_shape must be equal to dim1 of x"),
         return false);
     OP_TILING_CHECK(attnTokenDataShape[DIM2] != ffnTokenDataShape[DIM3],
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "attn_token_info_table_shape",
         (std::string("[") + std::to_string(attnTokenDataShape[DIM2]) + "]").c_str(),
-        (std::string("dim2 should equal ffn_token_data_shape dim3=") + std::to_string(ffnTokenDataShape[DIM3])).c_str()),
+        "Dim2 of attn_token_info_table_shape must be equal to dim3 of ffn_token_data_shape"),
         return false);
 
     // 校验 attentionWorkerNum 的值
@@ -256,17 +256,17 @@ static bool CheckInputForScales(const gert::StorageShape* scalesShape, const int
     OP_TILING_CHECK(scalesDim0 != expertRankTableDim0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "scales",
         (std::string("[") + std::to_string(scalesDim0) + "]").c_str(),
-        (std::string("dim0 should equal expertRankTable dim0=") + std::to_string(expertRankTableDim0)).c_str()),
+        "Dim0 of scales must be equal to dim0 of expertRankTable"),
         return false);
     OP_TILING_CHECK(scalesDim1 != expertRankTableDim1,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "scales",
         (std::string("[") + std::to_string(scalesDim1) + "]").c_str(),
-        (std::string("dim1 should equal expertRankTable dim1=") + std::to_string(expertRankTableDim1)).c_str()),
+        "Dim1 of scales must be equal to dim1 of expertRankTable"),
         return false);
     OP_TILING_CHECK(scalesDim2 != xDim2,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "scales",
         (std::string("[") + std::to_string(scalesDim2) + "]").c_str(),
-        (std::string("dim2 should equal x dim2=") + std::to_string(xDim2)).c_str()),
+        "Dim2 of scales must be equal to dim2 of x"),
         return false);
 
     return true;
@@ -280,12 +280,12 @@ static bool CheckInputForActiveMask(const gert::StorageShape* activeMaskShape, c
     OP_TILING_CHECK(activeMaskDim0 != xDim0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "active_mask",
         (std::string("[") + std::to_string(activeMaskDim0) + "]").c_str(),
-        (std::string("dim0 should equal x dim0=") + std::to_string(xDim0)).c_str()),
+        "Dim0 of active_mask must be equal to dim0 of x"),
         return false);
     OP_TILING_CHECK(activeMaskDim1 != xDim1,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "active_mask",
         (std::string("[") + std::to_string(activeMaskDim1) + "]").c_str(),
-        (std::string("dim1 should equal x dim1=") + std::to_string(xDim1)).c_str()),
+        "Dim1 of active_mask must be equal to dim1 of x"),
         return false);
 
     return true;
@@ -528,7 +528,7 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
  
     OP_TILING_CHECK(xDim0 != 1,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "x",
-        (std::string("[") + std::to_string(xDim0) + "]").c_str(), "dim0 should be 1"),
+        (std::string("[") + std::to_string(xDim0) + "]").c_str(), "Dim0 of x must be 1"),
         return false);
     OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > BS_MAX),
         OP_LOGE_FOR_INVALID_VALUE(ATTN_FFN_INNER_DEBUG, "x",
@@ -544,11 +544,11 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ATTN_FFN_INNER_DEBUG, "session_id, micro_batch_id, layer_id and expert_ids",
         (std::string("[") + std::to_string(sessionIdDim0) + ", " + std::to_string(microBatchIdDim0) + ", " +
          std::to_string(layerIdDim0) + ", " + std::to_string(expertIdsDim0) + "]").c_str(),
-        "dim0 of all four inputs should be 1"), return false);
+        "Dim0 of session_id, micro_batch_id, layer_id and expert_ids must be 1"), return false);
     OP_TILING_CHECK(expertIdsDim1 != xDim1,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ATTN_FFN_INNER_DEBUG, "expert_ids and x",
         (std::string("[") + std::to_string(expertIdsDim1) + ", " + std::to_string(xDim1) + "]").c_str(),
-        "dim1 of expert_ids should equal dim1 of x"), return false);
+        "Dim1 of expert_ids must be equal to dim1 of x"), return false);
     OP_TILING_CHECK((expertIdsDim2 <= 0) || (expertIdsDim2 > K_MAX) || (expertIdsDim2 > moeExpertNum),
         OP_LOGE_FOR_INVALID_VALUE(ATTN_FFN_INNER_DEBUG, "expert_ids",
         std::to_string(expertIdsDim2).c_str(),
@@ -556,7 +556,7 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
         return false);
     OP_TILING_CHECK(expertRankTableDim0 != 1,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "expert_rank_table",
-        (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(), "dim0 should be 1"),
+        (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(), "Dim0 of expert_rank_table must be 1"),
         return false);
     OP_TILING_CHECK((expertRankTableDim1 < moeExpertNum) || (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
         OP_LOGE_FOR_INVALID_VALUE(ATTN_FFN_INNER_DEBUG, "expert_rank_table",
@@ -592,13 +592,13 @@ static bool CheckInputAndSetTilingData(gert::TilingContext* context, AttentionTo
     uint32_t quantMode = tilingData.attentionToFFNInfo.quantMode;
     OP_TILING_CHECK(quantMode == STATIC_SCALES,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "quant_mode",
-        std::to_string(quantMode).c_str(), "static quant is not supported"),
+        std::to_string(quantMode).c_str(), "The value of quant_mode does not support static quant"),
         return false);
     OP_TILING_CHECK((isScales && (quantMode == NO_SCALES)) || ((!isScales) && (quantMode == STATIC_SCALES)),
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ATTN_FFN_INNER_DEBUG, "scales and quant_mode",
         (std::string("isScales=") + std::to_string(static_cast<int32_t>(isScales)) +
          ", quantMode=" + std::to_string(quantMode)).c_str(),
-        "scales presence must match quant mode"), return false);
+        "The value of scales must match quant_mode"), return false);
     
     // 校验输入数据dim、format、dataType
     OP_TILING_CHECK(!CheckTensorDim(context, isScales, isActiveMask), OP_LOGE(ATTN_FFN_INNER_DEBUG,

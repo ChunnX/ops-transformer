@@ -67,7 +67,7 @@ ge::graphStatus WeightQuantTilingTransferHelperA5::GetShapeAttrsInfo()
                         (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(matmulInfoPtr_->opName, "antiQuant",
                         std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType)).c_str(),
-                        "Nz weight only supports per-channel"),
+                        "When the weight format is Nz, the value of antiQuant must be per-channel"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -521,13 +521,13 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
     OP_TILING_CHECK(
         m > static_cast<uint64_t>(INT32_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
+            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         k > static_cast<uint64_t>(UINT16_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(),
-            "exceeds upper limit UINT16_MAX"),
+            "The value of k of x1 exceeds the upper limit UINT16_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
@@ -540,13 +540,13 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
         isA16W8_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
             ("k=" + std::to_string(k) + ", n=" + std::to_string(n)).c_str(),
-            "K and N must align to 32 in A16W8/F8 pergroup"),
+            "When the quantization mode is A16W8 or F8 pergroup, K and N of x2 must align to 32"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         isA16W4_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
             ("k=" + std::to_string(k) + ", n=" + std::to_string(n)).c_str(),
-            "K and N must align to 64 in A16W4 pergroup"),
+            "When the quantization mode is A16W4 pergroup, K and N of x2 must align to 64"),
         return ge::GRAPH_FAILED);
     return CheckWeightQuantEmptyTensor();
 }
@@ -577,7 +577,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckBiasInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "bias",
                 std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type))).c_str()),
+                "The value of bias dtype must be the same as that of x1"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -595,7 +595,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "x2",
             (std::to_string(actualX2DimNum) + "D").c_str(),
-            ("Expect x2 dim=" + std::to_string(x2DimNum)).c_str()),
+            ("The shape dim of x2 must be " + std::to_string(x2DimNum)).c_str()),
         return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     OP_TILING_CHECK(
@@ -603,7 +603,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x1",
             std::to_string(static_cast<int32_t>(x1Type)).c_str(),
-            "should be fp16 or bf16"),
+            "The value of x1 dtype must be fp16 or bf16"),
         return ge::GRAPH_FAILED);
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(
@@ -612,7 +612,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x2",
             std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-            "should be int8, int4, fp8_e4m3 or hif8"),
+            "The value of x2 dtype must be int8, int4, fp8_e4m3 or hif8"),
         return ge::GRAPH_FAILED);
 
     if ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)) {
@@ -633,7 +633,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "antiquant_scale",
             std::to_string(static_cast<int32_t>(antiquantScaleType)).c_str(),
-            ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type))).c_str()),
+            "The value of antiquant_scale dtype must be the same as that of x1"),
         return ge::GRAPH_FAILED);
     // antiquantScale和antiquantOffset数据类型相同
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
@@ -643,7 +643,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "antiquant_offset",
                 std::to_string(static_cast<int32_t>(antiquantOffsetType)).c_str(),
-                ("should be same as antiquantScale type=" + std::to_string(static_cast<int32_t>(antiquantScaleType))).c_str()),
+                "The value of antiquant_offset dtype must be the same as that of antiquantScale"),
             return ge::GRAPH_FAILED);
     }
     // antiquantgroupsize 校验
@@ -657,7 +657,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "antiquantGroupSize",
                 std::to_string(groupSize).c_str(),
-                ("should be in [32, min(" + std::to_string(kValue - 1) + ", INT32_MAX)]").c_str()),
+                "The value of antiquantGroupSize must be in the range [32, min(k-1, INT32_MAX)]"),
             return ge::GRAPH_FAILED);
     }
     // pergroup场景下不支持fp8和hif8,增加校验

@@ -50,7 +50,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::CheckMRNInput(const MRNCtxInfo&
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             context_->GetNodeName(), "x1 and residual",
             (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(residualType)).c_str(),
-            "The dtype of x1 should be the same as the dtype of residual"),
+            "The dtypes of x1 and residual must be the same"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

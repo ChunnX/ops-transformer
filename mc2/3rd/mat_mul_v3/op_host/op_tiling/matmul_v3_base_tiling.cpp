@@ -590,7 +590,7 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoOpTiling()
                     static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreK)) <= compileInfo_.aicNum;
             OP_TILING_CHECK(args_.isATrans || !args_.isBTrans || !isSingleRound || args_.aType != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "MULTI_CORE_SPLIT_K",
-                    "unsupported", "only support fp322fp32, transA=false and transB=true, and multi round is not permitted."),
+                    "unsupported", "The value of MULTI_CORE_SPLIT_K only supports fp32 to fp32, transA=false and transB=true, and multi round is not permitted"),
                 return ge::GRAPH_FAILED);
         }
         return ge::GRAPH_SUCCESS;
