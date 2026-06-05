@@ -39,6 +39,25 @@ constexpr int32_t GEMV_THRESHOLD = 8;
 constexpr int32_t REDUCE_THRESHOLD = 32 * 1024;
 
 constexpr int32_t SYS_WORKSPACE_310P = 2 * 1024 * 1024;
+constexpr uint64_t L2_HEADROOM_BYTES = 14ULL * 1024 * 1024;
+
+constexpr uint32_t QGMMD_FLAG_DYNAMIC_QUANT    = 1u << 0;
+constexpr uint32_t QGMMD_FLAG_HAS_SMOOTH       = 1u << 1;
+constexpr uint32_t QGMMD_FLAG_PER_TOKEN        = 1u << 2;
+constexpr uint32_t QGMMD_FLAG_SCALE_IS_INT64   = 1u << 3;
+constexpr uint32_t QGMMD_FLAG_BLOCKED_ZN       = 1u << 4;
+constexpr uint32_t QGMMD_FLAG_SMALL_M          = 1u << 5;
+constexpr uint32_t QGMMD_FLAG_L2_WEIGHT_FITS   = 1u << 6;
+constexpr uint32_t QGMMD_FLAG_HAS_X_RAW_L1     = 1u << 7;
+constexpr uint32_t QGMMD_FLAG_USE_L2_HINT      = 1u << 8;
+constexpr uint32_t QGMMD_FLAG_DBL0C            = 1u << 9;
+constexpr uint32_t QGMMD_FLAG_USE_XZN_WORKSPACE = 1u << 10;
+
+constexpr uint64_t TILING_KEY_GEMV = 10000001;
+constexpr uint64_t TILING_KEY_NORMAL = 10000002;
+constexpr uint64_t TILING_KEY_GROUPED = 10000003;
+constexpr uint64_t TILING_KEY_SWIFT = 10000004;
+constexpr uint64_t TILING_KEY_GROUPED_DQ_PERTOKEN_OPT = 10000005;
 
 constexpr int32_t SWIFT_M_MIN = 20;
 constexpr int32_t SWIFT_M_MAX = 192;
@@ -53,10 +72,11 @@ constexpr int32_t GMM_GMEV_THRESHOLD_MAX = 20;
 constexpr uint32_t BATCH_MODE = 1;
 
 enum class QuantMatmulDequantTilingKey : uint64_t {
-  GEMV = 10000001,
-  NORMAL = 10000002,
-  GROUPED = 10000003,
-  SWIFT = 10000004,
+  GEMV = TILING_KEY_GEMV,
+  NORMAL = TILING_KEY_NORMAL,
+  GROUPED = TILING_KEY_GROUPED,
+  SWIFT = TILING_KEY_SWIFT,
+  GROUPED_DQ_PERTOKEN_OPT = TILING_KEY_GROUPED_DQ_PERTOKEN_OPT,
   UNDFINED = 10000099
 };
 
@@ -141,6 +161,31 @@ struct QuantMatmulDequantParam {
   uint64_t ubKMask;
 
   uint32_t isXScaleHalf;
+  bool scaleIsInt64;
+
+  // Optimized dynamic per-token grouped path.
+  uint32_t Mb;
+  uint32_t Nb;
+  uint32_t Kb;
+  uint32_t kPasses;
+  uint32_t wChunkKPasses;
+  uint32_t phaseXChunk;
+  uint32_t phaseXFullPairs;
+  uint32_t phaseXTail;
+  uint32_t maxOneTurnToken;
+  uint32_t maxWeightColOneTurn;
+  uint32_t perCoreIters;
+  uint32_t remainderIters;
+  uint32_t weightBlockN1;
+  uint32_t nBlockSize;
+  uint32_t flags;
+  bool smallM;
+  bool l2WeightFits;
+  bool hasXRawL1;
+  bool useL2Hint;
+  bool dbL0c;
+  bool useXZNWorkspace;
+  uint64_t xZNWorkspaceBytes;
 };
 
 BEGIN_TILING_DATA_DEF(QuantMatmulDequantTilingData)
@@ -200,6 +245,27 @@ TILING_DATA_FIELD_DEF(uint32_t, baseKTail_2);
 
 TILING_DATA_FIELD_DEF(uint64_t, ubKMask);
 TILING_DATA_FIELD_DEF(uint32_t, isXScaleHalf);
+// Fields consumed only by the optimized dynamic per-token grouped kernel path.
+TILING_DATA_FIELD_DEF(uint32_t, coreNum);
+TILING_DATA_FIELD_DEF(uint32_t, M);
+TILING_DATA_FIELD_DEF(uint32_t, K);
+TILING_DATA_FIELD_DEF(uint32_t, N);
+TILING_DATA_FIELD_DEF(uint32_t, E);
+TILING_DATA_FIELD_DEF(uint32_t, Mb);
+TILING_DATA_FIELD_DEF(uint32_t, Nb);
+TILING_DATA_FIELD_DEF(uint32_t, Kb);
+TILING_DATA_FIELD_DEF(uint32_t, kPasses);
+TILING_DATA_FIELD_DEF(uint32_t, wChunkKPasses);
+TILING_DATA_FIELD_DEF(uint32_t, phaseXChunk);
+TILING_DATA_FIELD_DEF(uint32_t, phaseXFullPairs);
+TILING_DATA_FIELD_DEF(uint32_t, phaseXTail);
+TILING_DATA_FIELD_DEF(uint32_t, maxOneTurnToken);
+TILING_DATA_FIELD_DEF(uint32_t, maxWeightColOneTurn);
+TILING_DATA_FIELD_DEF(uint32_t, perCoreIters);
+TILING_DATA_FIELD_DEF(uint32_t, remainderIters);
+TILING_DATA_FIELD_DEF(uint32_t, weightBlockN1);
+TILING_DATA_FIELD_DEF(uint32_t, nBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, flags);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(QuantGroupedMatmulDequant, QuantMatmulDequantTilingData)
@@ -215,6 +281,8 @@ private:
   bool CheckInOutShapes(gert::TilingContext* context);
 
   bool GetTilingData(gert::TilingContext* context);
+
+  bool GetOptimizedPertokenDynamicTilingData(gert::TilingContext* context);
 
   bool SetTilingData(gert::TilingContext* context);
 

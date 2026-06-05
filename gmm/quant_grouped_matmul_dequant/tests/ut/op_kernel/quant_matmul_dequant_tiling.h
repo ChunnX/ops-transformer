@@ -78,6 +78,27 @@ struct QuantMatmulDequantTilingData {
 
     uint64_t ubKMask = 0;
     uint32_t isXScaleHalf = 0;
+
+    uint32_t coreNum = 0;
+    uint32_t M = 0;
+    uint32_t K = 0;
+    uint32_t N = 0;
+    uint32_t E = 0;
+    uint32_t Mb = 0;
+    uint32_t Nb = 0;
+    uint32_t Kb = 0;
+    uint32_t kPasses = 0;
+    uint32_t wChunkKPasses = 0;
+    uint32_t phaseXChunk = 0;
+    uint32_t phaseXFullPairs = 0;
+    uint32_t phaseXTail = 0;
+    uint32_t maxOneTurnToken = 0;
+    uint32_t maxWeightColOneTurn = 0;
+    uint32_t perCoreIters = 0;
+    uint32_t remainderIters = 0;
+    uint32_t weightBlockN1 = 0;
+    uint32_t nBlockSize = 0;
+    uint32_t flags = 0;
 };
 #pragma pack()
 

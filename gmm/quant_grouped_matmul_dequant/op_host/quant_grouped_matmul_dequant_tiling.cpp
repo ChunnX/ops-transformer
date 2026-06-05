@@ -13,7 +13,9 @@
  * \brief
  */
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 #include "register/op_impl_registry.h"
 #include "register/op_def_registry.h"
@@ -23,6 +25,7 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "quant_grouped_matmul_dequant_tiling.h"
+#include "../op_kernel/quant_grouped_matmul_dequant_config.h"
 
 bool AddWorkspace(gert::TilingContext* context, const size_t workspace) {
   size_t* workspace_size = context->GetWorkspaceSizes(1);
@@ -76,6 +79,11 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context)
                   OP_LOGE(context->GetNodeName(),
                   "QuantMatmulDequant get n-dim of weight_scale and quantized_weight not match, please check."),
                   return false);
+        auto scale_desc = context->GetInputDesc(idx - 1);
+        _Params.scaleIsInt64 = false;
+        if (scale_desc != nullptr) {
+            _Params.scaleIsInt64 = (scale_desc->GetDataType() == ge::DT_INT64);
+        }
 
         auto group_list = context->GetInputShape(idx++);
         OP_CHECK_NULL_WITH_CONTEXT(context, group_list);
@@ -109,6 +117,12 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context)
                   OP_LOGE(context->GetNodeName(),
                   "QuantMatmulDequant get n-dim of weight_scale and quantized_weight not match, please check."),
                   return false);
+        _Params.originE = 1;
+        auto scale_desc = context->GetInputDesc(idx - 1);
+        _Params.scaleIsInt64 = false;
+        if (scale_desc != nullptr) {
+            _Params.scaleIsInt64 = (scale_desc->GetDataType() == ge::DT_INT64);
+        }
     }
 
     auto bias = context->GetOptionalInputShape(idx++);
@@ -204,10 +218,261 @@ bool QuantMatmulDequantTiling::GetPlatformInfo(gert::TilingContext* context)
     return true;
 }
 
+static bool ShouldUseOptimizedPertokenDynamic(const QuantMatmulDequantParam& params)
+{
+    const bool hasSmoothFp32Scale = params.smoothScale && !params.scaleIsInt64;
+
+    // QWEN MoE decode: consistently faster in benchmark for E>=128, M<=64.
+    if (params.originE >= 128ULL && params.originM <= 64ULL) {
+        return true;
+    }
+
+    // QWEN 35B prefill-like cases: E=256 is faster across measured prefill shapes.
+    if (params.originE >= 256ULL && params.originM >= 1024ULL) {
+        return true;
+    }
+
+    // Sparse MoE shapes with enough experts and K=2048 benefit from the optimized split-distribution path.
+    if (params.originE >= 8ULL && params.originM <= 640ULL &&
+        params.originK == 2048ULL && params.originN >= 768ULL) {
+        return true;
+    }
+
+    // Tiny MoE measured positive; keep this narrow to avoid nearby light-tier regressions.
+    if (params.originE >= 4ULL && params.originM <= 32ULL &&
+        params.originK <= 512ULL && params.originN == 256ULL) {
+        return true;
+    }
+
+    // Dense large-N / large-prefill cases with clear or near-clear gains.
+    if (params.originE == 1ULL && params.originM >= 512ULL &&
+        params.originK == 2048ULL && params.originN >= 4096ULL) {
+        return true;
+    }
+    if (params.originE == 1ULL && params.originM >= 2048ULL &&
+        params.originK >= 4096ULL && params.originN >= 4096ULL) {
+        return true;
+    }
+    if (params.originE == 1ULL && params.originN >= 65536ULL) {
+        return true;
+    }
+
+    // Tall dense case only wins in the measured smooth fp32-scale variant.
+    if (params.originE == 1ULL && params.originM >= 512ULL &&
+        params.originK >= 4096ULL && params.originN >= 2048ULL && hasSmoothFp32Scale) {
+        return true;
+    }
+
+    return false;
+}
+
+bool QuantMatmulDequantTiling::GetOptimizedPertokenDynamicTilingData(gert::TilingContext* context)
+{
+    if (!(isGrouped && _Params.dynamicQuant && _Params.perToken)) {
+        return true;
+    }
+    if (!ShouldUseOptimizedPertokenDynamic(_Params)) {
+        return true;
+    }
+
+    const uint64_t kBytes = _Params.originKAligned32;
+    const uint64_t ubSize = _Params.UBSize;
+    const uint64_t l0aTotal = _Params.L0ASize / NUMBER_2;
+    const uint64_t l0bTotal = _Params.L0BSize / NUMBER_2;
+    const uint64_t l0cSize = _Params.L0CSize;
+    const uint64_t l1Size = _Params.L1Size;
+
+    uint32_t phaseXChunkUB = NUMBER_128;
+    while ((phaseXChunkUB << 1U) <= kBytes && phaseXChunkUB < 2048U) {
+        phaseXChunkUB <<= 1U;
+    }
+
+    auto ubFits = [&](uint32_t mb, uint32_t nb) -> bool {
+        const uint64_t chunk = phaseXChunkUB;
+        uint64_t persistent = 2ULL * mb * nb * sizeof(uint16_t)
+                            + 2ULL * nb * sizeof(uint64_t)
+                            + mb * sizeof(float);
+        if (_Params.originE == 1ULL) {
+            persistent += static_cast<uint64_t>(mb) * nb * sizeof(uint16_t);
+        }
+        if (!_Params.scaleIsInt64) {
+            persistent += nb * sizeof(uint32_t);
+        }
+        if (_Params.smoothScale) {
+            persistent += kBytes * sizeof(uint16_t) + chunk * sizeof(float);
+        }
+
+        const uint64_t mbAlignedPhX = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+        uint64_t phaseX = mbAlignedPhX * chunk
+                        + 2ULL * chunk * sizeof(uint16_t)
+                        + chunk * sizeof(uint16_t)
+                        + 2ULL * chunk * sizeof(float)
+                        + chunk * sizeof(int32_t)
+                        + chunk * sizeof(uint16_t);
+
+        const uint64_t mbAligned = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+        uint64_t phaseD = mbAligned * nb * sizeof(uint16_t);
+        if (!_Params.scaleIsInt64) {
+            phaseD += nb * sizeof(float);
+        }
+
+        return persistent + (phaseX > phaseD ? phaseX : phaseD) + 2048ULL <= ubSize;
+    };
+
+    auto l0Fits = [&](uint32_t mb, uint32_t nb, uint32_t kb) -> bool {
+        return (static_cast<uint64_t>(mb) * kb <= l0aTotal)
+            && (static_cast<uint64_t>(kb) * nb <= l0bTotal)
+            && (static_cast<uint64_t>(mb) * nb * sizeof(int32_t) <= l0cSize);
+    };
+
+    auto l1Fits = [&](uint32_t mb, uint32_t nb, uint32_t kb) -> bool {
+        const uint64_t mbAligned = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+        uint64_t xL1 = mbAligned * kBytes;
+        uint64_t wL1 = 2ULL * kb * nb;
+        return xL1 + wL1 <= l1Size;
+    };
+
+    uint32_t bestMb = 16;
+    uint32_t bestNb = 16;
+    uint64_t bestScore = UINT64_MAX;
+    for (uint32_t nbI = 0; nbI < AscendC::NB_CANDIDATE_COUNT; ++nbI) {
+        uint32_t nb = AscendC::NB_CANDIDATES[nbI];
+        if (nb > _Params.originN) {
+            continue;
+        }
+        for (uint32_t mbI = 0; mbI < AscendC::MB_CANDIDATE_COUNT; ++mbI) {
+            uint32_t mb = AscendC::MB_CANDIDATES[mbI];
+            if (mb < 32U) {
+                continue;
+            }
+            uint64_t kbRaw = std::min<uint64_t>(
+                {kBytes, l0aTotal / mb, l0bTotal / nb, static_cast<uint64_t>(AscendC::MMAD_K_MAX)});
+            uint32_t kb = static_cast<uint32_t>((kbRaw / K_FRACTAL_INT8) * K_FRACTAL_INT8);
+            if (kb == 0 || !l0Fits(mb, nb, kb) || !l1Fits(mb, nb, kb) || !ubFits(mb, nb)) {
+                continue;
+            }
+
+            const uint64_t weightBytes = static_cast<uint64_t>(_Params.originN) * kBytes;
+            const uint64_t iters = (_Params.originM + mb - 1) / mb;
+            const uint64_t cbPerIter = (_Params.originN + nb - 1) / nb;
+            const uint64_t coreNum = static_cast<uint64_t>(NUM_OF_AICORE);
+            const uint64_t perCoreIters = (iters + coreNum - 1) / coreNum;
+            const uint64_t kpasses = (kBytes + kb - 1) / kb;
+            const uint64_t mte2Bursts = perCoreIters * cbPerIter * kpasses;
+            const uint64_t cyclesMte2W = ((weightBytes + coreNum - 1) / coreNum) / 17ULL + 422ULL * mte2Bursts;
+            const uint64_t cyclesMte1A = perCoreIters * cbPerIter * kpasses * (static_cast<uint64_t>(mb) * kb) / 512ULL;
+            const uint64_t cyclesMte1B = perCoreIters * cbPerIter * kpasses * (static_cast<uint64_t>(kb) * nb) / 256ULL;
+            const uint64_t mte1Calls = perCoreIters * cbPerIter * kpasses * (static_cast<uint64_t>(mb) / 16ULL + 1ULL);
+            const uint64_t cyclesMte1Issue = 32ULL * mte1Calls;
+            const uint64_t cyclesCube = perCoreIters * cbPerIter * kpasses *
+                                        (static_cast<uint64_t>(mb) * nb * kb) / 2048ULL;
+            const uint64_t cyclesMte3 = perCoreIters * cbPerIter * (static_cast<uint64_t>(mb) * nb * 2ULL) / 17ULL;
+            const uint64_t feedSum = cyclesMte2W + cyclesMte1A + cyclesMte1B + cyclesMte1Issue + cyclesMte3;
+            const uint64_t score = (cyclesCube >= feedSum) ? cyclesCube : feedSum;
+            if (score < bestScore || (score == bestScore && mb > bestMb) ||
+                (score == bestScore && mb == bestMb && nb > bestNb)) {
+                bestScore = score;
+                bestMb = mb;
+                bestNb = nb;
+            }
+        }
+    }
+
+    _Params.Mb = bestMb;
+    _Params.Nb = bestNb;
+    uint64_t kbRaw = std::min<uint64_t>(
+        {kBytes, l0aTotal / bestMb, l0bTotal / bestNb, static_cast<uint64_t>(AscendC::MMAD_K_MAX)});
+    _Params.Kb = static_cast<uint32_t>((kbRaw / K_FRACTAL_INT8) * K_FRACTAL_INT8);
+    _Params.kPasses = static_cast<uint32_t>((kBytes + _Params.Kb - 1) / _Params.Kb);
+
+    const uint64_t mbAlignedXL1 = (_Params.Mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : _Params.Mb;
+    const uint64_t xL1Bytes = mbAlignedXL1 * kBytes;
+    const uint64_t wL1OnePair = 2ULL * _Params.Kb * _Params.Nb;
+    const uint64_t l1Free = (l1Size > xL1Bytes) ? (l1Size - xL1Bytes) : 0ULL;
+    uint32_t wChunk = 1;
+    for (uint32_t cand = 2; cand <= _Params.kPasses; cand <<= 1U) {
+        if ((_Params.kPasses % cand) != 0 || cand * wL1OnePair > l1Free) {
+            break;
+        }
+        wChunk = cand;
+    }
+    _Params.wChunkKPasses = wChunk;
+
+    _Params.phaseXChunk = phaseXChunkUB;
+    _Params.phaseXFullPairs = static_cast<uint32_t>(kBytes / phaseXChunkUB);
+    _Params.phaseXTail = static_cast<uint32_t>(kBytes % phaseXChunkUB);
+    _Params.maxOneTurnToken = _Params.Mb;
+    _Params.maxWeightColOneTurn = _Params.Nb;
+    _Params.smallM = (_Params.Mb <= AscendC::SMALL_M_THRESHOLD);
+    _Params.weightBlockN1 = 0;
+
+    if (_Params.originE > 1ULL || _Params.fracM >= NUM_OF_AICORE) {
+        _Params.MCoreNum = NUM_OF_AICORE;
+        _Params.NCoreNum = 1;
+    } else {
+        uint32_t chosen = 0;
+        uint64_t minCost = (_Params.fracN << NUMBER_3) + _Params.fracM;
+        for (uint32_t i = 1; i < NUMBER_4; ++i) {
+            uint64_t cost = (_Params.fracN << (NUMBER_3 - i)) + (_Params.fracM << i);
+            if (cost < minCost) {
+                chosen = i;
+                minCost = cost;
+            }
+        }
+        _Params.NCoreNum = 1U << chosen;
+        _Params.MCoreNum = NUM_OF_AICORE / _Params.NCoreNum;
+    }
+
+    uint64_t totalIters = (_Params.originM + _Params.Mb - 1) / _Params.Mb;
+    _Params.perCoreIters = static_cast<uint32_t>((totalIters + _Params.CoreNum - 1) / _Params.CoreNum);
+    _Params.remainderIters = static_cast<uint32_t>(totalIters % _Params.CoreNum);
+
+    _Params.l2WeightFits = (_Params.originK * _Params.originN <= L2_HEADROOM_BYTES);
+    const uint64_t wL1Bytes = 2ULL * _Params.wChunkKPasses * _Params.Kb * _Params.Nb;
+    const uint64_t xRawL1Bytes = mbAlignedXL1 * kBytes * sizeof(uint16_t);
+    _Params.hasXRawL1 = (xL1Bytes + wL1Bytes + xRawL1Bytes <= _Params.L1Size);
+    _Params.useL2Hint = false;
+    _Params.dbL0c = (static_cast<uint64_t>(_Params.Mb) * _Params.Nb * sizeof(int32_t) <= l0cSize / 2ULL);
+    const bool stageXZN = (_Params.originE == 1 && _Params.originM >= NM_FRACTAL_INT8 &&
+                           _Params.originN >= NUMBER_256);
+    _Params.useXZNWorkspace = stageXZN;
+    const uint64_t alignedM = ((_Params.originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8) * NM_FRACTAL_INT8;
+    _Params.xZNWorkspaceBytes = stageXZN ? (alignedM * _Params.originKAligned32) : 0ULL;
+
+    const uint32_t totalColBatch = static_cast<uint32_t>((_Params.originN + _Params.Nb - 1) / _Params.Nb);
+    const uint64_t cbBytes = static_cast<uint64_t>(_Params.Nb) * _Params.originK;
+    const uint64_t l2EffBytes = static_cast<uint64_t>(AscendC::L2_HEADROOM_BYTES) *
+                                AscendC::L2_WEIGHT_SHARE_PCT / 100ULL;
+    uint32_t nBlockSize = (cbBytes > 0) ? static_cast<uint32_t>(l2EffBytes / cbBytes) : 1;
+    if (nBlockSize == 0) {
+        nBlockSize = 1;
+    }
+    if (nBlockSize > totalColBatch) {
+        nBlockSize = totalColBatch;
+    }
+    _Params.nBlockSize = nBlockSize;
+
+    uint32_t flags = QGMMD_FLAG_DYNAMIC_QUANT | QGMMD_FLAG_PER_TOKEN;
+    if (_Params.smoothScale) flags |= QGMMD_FLAG_HAS_SMOOTH;
+    if (_Params.scaleIsInt64) flags |= QGMMD_FLAG_SCALE_IS_INT64;
+    if (_Params.weightBlockN1 != 0) flags |= QGMMD_FLAG_BLOCKED_ZN;
+    if (_Params.smallM) flags |= QGMMD_FLAG_SMALL_M;
+    if (_Params.l2WeightFits) flags |= QGMMD_FLAG_L2_WEIGHT_FITS;
+    if (_Params.hasXRawL1) flags |= QGMMD_FLAG_HAS_X_RAW_L1;
+    if (_Params.useL2Hint) flags |= QGMMD_FLAG_USE_L2_HINT;
+    if (_Params.dbL0c) flags |= QGMMD_FLAG_DBL0C;
+    if (_Params.useXZNWorkspace) flags |= QGMMD_FLAG_USE_XZN_WORKSPACE;
+    _Params.flags = flags;
+    tilingKey = QuantMatmulDequantTilingKey::GROUPED_DQ_PERTOKEN_OPT;
+    return true;
+}
+
 bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext* context)
 {
     _Params.originKAligned512 = (_Params.originK + L0_ADDR_ALIGN - 1) / L0_ADDR_ALIGN * L0_ADDR_ALIGN;
     _Params.originKAligned32 = (_Params.originK + K_FRACTAL_INT8 - 1) / K_FRACTAL_INT8 * K_FRACTAL_INT8;
+    _Params.fracM = (_Params.originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8;
+    _Params.tailM = (_Params.originM - 1) % NM_FRACTAL_INT8 + 1;
     // 最低的 0 ~ kTailN 位被设置为 1，其余位保持为 0
     _Params.ubKMask = 0;
     uint32_t kTailN = _Params.originKAligned32 - _Params.originK;
@@ -479,6 +744,10 @@ bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext* context)
         _Params.dynamicBaseKTail = (_Params.originK - 1) % _Params.dynamicBaseK + 1;
     }
 
+    OP_CHECK_IF(!GetOptimizedPertokenDynamicTilingData(context),
+                    OP_LOGE(context->GetNodeName(), "get optimized tiling data fail."),
+                    return false);
+
     return true;
 }
 
@@ -537,6 +806,26 @@ bool QuantMatmulDequantTiling::SetTilingData(gert::TilingContext* context)
     tilingData.set_baseKTail_2(_Params.baseKTail_2);
     tilingData.set_ubKMask(_Params.ubKMask);
     tilingData.set_isXScaleHalf(_Params.isXScaleHalf);
+    tilingData.set_coreNum(static_cast<uint32_t>(_Params.CoreNum));
+    tilingData.set_M(static_cast<uint32_t>(_Params.originM));
+    tilingData.set_K(static_cast<uint32_t>(_Params.originK));
+    tilingData.set_N(static_cast<uint32_t>(_Params.originN));
+    tilingData.set_E(static_cast<uint32_t>(_Params.originE));
+    tilingData.set_Mb(_Params.Mb);
+    tilingData.set_Nb(_Params.Nb);
+    tilingData.set_Kb(_Params.Kb);
+    tilingData.set_kPasses(_Params.kPasses);
+    tilingData.set_wChunkKPasses(_Params.wChunkKPasses);
+    tilingData.set_phaseXChunk(_Params.phaseXChunk);
+    tilingData.set_phaseXFullPairs(_Params.phaseXFullPairs);
+    tilingData.set_phaseXTail(_Params.phaseXTail);
+    tilingData.set_maxOneTurnToken(_Params.maxOneTurnToken);
+    tilingData.set_maxWeightColOneTurn(_Params.maxWeightColOneTurn);
+    tilingData.set_perCoreIters(_Params.perCoreIters);
+    tilingData.set_remainderIters(_Params.remainderIters);
+    tilingData.set_weightBlockN1(_Params.weightBlockN1);
+    tilingData.set_nBlockSize(_Params.nBlockSize);
+    tilingData.set_flags(_Params.flags);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return true;
@@ -548,12 +837,20 @@ bool QuantMatmulDequantTiling::SetLaunchInfo(gert::TilingContext* context)
 
     context->SetTilingKey(static_cast<uint64_t>(tilingKey));
 
-    int64_t workspaceSize = SYS_WORKSPACE_310P
-                            + _Params.CoreNum * BLOCK_SIZE
-                            + ((_Params.dynamicQuant && _Params.perToken) ? _Params.originM * BLOCK_SIZE : 0);
-    if (tilingKey != QuantMatmulDequantTilingKey::GEMV) {
-        workspaceSize += (_Params.originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8 * NM_FRACTAL_INT8 *
-                          _Params.originKAligned32;
+    int64_t workspaceSize = SYS_WORKSPACE_310P;
+    if (tilingKey == QuantMatmulDequantTilingKey::GROUPED_DQ_PERTOKEN_OPT) {
+        workspaceSize += _Params.xZNWorkspaceBytes;
+        if (_Params.useXZNWorkspace) {
+            workspaceSize += _Params.CoreNum * BLOCK_SIZE;
+            workspaceSize += ((_Params.dynamicQuant && _Params.perToken) ? _Params.originM * BLOCK_SIZE : 0);
+        }
+    } else {
+        workspaceSize += _Params.CoreNum * BLOCK_SIZE
+                         + ((_Params.dynamicQuant && _Params.perToken) ? _Params.originM * BLOCK_SIZE : 0);
+        if (tilingKey != QuantMatmulDequantTilingKey::GEMV) {
+            workspaceSize += (_Params.originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8 * NM_FRACTAL_INT8 *
+                            _Params.originKAligned32;
+        }
     }
     AddWorkspace(context, workspaceSize);
     return true;
@@ -582,6 +879,7 @@ bool QuantMatmulDequantTiling::GetCheckAttr(gert::TilingContext* context)
 ge::graphStatus QuantMatmulDequantTiling::runTiling(gert::TilingContext* context, bool is_grouped)
 {
     isGrouped = is_grouped;
+    _Params = QuantMatmulDequantParam{};
     // 310P AscendC platformINFO
     OP_CHECK_IF(!GetPlatformInfo(context),
                     OP_LOGE(context->GetNodeName(), "get platforminfo fail."),
