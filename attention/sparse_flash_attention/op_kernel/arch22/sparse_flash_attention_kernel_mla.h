@@ -183,6 +183,15 @@ private:
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
     __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void InitRunInfoBasicFields(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void CalcActMBaseAndLoopState(RunInfo &info, uint64_t s2Start, uint32_t s2LoopIdx);
+    __aicore__ inline void SetRunInfoVectorMsize(RunInfo &info);
+    __aicore__ inline void CalcLayoutPrefixOffset(RunInfo &info, uint64_t &actualSeqQPrefixSum,
+                                                   uint64_t &actualSeqKVPrefixSum);
+    __aicore__ inline void CalcFirstInnerLoopParams(RunInfo &info, uint64_t actualSeqQPrefixSum,
+                                                     uint64_t actualSeqKVPrefixSum);
+    __aicore__ inline void SetRunInfoFinalFieldsAndS2Batch(RunInfo &info, uint64_t sInnerOffsetDataSize);
+    __aicore__ inline void CalcActualProcessSInnerSize(RunInfo &info, uint64_t sInnerOffsetDataSize);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
@@ -617,27 +626,57 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, uint64_t s2Start,
                                                                                  uint32_t s2LoopIdx, RunInfo &info)
 {
+    InitRunInfoBasicFields(loop, s2Start, s2LoopIdx, info);
+    CalcActMBaseAndLoopState(info, s2Start, s2LoopIdx);
+    SetRunInfoVectorMsize(info);
+    uint64_t actualSeqQPrefixSum;
+    uint64_t actualSeqKVPrefixSum;
+    CalcLayoutPrefixOffset(info, actualSeqQPrefixSum, actualSeqKVPrefixSum);
+    if (info.isFirstSInnerLoop) {
+        CalcFirstInnerLoopParams(info, actualSeqQPrefixSum, actualSeqKVPrefixSum);
+    }
+    uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
+    SetRunInfoFinalFieldsAndS2Batch(info, sInnerOffsetDataSize);
+    CalcActualProcessSInnerSize(info, sInnerOffsetDataSize);
+}
+
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::InitRunInfoBasicFields(uint32_t loop, uint64_t s2Start,
+    uint32_t s2LoopIdx, RunInfo &info)
+{
     info.loop = loop;
     info.bIdx = tempLoopInfo.bIdx;
     info.gS1Idx = tempLoopInfo.gS1Idx;
     info.s2Idx = s2LoopIdx;
     info.curSInnerLoopTimes = tempLoopInfo.s2LoopTimes;
-
     info.tndIsS2SplitCore = tempLoopInfo.tndIsS2SplitCore;
     info.tndCoreStartKVSplitPos = tempLoopInfo.tndCoreStartKVSplitPos;
     info.isBmm2Output = false;
-
     info.actS1Size = tempLoopInfo.actS1Size;
-    
-    
+    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
+    info.isChangeBatch = false;
+}
+
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcActMBaseAndLoopState(RunInfo &info, uint64_t s2Start,
+    uint32_t s2LoopIdx)
+{
     info.actMBaseSize = constInfo.mBaseSize;
     uint32_t remainedGS1Size = tempLoopInfo.actS1Size * constInfo.gSize - tempLoopInfo.gS1Idx;
     if (remainedGS1Size <= constInfo.mBaseSize && remainedGS1Size > 0) {
         info.actMBaseSize = tempLoopInfo.mBasicSizeTail;
     }
+    info.isFirstSInnerLoop = s2LoopIdx == s2Start;
+    if (info.isFirstSInnerLoop) {
+        tempLoopInfo.bn2IdxInCurCore++;
+    }
+    info.isLastS2Loop = s2LoopIdx == tempLoopInfo.s2LoopTimes - 1;
+    info.bn2IdxInCurCore = tempLoopInfo.bn2IdxInCurCore - 1;
+}
 
-    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
-
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::SetRunInfoVectorMsize(RunInfo &info)
+{
     if ASCEND_IS_AIV {
         info.mSize = info.actMBaseSize;
         info.mSizeV = (info.mSize <= 16) ? info.mSize : (((info.mSize + 15) / 16 + 1) / 2 * 16);
@@ -647,16 +686,12 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
             info.mSizeV = info.mSize - info.mSizeV;
         }
     }
+}
 
-    info.isChangeBatch = false;
-
-    info.isFirstSInnerLoop = s2LoopIdx == s2Start;
-    if (info.isFirstSInnerLoop) {
-        tempLoopInfo.bn2IdxInCurCore++;
-    }
-    info.isLastS2Loop = s2LoopIdx == tempLoopInfo.s2LoopTimes - 1;
-    info.bn2IdxInCurCore = tempLoopInfo.bn2IdxInCurCore - 1;
-    uint64_t actualSeqQPrefixSum;
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcLayoutPrefixOffset(RunInfo &info,
+    uint64_t &actualSeqQPrefixSum, uint64_t &actualSeqKVPrefixSum)
+{
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         actualSeqQPrefixSum = (info.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(info.bIdx - 1);
     } else {
@@ -664,41 +699,49 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
     }
     info.tndBIdxOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDim;
 
-    uint64_t actualSeqKVPrefixSum;
     if constexpr (KV_LAYOUT_T == SFA_LAYOUT::TND) {
         actualSeqKVPrefixSum = (info.bIdx <= 0) ? 0 : actualSeqLengthsKVGm.GetValue(info.bIdx - 1);
     } else {
         actualSeqKVPrefixSum = (info.bIdx <= 0) ? 0 : info.bIdx * constInfo.kvSeqSize;
     }
     info.tndBIdxOffsetForKV = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDim;
+}
 
-    if (info.isFirstSInnerLoop) {
-        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
-        tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * headDim;
-        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
-        
-        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
-        tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * headDim;
-        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
-        if (constInfo.sparseMode == 3) {
-            threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
-        } else {
-            threshold = tempLoopInfo.curActualSeqLenOri;
-        }
-        if constexpr(LAYOUT_T == SFA_LAYOUT::BSND) {     // B,S1,N2 K
-            topKBaseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
-                            info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
-                            info.n2Idx * constInfo.sparseBlockCount;
-        } else if (LAYOUT_T == SFA_LAYOUT::TND) {        // T N2 K
-            topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.headDim * constInfo.kvHeadNum *
-                             constInfo.sparseBlockCount + info.n2Idx * constInfo.sparseBlockCount +
-                             info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
-        } else {                                         // B N2 S1 K
-            topKBaseOffset = info.bIdx * constInfo.kvHeadNum * constInfo.qSeqSize * constInfo.sparseBlockCount +
-                            info.n2Idx * constInfo.qSeqSize * constInfo.sparseBlockCount +
-                            info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
-        }
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcFirstInnerLoopParams(RunInfo &info,
+    uint64_t actualSeqQPrefixSum, uint64_t actualSeqKVPrefixSum)
+{
+    uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
+    tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * headDim;
+    tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
+
+    uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
+    tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * headDim;
+    tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
+    if (constInfo.sparseMode == 3) {
+        threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
+    } else {
+        threshold = tempLoopInfo.curActualSeqLenOri;
     }
+    if constexpr(LAYOUT_T == SFA_LAYOUT::BSND) {
+        topKBaseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
+                        info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
+                        info.n2Idx * constInfo.sparseBlockCount;
+    } else if (LAYOUT_T == SFA_LAYOUT::TND) {
+        topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.headDim * constInfo.kvHeadNum *
+                         constInfo.sparseBlockCount + info.n2Idx * constInfo.sparseBlockCount +
+                         info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
+    } else {
+        topKBaseOffset = info.bIdx * constInfo.kvHeadNum * constInfo.qSeqSize * constInfo.sparseBlockCount +
+                        info.n2Idx * constInfo.qSeqSize * constInfo.sparseBlockCount +
+                        info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
+    }
+}
+
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::SetRunInfoFinalFieldsAndS2Batch(RunInfo &info,
+    uint64_t sInnerOffsetDataSize)
+{
     info.topKBaseOffset = topKBaseOffset;
     info.threshold = threshold;
     info.tensorAOffset = tensorACoreOffset;
@@ -707,11 +750,14 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
     info.tensorBRopeOffset = tensorBRopeCoreOffset;
     info.attenOutOffset = tensorACoreOffset;
 
-    uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
     info.s2BatchOffset = s2BatchBaseOffset + sInnerOffsetDataSize;
-
     info.curActualSeqLenOri = tempLoopInfo.curActualSeqLenOri;
-    //计算实际基本块size
+}
+
+template <typename SFAT>
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcActualProcessSInnerSize(RunInfo &info,
+    uint64_t sInnerOffsetDataSize)
+{
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         if (tempLoopInfo.curActualSeqLen > sInnerOffsetDataSize) {
             info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
