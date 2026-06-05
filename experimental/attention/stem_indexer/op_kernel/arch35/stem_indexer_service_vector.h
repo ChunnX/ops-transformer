@@ -179,10 +179,10 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(mrgValueBuf_, (MAX_TOPK_COUNT + trunkLen_) * sizeof(SCORE_T));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     
-    pipe->InitBuffer(indicesOutBuf_, (MAX_TOPK_COUNT + 64) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, (MAX_TOPK_COUNT + 64) * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
+    pipe->InitBuffer(scoreOutBuf_, MAX_TOPK_COUNT * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
@@ -223,6 +223,7 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     // define MMBase para
     s1BaseSize_ = constInfo.s1BaseSize;  // 4
     s2BaseSize_ = constInfo.s2BaseSize;  // 128
+    mBaseSize_ = constInfo.mBaseSize;
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     blockId_ = GetBlockIdx();
@@ -426,8 +427,11 @@ __aicore__ inline uint32_t QLIVector<QLIT>::CalcDynamicTopkCount(
     const int32_t K_BLOCK_NUM_BIAS_LARGE = 30;
     const float ALPHA = 1.0f;
     
-    // block级别的s1索引转换成token级别的s1索引
-    s1Idx = s1Idx * 8;
+    //gS1轴转s1轴，是否要向上对齐？
+    s1Idx = s1Idx / gSize_;
+
+    // block级别的s1索引转换成token级别的s1索引，向上取整确保block数不小于实际值
+    num_prompt_k = CeilDiv(num_prompt_k, 128);
 
     // 计算 k_start（分段函数）
     int32_t k_start;
@@ -476,14 +480,14 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
     // window_blocks: K方向后WINDOW_BLOCKS个块必选（索引validS2Len-WINDOW_BLOCKS ~ validS2Len-1）
     const int32_t WINDOW_BLOCKS = 4;
 
-    // 当前处理的S1行起始索引（全局位置）
-    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
-    // 当前S1行需要处理的数量（可能小于s1BaseSize_，处理尾块）
-    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
-    // 当前AIV核处理的S1起始索引（双核分工）
-    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-    // 当前AIV核需要处理的S1行数量
-    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
+    // 当前处理的GS1行起始索引（全局位置）
+    int64_t curGS1Idx = info.gS1Idx * MBaseSize_;
+    // 当前GS1行需要处理的数量（可能小于MBaseSize_，处理尾块）
+    int64_t curGS1ProcNum = curGS1Idx + MBaseSize_ > info.actMBaseSize ? info.actMBaseSize % MBaseSize_ : MBaseSize_;
+    // 当前AIV核处理的GS1起始索引（双核分工）
+    int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
+    // 当前AIV核需要处理的GS1行数量
+    int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
 
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
@@ -504,7 +508,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
     int32_t cuRealAcSeq;
     if (constInfo_.attenMaskFlag) {
         // causal 场景：当前AIV核处理的第一个S1位置对应的s2合法长度
-        int32_t firstS1PosValidS2Len = info.actS2Size - info.actS1Size + curAivS1Idx + 1;
+        int32_t firstS1PosValidS2Len = info.actS2Size - info.actS1Size + curAivGS1Idx / gSize_ + 1;
         cuRealAcSeq = firstS1PosValidS2Len - WINDOW_BLOCKS;
     } else {
         // 非 causal 场景：使用调度层传入的 validS2Len（已减去 WINDOW_BLOCKS）
@@ -523,26 +527,28 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
     int32_t neg = -1;
 
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 s2Len/topkCount）
-    uint32_t numS1Positions = ((uint32_t)curAivS1ProcNum + gSize_ - 1) / gSize_;
+    uint32_t numS1Positions = ((uint32_t)curAivGS1ProcNum + gSize_ - 1) / gSize_;
     for (uint32_t s1Pos = 0; s1Pos < numS1Positions; s1Pos++) {
         // 当前 S1 位置在 group 中的起始行索引
         uint32_t groupStartRowIdx = s1Pos * gSize_;
 
         // 计算当前 S1 位置的原始有效 S2 长度（减去 WINDOW_BLOCKS 之前）
-        int32_t s1PosOriginalValidS2Len = info.actS2Size - info.actS1Size + curAivS1Idx + s1Pos + 1;
+        int32_t s1PosOriginalValidS2Len = info.actS2Size - info.actS1Size + (int32_t)(curAivGS1Idx / gSize_) + s1Pos + 1;
 
         // causal 场景：直接输出连续索引，跳过 TopK
         if (constInfo_.attenMaskFlag && (s1PosOriginalValidS2Len <= (int32_t)(INIT_BLOCKS + WINDOW_BLOCKS))) {
+            uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivGS1ProcNum - groupStartRowIdx);
             if (s1PosOriginalValidS2Len > 0) {
                 // 循环外一次性生成索引
                 AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 
                                         0, (uint32_t)s1PosOriginalValidS2Len);
                 PipeBarrier<PIPE_V>();
-                indiceLenLocal_.SetValue(s1Pos, s1PosOriginalValidS2Len);
+                for (uint32_t j = 0; j < groupSize; j++) {
+                    indiceLenLocal_.SetValue(s1Pos * gSize_ + j, s1PosOriginalValidS2Len);
+                }
             }
             
             // 循环内只做 DataCopyPad
-            uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
             for (uint32_t j = 0; j < groupSize; j++) {
                 if (s1PosOriginalValidS2Len > 0) {
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -558,7 +564,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
         }
 
         // 计算动态 topkCount（同一个 S1 位置下相同）
-        uint32_t dynamicTopkCount = CalcDynamicTopkCount(curAivS1Idx + s1Pos, kb_offset, num_prompt_k);
+        uint32_t dynamicTopkCount = CalcDynamicTopkCount((uint32_t)(curAivGS1Idx / gSize_) + s1Pos, kb_offset, num_prompt_k);
         int32_t topkSelectNum = Min(dynamicTopkCount, (uint32_t)MAX_TOPK_COUNT);
 
         // 动态更新 topK（buffer 布局已在 InitBuffers 按最大 topkCount_ 固定，此处仅更新标量）
@@ -583,9 +589,11 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
 
         // 短路：参与 TopK 的有效数据不足 topkSelectNum，直接输出连续索引
         if (groupValidS2Len - actualInit < topkSelectNum) {
-            indiceLenLocal_.SetValue(s1Pos, totalOutput);
-            uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
+            uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivGS1ProcNum - groupStartRowIdx);
             for (uint32_t j = 0; j < groupSize; j++) {
+
+                indiceLenLocal_.SetValue(s1Pos * gSize_ + j, totalOutput);
+
                 int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
                 
                 // init 段：[0, actualInit-1]
@@ -640,13 +648,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
         }
 
         // 正常 TopK 流程
-        indiceLenLocal_.SetValue(s1Pos, totalOutput);
+        uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivGS1ProcNum - groupStartRowIdx);
 
         // 内层循环：遍历同一 S1 位置下的 G 个行
-        uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivS1ProcNum - groupStartRowIdx);
         for (uint32_t j = 0; j < groupSize; j++) {
 
-            uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + groupStartRowIdx + j;
+            indiceLenLocal_.SetValue(s1Pos * gSize_ + j, totalOutput);
+            uint32_t rowIdx = blockId_ % 2 * CeilDiv(curGS1ProcNum, 2) + groupStartRowIdx + j;
 
             // vec1OutUB_中当前行的基地址
             uint32_t vec1OutRowOffset = pingpong * (UB_BANK_STRIDE / sizeof(uint16_t))
@@ -675,29 +683,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
 
                 topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, inputLenAlign, 0, 1);
 
-                // 如果有效 score 数量 < topkSelectNum，需要手动填充 -1
-                // 使用 mask 版 Duplicate 处理不对齐的部分，普通 Duplicate 处理剩余对齐部分
-                int32_t effectiveScoreCount = s2BlockValidLen - actualInit;
-                if (effectiveScoreCount < topkSelectNum) {
-                    uint64_t mask[1];
-                    mask[0] = ~0;
-                    mask[0] = mask[0] << (effectiveScoreCount % 8);
-                    PipeBarrier<PIPE_V>();
-                    Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[effectiveScoreCount / 8 * 8], neg, mask, 1, 1, 0);
-                }
-
-                if (effectiveScoreCount / 8 * 8 + 64 < topkSelectNum) {
-                    PipeBarrier<PIPE_V>();
-                    Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[effectiveScoreCount / 8 * 8 + 64], neg, topkSelectNum - (effectiveScoreCount / 8 * 8 + 64));
-                }
-
             } else {
                 // ===== 非第一个基本块：合并上一轮TopK结果 + 当前基本块score =====
-                copyInParams.blockLen = topkSelectNum * sizeof(int32_t); // byte
-                AscendC::DataCopyPadExtParams<uint16_t> padParams{true, 0, 0, 0};
-                // 可删？
-                AscendC::DataCopyPad(topkSharedTmpLocal_, indicesOutLocal_.ReinterpretCast<int32_t>(), copyInParams, padParams);
-                PipeBarrier<PIPE_V>();
 
                 AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkSelectNumAlign256);
                 // 这里是否需要个同步
@@ -784,16 +771,15 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(
                 cumulativeOutputOffset += totalOutput;
             }
         }
-
-        // 批量写出 indice_len 到 GM
-        if (numS1Positions > 0) {
-            AscendC::DataCopyParams indiceLenCopyParams;
-            indiceLenCopyParams.blockCount = 1;
-            indiceLenCopyParams.srcStride = 0;
-            indiceLenCopyParams.dstStride = 0;
-            indiceLenCopyParams.blockLen = (uint16_t)(numS1Positions * sizeof(int32_t));
-            AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset], indiceLenLocal_, indiceLenCopyParams);
-        }
+    }
+    // 批量写出 indice_len 到 GM
+    if (curAivGS1ProcNum > 0) {
+        AscendC::DataCopyParams indiceLenCopyParams;
+        indiceLenCopyParams.blockCount = 1;
+        indiceLenCopyParams.srcStride = 0;
+        indiceLenCopyParams.dstStride = 0;
+        indiceLenCopyParams.blockLen = (uint16_t)((uint32_t)curAivGS1ProcNum * sizeof(int32_t));
+        AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset], indiceLenLocal_, indiceLenCopyParams);
     }
 }
 
