@@ -189,13 +189,8 @@ private:
                 commOp.WaitScaleCombinedAic(turnIdx);
             }
 
-            SyncAll<false>();
-
-            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
-
             if (isPermuteOut) {
                 uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
-
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
                 }
@@ -204,6 +199,10 @@ private:
                     commOp.PermuteOutput(turnIdx, realCombineSize);
                 }
             }
+
+            SyncAll<false>();
+
+            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
         }
     }
 
