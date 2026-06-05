@@ -207,7 +207,6 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckDtypeAndAttr()
     
     auto cosType = context_->GetInputDesc(COS_INDEX)->GetDataType();
     auto sinType = context_->GetInputDesc(SIN_INDEX)->GetDataType();
-    
     // Check cos/sin dtype: same type, and must be F32, BF16, or F16
     if (cosType != sinType) {
         std::string dtypeMsg = ToString(cosType) + " and " + ToString(sinType);
@@ -293,7 +292,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckRotaryModeShapeRelati
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo() {
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo()
+{
     OP_LOGI(context_, "TEST LOG, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
     if (sliceStart_ < 0 || sliceEnd_ < 0 || sliceLength_ < 0 || sliceEnd_ > d_) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
@@ -362,8 +362,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
     if (sliceRangeListPtr->GetSize() == 0) {
         sliceStart_ = 0;
         sliceEnd_ = d_;
-    }
-    else {
+    } else {
         const int64_t *expertRangeList = reinterpret_cast<const int64_t *>(sliceRangeListPtr->GetData());
         sliceStart_ = expertRangeList[0];
         sliceEnd_ = expertRangeList[1];

@@ -67,7 +67,7 @@ TILING_DATA_FIELD_DEF(int64_t, coreBUbLoopTail);
 TILING_DATA_FIELD_DEF(int64_t, ubFactor);
 TILING_DATA_FIELD_DEF(int64_t, start);
 TILING_DATA_FIELD_DEF(int64_t, blockFactor);
-//A3 主线
+// A3 主线
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
 TILING_DATA_FIELD_DEF(int64_t, seqLen);
 TILING_DATA_FIELD_DEF(int64_t, numHeads);
@@ -139,8 +139,7 @@ static inline T CeilAlign(T num, T rnd)
 template <typename T>
 static inline T FloorDiv(T x, T y)
 {
-    if (y == 0)
-    {
+    if (y == 0) {
         return 0;
     }
     return x / y;
@@ -149,8 +148,7 @@ static inline T FloorDiv(T x, T y)
 template <typename T>
 static inline T FloorAlign(T x, T y)
 {
-    if (y == 0)
-    {
+    if (y == 0) {
         return 0;
     }
     return x / y * y;
@@ -238,32 +236,32 @@ public:
     ge::graphStatus GetPlatformInfo();
     ge::graphStatus GetShapeAttrsInfo();
     ge::graphStatus JudgeSliceInfo();
-    virtual ge::graphStatus GetWorkspaceSize() 
+    virtual ge::graphStatus GetWorkspaceSize()
     {
         return ge::GRAPH_SUCCESS;
     }
 
-    virtual ge::graphStatus DoLibApiTiling() 
+    virtual ge::graphStatus DoLibApiTiling()
     {
         return ge::GRAPH_SUCCESS;
     }
 
-    virtual ge::graphStatus DoOpTiling() 
+    virtual ge::graphStatus DoOpTiling()
     {
         return ge::GRAPH_SUCCESS;
     }
 
-    virtual uint64_t GetTilingKey() const 
+    virtual uint64_t GetTilingKey() const
     {
         return 0;
     }
 
-    virtual ge::graphStatus PostTiling() 
+    virtual ge::graphStatus PostTiling()
     {
         return ge::GRAPH_SUCCESS;
     }
 
-    virtual bool IsCapable() 
+    virtual bool IsCapable()
     {
         return true;
     }
@@ -278,8 +276,7 @@ public:
     ge::graphStatus DoTiling()
     {
         auto ret = GetShapeAttrsInfo();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
         // No-op: empty slice, nothing to compute
@@ -301,32 +298,26 @@ public:
             return ge::GRAPH_SUCCESS;
         }
         ret = GetPlatformInfo();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
-        if (!IsCapable())
-        {
+        if (!IsCapable()) {
             return ge::GRAPH_PARAM_INVALID;
         }
         ret = DoOpTiling();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
         ret = DoLibApiTiling();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
         ret = GetWorkspaceSize();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
         ret = PostTiling();
-        if (ret != ge::GRAPH_SUCCESS)
-        {
+        if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
         context_->SetTilingKey(GetTilingKey());

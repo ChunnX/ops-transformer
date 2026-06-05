@@ -40,9 +40,9 @@ extern "C" {
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos,
-                                                                    const aclTensor* sin, int64_t rotary_mode,
-                                                                    const aclIntArray *partialSlice, aclTensor* out,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
+                                                                   const aclTensor* sin, int64_t rotary_mode,
+                                                                   const aclIntArray *partialSlice, aclTensor* out,
+                                                                   uint64_t* workspaceSize, aclOpExecutor** executor);
 /* @brief aclnnInplacePartialRotaryMul的第二段接口，用于执行计算.
  * @param [in] workspace: 在npu device侧申请的workspace内存起址
  * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口获取。
@@ -51,7 +51,7 @@ ACLNN_API aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTens
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnInplacePartialRotaryMul(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                    aclrtStream stream);
+                                                   aclrtStream stream);
 
 #ifdef __cplusplus
 }

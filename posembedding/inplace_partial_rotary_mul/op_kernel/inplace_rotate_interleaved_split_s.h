@@ -138,7 +138,7 @@ template <typename T>
 __aicore__ inline void InterleavedSplitS<T>::InitData(const InplacePartialRopeRegbaseTilingData *tiling)
 {
     tiling_ = tiling;
-    batchSize = tiling_->batchSize; //B
+    batchSize = tiling_->batchSize; // B
     seqLen = tiling_->seqLen;  // S
     numHeads = tiling_->numHeads;  // N
     headDim = tiling_->headDim;  // D
