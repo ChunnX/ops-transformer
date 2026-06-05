@@ -65,7 +65,7 @@ static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBar
                         (std::to_string(timeOutStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                     return false);
     auto timeOutDesc = context->GetOptionalInputDesc(config.timeOutIndex);
-    OP_TILING_CHECK(timeOutDesc == nullptr, OP_LOGE(nodeName, "timeOutDesc is null."), return false);
+    OP_TILING_CHECK(timeOutDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "timeOutDesc"), return false);
     OP_TILING_CHECK(timeOutDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "timeOut",
             Ops::Base::ToString(timeOutDesc->GetDataType()).c_str(), "INT32"), return false);
@@ -90,7 +90,7 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
                         (std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                     return false);
     auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
-    OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE(nodeName, "elasticInfoDesc is null."), return false);
+    OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"), return false);
     OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "elasticInfo",
             Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str(), "INT32"), return false);
@@ -195,7 +195,7 @@ static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const
     const DistributeBarrierConfig &config)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName, "contextShape is null."),
+    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextShape"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "context",
@@ -205,7 +205,7 @@ static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
 
     auto contextDesc = context->GetInputDesc(config.contextIndex);
-    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE(nodeName, "contextDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextDesc"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "context",
             Ops::Base::ToString(contextDesc->GetDataType()).c_str(), "INT32"), return ge::GRAPH_FAILED);

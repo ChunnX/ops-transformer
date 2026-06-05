@@ -10,6 +10,7 @@
 
 #include "aclnn_allto_all_matmul.h"
 #include "securec.h"
+#include "log/log.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -38,15 +39,15 @@ using namespace matmul_allto_all_check;
 // 检查必要输入是否为空，必须非空
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
     if (x1 == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x1 should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllMatmul", "x1");
         return false;
     }
     if (x2 == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllMatmul", "x2");
         return false;
     }
     if (output == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Output should not be null.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllMatmul", "output");
         return false;
     }
     return true;
@@ -59,18 +60,15 @@ static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool t
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X1 is empty tensor with zero dimK, which is unsupported.");
+      OP_LOGE_FOR_INVALID_VALUE("aclnnAlltoAllMatmul", "x1_dimK", std::to_string(kVal1).c_str(), "should not be zero");
       return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X2 is empty tensor with zero dimK, which is unsupported.");
+      OP_LOGE_FOR_INVALID_VALUE("aclnnAlltoAllMatmul", "x2_dimK", std::to_string(kVal2).c_str(), "should not be zero");
       return false;
     });
     OP_API_CHECK((nVal == ZERO), {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-      "X2 is empty tensor with zero dimN, which is unsupported.");
+      OP_LOGE_FOR_INVALID_VALUE("aclnnAlltoAllMatmul", "x2_dimN", std::to_string(nVal).c_str(), "should not be zero");
       return false;
     });
     return true;
@@ -93,9 +91,8 @@ static bool CheckAllDtypesValid(const aclTensor* x1, const aclTensor* x2, const 
     OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnMatmulAlltoAll, biasOptional dtype should be x1Dtype or float32 , but it is %s.",
-                op::ToString(biasOptional->GetDataType()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE("aclnnAlltoAllMatmul", "biasOptional",
+                op::ToString(biasOptional->GetDataType()).GetString(), "x1Dtype or float32");
             return false;
         }
     }
@@ -111,36 +108,31 @@ static bool CheckFormat(const aclTensor* x1, const aclTensor* x2, const aclTenso
                         const aclTensor* output, const aclTensor* alltoAllOutOptional) {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnAlltoAllMatmul, x1 format %s does not support private format.",
-                op::ToString(x1->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x1",
+            op::ToString(x1->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnAlltoAllMatmul, x2 format %s does not support private format.",
-                op::ToString(x2->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x2",
+            op::ToString(x2->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnAlltoAllMatmul, biasOptional format %s does not support private format.",
-                op::ToString(biasOptional->GetStorageFormat()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "biasOptional",
+                op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnAlltoAllMatmul, output format %s does not support private format.",
-                op::ToString(output->GetStorageFormat()).GetString());
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "output",
+            op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (alltoAllOutOptional != nullptr) {
         if (IsPrivateFormat(alltoAllOutOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnAlltoAllMatmul, alltoAllOutOptional format %s does not support private format.",
-                op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
+            OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "alltoAllOutOptional",
+                op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
@@ -272,7 +264,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllMatmulGetWorkspaceSize", "x2", "non-contiguous",
+                "x2 is non-contiguous and transposeX2 is set simultaneously");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -288,8 +281,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
     } else {
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The x2 must be contiguous, but it is non-contiguous.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllMatmulGetWorkspaceSize", "x2", "non-contiguous",
+            "x2 must be contiguous, but it is non-contiguous");
         return ACLNN_ERR_PARAM_INVALID;});
     }
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output, alltoAllOutOptional);
@@ -302,8 +295,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
         x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output, alltoAllOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllMatmul, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnAlltoAllMatmulGetWorkspaceSize interface call failed.");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllMatmulGetWorkspaceSize",
+            "This is an error in launch aicore, aclnnAlltoAllMatmulGetWorkspaceSize interface call failed.");
     }
     return ret;
 }
@@ -326,8 +319,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmul(void *workspace, uint64_t workspaceSi
     }
     aclnnStatus ret = aclnnInnerAlltoAllMatmul(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnInnerAlltoAllMatmul interface call failed.");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnAlltoAllMatmul",
+            "This is an error in launch aicore, aclnnInnerAlltoAllMatmul interface call failed.");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

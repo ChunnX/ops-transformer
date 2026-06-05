@@ -102,7 +102,7 @@ static void PrintTilingDataInfo(const char *nodeName, FFNToAttentionTilingData &
 static bool CheckAndSetAttrs(gert::TilingContext* context, const char *nodeName, FFNToAttentionTilingData &tilingData, std::string &group)
 {
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "GetAttrs returned nullptr!"), return false);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return false);
  
     auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     auto worldSizePtr = attrs->GetAttrPointer<int>(ATTR_WORLD_SIZE_INDEX);
@@ -307,37 +307,37 @@ static bool CheckInputDataType(gert::TilingContext* context, const char *nodeNam
     bool isInputRankTable = (attnRankTableShape != nullptr);
 
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
+    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
     OP_TILING_CHECK((xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x",
             Ops::Base::ToString(xDesc->GetDataType()).c_str(), "BF16, FLOAT16"), return false);
 
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
-    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE(nodeName, "sessionIdDesc is null."), return false);
+    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sessionIdDesc"), return false);
     OP_TILING_CHECK(sessionIdDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "sessionId",
             Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str(), "INT32"), return false);
 
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
-    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE(nodeName, "microBatchIdDesc is null."), return false);
+    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "microBatchIdDesc"), return false);
     OP_TILING_CHECK(microBatchIdDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "microBatchId",
             Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str(), "INT32"), return false);
 
     auto tokenIdDesc = context->GetInputDesc(INPUT_TOKEN_IDS_INDEX);
-    OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE(nodeName, "tokenIdDesc is null."), return false);
+    OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tokenIdDesc"), return false);
     OP_TILING_CHECK(tokenIdDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "tokenId",
             Ops::Base::ToString(tokenIdDesc->GetDataType()).c_str(), "INT32"), return false);
 
     auto expertOffsetDesc = context->GetInputDesc(INPUT_EXPERT_OFFSETS_INDEX);
-    OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE(nodeName, "expertOffsetDesc is null."), return false);
+    OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertOffsetDesc"), return false);
     OP_TILING_CHECK(expertOffsetDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expertOffset",
             Ops::Base::ToString(expertOffsetDesc->GetDataType()).c_str(), "INT32"), return false);
 
     auto atcualTokenNumDesc = context->GetInputDesc(INPUT_ACTUAL_TOKEN_NUM_INDEX);
-    OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
+    OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "atcualTokenNumDesc"), return false);
     OP_TILING_CHECK(atcualTokenNumDesc->GetDataType() != ge::DT_INT64,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "atcualTokenNum",
             Ops::Base::ToString(atcualTokenNumDesc->GetDataType()).c_str(), "INT64"), return false);
@@ -345,7 +345,7 @@ static bool CheckInputDataType(gert::TilingContext* context, const char *nodeNam
     if (isInputRankTable) {
         auto attnRankTableDesc = context->GetInputDesc(INPUT_ATTN_RANK_TABLE_INDEX);
          OP_TILING_CHECK(attnRankTableDesc == nullptr,
-            OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "attnRankTableDesc"), return false);
          OP_TILING_CHECK(attnRankTableDesc->GetDataType() != ge::DT_INT32,
             OP_LOGE_FOR_INVALID_DTYPE(nodeName, "attnRankTable",
                 Ops::Base::ToString(attnRankTableDesc->GetDataType()).c_str(), "INT32"), return false);      
@@ -360,14 +360,14 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
     bool isInputRankTable = (attnRankTableShape != nullptr);
 
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
+    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x",
             Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
                 xDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
-    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE(nodeName, "sessionIdDesc is null."), return false);
+    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sessionIdDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "sessionId",
@@ -375,7 +375,7 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
                 sessionIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
-    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE(nodeName, "microBatchIdDesc is null."), return false);
+    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "microBatchIdDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "microBatchId",
@@ -383,7 +383,7 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
                 microBatchIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto tokenIdDesc = context->GetInputDesc(INPUT_TOKEN_IDS_INDEX);
-    OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE(nodeName, "tokenIdDesc is null."), return false);
+    OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tokenIdDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tokenIdDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tokenId",
@@ -391,7 +391,7 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
                 tokenIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto expertOffsetDesc = context->GetInputDesc(INPUT_EXPERT_OFFSETS_INDEX);
-    OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE(nodeName, "expertOffsetDesc is null."), return false);
+    OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertOffsetDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertOffsetDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertOffset",
@@ -399,7 +399,7 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
                 expertOffsetDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto atcualTokenNumDesc = context->GetInputDesc(INPUT_ACTUAL_TOKEN_NUM_INDEX);
-    OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
+    OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "atcualTokenNumDesc"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(atcualTokenNumDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "atcualTokenNum",
@@ -408,7 +408,7 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
 
     if (isInputRankTable) {
         auto attnRankTableDesc = context->GetInputDesc(INPUT_ATTN_RANK_TABLE_INDEX);
-        OP_TILING_CHECK(attnRankTableDesc == nullptr, OP_LOGE(nodeName, "attnRankTableDesc is null."), return false);
+        OP_TILING_CHECK(attnRankTableDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attnRankTableDesc"), return false);
         OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(attnRankTableDesc->GetStorageFormat())) ==
             ge::FORMAT_FRACTAL_NZ,
             OP_LOGE_FOR_INVALID_FORMAT(nodeName, "attnRankTable",
@@ -435,7 +435,7 @@ static bool CheckInputAndSetTilingData(gert::TilingContext* context, const char 
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -490,9 +490,11 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext* context)
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
     CalWinSize(*tilingData, neededSize, viableWindowSize);
-    OP_TILING_CHECK(neededSize > viableWindowSize, 
-                    OP_LOGE(nodeName, "needed size:%lu is greater than viable window size:%lu.", neededSize, viableWindowSize),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(neededSize > viableWindowSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "neededSize",
+            (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
+            "needed size should not be greater than viable window size"),
+        return ge::GRAPH_FAILED);
  
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,

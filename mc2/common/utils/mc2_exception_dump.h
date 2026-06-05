@@ -68,7 +68,7 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
             strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-            OP_LOGE(OP_NAME, "groupName is invalid.");
+            OP_LOGE_FOR_INVALID_VALUE(OP_NAME, "groupName", "invalid", "valid group name");
             return;
         }
         groupName_ = std::string(groupName);
@@ -169,7 +169,7 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf)
 {
     // check if dir and buf valid
     if (IsStrEmpty(dir) || IsStrEmpty(name)) {
-        OP_LOGE(OP_NAME, "Dump path or buf is null.");
+        OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "dir or name");
         return -1;
     }
 
@@ -204,7 +204,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
 {
     // Get hccl context from its addr
     if (op == nullptr) {
-        OP_LOGE(OP_NAME, "op parameter is null.");
+        OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "op");
         return -1;
     }
     void* winAddr = nullptr;
@@ -212,7 +212,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
     auto is_support_op = MC2_OP_CONTEXT.find(op);
     if (is_support_op == MC2_OP_CONTEXT.end()) {
         // 不支持的算子
-        OP_LOGE(OP_NAME, "Get winarr does not support this operator, op_name = %s", op);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "op", op, "operator not supported");
         return -1;
     }
     const std::string& context_type = is_support_op->second;
@@ -227,12 +227,13 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
         }
         HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
         if (winContext == nullptr) {
-            OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+            OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "winContext");
             return -1;
         }
         OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
         if (winContext->rankId >= HCCL_MTE_MAX_RANK_NUM) {
-            OP_LOGE(OP_NAME, "rankId %u exceeds array bound %u.", winContext->rankId, HCCL_MTE_MAX_RANK_NUM);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "rankId",
+                std::to_string(winContext->rankId).c_str(), "must be less than HCCL_MTE_MAX_RANK_NUM");
             return -1;
         }
         winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
@@ -247,17 +248,18 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
         }
         Mc2Aclnn::Mc2MoeContext* winContext = reinterpret_cast<Mc2Aclnn::Mc2MoeContext *>(hcclArgs.data());
         if (winContext == nullptr) {
-            OP_LOGE(OP_NAME, "Cast to winContext failed. Mc2MoeContext is null.");
+            OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "winContext");
             return -1;
         }
         OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u", winContext->epRankId);
         if (winContext->epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
-            OP_LOGE(OP_NAME, "epRankId %u exceeds array bound %u.", winContext->epRankId, Mc2Aclnn::HCCL_MAX_RANK_SIZE);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "epRankId",
+                std::to_string(winContext->epRankId).c_str(), "must be less than HCCL_MAX_RANK_SIZE");
             return -1;
         }
         winAddr = reinterpret_cast<void *>(winContext->epHcclBuffer_[winContext->epRankId]);
     } else {
-        OP_LOGE(OP_NAME, "Unknown context type: %s", context_type.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "context_type", context_type.c_str(), "unknown context type");
         return -1;
     }
     if (winAddr == nullptr) {
@@ -285,7 +287,7 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
     }
     CommContextForDump* winContext = reinterpret_cast<CommContextForDump *>(hcclArgs.data());
     if (winContext == nullptr) {
-        OP_LOGE(OP_NAME, "Cast to winContext failed. CommContextForDump is null.");
+        OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "winContext");
         return -1;
     }
     OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u", winContext->epRankid);
@@ -309,7 +311,7 @@ inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
 {
     if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
         strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-        OP_LOGE(OP_NAME, "groupName is invalid.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupName", groupName, "groupName is invalid");
         return -1;
     }
     uint64_t size;

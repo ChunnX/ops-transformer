@@ -54,7 +54,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotS
     auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
     auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
     OP_TILING_CHECK(sendCountsTensorShape != nullptr || recvCountsTensorShape != nullptr,
-                    OP_LOGE(opName_, "sendCountsTensor and recvCountsTensor should all be nullptr now!"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sendCountsTensor/recvCountsTensor",
+                        "not nullptr", "both should be nullptr"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -79,7 +80,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
     bool allNull = isMmXNull && isMmWeightNull && isMmYNull;
     bool allNotNull = !isMmXNull && !isMmWeightNull && !isMmYNull;
     OP_TILING_CHECK(!allNull && !allNotNull,
-                    OP_LOGE(opName_, "mmXTensor, mmWeightTensor, mmYTensor must exist or not exist at same time."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mmXTensor/mmWeightTensor/mmYTensor",
+                        "inconsistent state", "all must exist or not exist at same time"),
                     return ge::GRAPH_FAILED);
     if (!isMmXNull) {
         localParams_.hasSharedMm = true;
@@ -194,7 +196,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     localParams_.mmWeightDim1 = mmWeightStorageShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t mmYDim0 = mmYStorageShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(localParams_.Bs != mmYDim0,
-                    OP_LOGE(opName_, "mmX DIM0 %lu and mmY DIM0 %lu is not valid!", localParams_.Bs, mmYDim0),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "mmX/mmY",
+                        std::to_string(localParams_.Bs).c_str(), "mmX DIM0 should equal mmY DIM0"),
                     return ge::GRAPH_FAILED);
     localParams_.N2 = mmYStorageShape->GetStorageShape().GetDim(DIM_ONE);
 
@@ -215,9 +218,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
     OP_TILING_CHECK(transMmWeightPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "transMmWeight"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*transMmWeightPtr == true && !localParams_.hasSharedMm,
-                    OP_LOGE(opName_,
-                            "transMmWeight should not be true when mmX is null! transMmWeight=%d, hasSharedMm=%d.",
-                            *transMmWeightPtr, localParams_.hasSharedMm),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transMmWeight",
+                        std::to_string(*transMmWeightPtr).c_str(), "should not be true when mmX is null"),
                     return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
@@ -280,14 +282,15 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
 
     bool isEpNumMatch = (localParams_.ep > 0) && (localParams_.ep < 33);
     if (!isEpNumMatch) {
-        OP_LOGE(opName_, "ep (experts per rank) should be in range (0, %ld], but got %lu.", MAX_EXPERT_NUM_PER_RANK,
-                localParams_.ep);
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "ep", std::to_string(localParams_.ep).c_str(),
+            std::to_string(MAX_EXPERT_NUM_PER_RANK).c_str());
         return ge::GRAPH_FAILED;
     }
     uint64_t expertNum = localParams_.ep * rankDim;
     OP_TILING_CHECK(
         expertNum > MAX_EXPERT_NUM,
-        OP_LOGE(opName_, "experts(ep * epWorldSize) max is %lu, but now is %lu !", MAX_EXPERT_NUM, expertNum),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
+            "exceeds max expert num"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
