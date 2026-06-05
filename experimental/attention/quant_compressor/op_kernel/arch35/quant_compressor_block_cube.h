@@ -54,6 +54,7 @@ public:
 private:
     using T = float;
     using X_T = hifloat8_t;
+    static constexpr uint32_t NZ_C0_SIZE = 32 / sizeof(X_T);
     
     __aicore__ inline uint32_t GetMSize(const RunInfo &info, uint32_t coffId);
     __aicore__ inline void CopyXGmToL1(const RunInfo &info, LocalTensor<X_T> xL1Tensor, uint32_t hIdx, uint32_t kBase);
@@ -235,13 +236,13 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo
     uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
     uint32_t copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
 
-    uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
+    uint32_t xL1Offset = 0 * NZ_C0_SIZE;
     uint64_t sIdx = tStart;    // 起始s在整个T的起始点
     uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
     uint32_t nValue = copySeqCnt;
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
+    uint32_t dstNzC0Stride = Align(copySeqCnt, NZ_C0_SIZE);
     CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
@@ -252,11 +253,11 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::CopyWeightGmToL1(LocalTen
     // coffId=0, 搬运左矩阵的数据; coffId=1, 搬运右矩阵的数据
     uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.dIdx * constInfo_.dBaseSize * constInfo_.hSize + hIdx;
     uint32_t wkvL1Offset = 0;
-    uint32_t wgateL1Offset = constInfo_.dBaseSize * (32 / sizeof(X_T)); // wgate与wkv的起始点相隔dBaseSize个32B
+    uint32_t wgateL1Offset = constInfo_.dBaseSize * NZ_C0_SIZE; // wgate与wkv的起始点相隔dBaseSize个32B
     uint32_t nValue = constInfo_.dBaseSize;
     uint32_t dValue = kBase;
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+    uint32_t dstNzC0Stride = Align(2 * constInfo_.dBaseSize, NZ_C0_SIZE); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
     CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
     CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset],  nValue, dValue, srcDValue, dstNzC0Stride);
 }
@@ -268,14 +269,14 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::LoadAToL0(const RunInfo &
     uint32_t mSize = info.dealSeqCnt;
 
     uint32_t mSizeAlign = Align(mSize, 16U);
-    uint32_t xTensorOffset = kStart * mSizeAlign + mStart * (32 / sizeof(X_T));
+    uint32_t xTensorOffset = kStart * mSizeAlign + mStart * NZ_C0_SIZE;
     uint32_t mDealSizeAlign = Align(mDealSize, 16U);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = mDealSizeAlign / 16;
-    loadData2DParamsV2.kStep = kBase / (32 / sizeof(X_T));
+    loadData2DParamsV2.kStep = kBase / NZ_C0_SIZE;
     loadData2DParamsV2.srcStride = mSizeAlign / 16;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
@@ -289,14 +290,14 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::LoadBToL0(const RunInfo &
     uint32_t nSize = 2 * constInfo_.dBaseSize;
 
     uint32_t nSizeAlign = Align(nSize, 16U);
-    uint64_t wTensorOffset = nSizeAlign * kStart + nStart * (32 / sizeof(X_T));
+    uint64_t wTensorOffset = nSizeAlign * kStart + nStart * NZ_C0_SIZE;
     uint32_t nDealSizeAlign = Align(nDealSize, 16U);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = nDealSizeAlign / 16;
-    loadData2DParamsV2.kStep = kBase / (32 / sizeof(X_T));
+    loadData2DParamsV2.kStep = kBase / NZ_C0_SIZE;
     loadData2DParamsV2.srcStride = nSizeAlign / 16;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
@@ -360,6 +361,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP>::ComputeMm1(const RunInfo 
     uint32_t hStart = info.hStart;
     uint32_t hSize = info.dealKSize;
     uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * K_L1_BASE; // 每组核内的h循环起始不同
+    hIdxStart = 0;
     uint32_t kSize = K_L1_BASE;
     for (uint32_t h = 0; h < hSize; h += K_L1_BASE) {
         // h方向错位搬运
