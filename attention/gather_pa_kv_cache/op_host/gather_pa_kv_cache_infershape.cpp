@@ -81,18 +81,8 @@ static ge::graphStatus InferShape4GatherPaKvCacheNz(gert::InferShapeContext *con
     auto keyOutshape = context->GetOutputShape(DIM_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyOutshape);
 
-    auto numBlocks = keyCacheShape->GetDim(DIM_0);
-    auto blockSize = keyCacheShape->GetDim(DIM_2);
-    if (valueCacheShape->GetDim(DIM_0) != numBlocks || valueCacheShape->GetDim(DIM_2) != blockSize) {
-        OP_LOGE(context, "dim_0, dim_2 of KCache/VCache should be same.");
-        return ge::GRAPH_FAILED;
-    }
     if (keyOutshape->GetDimNum() != DIM_2 || valueOutshape->GetDimNum() != DIM_2) {
         OP_LOGE(context, "K&V's dim num should be 2.");
-        return ge::GRAPH_FAILED;
-    }
-    if (keyOutshape->GetDim(DIM_0) != valueOutshape->GetDim(DIM_0)) {
-        OP_LOGE(context, "K&V's dim_0 must be same.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -114,28 +104,8 @@ static ge::graphStatus InferShape4GatherPaKvCacheNd(gert::InferShapeContext *con
         OP_LOGE(context, "KCache&VCache's dim num should be 4.");
         return ge::GRAPH_FAILED;
     }
-    auto numBlocks = keyCacheShape->GetDim(DIM_0);
-    auto blockSize = keyCacheShape->GetDim(DIM_1);
-    if (valueCacheShape->GetDim(DIM_0) != numBlocks || valueCacheShape->GetDim(DIM_1) != blockSize) {
-        OP_LOGE(context, "dim_0, dim_1 of KCache/VCache should be same.");
-        return ge::GRAPH_FAILED;
-    }
     if (keyOutshape->GetDimNum() != DIM_3 || valueOutshape->GetDimNum() != DIM_3) {
         OP_LOGE(context, "K&V's dim num should be 3.");
-        return ge::GRAPH_FAILED;
-    }
-    if (keyOutshape->GetDim(DIM_0) != valueOutshape->GetDim(DIM_0)) {
-        OP_LOGE(context, "K&V's dim_0 must be same.");
-        return ge::GRAPH_FAILED;
-    }
-    if (keyOutshape->GetDim(DIM_1) != keyCacheShape->GetDim(DIM_2) ||
-        keyOutshape->GetDim(DIM_2) != keyCacheShape->GetDim(DIM_3)) {
-        OP_LOGE(context, "dim_1/2 of K must be same as dim_2/3 of KCache.");
-        return ge::GRAPH_FAILED;
-    }
-    if (valueOutshape->GetDim(DIM_1) != valueCacheShape->GetDim(DIM_2) ||
-        valueOutshape->GetDim(DIM_2) != valueCacheShape->GetDim(DIM_3)) {
-        OP_LOGE(context, "dim_1/2 of V must be same as dim_2/3 of VCache.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
