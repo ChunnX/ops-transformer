@@ -430,8 +430,8 @@ __aicore__ inline void GroupMatmul2Optimize(
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
-    // 单 UB buffer [64K, 192K)：256×256×sizeof(bf16)=128KB，与旧代码 CombineTileOptimize 同布局
-    constexpr int64_t GMM2_UB_BASE = 64 * 1024;
+    // 单 UB buffer [0, 128K)：256×256×sizeof(bf16)=128KB，与 GMM1 / pr_6321 GMM2 同起始地址
+    constexpr int64_t GMM2_UB_BASE = 0;
 
     auto l0cOutUb = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE), layoutC);
@@ -512,7 +512,8 @@ __aicore__ inline void GroupMatmul2Optimize(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
 
-            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
+            // toAiv1=true: L0C→UB 写到 AIV1 的 UB 空间
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape, true);
 
             NotifyVector(16);
 
