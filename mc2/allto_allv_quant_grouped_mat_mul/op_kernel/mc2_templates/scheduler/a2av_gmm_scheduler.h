@@ -221,6 +221,9 @@ private:
     uint32_t e_ = 0U;
     bool isScaleBatchMode_ = false;
     bool isCombinedMode_ = false;
+
+    static constexpr uint32_t NOTIFY_FLAG_ID_BASE = 8U;
+    static constexpr uint32_t FLAG_ID_ROTATE_COUNT = 3U;
 };
 }; // namespace MC2KernelTemplate
 #endif
