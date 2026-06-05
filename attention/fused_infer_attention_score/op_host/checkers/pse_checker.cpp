@@ -149,7 +149,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
             if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
                 (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
                 std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
-                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" + std::to_string(S2 + actualSharedPrefixLen) + "].";
+                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" + std::to_string(s2Size + actualSharedPrefixLen) + "].";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
                                                       reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -159,7 +159,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
             if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
                 (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
                 std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
-                    std::to_string(n1Size) + ", 1, >=" + std::to_string(S2+actualSharedPrefixLen) + "].";
+                    std::to_string(n1Size) + ", 1, >=" + std::to_string(s2Size + actualSharedPrefixLen) + "].";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
                                                       reason.c_str());
                 return ge::GRAPH_FAILED;

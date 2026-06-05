@@ -111,7 +111,7 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
             return ge::GRAPH_FAILED;
         }
     } else {
-        std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, " +
+        std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
             "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FusedInferAttentionScore", "input_layout",
             std::string(inputLayoutPtr).c_str(), reason.c_str());
@@ -332,7 +332,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
     if (*numHeadsPtr == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "num_heads",
             std::to_string(*numHeadsPtr).c_str(), "The value of num_heads cannot be 0.");
         return ge::GRAPH_FAILED;
     }
