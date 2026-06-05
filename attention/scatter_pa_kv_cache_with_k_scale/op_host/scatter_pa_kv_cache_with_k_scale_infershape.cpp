@@ -22,7 +22,7 @@ constexpr size_t OUTPUT_KEY_CACHE_IDX = 0;
 constexpr size_t OUTPUT_VALUE_CACHE_IDX = 1;
 constexpr size_t OUTPUT_KEY_SCALE_CACHE_IDX = 2;
 
-static ge::graphStatus InferShapeScatterKvCacheWithKScale(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeScatterPaKvCacheWithKScale(gert::InferShapeContext *context)
 {
     const gert::Shape *kcShape = context->GetInputShape(INPUT_KEY_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kcShape);
@@ -54,5 +54,5 @@ static ge::graphStatus InferShapeScatterKvCacheWithKScale(gert::InferShapeContex
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(ScatterKvCacheWithKScale).InferShape(InferShapeScatterKvCacheWithKScale);
+IMPL_OP_INFERSHAPE(ScatterPaKvCacheWithKScale).InferShape(InferShapeScatterPaKvCacheWithKScale);
 } // namespace ops

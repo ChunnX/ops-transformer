@@ -1,6 +1,6 @@
-# aclnnScatterKvCacheWithKScale
+# aclnnScatterPaKvCacheWithKScale
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/scatter_kv_cache_with_k_scale)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/scatter_pa_kv_cache_with_k_scale)
 
 ## 产品支持情况
 
@@ -37,10 +37,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnScatterKvCacheWithKScaleGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnScatterKvCacheWithKScale"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnScatterPaKvCacheWithKScale"接口执行计算。
 
 ```Cpp
-aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(
+aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(
   const aclTensor   *key, 
   const aclTensor   *value, 
   aclTensor         *keyCacheRef, 
@@ -54,14 +54,14 @@ aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(
 ```
 
 ```Cpp
-aclnnStatus aclnnScatterKvCacheWithKScale(
+aclnnStatus aclnnScatterPaKvCacheWithKScale(
   void          *workspace, 
   uint64_t       workspaceSize, 
   aclOpExecutor *executor, 
   aclrtStream    stream)
 ```
 
-## aclnnScatterKvCacheWithKScaleGetWorkspaceSize
+## aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize
 
 - **参数说明**
 
@@ -242,7 +242,7 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
   </tbody>
   </table>
 
-## aclnnScatterKvCacheWithKScale
+## aclnnScatterPaKvCacheWithKScale
 
 - **参数说明**
 
@@ -266,7 +266,7 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnScatterKvCacheWithKScaleGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnScatterKvCacheWithKScale默认确定性实现。
+  - aclnnScatterPaKvCacheWithKScale默认确定性实现。
 - key、value、keyCacheRef、valueCacheRef的数据类型必须一致（FLOAT8_E5M2或FLOAT8_E4M3FN）；
 - keyScale、keyScaleCacheRef的数据类型必须为FLOAT；
 - slotMapping的数据类型必须为INT32或INT64；
@@ -308,7 +308,7 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
   #include <iostream>
   #include <vector>
   #include "acl/acl.h"
-  #include "aclnnop/aclnn_scatter_kv_cache_with_k_scale.h"
+  #include "aclnnop/aclnn_scatter_pa_kv_cache_with_k_scale.h"
 
   #define CHECK_RET(cond, return_expr) \
     do {                               \
@@ -416,17 +416,17 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    ret = aclnnScatterKvCacheWithKScaleGetWorkspaceSize(key, value, keyCache, valueCache,
+    ret = aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(key, value, keyCache, valueCache,
                                                          slotMapping, keyScale, keyScaleCache,
                                                          cacheLayout, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterKvCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
       ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-    ret = aclnnScatterKvCacheWithKScale(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterKvCacheWithKScale failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnScatterPaKvCacheWithKScale(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCacheWithKScale failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

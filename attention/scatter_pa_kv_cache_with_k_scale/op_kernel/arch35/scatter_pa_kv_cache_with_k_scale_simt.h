@@ -8,18 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef SCATTER_KV_CACHE_WITH_K_SCALE_SIMT_H
-#define SCATTER_KV_CACHE_WITH_K_SCALE_SIMT_H
+#ifndef SCATTER_PA_KV_CACHE_WITH_K_SCALE_SIMT_H
+#define SCATTER_PA_KV_CACHE_WITH_K_SCALE_SIMT_H
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "simt_api/asc_simt.h"
 #include "simt_api/common_functions.h"
 #include "simt_api/device_sync_functions.h"
-#include "scatter_kv_cache_with_k_scale_tiling_data.h"
-#include "scatter_kv_cache_with_k_scale_tiling_key.h"
+#include "scatter_pa_kv_cache_with_k_scale_tiling_data.h"
+#include "scatter_pa_kv_cache_with_k_scale_tiling_key.h"
 
-namespace NsScatterKvCacheWithKScale {
+namespace NsScatterPaKvCacheWithKScale {
 
 using namespace AscendC;
 // ==================== 线程数配置常量 ====================
@@ -174,7 +174,7 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<IDX_T>) inline void ScatterKvKe
 // ==================== Launch helpers (magic/shift + stride cast + VF call) ====================
 
 template <typename T_FP8, typename T_SLOT, typename IDX_T>
-__aicore__ inline void LaunchKVVf(const ScatterKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T kH,
+__aicore__ inline void LaunchKVVf(const ScatterPaKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T kH,
                                   IDX_T bS, IDX_T mS, __gm__ T_FP8 *kg, __gm__ T_FP8 *vg, __gm__ T_FP8 *kcg,
                                   __gm__ T_FP8 *vcg, __gm__ T_SLOT *sg)
 {
@@ -199,7 +199,7 @@ __aicore__ inline void LaunchKVVf(const ScatterKvCacheWithKScaleTilingData *t, I
 }
 
 template <typename T_FP8, typename T_SLOT, typename IDX_T>
-__aicore__ inline void LaunchKeyVf(const ScatterKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T kH,
+__aicore__ inline void LaunchKeyVf(const ScatterPaKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T kH,
                                    IDX_T bS, IDX_T mS, __gm__ T_FP8 *kg, __gm__ T_FP8 *kcg, __gm__ T_SLOT *sg)
 {
     IDX_T m1, s1, m2, s2, m3, s3;
@@ -217,7 +217,7 @@ __aicore__ inline void LaunchKeyVf(const ScatterKvCacheWithKScaleTilingData *t, 
 }
 
 template <typename T_FP8, typename T_SLOT, typename IDX_T>
-__aicore__ inline void LaunchValueVf(const ScatterKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T vH,
+__aicore__ inline void LaunchValueVf(const ScatterPaKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T vH,
                                      IDX_T bS, IDX_T mS, __gm__ T_FP8 *vg, __gm__ T_FP8 *vcg, __gm__ T_SLOT *sg)
 {
     IDX_T m1, s1, m2, s2, m3, s3;
@@ -235,7 +235,7 @@ __aicore__ inline void LaunchValueVf(const ScatterKvCacheWithKScaleTilingData *t
 }
 
 template <typename T_SLOT, typename IDX_T>
-__aicore__ inline void LaunchKeyScaleVf(const ScatterKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T bS,
+__aicore__ inline void LaunchKeyScaleVf(const ScatterPaKvCacheWithKScaleTilingData *t, IDX_T count, IDX_T nH, IDX_T bS,
                                         IDX_T mS, __gm__ float *ksg, __gm__ float *kscg, __gm__ T_SLOT *sg)
 {
     IDX_T m1, s1, m2, s2;
@@ -253,7 +253,7 @@ __aicore__ inline void LaunchKeyScaleVf(const ScatterKvCacheWithKScaleTilingData
 
 template <typename T_FP8, typename T_SLOT, uint32_t SCH_MODE>
 __aicore__ inline void Process(GM_ADDR key, GM_ADDR value, GM_ADDR keyCache, GM_ADDR valueCache, GM_ADDR slotMapping,
-                               GM_ADDR keyScale, GM_ADDR keyScaleCache, const ScatterKvCacheWithKScaleTilingData *t)
+                               GM_ADDR keyScale, GM_ADDR keyScaleCache, const ScatterPaKvCacheWithKScaleTilingData *t)
 {
     uint64_t nT = static_cast<uint64_t>(t->numTokens);
     uint64_t nH = static_cast<uint64_t>(t->numHead);
@@ -316,5 +316,5 @@ __aicore__ inline void Process(GM_ADDR key, GM_ADDR value, GM_ADDR keyCache, GM_
     WaitFlag<HardEvent::V_S>(0);
 }
 
-} // namespace NsScatterKvCacheWithKScale
-#endif // SCATTER_KV_CACHE_WITH_K_SCALE_SIMT_H
+} // namespace NsScatterPaKvCacheWithKScale
+#endif // SCATTER_PA_KV_CACHE_WITH_K_SCALE_SIMT_H

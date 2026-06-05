@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file scatter_kv_cache_with_k_scale_proto.h
- * \brief scatter_kv_cache_with_k_scale算子原型定义
+ * \file scatter_pa_kv_cache_with_k_scale_proto.h
+ * \brief scatter_pa_kv_cache_with_k_scale算子原型定义
  */
 
-#ifndef SCATTER_KV_CACHE_WITH_K_SCALE_PROTO_H_
-#define SCATTER_KV_CACHE_WITH_K_SCALE_PROTO_H_
+#ifndef SCATTER_PA_KV_CACHE_WITH_K_SCALE_PROTO_H_
+#define SCATTER_PA_KV_CACHE_WITH_K_SCALE_PROTO_H_
 
 #include "graph/operator_reg.h"
 
@@ -80,7 +80,7 @@ namespace ge {
  * @endcode
  */
 
-REG_OP(ScatterKvCacheWithKScale)
+REG_OP(ScatterPaKvCacheWithKScale)
     .INPUT(key, "T")
     .INPUT(value, "T")
     .INPUT(key_cache, "T")
@@ -93,7 +93,7 @@ REG_OP(ScatterKvCacheWithKScale)
     .OUTPUT(k_scale_cache, "FP32")
     .ATTR(cache_layout, String, "BNBD")
     .DATATYPE(T, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))
-    .OP_END_FACTORY_REG(ScatterKvCacheWithKScale)
+    .OP_END_FACTORY_REG(ScatterPaKvCacheWithKScale)
 
 } // namespace ge
-#endif // SCATTER_KV_CACHE_WITH_K_SCALE_PROTO_H_
+#endif // SCATTER_PA_KV_CACHE_WITH_K_SCALE_PROTO_H_

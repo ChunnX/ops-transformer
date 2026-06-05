@@ -15,9 +15,9 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
-class ScatterKvCacheWithKScaleOpBuilder(OpBuilder):
+class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
     """
-    torch_npu适配：scatter_kv_cache_with_k_scale算子
+    torch_npu适配：scatter_pa_kv_cache_with_k_scale算子
     
     功能：将FP8格式的key/value和对应的key_scale更新到KV cache中
     
@@ -35,15 +35,15 @@ class ScatterKvCacheWithKScaleOpBuilder(OpBuilder):
     """
     
     def __init__(self):
-        super(ScatterKvCacheWithKScaleOpBuilder, self).__init__("npu_scatter_kv_cache_with_k_scale")
+        super(ScatterPaKvCacheWithKScaleOpBuilder, self).__init__("npu_scatter_pa_kv_cache_with_k_scale")
 
     def sources(self):
         """C++源代码路径"""
-        return ['ops/csrc/scatter_kv_cache_with_k_scale.cpp']
+        return ['ops/csrc/scatter_pa_kv_cache_with_k_scale.cpp']
 
     def schema(self) -> str:
         """PyTorch算子签名"""
-        return "npu_scatter_kv_cache_with_k_scale(" \
+        return "npu_scatter_pa_kv_cache_with_k_scale(" \
                "Tensor key, Tensor value, Tensor key_cache, Tensor value_cache, " \
                "Tensor slot_mapping, Tensor key_scale, Tensor key_scale_cache, " \
                "str cache_layout='BNBD') -> (Tensor, Tensor, Tensor)"
@@ -56,7 +56,7 @@ class ScatterKvCacheWithKScaleOpBuilder(OpBuilder):
         输出dtype与输入dtype相同
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_scatter_kv_cache_with_k_scale_meta(
+        def npu_scatter_pa_kv_cache_with_k_scale_meta(
             key, value, key_cache, value_cache,
             slot_mapping, key_scale, key_scale_cache,
             cache_layout='BNBD'
@@ -84,18 +84,18 @@ class ScatterKvCacheWithKScaleOpBuilder(OpBuilder):
 
 
 # 实例化OpBuilder
-scatter_kv_cache_with_k_scale_op_builder = ScatterKvCacheWithKScaleOpBuilder()
-op_module = scatter_kv_cache_with_k_scale_op_builder.load()
+scatter_pa_kv_cache_with_k_scale_op_builder = ScatterPaKvCacheWithKScaleOpBuilder()
+op_module = scatter_pa_kv_cache_with_k_scale_op_builder.load()
 
 
-@impl(AS_LIBRARY, scatter_kv_cache_with_k_scale_op_builder.name, "PrivateUse1")
-def npu_scatter_kv_cache_with_k_scale(
+@impl(AS_LIBRARY, scatter_pa_kv_cache_with_k_scale_op_builder.name, "PrivateUse1")
+def npu_scatter_pa_kv_cache_with_k_scale(
     key, value, key_cache, value_cache,
     slot_mapping, key_scale, key_scale_cache,
     cache_layout='BNBD'
 ):
     """
-    torch_npu实现：scatter_kv_cache_with_k_scale
+    torch_npu实现：scatter_pa_kv_cache_with_k_scale
     
     Args:
         key: [num_tokens, num_head, k_head_size] FP8格式，需要更新的key
@@ -115,7 +115,7 @@ def npu_scatter_kv_cache_with_k_scale(
         2. slot_mapping值必须在[0, num_blocks*block_size-1]范围内
         3. 超出范围的slot会被跳过（不更新对应cache）
     """
-    return op_module.npu_scatter_kv_cache_with_k_scale(
+    return op_module.npu_scatter_pa_kv_cache_with_k_scale(
         key, value, key_cache, value_cache,
         slot_mapping, key_scale, key_scale_cache,
         cache_layout
@@ -138,8 +138,8 @@ if _TORCHAIR_AVAILABLE:
         Support(torch.float8_e5m2, (2, 2, 64), (2, 2, 64)),
         Support(torch.float8_e4m3fn, (2, 2, 64), (2, 2, 64)),
     ])
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_scatter_kv_cache_with_k_scale.default)
-    def converter_scatter_kv_cache_with_k_scale(
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_scatter_pa_kv_cache_with_k_scale.default)
+    def converter_scatter_pa_kv_cache_with_k_scale(
         key: Tensor,
         value: Tensor,
         key_cache: Tensor,
@@ -152,7 +152,7 @@ if _TORCHAIR_AVAILABLE:
         meta_outputs: TensorSpec = None
     ):
         """
-        torchair GE转换器：scatter_kv_cache_with_k_scale
+        torchair GE转换器：scatter_pa_kv_cache_with_k_scale
         
         将PyTorch算子转换为GE图引擎算子，用于图模式执行
         
@@ -170,7 +170,7 @@ if _TORCHAIR_AVAILABLE:
         Returns:
             tuple: (key_cache_out, value_cache_out, key_scale_cache_out)
         """
-        return ge.ScatterKvCacheWithKScale(
+        return ge.ScatterPaKvCacheWithKScale(
             key,
             value,
             key_cache,

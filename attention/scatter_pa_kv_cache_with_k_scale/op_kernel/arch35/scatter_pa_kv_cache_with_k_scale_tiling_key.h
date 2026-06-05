@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef SCATTER_KV_CACHE_WITH_K_SCALE_TILING_KEY_H
-#define SCATTER_KV_CACHE_WITH_K_SCALE_TILING_KEY_H
+#ifndef SCATTER_PA_KV_CACHE_WITH_K_SCALE_TILING_KEY_H
+#define SCATTER_PA_KV_CACHE_WITH_K_SCALE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -19,7 +19,7 @@
 #define SCATTER_KV_CACHE_SCENE_GENERALIZED  1
 
 ASCENDC_TPL_ARGS_DECL(
-    ScatterKvCacheWithKScale,
+    ScatterPaKvCacheWithKScale,
     ASCENDC_TPL_UINT_DECL(schMode, 1,
         ASCENDC_TPL_UI_LIST,
         SCATTER_KV_CACHE_SCENE_SPECIALIZED,
@@ -31,4 +31,4 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
         SCATTER_KV_CACHE_SCENE_SPECIALIZED,
         SCATTER_KV_CACHE_SCENE_GENERALIZED)));
 
-#endif // SCATTER_KV_CACHE_WITH_K_SCALE_TILING_KEY_H
+#endif // SCATTER_PA_KV_CACHE_WITH_K_SCALE_TILING_KEY_H

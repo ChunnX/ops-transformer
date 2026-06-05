@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file scatter_kv_cache_with_k_scale_tiling.cpp
- * \brief Tiling implementation for scatter_kv_cache_with_k_scale
+ * \file scatter_pa_kv_cache_with_k_scale_tiling.cpp
+ * \brief Tiling implementation for scatter_pa_kv_cache_with_k_scale
  */
 
 #include "platform/platform_ascendc.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
-#include "../../../op_kernel/arch35/scatter_kv_cache_with_k_scale_tiling_data.h"
-#include "../../../op_kernel/arch35/scatter_kv_cache_with_k_scale_tiling_key.h"
+#include "../../../op_kernel/arch35/scatter_pa_kv_cache_with_k_scale_tiling_data.h"
+#include "../../../op_kernel/arch35/scatter_pa_kv_cache_with_k_scale_tiling_key.h"
 
 namespace optiling {
 
@@ -74,7 +74,7 @@ constexpr int64_t MIN_CORE_NUM = 1;
 constexpr size_t SIZEOF_32BIT = 4;
 constexpr size_t SIZEOF_64BIT = 8;
 
-struct ScatterKvCacheWithKScaleCompileInfo {};
+struct ScatterPaKvCacheWithKScaleCompileInfo {};
 
 // ==================== tensor info (shape + stride, align gather_elements) ====================
 
@@ -334,7 +334,7 @@ static ge::graphStatus ExtractTensorParams(gert::TilingContext *context, TensorP
 
 // ==================== fill tiling data ====================
 
-static void FillTilingData(ScatterKvCacheWithKScaleTilingData *tiling, const TensorParams &params, int64_t coreNum)
+static void FillTilingData(ScatterPaKvCacheWithKScaleTilingData *tiling, const TensorParams &params, int64_t coreNum)
 {
     tiling->numTokens = params.numTokens;
     tiling->numHead = params.numHead;
@@ -358,9 +358,9 @@ static void FillTilingData(ScatterKvCacheWithKScaleTilingData *tiling, const Ten
 
 // ==================== dump tiling info ====================
 
-static void DumpTilingInfo(gert::TilingContext *context, const ScatterKvCacheWithKScaleTilingData *tiling)
+static void DumpTilingInfo(gert::TilingContext *context, const ScatterPaKvCacheWithKScaleTilingData *tiling)
 {
-    OP_LOGI(context, "==================== ScatterKvCacheWithKScale Tiling Info ====================");
+    OP_LOGI(context, "==================== ScatterPaKvCacheWithKScale Tiling Info ====================");
     OP_LOGI(context, "Basic Parameters:");
     OP_LOGI(context, "  numTokens      : %lld", tiling->numTokens);
     OP_LOGI(context, "  numHead        : %lld", tiling->numHead);
@@ -406,7 +406,7 @@ static void SetTilingKeyByScene(gert::TilingContext *context, int64_t kHeadSize,
 
 // ==================== main tiling ====================
 
-static ge::graphStatus ScatterKvCacheWithKScaleTilingFunc(gert::TilingContext *context)
+static ge::graphStatus ScatterPaKvCacheWithKScaleTilingFunc(gert::TilingContext *context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -425,10 +425,10 @@ static ge::graphStatus ScatterKvCacheWithKScaleTilingFunc(gert::TilingContext *c
                               params.numBlocks, params.blockSize) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "ValidateShape error"), return ge::GRAPH_FAILED);
 
-    ScatterKvCacheWithKScaleTilingData *tiling = context->GetTilingData<ScatterKvCacheWithKScaleTilingData>();
+    ScatterPaKvCacheWithKScaleTilingData *tiling = context->GetTilingData<ScatterPaKvCacheWithKScaleTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
-    OP_CHECK_IF(memset_s(tiling, sizeof(ScatterKvCacheWithKScaleTilingData), 0,
-                         sizeof(ScatterKvCacheWithKScaleTilingData)) != EOK,
+    OP_CHECK_IF(memset_s(tiling, sizeof(ScatterPaKvCacheWithKScaleTilingData), 0,
+                         sizeof(ScatterPaKvCacheWithKScaleTilingData)) != EOK,
                 OP_LOGE(context, "memset tiling data error"), return ge::GRAPH_FAILED);
 
     FillTilingData(tiling, params, coreNum);
@@ -445,13 +445,13 @@ static ge::graphStatus ScatterKvCacheWithKScaleTilingFunc(gert::TilingContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForScatterKvCacheWithKScale([[maybe_unused]] gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForScatterPaKvCacheWithKScale([[maybe_unused]] gert::TilingParseContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(ScatterKvCacheWithKScale)
-    .Tiling(ScatterKvCacheWithKScaleTilingFunc)
-    .TilingParse<ScatterKvCacheWithKScaleCompileInfo>(TilingParseForScatterKvCacheWithKScale);
+IMPL_OP_OPTILING(ScatterPaKvCacheWithKScale)
+    .Tiling(ScatterPaKvCacheWithKScaleTilingFunc)
+    .TilingParse<ScatterPaKvCacheWithKScaleCompileInfo>(TilingParseForScatterPaKvCacheWithKScale);
 
 } // namespace optiling

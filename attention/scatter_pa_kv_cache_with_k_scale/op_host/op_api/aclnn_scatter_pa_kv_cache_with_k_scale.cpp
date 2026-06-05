@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_scatter_kv_cache_with_k_scale.h"
+#include "aclnn_scatter_pa_kv_cache_with_k_scale.h"
 
 #include <new>
 
-#include "scatter_kv_cache_with_k_scale.h"
+#include "scatter_pa_kv_cache_with_k_scale.h"
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -250,7 +250,7 @@ static aclnnStatus ProcessNonContiguous(const aclTensor *key, const aclTensor *v
         keyScaleCacheRef->GetViewStrides(), keyScaleCacheRef->GetViewOffset());
     CHECK_RET(keyScaleCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto scatterResult = l0op::ScatterKvCacheWithKScale(
+    auto scatterResult = l0op::ScatterPaKvCacheWithKScale(
         keyView, valueView, const_cast<aclTensor *>(keyCacheView), const_cast<aclTensor *>(valueCacheView),
         slotMappingContiguous, const_cast<aclTensor *>(keyScaleView), const_cast<aclTensor *>(keyScaleCacheView),
         cacheLayoutOptional, uniqueExecutor.get());
@@ -287,7 +287,7 @@ static aclnnStatus ProcessContiguous(const aclTensor *key, const aclTensor *valu
     auto keyScaleCacheContiguous = const_cast<aclTensor *>(l0op::Contiguous(keyScaleCacheRef, uniqueExecutor.get()));
     CHECK_RET(keyScaleCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto scatterResult = l0op::ScatterKvCacheWithKScale(
+    auto scatterResult = l0op::ScatterPaKvCacheWithKScale(
         keyContiguous, valueContiguous, keyCacheContiguous, valueCacheContiguous, slotMappingContiguous,
         keyScaleContiguous, keyScaleCacheContiguous, cacheLayoutOptional, uniqueExecutor.get());
     CHECK_RET(std::get<0>(scatterResult) != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -308,14 +308,14 @@ static aclnnStatus ProcessContiguous(const aclTensor *key, const aclTensor *valu
 
 } // namespace
 
-aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
+aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
                                                           aclTensor *keyCacheRef, aclTensor *valueCacheRef,
                                                           const aclTensor *slotMapping, aclTensor *keyScale,
                                                           aclTensor *keyScaleCacheRef, char *cacheLayoutOptional,
                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
-        aclnnScatterKvCacheWithKScale,
+        aclnnScatterPaKvCacheWithKScale,
         DFX_IN(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef, cacheLayoutOptional),
         DFX_OUT(keyCacheRef, valueCacheRef, keyScaleCacheRef));
 
@@ -356,12 +356,12 @@ aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, 
                              cacheLayoutOptional, workspaceSize, executor, uniqueExecutor);
 }
 
-aclnnStatus aclnnScatterKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnScatterPaKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream)
 {
-    L2_DFX_PHASE_2(aclnnScatterKvCacheWithKScale);
+    L2_DFX_PHASE_2(aclnnScatterPaKvCacheWithKScale);
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
-               "ScatterKvCacheWithKScale launch aicore failed.");
+               "ScatterPaKvCacheWithKScale launch aicore failed.");
     return ACLNN_SUCCESS;
 }
 

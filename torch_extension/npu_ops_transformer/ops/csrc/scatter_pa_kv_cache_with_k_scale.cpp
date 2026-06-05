@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file npu_scatter_kv_cache_with_k_scale.cpp
- * \brief torch_npu适配：scatter_kv_cache_with_k_scale算子的C++绑定
+ * \file npu_scatter_pa_kv_cache_with_k_scale.cpp
+ * \brief torch_npu适配：scatter_pa_kv_cache_with_k_scale算子的C++绑定
  */
 
 #include <torch/extension.h>
@@ -19,7 +19,7 @@
 namespace op_api {
 
 /**
- * scatter_kv_cache_with_k_scale算子的C++实现
+ * scatter_pa_kv_cache_with_k_scale算子的C++实现
  *
  * 功能：将FP8格式的key/value和对应的key_scale更新到KV cache中
  *
@@ -35,7 +35,7 @@ namespace op_api {
  * @return tuple(key_cache_out, value_cache_out, key_scale_cache_out)
  */
 std::tuple<at::Tensor, at::Tensor, at::Tensor>
-npu_scatter_kv_cache_with_k_scale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &key_cache,
+npu_scatter_pa_kv_cache_with_k_scale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &key_cache,
                                   const at::Tensor &value_cache, const at::Tensor &slot_mapping,
                                   const at::Tensor &key_scale, const at::Tensor &key_scale_cache,
                                   std::string cache_layout)
@@ -70,7 +70,7 @@ npu_scatter_kv_cache_with_k_scale(const at::Tensor &key, const at::Tensor &value
     char *cache_layout_ptr = const_cast<char *>(cache_layout.c_str());
 
     // 调用ACLNN算子
-    ACLNN_CMD(aclnnScatterKvCacheWithKScale, key, value, key_cache_out, value_cache_out, slot_mapping, key_scale,
+    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, key_cache_out, value_cache_out, slot_mapping, key_scale,
               key_scale_cache_out, cache_layout_ptr);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(key_cache_out, value_cache_out, key_scale_cache_out);
@@ -79,8 +79,8 @@ npu_scatter_kv_cache_with_k_scale(const at::Tensor &key, const at::Tensor &value
 // 绑定C++函数到Python模块
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_scatter_kv_cache_with_k_scale", &npu_scatter_kv_cache_with_k_scale,
-          "scatter_kv_cache_with_k_scale operator for torch_npu");
+    m.def("npu_scatter_pa_kv_cache_with_k_scale", &npu_scatter_pa_kv_cache_with_k_scale,
+          "scatter_pa_kv_cache_with_k_scale operator for torch_npu");
 }
 
 } // namespace op_api

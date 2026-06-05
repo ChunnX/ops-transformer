@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "scatter_kv_cache_with_k_scale.h"
+#include "scatter_pa_kv_cache_with_k_scale.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"
@@ -18,18 +18,18 @@
 using namespace op;
 
 namespace l0op {
-OP_TYPE_REGISTER(ScatterKvCacheWithKScale);
+OP_TYPE_REGISTER(ScatterPaKvCacheWithKScale);
 
 std::tuple<const aclTensor *, const aclTensor *, const aclTensor *>
-ScatterKvCacheWithKScale(const aclTensor *key, const aclTensor *value, aclTensor *keyCacheRef, aclTensor *valueCacheRef,
+ScatterPaKvCacheWithKScale(const aclTensor *key, const aclTensor *value, aclTensor *keyCacheRef, aclTensor *valueCacheRef,
                          const aclTensor *slotMapping, aclTensor *keyScale, aclTensor *keyScaleCacheRef,
                          char *cacheLayoutOptional, aclOpExecutor *executor)
 {
-    L0_DFX(ScatterKvCacheWithKScale, key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef,
+    L0_DFX(ScatterPaKvCacheWithKScale, key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef,
            cacheLayoutOptional);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        ScatterKvCacheWithKScale,
+        ScatterPaKvCacheWithKScale,
         OP_INPUT(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef),
         OP_OUTPUT(keyCacheRef, valueCacheRef, keyScaleCacheRef), OP_ATTR(cacheLayoutOptional));
     if (ret != ACLNN_SUCCESS) {

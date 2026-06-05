@@ -8,14 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file test_aclnn_scatter_kv_cache_with_k_scale.cpp
+ * \file test_aclnn_scatter_pa_kv_cache_with_k_scale.cpp
  * \brief
  */
 
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_scatter_kv_cache_with_k_scale.h"
+#include "aclnnop/aclnn_scatter_pa_kv_cache_with_k_scale.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -133,17 +133,17 @@ int main()
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    ret = aclnnScatterKvCacheWithKScaleGetWorkspaceSize(key, value, keyCache, valueCache, slotMapping, keyScale,
+    ret = aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(key, value, keyCache, valueCache, slotMapping, keyScale,
                                                         keyScaleCache, cacheLayout, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterKvCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-    ret = aclnnScatterKvCacheWithKScale(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterKvCacheWithKScale failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnScatterPaKvCacheWithKScale(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCacheWithKScale failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

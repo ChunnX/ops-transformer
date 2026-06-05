@@ -8,21 +8,21 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_SCATTER_KV_CACHE_WITH_K_SCALE_H_
-#define ACLNN_SCATTER_KV_CACHE_WITH_K_SCALE_H_
+#ifndef ACLNN_SCATTER_PA_KV_CACHE_WITH_K_SCALE_H_
+#define ACLNN_SCATTER_PA_KV_CACHE_WITH_K_SCALE_H_
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-aclnnStatus aclnnScatterKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
+aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
                                                           aclTensor *keyCacheRef, aclTensor *valueCacheRef,
                                                           const aclTensor *slotMapping, aclTensor *keyScale,
                                                           aclTensor *keyScaleCacheRef, char *cacheLayoutOptional,
                                                           uint64_t *workspaceSize, aclOpExecutor **executor);
 
-aclnnStatus aclnnScatterKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnScatterPaKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus

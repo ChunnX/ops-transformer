@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-message(STATUS "=== Debug: start ops.attention.scatter_kv_cache_with_k_scale.CMakeLists.txt ")
+message(STATUS "=== Debug: start ops.attention.scatter_pa_kv_cache_with_k_scale.CMakeLists.txt ")
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 if(NOT ENABLE_TEST)
     list(REMOVE_ITEM CURRENT_DIRS tests)

@@ -11,9 +11,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class ScatterKvCacheWithKScale : public OpDef {
+class ScatterPaKvCacheWithKScale : public OpDef {
 public:
-    explicit ScatterKvCacheWithKScale(const char* name) : OpDef(name)
+    explicit ScatterPaKvCacheWithKScale(const char* name) : OpDef(name)
     {
         // 4 种 dtype 组合：
         // 1. DT_FLOAT8_E5M2 + DT_INT64
@@ -121,9 +121,9 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "scatter_kv_cache_with_k_scale_apt");
+            .ExtendCfgInfo("opFile.value", "scatter_pa_kv_cache_with_k_scale_apt");
         this->AICore().AddConfig("ascend950", aicoreConfig);
     }
 };
-OP_ADD(ScatterKvCacheWithKScale);
+OP_ADD(ScatterPaKvCacheWithKScale);
 } // namespace ops

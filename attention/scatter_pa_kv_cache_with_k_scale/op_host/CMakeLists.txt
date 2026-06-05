@@ -7,8 +7,30 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+message(STATUS "=== Debug: start ops.attention.scatter_pa_kv_cache_with_k_scale.op_host.CMakeLists.txt")
 
-message(STATUS "=== Debug: start ops.attention.scatter_kv_cache_with_k_scale.op_graph.CMakeLists.txt ")
 if (BUILD_OPEN_PROJECT)
-    add_graph_plugin_sources()
+    target_sources(op_host_aclnnExc PRIVATE
+        scatter_pa_kv_cache_with_k_scale_def.cpp
+    )
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME ScatterPaKvCacheWithKScale
+            COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME ScatterPaKvCacheWithKScale
+            OPTIONS --cce-auto-sync=off
+                    -Wno-deprecated-declarations
+                    -Werror
+        )
+    endif()
+endif()
+
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_op_to_compiled_list()
+    add_modules_sources(OPTYPE scatter_pa_kv_cache_with_k_scale ACLNNTYPE aclnn_exclude)
 endif()
