@@ -14,6 +14,8 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
+QLI_V2_METADATA_SIZE = 1024
+
 
 class QuantLightningIndexerV2MetadataOpBuilder(OpBuilder):
     def __init__(self):
@@ -44,7 +46,7 @@ class QuantLightningIndexerV2MetadataOpBuilder(OpBuilder):
             cmp_residual_k: Optional[Tensor] = None, batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None, layout_q: Optional[str] = None,
             layout_k: Optional[str] = None, mask_mode: Optional[int] = None, cmp_ratio: Optional[int] = None):
-            return torch.empty((1024), dtype=torch.int32, device="npu")
+            return torch.empty((QLI_V2_METADATA_SIZE), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
 quant_lightning_indexer_v2_metadata_op_builder = QuantLightningIndexerV2MetadataOpBuilder()
