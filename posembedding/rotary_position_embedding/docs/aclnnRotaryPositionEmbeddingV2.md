@@ -305,7 +305,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-  输入张量x支持BNSD、BSND、SBND排布。
+  输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
   输入张量x和输出张量y的shape必须完全相同。
   输入张量cos和sin的shape必须完全相同.
@@ -317,19 +317,20 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
       - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
+    - 当x为TND时，cos、sin支持T1D、TND
   - interleave模式：
-    - B * N < 1000
+    - B * N < 1000（N<1000当x为TND）
     - 当x为BNSD时，cos、sin支持11SD
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
-
+    - 当x为TND时，cos、sin支持T1D
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   输入张量x支持BNSD、BSND、SBND、TND排布，不支持辅助矩阵输入。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
-## 调用示例
+  - 当x为TND时，cos、sin支持T1D、TND。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 

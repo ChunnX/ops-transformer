@@ -84,11 +84,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x1Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
+                    "x1Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x1Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x2Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
+                    "x2Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x2Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -193,7 +193,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr),
-                    OP_LOGE(opName_, "rawTilingDataPtr is nullptr."),
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
         sizeof(MatmulReduceScatterV2TilingData), rawTilingDataPtr->GetCapacity());

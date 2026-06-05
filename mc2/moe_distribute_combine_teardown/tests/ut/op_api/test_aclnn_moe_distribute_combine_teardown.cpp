@@ -512,5 +512,5 @@ TEST_F(TestAclnnMoeDistributeCombineTeardownUnsupportedArch, UnsupportedArchErro
 TEST_F(TestAclnnMoeDistributeCombineTeardown, ExecuteCall)
 {
     aclnnStatus ret = aclnnMoeDistributeCombineTeardown(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }

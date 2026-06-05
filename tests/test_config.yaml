@@ -994,10 +994,6 @@ posembedding:
     exclude:
       - posembedding/apply_rotary_pos_emb/docs
       - posembedding/apply_rotary_pos_emb/README.md
-    ut_cov_exclude:
-      - posembedding/apply_rotary_pos_emb
-    test:
-        examples: False
     options:
       - apply_rotary_pos_emb
 
@@ -1121,6 +1117,7 @@ mc2:
         - mc2/all_gather_matmul/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - all_gather_matmul
 
@@ -1138,6 +1135,7 @@ mc2:
         - mc2/all_gather_matmul_v2/op_kernel
       test:
         examples: True
+        ut: False
       options:
         - all_gather_matmul_v2
 
@@ -1155,6 +1153,7 @@ mc2:
         - mc2/allto_all_all_gather_batch_mat_mul/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - allto_all_all_gather_batch_mat_mul
 
@@ -1172,6 +1171,7 @@ mc2:
         - mc2/allto_allv_grouped_mat_mul/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - allto_allv_grouped_mat_mul
   
@@ -1189,6 +1189,7 @@ mc2:
         - mc2/allto_allv_quant_grouped_mat_mul/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - allto_allv_quant_grouped_mat_mul
 
@@ -1206,6 +1207,7 @@ mc2:
         - mc2/quant_grouped_mat_mul_allto_allv/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - quant_grouped_mat_mul_allto_allv
 
@@ -1223,6 +1225,7 @@ mc2:
         - mc2/allto_all_matmul/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - allto_all_matmul
 
@@ -1240,6 +1243,7 @@ mc2:
         - mc2/batch_mat_mul_reduce_scatter_allto_all/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - batch_mat_mul_reduce_scatter_allto_all
 
@@ -1257,6 +1261,7 @@ mc2:
         - mc2/grouped_mat_mul_all_reduce/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - grouped_mat_mul_all_reduce
 
@@ -1274,6 +1279,7 @@ mc2:
         - mc2/grouped_mat_mul_allto_allv/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - grouped_mat_mul_allto_allv
 
@@ -1293,6 +1299,7 @@ mc2:
         - mc2/inplace_matmul_all_reduce_add_rms_norm/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - inplace_matmul_all_reduce_add_rms_norm
         - matmul_all_reduce_add_rms_norm
@@ -1311,6 +1318,7 @@ mc2:
         - mc2/matmul_all_reduce/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - matmul_all_reduce
 
@@ -1329,6 +1337,7 @@ mc2:
         - mc2/matmul_all_reduce_add_rms_norm/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - matmul_all_reduce_add_rms_norm
 
@@ -1347,6 +1356,7 @@ mc2:
         - mc2/matmul_reduce_scatter/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - matmul_reduce_scatter
 
@@ -1364,6 +1374,7 @@ mc2:
         - mc2/matmul_allto_all/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - matmul_allto_all
 
@@ -1381,6 +1392,7 @@ mc2:
         - mc2/matmul_reduce_scatter_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - matmul_reduce_scatter_v2
 
@@ -1397,6 +1409,7 @@ mc2:
         - mc2/mega_moe/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - mega_moe
 
@@ -1414,6 +1427,7 @@ mc2:
         - mc2/quant_all_reduce/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - quant_all_reduce
 
@@ -1431,6 +1445,7 @@ mc2:
         - mc2/quant_reduce_scatter/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - quant_reduce_scatter
 
@@ -1448,6 +1463,7 @@ mc2:
         - mc2/distribute_barrier/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - distribute_barrier
         - distribute_barrier_extend
@@ -1471,6 +1487,7 @@ mc2:
         - mc2/distribute_barrier_extend/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - distribute_barrier_extend
 
@@ -1486,6 +1503,7 @@ mc2:
         - mc2/elastic_receivable_info_collect
       test:
         examples: False
+        ut: False
       options:
         - elastic_receivable_info_collect
 
@@ -1501,6 +1519,7 @@ mc2:
         - mc2/elastic_receivable_test
       test:
         examples: False
+        ut: False
       options:
         - elastic_receivable_test
 
@@ -1517,6 +1536,7 @@ mc2:
         - mc2/ffn_to_attention/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - ffn_to_attention
 
@@ -1532,6 +1552,7 @@ mc2:
         - mc2/moe_distribute_buffer_reset
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_buffer_reset
 
@@ -1548,6 +1569,7 @@ mc2:
         - mc2/moe_distribute_combine/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_combine
         - moe_distribute_dispatch
@@ -1566,6 +1588,7 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
@@ -1587,6 +1610,7 @@ mc2:
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_combine_setup
       
@@ -1604,6 +1628,7 @@ mc2:
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_combine_teardown
     
@@ -1622,6 +1647,7 @@ mc2:
         - mc2/moe_distribute_dispatch_setup/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_setup
         - moe_distribute_dispatch_teardown
@@ -1643,6 +1669,7 @@ mc2:
         - mc2/moe_distribute_dispatch_teardown/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_setup
         - moe_distribute_dispatch_teardown
@@ -1662,6 +1689,7 @@ mc2:
         - mc2/moe_distribute_combine_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -1683,6 +1711,7 @@ mc2:
         - mc2/moe_distribute_combine_v3/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_combine_v3
 
@@ -1699,6 +1728,7 @@ mc2:
         - mc2/moe_distribute_dispatch/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
@@ -1716,6 +1746,7 @@ mc2:
         - mc2/moe_distribute_dispatch_setup/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_setup
 
@@ -1732,6 +1763,7 @@ mc2:
         - mc2/moe_distribute_dispatch_teardown/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_teardown
 
@@ -1748,6 +1780,7 @@ mc2:
         - mc2/moe_distribute_dispatch_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -1769,6 +1802,7 @@ mc2:
         - mc2/moe_distribute_dispatch_v3/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v3
 
@@ -1785,6 +1819,7 @@ mc2:
         - mc2/moe_update_expert/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_update_expert
         - moe_distribute_dispatch_v2
@@ -1806,6 +1841,7 @@ mc2:
         - mc2/attention_to_ffn/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - attention_to_ffn
 

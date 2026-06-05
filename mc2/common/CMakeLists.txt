@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
-if(BUILD_OPEN_PROJECT)
+if (BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
@@ -44,13 +44,14 @@ if(BUILD_OPEN_PROJECT)
         if(UT_TEST_ALL OR OP_HOST_UT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
-    endif()
+    endif() 
     file(GLOB COMMON_UTILS_SRCS
         utils/mc2_platform_info.cpp
     )
     file(GLOB GENTASK_SRCS
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
+        op_graph/mc2_moe_graph_context.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")

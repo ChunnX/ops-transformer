@@ -109,7 +109,7 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantAllRed
  */
 static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "Context"), return ge::GRAPH_FAILED);
     QuantAllReduceShapeInfo shapeInfo;
     // get shape_info
     OPS_CHECK(GetShapeInfo(context, shapeInfo) != ge::GRAPH_SUCCESS,
@@ -146,7 +146,7 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
  */
 static ge::graphStatus InferDataTypeQuantAllReduce(gert::InferDataTypeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "Context"), return ge::GRAPH_FAILED);
 
     OP_LOGD(INNER_DEBUG, "start to infer datatype for quant_all_reduce");
     ge::DataType get_dtype = context->GetOutputDataType(OUTPUT_INDEX);

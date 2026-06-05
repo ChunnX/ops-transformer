@@ -98,7 +98,7 @@ static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* ho
     para.bias = host_api_ctx->GetOptionalInputTensor(INDEX_IN_BIAS);
 
     para.x1Acl = ConvertMmType(x1, false);
-    OPS_CHECK(para.x1Acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1Acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x1Acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1Acl"), return ge::GRAPH_FAILED);
 
     // 获取x1_quant_mode和x2_quant_mode
     const int64_t* x1QuantModePtr = attrs->GetInt(INDEX_ATTR_X1_QUANT_MODE);
@@ -117,7 +117,7 @@ static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* ho
         const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
         para.x2Acl = ConvertMmType(x2, transX2);
     }
-    OPS_CHECK(para.x2Acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2Acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x2Acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2Acl"), return ge::GRAPH_FAILED);
 
     return ge::SUCCESS;
 }
@@ -143,7 +143,7 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
                                    const gert::RuntimeAttrs* attrs, AttrParas& para)
 {
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
-    OPS_CHECK(para.group == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "group is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
 
     const bool* transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);
     const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
@@ -151,21 +151,21 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
     if (commScaleOptional != nullptr) {
         para.commScaleOptional = ConvertMmType(commScaleOptional, transX2);
         OPS_CHECK(
-            para.commScaleOptional == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "commScaleOptional is null"),
+            para.commScaleOptional == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "commScaleOptional"),
             return ge::GRAPH_FAILED);
     }
     const auto x1OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_OFFSET);
     if (x1OffsetOptional != nullptr) {
         para.x1OffsetOptional = ConvertMmType(x1OffsetOptional, false);
         OPS_CHECK(
-            para.x1OffsetOptional == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1OffsetOptional is null"),
+            para.x1OffsetOptional == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1OffsetOptional"),
             return ge::GRAPH_FAILED);
     }
     const auto x2OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_OFFSET);
     if (x2OffsetOptional != nullptr) {
         para.x2OffsetOptional = ConvertMmType(x2OffsetOptional, false);
         OPS_CHECK(
-            para.x2OffsetOptional == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2OffsetOptional is null"),
+            para.x2OffsetOptional == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2OffsetOptional"),
             return ge::GRAPH_FAILED);
     }
     const int64_t* commQuantModePtr = attrs->GetInt(INDEX_ATTR_COMMON_QUANT_MODE);
@@ -198,7 +198,7 @@ static ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api
     if (x1Scale != nullptr) {
         para.x1ScaleAcl = ConvertMmType(x1Scale, false);
         OPS_CHECK(
-            para.x1ScaleAcl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1ScaleAcl is null"),
+            para.x1ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1ScaleAcl"),
             return ge::GRAPH_FAILED);
     }
 
@@ -222,7 +222,7 @@ static ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api
         const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
         para.x2ScaleAcl = ConvertMmType(x2Scale, transX2);
     }
-    OPS_CHECK(para.x2ScaleAcl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2ScaleAcl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x2ScaleAcl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2ScaleAcl"), return ge::GRAPH_FAILED);
 
     return ge::SUCCESS;
 }
@@ -236,7 +236,7 @@ static ge::graphStatus AlltoAllMatmulExecuteFunc(gert::OpExecuteContext* host_ap
     OPS_LOG_D(AlltoAllMatmulInfo, "Start to fallback for matmul_allto_all.");
     OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(AlltoAllMatmulInfo, "host_api_ctx is null"), return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
     CommonMatmulParas matmulParas;
     ge::graphStatus retPara = GetCommonMatmulInputPara(host_api_ctx, attrs, matmulParas);
@@ -258,7 +258,7 @@ static ge::graphStatus AlltoAllMatmulExecuteFunc(gert::OpExecuteContext* host_ap
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if(alltoAllAxesOptional != nullptr) {
-        OPS_CHECK(alltoAllAxesOptional == nullptr,OP_LOGE(host_api_ctx->GetNodeName(), "alltoAllAxesOptional is null."),
+        OPS_CHECK(alltoAllAxesOptional == nullptr,OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "alltoAllAxesOptional"),
                   return ge::GRAPH_FAILED);
         ParseRecvCounts(alltoAllAxesOptional, actSeqArray);
     }
