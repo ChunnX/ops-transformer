@@ -372,9 +372,13 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         commTurn != 0,
         OP_LOGE_FOR_INVALID_VALUE(opName_, "commTurn", std::to_string(commTurn).c_str(), "0"),
         return false);
+    // blockSize 语义同 AllGatherMatmulV2: 0 - 非量化, 32 - MX 量化, packed - PerBlock 量化
+    // 仅对非 fp8 输入硬拒非零值; fp8 路径 (QuantBmmReduceScatterTiling) 使用非零值,
+    // base 不拒, 否则 README §情形4 MX 路径不可达。
     auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
-    OP_TILING_CHECK(
-        blockSize != 0,
+    ge::DataType x1Type = context_->GetInputDesc(INPUT_X1)->GetDataType();
+    bool x1IsFp8 = (x1Type == ge::DT_FLOAT8_E4M3FN) || (x1Type == ge::DT_FLOAT8_E5M2) || (x1Type == ge::DT_HIFLOAT8);
+    OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
         OP_LOGE_FOR_INVALID_VALUE(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
         return false);
     return CheckInputScale();
