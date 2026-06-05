@@ -189,9 +189,6 @@ private:
             uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
                 (e_ - turnIdx * combineExpertSize) : combineExpertSize;
             commOp.WaitCombinedAic(turnIdx);
-            if constexpr (MX_QUANT_MODE) {
-                commOp.WaitScaleCombinedAic(turnIdx);
-            }
 
             if (isPermuteOut) {
                 uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
@@ -202,6 +199,10 @@ private:
                     CrossCoreWaitFlag(notifyFlagId);
                     commOp.PermuteOutput(turnIdx, realCombineSize);
                 }
+            }
+
+            if constexpr (MX_QUANT_MODE) {
+                commOp.WaitScaleCombinedAic(turnIdx);
             }
 
             SyncAll<false>();
