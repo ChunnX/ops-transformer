@@ -167,8 +167,8 @@ if __name__ == "__main__":
     test_configs = [
         # (name, B, S1, S2, N1, N2, Nidx1, Nidx2, DQuery, DQueryIndex, d_rope, K, layout)
         # BSND - 小shape
-        ("BSND_S2=1024_N1=32_Nidx1=16_K=1024",
-         1, 1, 1024, 32, 1, 16, 1, 512, 128, 64, 1024, "BSND"),
+        ("BSND_S2=1024_N1=64_Nidx1=32_K=1024",
+         1, 1, 1024, 64, 1, 32, 1, 512, 128, 64, 1024, "BSND"),
         # BSND - 中shape
         ("BSND_S2=2048_N1=128_Nidx1=64_K=2048",
          1, 1, 2048, 128, 1, 64, 1, 512, 128, 64, 2048, "BSND"),
