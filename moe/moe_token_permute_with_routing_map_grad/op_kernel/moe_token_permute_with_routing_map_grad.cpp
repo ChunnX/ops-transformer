@@ -17,6 +17,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_token_permute_with_routing_map_grad.h"
+#include "moe_token_permute_drop_pad_token_grad.h"
 
 extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map_grad(
     GM_ADDR permutedTokenOutPutGrad, GM_ADDR permutedProbsOutPutGradOptional, GM_ADDR sortedIndices,
@@ -28,6 +29,9 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map_grad(
     GET_TILING_DATA_MEMBER(
         MoeTokenPermuteWithRoutingMapGradTilingData, moeTokenpermuteWithRoutingMapDropPadTilingData,
         drop_tiling_data_in, tiling);
+    GET_TILING_DATA_MEMBER(
+        MoeTokenPermuteWithRoutingMapGradTilingData, moeTokenpermuteWithRoutingMapDropPadTokenTilingData,
+        drop_token_tiling_data_in, tiling);
     // 调用unpermute计算， probs始终false
     if (TILING_KEY_IS(0)) {
         KernelMoeTokenUnpermute<DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, int32_t, DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, false> op;
@@ -37,6 +41,10 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map_grad(
         KernelMoeTokenPermuteWithRoutingMap<DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, int32_t, DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD>
             op;
         op.Init(permutedProbsOutPutGradOptional, sortedIndices, probsGradOutOptional, &drop_tiling_data_in);
+        op.Process();
+    } else if (TILING_KEY_IS(1001) || TILING_KEY_IS(1002) || TILING_KEY_IS(1004)) {
+        KernelMoeTokenPermuteDropPadTokenGrad<DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, int32_t> op;
+        op.Init(permutedTokenOutPutGrad, sortedIndices, tokensGradOut, &drop_token_tiling_data_in);
         op.Process();
     }
     return;
