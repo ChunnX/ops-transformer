@@ -754,7 +754,7 @@ bool InferShapeRangeBatchMatMul::InferShapeRange()
     OP_CHECK_IF(
         !InferRangeBias(op_name, new_shape_range_out, idx_n, bias_shape_range, new_shape_range_x2),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(op_name, "bias and x2",
-            (std::to_string(bias_shape_range.size()) + "D and " + std::to_string(new_shape_range_x2.size()) + "D").c_str(),
+            (std::to_string(bias_shape_range->GetMin()->GetDimNum()) + "D and " + std::to_string(new_shape_range_x2.size()) + "D").c_str(),
             "The shapes of bias and x2 must be compatible for inferring n range"), return false);
 
     // 设置输出range
