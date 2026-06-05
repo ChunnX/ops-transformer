@@ -35,7 +35,7 @@ using namespace AscendC;
 
 namespace {
 
-constexpr int32_t BUFFER_NUM = 2;
+constexpr int32_t BUFFER_NUM = 1;
 constexpr int32_t UB_BUFFER_SIZE = 192512;
 constexpr int32_t ACL_DTYPE_FLOAT16 = 1;
 constexpr int32_t ACL_DTYPE_BFLOAT16 = 27;
