@@ -22,6 +22,8 @@
 
 #include "../../../op_host/grouped_matmul_finalize_routing_base_tiling.h"
 #include "../../../op_host/grouped_matmul_finalize_routing_tiling.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+
 #include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
@@ -35,7 +37,7 @@ using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-constexpr size_t kCsvColumnCount = 48;
+constexpr size_t kCsvColumnCount = 51;
 
 uint64_t ParseU64(const string &value)
 {
@@ -105,21 +107,36 @@ struct GroupedMatmulFinalizeRoutingTilingCase {
         compileInfo.supportL12BtBf16 = ParseBool(supportL12BtBf16);
         compileInfo.npuArch = ParseNpuArch(npuArch);
 
+        vector<int64_t> tuningConfigVec = ops::ut::ParseDims(tuningConfig, {});
+        if (tuningConfigVec.empty()) {
+            tuningConfigVec = {0};
+        }
+
+        vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+            {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ge::FORMAT_ND},
+            {ParseFormat(wFormat) == ge::FORMAT_FRACTAL_NZ && ParseDims(wShape).size() == 3 ?
+                 ops::ut::MakeGertStorageShape(ParseDims(wShape), {ParseDims(wShape)[0], ParseDims(wShape)[1] / 32,
+                                                                   ParseDims(wShape)[2] / 16, 32, 16}) :
+                 ops::ut::MakeGertStorageShape(ParseDims(wShape)),
+             ParseDtype(wDtype), ParseFormat(wFormat)},
+            {ops::ut::MakeGertStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
+             ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype), ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ge::FORMAT_ND},
+            {ops::ut::MakeGertStorageShape(ParseDims(rowindexShape)), ParseDtype(rowindexDtype), ge::FORMAT_ND},
+        };
+        if (Trim(offsetShape) != "NONE") {
+            inputDescs.emplace_back(ops::ut::MakeGertStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype),
+                                    ge::FORMAT_ND);
+        }
+
+        string socVersionStr =
+            ParseSocVersion(socVersion) == platform_ascendc::SocVersion::ASCEND950 ? "Ascend950" : "Ascend910B";
         gert::TilingContextPara tilingContextPara(
-            "GroupedMatmulFinalizeRouting",
-            {
-                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
-                 ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
-                 ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(ParseDims(rowindexShape)), ParseDtype(rowindexDtype), ge::FORMAT_ND},
-            },
+            "GroupedMatmulFinalizeRouting", inputDescs,
             {
                 {ops::ut::MakeGertStorageShape(ParseDims(yShape)), ParseDtype(yDtype), ge::FORMAT_ND},
             },
@@ -133,10 +150,11 @@ struct GroupedMatmulFinalizeRoutingTilingCase {
                 {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(outputBs)))},
                 {"group_list_type",
                  Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(groupListType)))},
-                {"tuning_config",
-                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(tuningConfig)))},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
             },
-            &compileInfo);
+            &compileInfo, socVersionStr);
+        tilingContextPara.deterministicInfo_ =
+            deterministicInfo.empty() ? 0 : static_cast<int32_t>(stoll(deterministicInfo));
 
         const ge::graphStatus expectStatus = ParseGraphStatus(expectResult);
         if (expectStatus == ge::GRAPH_SUCCESS) {
@@ -197,6 +215,9 @@ struct GroupedMatmulFinalizeRoutingTilingCase {
     string outputBs;
     string groupListType;
     string tuningConfig;
+    string offsetShape;
+    string offsetDtype;
+    string deterministicInfo;
     string expectResult;
     string expectTilingKey;
 };
@@ -277,6 +298,9 @@ vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
         testCase.outputBs = Trim(items[idx++]);
         testCase.groupListType = Trim(items[idx++]);
         testCase.tuningConfig = Trim(items[idx++]);
+        testCase.offsetShape = Trim(items[idx++]);
+        testCase.offsetDtype = Trim(items[idx++]);
+        testCase.deterministicInfo = Trim(items[idx++]);
         testCase.expectResult = Trim(items[idx++]);
         testCase.expectTilingKey = Trim(items[idx++]);
         cases.emplace_back(testCase);
@@ -288,9 +312,9 @@ vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
 
 const vector<GroupedMatmulFinalizeRoutingTilingCase> &GetCases()
 {
-    static const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
-                                                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
-                                                                __FILE__));
+    static const auto cases =
+        LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
+                                          "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__));
     return cases;
 }
 
@@ -299,19 +323,35 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingTi
     return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
-}  // namespace
+} // namespace
 
 namespace GroupedMatmulFinalizeRoutingTilingUT {
 
-class TestGroupedMatmulFinalizeRoutingTiling
-    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingTilingCase> {};
+class TestGroupedMatmulFinalizeRoutingTiling : public testing::TestWithParam<GroupedMatmulFinalizeRoutingTilingCase> {};
 
 TEST_P(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMMFR_TILING_CSV, TestGroupedMatmulFinalizeRoutingTiling,
-                         testing::ValuesIn(GetCases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMMFR_TILING_CSV, TestGroupedMatmulFinalizeRoutingTiling, testing::ValuesIn(GetCases()),
+                         MakeParamName);
 
-}  // namespace GroupedMatmulFinalizeRoutingTilingUT
+class TestTilingParseForGroupedMatmulFinalizeRouting : public testing::Test {
+protected:
+};
+
+TEST_F(TestTilingParseForGroupedMatmulFinalizeRouting, NullContext)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulFinalizeRouting");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+    auto tilingParseFunc = opImpl->tiling_parse;
+    auto result = tilingParseFunc(nullptr);
+    EXPECT_NE(result, ge::GRAPH_SUCCESS);
+}
+
+
+} // namespace GroupedMatmulFinalizeRoutingTilingUT
