@@ -104,7 +104,7 @@ private:
         bool isChannelSplit = trait.enableChannelSplit;
 
         uint8_t dualDstCtl = trait.dualDstCtl;
-        bool subBlockId = false;
+        bool subBlockId = params.subBlockId;
         CopyMatrixCcToUbInstr::DataCopy<quantPre, T, U>(dst, src, nSize, mSize, srcStride, dstStride, dualDstCtl,
                                                         reluEn, unitFlag, subBlockId, isChannelSplit, nz2ndEn, nz2dnEn);
     }
@@ -159,7 +159,7 @@ private:
         constexpr bool nz2dnEn = IsSatisfiedPtnFormatV<T, DNExtLayoutPtn>;
 
         const bool channelSplit = trait.enableChannelSplit;
-        bool subBlockId = false;
+        bool subBlockId = params.subBlockId;
         uint8_t dualDstCtl = trait.dualDstCtl;
 
         return Std::make_tuple(nSize, mSize, srcStride, dstStride, dualDstCtl, reluEn, unitFlag, subBlockId,

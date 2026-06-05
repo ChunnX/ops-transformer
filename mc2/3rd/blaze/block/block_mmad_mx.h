@@ -389,7 +389,7 @@ public:
         typename TensorC>
     __aicore__ inline void operator()(
         TensorA const& gmA, TensorB const& gmB, TensorScaleA const& gmScaleA, TensorScaleB const& gmScaleB,
-        TensorBias const& gmBias, TensorC const& gmC, BlockShape const& singleShape)
+        TensorBias const& gmBias, TensorC const& gmC, BlockShape const& singleShape, bool toAiv1 = false)
     {
         TileL1L0Param tileL1L0Param;
         tileL1L0Param.curM = AscendC::Te::Get<IDX_M_TILEIDX>(singleShape);
@@ -456,9 +456,9 @@ public:
         }
 
         if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
-            // C L0C->UB
+            // C L0C->UB (toAiv1=true → 输出到 AIV1 的 UB)
             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
-            AscendC::Te::Copy(CopyL0C2UB, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+            AscendC::Te::Copy(CopyL0C2UB, gmC, tensorL0C, AscendC::Te::FixpipeParams{3, toAiv1});
         } else {
             // C L0C->GM
             auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
