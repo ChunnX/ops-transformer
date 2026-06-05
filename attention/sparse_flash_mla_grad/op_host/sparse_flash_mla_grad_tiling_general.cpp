@@ -19,7 +19,7 @@
 
 namespace optiling {
 namespace smlag {
-constexpr uint32_t WORKSPACE_BASE_CAL = 32 * 1024 * 1024; // 100MB系统预留
+constexpr uint32_t WORKSPACE_BASE_CAL = 32 * 1024 * 1024; // 32MB系统预留
 constexpr uint32_t BLOCK = 32;                            // 32B
 constexpr uint32_t B32 = 4;                               // 4B
 constexpr uint32_t B16 = 2;
