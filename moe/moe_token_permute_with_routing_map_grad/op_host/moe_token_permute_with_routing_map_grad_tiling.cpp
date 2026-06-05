@@ -110,7 +110,8 @@ static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteParam& param, int64_
     int64_t maxHiddenSize =
         safeDiv((param.core.maxCoreMemery - reserveSpace), ComputeUnitHSpace(param.input.tokensDtypeSize, bufferNum));
 
-    return AlignN(maxHiddenSize - ALIGN_512, ALIGN_512);
+    int64_t alignedHiddenSize = AlignN(maxHiddenSize - ALIGN_512, ALIGN_512);
+    return alignedHiddenSize > 0 ? alignedHiddenSize : ALIGN_512;
 }
 
 static inline void Init(gert::TilingContext* context, const int64_t topK, MoeTokenUnpermuteParam& param)
@@ -274,34 +275,94 @@ ge::graphStatus TilingComputeDropPad(gert::TilingContext* context)
     int64_t expertsNum = *pExpertsNum;
     const gert::StorageShape* tokensShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, tokensShape);
-    int64_t capacity = safeDiv(tokensShape->GetStorageShape().GetDim(0), expertsNum);
-    auto permuted_tokens = context->GetInputDesc(0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permuted_tokens);
+    auto permutedTokens = context->GetInputDesc(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokens);
 
-    MoeTokenPermuteWithRoutingMapGradTilingData tilingData;
-    // 设置核数
-    auto ascendPlaform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    auto maxCoreNum = ascendPlaform.GetCoreNumAiv();
-    auto CoreNum = (expertsNum * capacity > static_cast<int32_t>(maxCoreNum)) ? maxCoreNum : 1;
-    context->SetBlockDim(CoreNum);
-    // 设置参数
-    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_capacity(capacity);
-    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_expertNum(expertsNum);
-    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_tokenNum(tokenNum);
-    int64_t singleCoreLen = safeDiv(capacity * expertsNum, CoreNum);
-    int64_t lastCoreLen = (capacity * expertsNum) - (singleCoreLen * (CoreNum - 1));
-    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_singleCoreLen(singleCoreLen);
-    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_lastCoreLen(lastCoreLen);
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
-    // 设置tilingKey
-    int64_t tilingKey = TILINGKEY_DROPPAD;
-    // 设置workspace
+    int64_t numOutTokens = tokensShape->GetStorageShape().GetDim(0);
+    int64_t hiddenSize = tokensShape->GetStorageShape().GetDim(1);
+    int64_t capacity = safeDiv(numOutTokens, expertsNum);
+    bool haveProbs = context->GetInputShape(1) != nullptr;
+
+    MoeTokenUnpermuteParam param;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     currentWorkspace[0] = sysWorkspaceSize;
 
-    return context->SetTilingKey(tilingKey);
+    auto ascendPlaform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    int64_t maxCoreNum = static_cast<int64_t>(ascendPlaform.GetCoreNumAiv());
+    param.core.maxCoreNum = maxCoreNum;
+    uint64_t maxCoreMemery;
+    ascendPlaform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, maxCoreMemery);
+    param.core.maxCoreMemery = static_cast<int64_t>(maxCoreMemery);
+    param.input.tokensDtypeSize = GetLengthByType(permutedTokens->GetDataType());
+    param.input.hiddenSize = hiddenSize;
+    param.input.totalLength = numOutTokens;
+    param.input.numOutTokens = numOutTokens;
+    param.input.tokensNum = tokenNum;
+    param.input.topK = 1;
+
+    int64_t tokenUsedCoreNum = tokenNum < maxCoreNum ? tokenNum : maxCoreNum;
+    param.core.usedCoreNum = tokenUsedCoreNum;
+
+    int64_t maxHiddenSize = ComputeMaxHiddenSize(param, MIN_BUFFER_NUM);
+    if (AlignN(param.input.hiddenSize, ALIGN_512) <= maxHiddenSize) {
+        param.hiddenTiling.length = param.input.hiddenSize;
+        param.hiddenTiling.remain = 0;
+        param.hiddenTiling.num = 1;
+    } else {
+        param.hiddenTiling.length = maxHiddenSize;
+        param.hiddenTiling.remain = safeMod(param.input.hiddenSize, maxHiddenSize);
+        param.hiddenTiling.num = safeDiv(param.input.hiddenSize, maxHiddenSize);
+    }
+
+    int64_t bufferNum = 4;
+    while (bufferNum > MIN_BUFFER_NUM && param.hiddenTiling.length > ComputeMaxHiddenSize(param, bufferNum)) {
+        bufferNum--;
+    }
+    param.core.bufferNum = bufferNum;
+
+    param.tokenPerCore.length = safeDiv(param.input.tokensNum, tokenUsedCoreNum);
+    param.tokenPerCore.num = tokenUsedCoreNum;
+    param.tokenPerCore.remain = safeMod(param.input.tokensNum, tokenUsedCoreNum);
+
+    int64_t probsUsedCoreNum = 1;
+    int64_t probsSingleCoreLen = numOutTokens;
+    int64_t probsLastCoreLen = numOutTokens;
+    if (haveProbs) {
+        probsUsedCoreNum = (numOutTokens < maxCoreNum) ? numOutTokens : maxCoreNum;
+        probsSingleCoreLen = safeDiv(numOutTokens, probsUsedCoreNum);
+        probsLastCoreLen = numOutTokens - probsSingleCoreLen * (probsUsedCoreNum - 1);
+    }
+
+    int64_t blockDim = tokenUsedCoreNum > probsUsedCoreNum ? tokenUsedCoreNum : probsUsedCoreNum;
+
+    MoeTokenPermuteWithRoutingMapGradTilingData tilingData;
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_capacity(capacity);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_expertNum(expertsNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_tokenNum(tokenNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_singleCoreLen(probsSingleCoreLen);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTilingData.set_lastCoreLen(probsLastCoreLen);
+
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_capacity(capacity);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_expertNum(expertsNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_tokenNum(tokenNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_numOutTokens(numOutTokens);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_hiddenSize(hiddenSize);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_hiddenSplitedLength(param.hiddenTiling.length);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_hiddenSplitedNum(param.hiddenTiling.num);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_hiddenSplitedRemain(param.hiddenTiling.remain);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_tokensCoreLength(param.tokenPerCore.length);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_tokensCoreRemain(param.tokenPerCore.remain);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_bufferNum(param.core.bufferNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_haveProbs(haveProbs ? 1 : 0);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_tokenUsedCoreNum(tokenUsedCoreNum);
+    tilingData.moeTokenpermuteWithRoutingMapDropPadTokenTilingData.set_probsUsedCoreNum(probsUsedCoreNum);
+
+    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
+    context->SetBlockDim(blockDim);
+
+    return context->SetTilingKey(TILINGKEY_DROPPAD);
 }
 
 /*
