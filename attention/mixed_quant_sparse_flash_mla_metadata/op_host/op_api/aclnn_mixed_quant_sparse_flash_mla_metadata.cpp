@@ -44,6 +44,14 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (workspaceSize == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "workspaceSize is nullptr");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "executor is nullptr");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
     L2_DFX_PHASE_1(aclnnMixedQuantSparseFlashMlaMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,

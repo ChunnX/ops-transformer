@@ -49,8 +49,8 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                        GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                        GetAttrValue(ctx, "head_dim", headDim_);
+                         GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
+                         GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
     }
@@ -89,23 +89,32 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
         return false;
     }
     int32_t batchSize = GetQueryBatchSize();
-    // 校验 cu_seqlens_q 元素非负
+    // 校验 cu_seqlens_q 元素
     if (layoutQuery_ == "TND") {
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
             for (int i = 0; i < batchSize + 1; i++) {
+                // 校验 cu_seqlens_q 元素非负
                 if (cuSeqlensQPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
                         i, cuSeqlensQPtr[i]);
                     return false;
                 }
+                // 校验 cu_seqlens_q 元素递增
+                if (i > 0 && cuSeqlensQPtr[i - 1] > cuSeqlensQPtr[i]) {
+                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q must be in ascending order, "
+                        "but got cu_seqlens_q[%d] = %d, cu_seqlens_q[%d] = %d",
+                        i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
+                    return false;
+                }
             }
         }
     }
-    // 校验 seqused_q 元素非负
+    // 校验 seqused_q 元素
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *sequsedQPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
         for (int i = 0; i < batchSize; i++) {
+            // 校验 seqused_q 元素非负
             if (sequsedQPtr[i] < 0) {
                 KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d",
                     i, sequsedQPtr[i]);
@@ -114,23 +123,32 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
         }
     }
     if (hasOriKv_) {
-        // 校验 cu_seqlens_ori_kv 元素非负
+        // 校验 cu_seqlens_ori_kv 元素
         if (layoutKv_ == "TND") {
             if (cuSeqlensOriKv_ != nullptr && cuSeqlensOriKv_->GetData() != nullptr) {
                 const int32_t *cuSeqlensOriKvPtr = static_cast<const int32_t*>(cuSeqlensOriKv_->GetData());
                 for (int i = 0; i < batchSize + 1; i++) {
+                    // 校验 cu_seqlens_ori_kv 元素非负
                     if (cuSeqlensOriKvPtr[i] < 0) {
                         KERNEL_LOG_ERROR("The elements in cu_seqlens_ori_kv should be >= 0, "
                             "but got cu_seqlens_ori_kv[%d] = %d", i, cuSeqlensOriKvPtr[i]);
                         return false;
                     }
+                    // 校验 cu_seqlens_ori_kv 元素递增
+                    if (i > 0 && cuSeqlensOriKvPtr[i - 1] > cuSeqlensOriKvPtr[i]) {
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_ori_kv must be in ascending order, "
+                            "but got cu_seqlens_ori_kv[%d] = %d, cu_seqlens_ori_kv[%d] = %d",
+                            i - 1, cuSeqlensOriKvPtr[i - 1], i, cuSeqlensOriKvPtr[i]);
+                        return false;
+                    }
                 }
             }
         }
-        // 校验 seqused_ori_kv 元素非负
+        // 校验 seqused_ori_kv 元素
         if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
             const int32_t *sequsedOriKvPtr = static_cast<const int32_t*>(sequsedOriKv_->GetData());
             for (int i = 0; i < batchSize; i++) {
+                // 校验 seqused_ori_kv 元素非负
                 if (sequsedOriKvPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in seqused_ori_kv should be >= 0, but got seqused_ori_kv[%d] = %d",
                         i, sequsedOriKvPtr[i]);
@@ -141,22 +159,31 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
     }
     if (hasCmpKv_) {
         if (layoutKv_ == "TND") {
-            // 校验 cu_seqlens_cmp_kv 元素非负
+            // 校验 cu_seqlens_cmp_kv 元素
             if (cuSeqlensCmpKv_ != nullptr && cuSeqlensCmpKv_->GetData() != nullptr) {
                 const int32_t *cuSeqlensCmpKvPtr = static_cast<const int32_t*>(cuSeqlensCmpKv_->GetData());
                 for (int i = 0; i < batchSize + 1; i++) {
+                    // 校验 cu_seqlens_cmp_kv 元素非负
                     if (cuSeqlensCmpKvPtr[i] < 0) {
                         KERNEL_LOG_ERROR("The elements in cu_seqlens_cmp_kv should be >= 0, "
                             "but got cu_seqlens_cmp_kv[%d] = %d", i, cuSeqlensCmpKvPtr[i]);
                         return false;
                     }
+                    // 校验 cu_seqlens_cmp_kv 元素递增
+                    if (i > 0 && cuSeqlensCmpKvPtr[i - 1] > cuSeqlensCmpKvPtr[i]) {
+                        KERNEL_LOG_ERROR("The elements in cu_seqlens_cmp_kv must be in ascending order, "
+                            "but got cu_seqlens_cmp_kv[%d] = %d, cu_seqlens_cmp_kv[%d] = %d",
+                            i - 1, cuSeqlensCmpKvPtr[i - 1], i, cuSeqlensCmpKvPtr[i]);
+                        return false;
+                    }
                 }
             }
         }
-        // 校验 seqused_cmp_kv 元素非负
+        // 校验 seqused_cmp_kv 元素
         if (sequsedCmpKv_ != nullptr && sequsedCmpKv_->GetData() != nullptr) {
             const int32_t *sequsedCmpKvPtr = static_cast<const int32_t*>(sequsedCmpKv_->GetData());
             for (int i = 0; i < batchSize; i++) {
+                // 校验 seqused_cmp_kv 元素非负
                 if (sequsedCmpKvPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in seqused_cmp_kv should be >= 0, but got seqused_cmp_kv[%d] = %d",
                         i, sequsedCmpKvPtr[i]);
@@ -164,10 +191,11 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 }
             }
         }
-        // 校验 cmp_residual_kv 元素非负
+        // 校验 cmp_residual_kv 元素
         if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
             const int32_t *cmpResidualKvPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
             for (int i = 0; i < batchSize; i++) {
+                // 校验 cmp_residual_kv 元素非负
                 if (cmpResidualKvPtr[i] < 0) {
                     KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be >= 0, but got cmp_residual_kv[%d] = %d",
                         i, cmpResidualKvPtr[i]);
@@ -695,7 +723,7 @@ void SparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s1GCache)
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext,
-                                                             const BatchCache &batchCache, S1GCache &s1GCache)
+                                                   const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 如果s1G是空行，则直接返回
@@ -1160,8 +1188,8 @@ bool SparseFlashMlaMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
 bool SparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::SmlaMetadata* metadataPtr = (optiling::detail::SmlaMetadata*)metadata_->GetData();
-
+    optiling::detail::SmlaMetadata* metadataPtr = static_cast<optiling::detail::SmlaMetadata*>(metadata_->GetData());
+    *metadataPtr = {};
     // FA Metadata Generate
     if (isSplitG_) {
         for (size_t i = 0; i < aicCoreNum_; i++) {
