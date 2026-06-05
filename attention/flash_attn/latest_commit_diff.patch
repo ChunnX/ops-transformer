@@ -1,0 +1,1801 @@
+diff --git a/attention/flash_attn/op_kernel/arch35/flash_attention_noquant_block_vec_flashdecode.h b/attention/flash_attn/op_kernel/arch35/flash_attention_noquant_block_vec_flashdecode.h
+index 348e0e6ff..bef887c67 100644
+--- a/attention/flash_attn/op_kernel/arch35/flash_attention_noquant_block_vec_flashdecode.h
++++ b/attention/flash_attn/op_kernel/arch35/flash_attention_noquant_block_vec_flashdecode.h
+@@ -83,6 +83,7 @@ private:
+     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+     // 基本块大小
+     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
++    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+ 
+ protected:
+     GlobalTensor<float> lseSumFdGm;
+@@ -190,7 +191,7 @@ public:
+     }
+     __aicore__ inline void InitParams()
+     {
+-        this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
++        this->dSizeV_Align = this->Align(dVBaseSize, FP32_REPEAT_ELEMENT_NUM);
+     }
+     __aicore__ inline void InitDecodeParams()
+     {
+@@ -259,16 +260,16 @@ protected:
+         DataCopyExtParams copyInParams;
+         DataCopyPadExtParams<T> copyInPadParams;
+         copyInParams.blockCount = dealRowCount;
+-        copyInParams.blockLen = constInfo.dSizeV * sizeof(T);
++        copyInParams.blockLen = dVBaseSize * sizeof(T);
+         copyInParams.srcStride = 0;
+-        copyInParams.dstStride = (this->dSizeV_Align - constInfo.dSizeV) / BLOCK_ELEMENT_NUM;
++        copyInParams.dstStride = (this->dSizeV_Align - dVBaseSize) / BLOCK_ELEMENT_NUM;
+ 
+         copyInPadParams.isPad = true;
+         copyInPadParams.leftPadding = 0;
+-        copyInPadParams.rightPadding = (this->dSizeV_Align - constInfo.dSizeV) % BLOCK_ELEMENT_NUM;
++        copyInPadParams.rightPadding = (this->dSizeV_Align - dVBaseSize) % BLOCK_ELEMENT_NUM;
+         copyInPadParams.paddingValue = 0;
+-        uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV +                 // taskoffset + g轴offset
+-                                         splitKVIndex * s1BaseSize * constInfo.dSizeV; // 份数offset
++        uint64_t combineAccumOutOffset = startRow * dVBaseSize +                 // taskoffset + g轴offset
++                                         splitKVIndex * s1BaseSize * dVBaseSize; // 份数offset
+ 
+         DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
+     }
+@@ -318,14 +319,14 @@ protected:
+                         .gS1Idx = taskInfo.gS1Idx + startRow,
+                         .dIdx = 0,
+                         .gS1DealSize = dealRowCount,
+-                        .dDealSize = (uint32_t)constInfo.dSizeV};
++                        .dDealSize = dVBaseSize};
+ 
+         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
+             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                              constInfo.dSizeV, *qActSeqLensParser);
++                                              dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
+@@ -333,21 +334,21 @@ protected:
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                              constInfo.dSizeV, *qActSeqLensParser);
++                                              dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
+             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
++            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
+             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
++            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         }
+@@ -366,7 +367,7 @@ protected:
+         DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
+         DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
+         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
+-        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
++        uint32_t shapeArray[] = {dealRowCount, dVBaseSize};
+         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
+         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align);
+diff --git a/attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h b/attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h
+index 8db4b8d67..98c2637b3 100644
+--- a/attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h
++++ b/attention/flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h
+@@ -466,8 +466,7 @@ public:
+ 
+     __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
+     {
+-        uint32_t dSize = constInfo.dSize;
+-        CopyQuerySlice(dstTensor, 0, dSize, runInfo);
++        CopyQuerySlice(dstTensor, 0, dBaseSize, runInfo);
+     }
+ 
+     // copy key with full s2 and split D
+@@ -511,13 +510,12 @@ public:
+     // 全量拷贝
+     __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+     {
+-        uint32_t dSize = constInfo.dSize;
+-        CopyKeySlice(dstTensor, 0, dSize, runInfo);
++        CopyKeySlice(dstTensor, 0, dBaseSize, runInfo);
+     }
+ 
+     __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+     {
+-        CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
++        CopyValueSlice(dstTensor, 0, dVBaseSize, runInfo);
+     }
+ 
+     __aicore__ inline void UpdateKey(uint32_t bIdx)
+@@ -615,7 +613,7 @@ public:
+         mm1ResL0C.Wait<HardEvent::FIX_M>();
+ 
+         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+-                                    (uint32_t)(constInfo.dSize), false, true);
++                                    dBaseSize, false, true);
+         if constexpr (dBaseSize > 128) {
+             if constexpr (s2BaseSize == 256) {
+                 MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
+@@ -651,7 +649,7 @@ public:
+     __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+     {
+         constexpr uint32_t baseK = l1BaseD;
+-        uint32_t kLoops = (constInfo.dSize + baseK - 1) / baseK;
++        uint32_t kLoops = (dBaseSize + baseK - 1) / baseK;
+ 
+         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+         mm1ResL0C.Wait<HardEvent::FIX_M>();
+@@ -668,7 +666,7 @@ public:
+         for (uint32_t k = 0; k < kLoops; k++) {
+             Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
+             if (k == kLoops - 1) {
+-                realK = constInfo.dSize - k * baseK;
++                realK = dBaseSize - k * baseK;
+             }
+             if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
+                 LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+@@ -740,7 +738,7 @@ public:
+         mm1ResL0C.Wait<HardEvent::FIX_M>();
+ 
+         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
+-                                    (uint32_t)(constInfo.dSize), false, true);
++                                    dBaseSize, false, true);
+ 
+         MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+@@ -801,7 +799,7 @@ public:
+         mm1ResL0C.Wait<HardEvent::FIX_M>();
+ 
+         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
+-                                    (uint32_t)(constInfo.dSize), false, true);
++                                    dBaseSize, false, true);
+ 
+         MatmulBase<KV_T, Q_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+@@ -855,11 +853,11 @@ public:
+             outputBuf.WaitCrossCore();
+         }
+         constexpr uint32_t baseN = l1BaseD;
+-        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN; // 尾块处理
++        uint32_t nLoops = (dVBaseSize + baseN - 1) / baseN; // 尾块处理
+         uint32_t realN = baseN;
+         for (uint32_t n = 0; n < nLoops; ++n) {
+             if (n == nLoops - 1) {
+-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
++                uint32_t tailSize = dVBaseSize % baseN;
+                 realN = tailSize ? tailSize : baseN;
+             }
+             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
+@@ -912,7 +910,7 @@ public:
+         if constexpr (bmm2Write2Ub || splitD) {
+             fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+         } else {
+-            fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
++            fixpipeParams.dstStride = dVBaseSize;
+         }
+         fixpipeParams.dualDstCtl = 1;
+         fixpipeParams.params.ndNum = 1;
+@@ -935,7 +933,7 @@ public:
+         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+         MMParam param = {
+             (uint32_t)mBaseSize,                   // singleM 128
+-            (uint32_t)constInfo.dSizeV,            // singleN 128
++            dVBaseSize,                              // singleN 128
+             (uint32_t)runInfo.actSingleLoopS2Size, // singleK
+             useDn,                                 // isLeftTranspose
+             false                                  // isRightTranspose
+@@ -966,7 +964,7 @@ public:
+             outputBuf.WaitCrossCore();
+         }
+ 
+-        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
++        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), dVBaseSize, runInfo);
+ 
+         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
+         outputBuf.SetCrossCore();
+diff --git a/attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h b/attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h
+index 4c015e4bd..06923c9c4 100644
+--- a/attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h
++++ b/attention/flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h
+@@ -53,6 +53,7 @@ public:
+     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
+     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
+     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
++    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+ 
+     static constexpr uint32_t DB = 2;
+@@ -106,6 +107,7 @@ public:
+     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
+     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
+     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
++    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+ 
+     static constexpr uint32_t DB = 2;
+@@ -709,7 +711,7 @@ public:
+             int64_t mm2ResInnerOffset = mIdx * dTemplateAlign64;
+             SetFlag<HardEvent::V_MTE2>(vToMte2);
+             WaitFlag<HardEvent::V_MTE2>(vToMte2);
+-            if (constInfo.dSizeV == dTemplateAlign64) {
++            if (dVBaseSize == dTemplateAlign64) {
+                 if constexpr (useDn) {
+                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
+                 } else {
+@@ -723,9 +725,9 @@ public:
+                 DataCopyParams dataCopyParams;
+                 DataCopyPadParams dataCopyPadParams;
+                 dataCopyParams.blockCount = subMRealsize;
+-                dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
+-                dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
+-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++                dataCopyParams.dstStride = (constInfo.dBasicBlock - dVBaseSize) * sizeof(T) / blockBytes;
++                dataCopyParams.srcStride = (dTemplateAlign64 - dVBaseSize) * sizeof(T);
++                dataCopyParams.blockLen = dVBaseSize * sizeof(T);
+                 if constexpr (useDn) {
+                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
+                                 dataCopyPadParams);
+@@ -872,7 +874,7 @@ public:
+             if (blockNeedRowInvalid) {
+                 LocalTensor<float> maxTensor =
+                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+-                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
++                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, dVBaseSize,
+                                           static_cast<uint32_t>(dSizeAligned64));
+             }
+         }
+@@ -889,7 +891,7 @@ public:
+                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                         .dIdx = 0,
+                         .gS1DealSize = dealRowCount,
+-                        .dDealSize = (uint32_t)constInfo.dSizeV};
++                        .dDealSize = dVBaseSize};
+         CopyAttentionOut(ubTensor, gmCoord);
+     }
+ 
+@@ -900,7 +902,7 @@ public:
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                              constInfo.dSizeV, *qActSeqLensParser);
++                                              dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
+@@ -908,14 +910,14 @@ public:
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                              constInfo.dSizeV, *qActSeqLensParser);
++                                              dVBaseSize, *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
+             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
+             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
+             outGmTensor.gmTensor = attentionOutGm;
+-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
++            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize,
+                                               *qActSeqLensParser);
+             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+@@ -964,12 +966,12 @@ public:
+         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+         uint64_t gmOffset =
+-            runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
++            runInfo.faTmpOutWsPos * mBaseSize * dVBaseSize + (runInfo.vecMbaseIdx + mStartVec) * dVBaseSize;
+ 
+         DataCopyExtParams dataCopyParams;
+         dataCopyParams.blockCount = mDealSize;
+-        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+-        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
++        dataCopyParams.blockLen = dVBaseSize * sizeof(T);
++        dataCopyParams.srcStride = (dSizeAligned64 - dVBaseSize) / (FA_BYTE_BLOCK / sizeof(T));
+         dataCopyParams.dstStride = 0;
+ 
+         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
+@@ -1020,15 +1022,15 @@ public:
+ 
+             int64_t vec2CalcSize = subMRealsize * dTemplateAlign64;
+             // Gm地址偏移是按照实际DSize实现的，虽然我们设置了KC=192
+-            int64_t mm2ResInnerOffset = mIdx * constInfo.dSizeV;
++            int64_t mm2ResInnerOffset = mIdx * dVBaseSize;
+             SetFlag<HardEvent::V_MTE2>(vToMte2);
+             WaitFlag<HardEvent::V_MTE2>(vToMte2);
+-            if (constInfo.dSizeV == dTemplateAlign64) {
++            if (dVBaseSize == dTemplateAlign64) {
+                 if constexpr (useDn) {
+                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
+                 } else {
+                     DataCopy(bmm2Ub,
+-                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
++                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * dVBaseSize +
+                                    mm2ResInnerOffset],
+                              vec2CalcSize);
+                 }
+@@ -1036,16 +1038,16 @@ public:
+                 DataCopyParams dataCopyParams;
+                 DataCopyPadParams dataCopyPadParams;
+                 dataCopyParams.blockCount = subMRealsize;
+-                dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
++                dataCopyParams.dstStride = (dTemplateAlign64 - dVBaseSize) * sizeof(T) / blockBytes;
+                 dataCopyParams.srcStride = 0;
+-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++                dataCopyParams.blockLen = dVBaseSize * sizeof(T);
+                 if constexpr (useDn) {
+                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
+                                 dataCopyPadParams);
+                 } else {
+                     DataCopyPad(
+                         bmm2Ub,
+-                        mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
++                        mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * dVBaseSize +
+                               mm2ResInnerOffset],
+                         dataCopyParams, dataCopyPadParams);
+                 }
+@@ -1225,16 +1227,16 @@ public:
+         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
+             OffsetCalculator<GmFormat::BSNGD, int32_t> offsetCalculator;
+             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                  constInfo.dSizeV, *qActSeqLensParser);
++                                  dVBaseSize, *qActSeqLensParser);
+             DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
+             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
+             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+-                                  constInfo.dSizeV, *qActSeqLensParser);
++                                  dVBaseSize, *qActSeqLensParser);
+             DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
+             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
+-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
++            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
+             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+         }
+     }
+diff --git a/attention/flash_attn/performance_degradation_analysis.md b/attention/flash_attn/performance_degradation_analysis.md
+new file mode 100644
+index 000000000..50ccf392b
+--- /dev/null
++++ b/attention/flash_attn/performance_degradation_analysis.md
+@@ -0,0 +1,272 @@
++# Flash Attention Scalar Bound 优化劣化根因分析
++
++> **分析日期**：2026-06-04
++> **分析对象**：`scalar_bound_optimization_plan.md` 中 10 个优化 Step 全部导致性能劣化
++> **结论**：优化方向错误 — 做加法（增加结构体/成员/参数）而非做减法（constexpr/去抽象/减指令）
++
++---
++
++## 一、问题总结
++
++| 现象 | 10 个 Step 全部导致性能劣化 |
++|------|---------------------------|
++| 根因 | 优化方向与 Ascend AICore 架构特性相悖 |
++| 核心矛盾 | Ascend 寄存器极少，所有"加法"优化都增加寄存器压力，导致更多 Spill |
++
++---
++
++## 二、逐项劣化原因分析
++
++### Step 1: ConstInfo_t 超大结构体拆分 → 劣化
++
++**修改**：新增 `HotConstInfo` + `ColdConstInfo` 成员，原始 `constInfo` 未删除
++
++**劣化原因**：
++1. **数据冗余**：`constInfo` 仍存在，`hotConst` 是额外副本，类总大小增加 ~48B
++2. **Init 开销增加**：`InitConstInfo()` 末尾新增 12+ 次 `hotConst.xxx = constInfo.xxx` 赋值
++3. **编译器困惑**：两个结构体指向相似数据，别名分析更保守
++4. **寄存器压力**：新增成员变量占用本就稀缺的 Scalar 寄存器
++
++**违反原则**：P7（避免超大结构体）的初衷是减小结构体，但实际效果是增加了总数据量
++
++---
++
++### Step 2: FlashAttention 入口局部变量提升 → 劣化
++
++**修改**：`CreateTask`/`CalcParams` 签名增加 5+ 个参数，入口处拷贝热路径字段到局部变量
++
++**劣化原因**：
++1. **参数传递开销**：Ascend 寄存器少，多参数传递展开为大量 Store/Load
++2. **函数调用膨胀**：每次调用 `CreateTask`/`CalcParams` 都要压栈 5+ 个参数
++3. **内联决策改变**：参数增多可能导致编译器放弃内联，产生额外调用开销
++4. **局部变量 Spill**：新增的局部变量在寄存器紧张时被 Spill 到栈
++
++**违反原则**：P4（局部变量）在 x86/ARM 上有效，但 Ascend 寄存器太少，局部变量过多反而 Spill
++
++---
++
++### Step 3: Softmax Buffer 位掩码索引 → 劣化
++
++**修改**：Buffer 深度从 3 抬到 4，索引从 `% 3` 改为 `& 3`
++
++**劣化原因**：
++1. **UB 预算超限**：多占 768B UB（3 个 TBuf × 256B），挤压其他 buffer 空间
++2. **UB 复用开销**：UB 紧张时编译器需要更多地址计算来复用 buffer
++3. **取模优化有限**：`% 3` 的开销被高估，bisheng 编译器可能已有优化
++
++**违反原则**：P1（数组索引）的收益被 UB 预算超限的代价抵消
++
++---
++
++### Step 4: RunInfoX 拆分 + 按值传递 → 劣化
++
++**修改**：`RunInfoX` 拆为 `RunInfoCore`(~48B) + `RunInfoS2`(~24B) + `RunInfoMisc`，按值传递
++
++**劣化原因**：
++1. **按值拷贝开销巨大**：每次调用拷贝 ~72B 到栈上，展开为 18+ 条 Store 指令
++2. **Ascend 无别名优化收益**：bisheng 编译器的别名分析本就保守，按值传递的优化收益有限
++3. **结构体切片开销**：`RunInfoX` 继承自三个子结构体，隐式切片传递需要额外拷贝
++4. **冷路径重建开销**：冷路径调用 `SoftmaxDataCopyOut` 时需从 `ri`/`rs` 重建 `RunInfoX`
++
++**违反原则**：P6/P7 的按值传递在寄存器充足的架构上有效，Ascend 上拷贝开销 > 别名收益
++
++---
++
++### Step 5: Vec Block 热路径局部变量 → 劣化
++
++**修改**：`ProcessVec1Nd`/`ProcessVec1Dn`/`ProcessVec2DSplit` 等函数入口添加局部变量
++
++**劣化原因**：
++1. **寄存器压力叠加**：与 Step 2 类似，新增局部变量在寄存器紧张时被 Spill
++2. **函数体膨胀**：每个函数入口增加拷贝代码，I-Cache 压力增加
++3. **bisheng 内联失败**：函数体过大可能导致编译器放弃内联
++
++---
++
++### Step 6: Cube Block 热路径局部变量 → 劣化
++
++**修改**：`IterateBmm1`/`IterateBmm2` 系列函数添加 `localDSize`/`localDSizeV`
++
++**劣化原因**：同 Step 5，局部变量过多导致 Spill
++
++---
++
++### Step 7: tilingData 多级指针解引用消除 → 劣化
++
++**修改**：`InitConstInfo` 中批量拷贝 `FlashAttnBaseParams` 等结构体到栈上
++
++**劣化原因**：
++1. **Init 阶段非热路径**：Init 只执行一次，优化收益极小
++2. **栈空间开销**：~124B 栈空间在 Ascend 上可能导致栈溢出风险
++3. **批量拷贝开销**：结构体拷贝展开为大量 Store，可能比原始 GM Load 更慢
++4. **编译器已优化**：bisheng 可能对 `tilingData->xxx` 做了缓存优化
++
++---
++
++### Step 8: Event ID 数组拆为标量 → 劣化
++
++**修改**：`mte3ToVId[2]` 拆为 `mte3ToVId_0`/`mte3ToVId_1`，动态索引改为三目运算
++
++**劣化原因**：
++1. **寄存器占用增加**：4 个标量变量 vs 2 个数组元素，寄存器占用不变或增加
++2. **三目运算开销**：`(cond) ? a : b` 在 Ascend 上可能生成条件分支，比数组索引更慢
++3. **别名分析收益有限**：bisheng 的别名分析对数组/标量的处理差异不大
++
++---
++
++### Step 9: 热路径对象构造外提 → 劣化
++
++**修改**：`DataCopyParams`/`DataCopyPadParams` 从循环内移到循环外
++
++**劣化原因**：
++1. **bisheng 已优化**：编译器可能已识别循环不变量并外提
++2. **条件判断开销**：循环外增加 `if (constInfo.dSizeV != dTemplateAlign64)` 判断
++3. **代码膨胀**：循环外初始化代码增加 I-Cache 压力
++
++---
++
++### Step 10: UpdateAxisInfo 冗余计算合并 → 劣化
++
++**修改**：新增 `cachedS2LoopTimes`/`cachedGS1LoopTimes` 成员变量，batch 切换时缓存
++
++**劣化原因**：
++1. **新增成员变量**：类大小增加 16B，寄存器压力增加
++2. **缓存更新开销**：batch 切换时的缓存写入可能比原始计算更慢
++3. **分支预测干扰**：缓存逻辑引入新分支，干扰分支预测器
++4. **64-bit 除法开销被高估**：bisheng 可能对除法有硬件加速或特殊优化
++
++---
++
++## 三、根本原因：优化方向错误
++
++### 3.1 核心矛盾
++
++**Ascend AICore 的 Scalar 寄存器数量极其有限**（远少于 x86/ARM），所有"加法"优化都增加寄存器压力：
++
++| 优化类型 | x86/ARM 效果 | Ascend 效果 |
++|---------|-------------|-------------|
++| 增加成员变量 | 可接受 | 寄存器 Spill 增加 |
++| 增加局部变量 | 寄存器充足可驻留 | Spill 到栈 |
++| 按值传递 | 拷贝开销小 | 大量 Store 指令 |
++| 结构体拆分 | 缓存命中提升 | 总数据量增加 |
++
++### 3.2 Conv 成功案例的启示
++
++参考 `conv_scalar.md`，Conv 的成功优化是**递进式减法**：
++
++```
++固定循环轴（删除不必要的循环）
++  → 去除 Queue/TBuffer/Tpipe（用底层原语替代高级抽象）
++    → TilingData constexpr（编译期常量化，消除所有参数 Load）
++      → Scalar Load/Store 从 90%+ 降到 <10%
++```
++
++而 FA 的 10 个 Step 是**递进式加法**，每步都增加复杂度，叠加后效果更差。
++
++### 3.3 bisheng 编译器特性
++
++bisheng 针对 Ascend C SDK 的**特定代码模式**做了优化：
++
++1. **模式匹配**：原始 FA 代码是华为工程师精心调优的，编译器已能识别其模式
++2. **内联决策**：函数签名变化可能导致内联决策改变
++3. **别名分析**：bisheng 的别名分析本就保守，按值传递的收益有限
++4. **常量传播**：bisheng 对 `const` 成员的处理可能比预期更好
++
++---
++
++## 四、正确的优化方向
++
++### 4.1 方向 A：模板参数常量化（P8，最高收益潜力）
++
++FA 已有模板参数 `Config`（0 或 1），把热路径中编译期可知的值改为模板参数：
++
++```cpp
++// 不要这样（运行时 Load）：
++const uint32_t dSize = constInfo.dSize;
++
++// 要这样（编译期常量）：
++static constexpr uint32_t dSize = (Config == 0) ? 128 : 128;
++static constexpr uint32_t s1BaseSize = (Config == 0) ? 128 : 64;
++static constexpr uint32_t s2BaseSize = (Config == 0) ? 128 : 256;
++```
++
++**收益**：
++- 编译器做常量折叠，链式消除大量地址计算
++- 不增加任何成员变量或寄存器压力
++- 循环可被完全展开
++
++### 4.2 方向 B：去除热路径中的高级抽象
++
++在 ProcessVec/IterateBmm 的热循环内，把 `TQue`/`TBuf` 替换为 `SetFlag/WaitFlag` + `LocalTensor`：
++
++```cpp
++// 原模式（Queue 抽象，展开后大量 Scalar 指令）
++auto tensor = que.DeQue<T>();
++
++// 新模式（底层原语，零 Scalar 开销）
++SetFlag<HardEvent::V_MTE3>(event_id);
++WaitFlag<HardEvent::MTE3_V>(event_id);
++LocalTensor<half> tensor(TPosition::VECIN, offset, size);
++```
++
++**收益**：
++- 消除 Queue 状态查询、缓冲区索引更新、自动同步插入
++- Scalar Load/Store 占比可从 >30% 降到 <15%
++
++### 4.3 方向 C：减少热路径总指令数
++
++- 检查 `GetTaskDealMode` 中的分支级联，能否通过查表或位运算替代
++- 检查 `CalcParams` 中是否有可以提前计算并硬编码的路径
++- 对特定 Config 做函数特化（`if constexpr (Config == 0)` 消除不需要的分支）
++
++### 4.4 方向 D：场景特化
++
++参考 Conv 的"固定循环轴"思路：
++- 分析 FA 的典型使用场景（如 GQA 的 head 数量、seq_len 范围）
++- 对高频场景做函数特化，消除不必要的分支和循环
++
++---
++
++## 五、验证方法建议
++
++### 5.1 汇编级验证
++
++每个改动后，用 bisheng 的 `-S` 选项输出汇编，对比：
++- Scalar Load/Store 指令数量
++- 寄存器 Spill 次数
++- 热路径总指令数
++
++**不要只看 cycle 数字，要看指令级差异。**
++
++### 5.2 增量验证
++
++每次只做一个方向的改动，编译+profile 验证后再继续。不要叠加多个改动。
++
++### 5.3 对比基线
++
++与原始代码（未优化版本）对比，确保每个改动都有正向收益。
++
++---
++
++## 六、总结
++
++| 问题 | 原因 | 解决 |
++|------|------|------|
++| 全部劣化 | 做加法（增加 struct/成员/参数），增加了寄存器压力 | 做减法（constexpr、去抽象、减指令） |
++| 结构体拆分无效 | 原始 constInfo 未删除，反而多了一份 hotConst | 不拆结构体，改为让编译器更好地利用现有结构体 |
++| 缓存变量适得其反 | 新增成员变量增加了类大小和 Spill | 用编译期常量替代运行时缓存 |
++| 按值传递劣化 | Ascend 寄存器少，大参数拷贝开销 > 别名消除收益 | 保持引用传递，用 `__restrict__` 或编译器 hint 辅助别名分析 |
++
++**核心建议**：
++1. 回退所有修改，回到性能基线
++2. 转向 P8（模板参数常量化）+ Conv 式减法优化路径
++3. 用汇编级验证替代 cycle 级验证
++4. 增量验证，每次只做一个方向的改动
++
++---
++
++## 附录：参考材料
++
++- `/mnt/workspace/skill/cann-skills-zyh/ops/ascendc-performance-best-practices/reference/scalar/coding_principles.md` — 9 条编码原则
++- `/mnt/workspace/skill/cann-skills-zyh/ops/ascendc-performance-best-practices/reference/scalar/conv_scalar.md` — Conv 成功案例
++- `/mnt/workspace/skill/cann-skills-zyh/ops/ascendc-performance-best-practices/reference/scalar/guide.md` — 策略总览
+diff --git a/attention/flash_attn/recommended_optimization_direction.md b/attention/flash_attn/recommended_optimization_direction.md
+new file mode 100644
+index 000000000..c4f5f4181
+--- /dev/null
++++ b/attention/flash_attn/recommended_optimization_direction.md
+@@ -0,0 +1,229 @@
++# Flash Attention Scalar Bound 优化 — 推荐方向
++
++> **日期**：2026-06-04
++> **基于**：`performance_degradation_analysis.md` 的劣化分析 + Conv 成功案例
++
++---
++
++## 已实施的安全改动
++
++### 显式位移替代编译期除法
++
++**文件**：`flash_attn_kernel_base_gqa_template.h`
++
++将热路径中除以编译期 2 的幂常量的运算改为显式位移：
++
++```cpp
++// 新增 constexpr 辅助
++static constexpr uint32_t CeilLog2(uint32_t v) {
++    return (v <= 1) ? 0 : 1 + CeilLog2(v >> 1);
++}
++static constexpr uint32_t S2_SHIFT = CeilLog2(s2BaseSize); // 7 or 8
++static constexpr uint32_t M_SHIFT = CeilLog2(mBaseSize);   // 6 or 7
++
++// 热路径替换
++// 原: (actSeqLensKv + s2BaseSize - 1) / s2BaseSize
++// 新: (actSeqLensKv + s2BaseSize - 1) >> S2_SHIFT
++```
++
++**影响函数**：`GetTaskDealMode`、`UpdateAxisInfo`、`CalcCurS2StartEndNoSparse`、`CalcCurS2StartEndWithSparse`
++
++**风险**：极低（纯机械替换，bisheng 大概率已做此优化，显式写法确保不被遗漏）
++
++---
++
++## 推荐方向 1：TQue/TBuffer 替换为 SetFlag/WaitFlag + LocalTensor
++
++### 为什么这是最高收益方向
++
++参考 `conv_scalar.md`，Conv 算子通过此方法将 Scalar Load/Store 占比从 >30% 降到 <15%。
++
++FA 的 Vec Block 热路径中大量使用 `TQue`/`TBuf` 高级抽象：
++
++```cpp
++// 当前模式（每轮展开为大量 Scalar 指令）
++auto sumUb = softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
++auto maxUb = softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
++auto expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
++```
++
++每个 `TBuf::Get<T>()` 展开后包含：
++- Queue 状态查询（Load）
++- Buffer offset 计算（ALU + Load）
++- Buffer 索引更新（Store）
++
++### 替换方案
++
++```cpp
++// 新模式（零 Scalar 开销）
++constexpr uint32_t SOFTMAX_BUF_OFFSET = 0;  // 预计算偏移
++SetFlag<HardEvent::V_MTE3>(vToMte3Id_0);
++WaitFlag<HardEvent::MTE3_V>(mte3ToVId_0);
++LocalTensor<float> sumUb(TPosition::VECCALC, sumBufOffset, 256 / sizeof(float));
++LocalTensor<float> maxUb(TPosition::VECCALC, maxBufOffset, 256 / sizeof(float));
++LocalTensor<T> expUb(TPosition::VECCALC, expBufOffset, 256 / sizeof(T));
++```
++
++### 实施步骤
++
++1. **分析 buffer 生命周期**：梳理 `softmaxMaxBuf`/`softmaxSumBuf`/`softmaxExpBuf` 的读写时序
++2. **计算固定偏移**：将 TBuf 的 TPposition + offset 提取为 constexpr
++3. **替换同步原语**：将隐式 Queue 同步改为显式 SetFlag/WaitFlag
++4. **逐函数替换**：从 `ProcessVec1Nd` 开始，逐函数替换并 profile 验证
++
++### 风险与注意事项
++
++- **高风险**：需要精确理解 buffer 的读写时序和同步关系
++- **需要汇编验证**：每次改动后用 `bisheng -S` 对比 Scalar 指令数
++- **渐进式替换**：不要一次性替换所有 buffer，先替换一组（如 softmaxSumBuf）验证效果
++
++---
++
++## 推荐方向 2：运行时除法 → 乘法近似（libdivide 思路）
++
++### 问题
++
++`CalcParams` 中每轮执行：
++
++```cpp
++info.bIdx = bN2Cur / constInfo.n2Size;   // 运行时除法
++info.n2Idx = bN2Cur % constInfo.n2Size;  // 运行时取模
++```
++
++`constInfo.n2Size` 是运行时值（来自 tilingData），编译器无法优化为位移。
++
++### 方案
++
++在 `InitConstInfo` 中预计算倒数乘法因子：
++
++```cpp
++// Init 阶段（只执行一次）
++struct FastDiv {
++    uint64_t magic;
++    uint32_t shift;
++};
++
++FastDiv n2Div;  // 预计算
++
++void InitConstInfo() {
++    // ... existing code ...
++    n2Div = ComputeFastDiv(constInfo.n2Size);
++}
++
++// 热路径（每轮执行）
++info.bIdx = FastDivide(bN2Cur, n2Div);
++info.n2Idx = bN2Cur - info.bIdx * constInfo.n2Size;  // 用乘法替代取模
++```
++
++### 关键约束
++
++- `FastDiv` 结构体只增加 ~12B 成员变量
++- `ComputeFastDiv` 只在 Init 阶段执行一次
++- `FastDivide` 展开为 1 次乘法高位 + 1 次移位（无除法指令）
++- 需要验证 Ascend 是否支持 `umulhi`（无符号乘法高位）指令
++
++### 风险
++
++- **中风险**：需要验证 Ascend 指令集支持
++- **不增加寄存器压力**：FastDivide 的临时变量生命周期极短
++- **不改变代码结构**：只替换除法实现，不改变函数签名或数据布局
++
++---
++
++## 推荐方向 3：场景特化 — 消除不需要的分支
++
++### 问题
++
++`ProcessVec1Nd` 中有大量基于 `actSingleLoopS2Size` 的分支：
++
++```cpp
++if (runInfo.isFirstS2Loop) {
++    if (runInfo.actSingleLoopS2Size == 128) { ... }
++    else if (runInfo.actSingleLoopS2Size <= 64) { ... }
++    else if (runInfo.actSingleLoopS2Size <= 128) { ... }
++    else { ... }
++} else {
++    if (runInfo.actSingleLoopS2Size == 128) { ... }
++    else { ... }
++}
++```
++
++每个分支展开为不同的 Vector API 调用序列，导致 I-Cache 压力大、分支预测失败率高。
++
++### 方案
++
++对高频场景（如 `actSingleLoopS2Size == s2BaseSize`，即非尾块）做函数特化：
++
++```cpp
++// 特化版本：s2Size == s2BaseSize（非尾块，最高频）
++__aicore__ inline void ProcessVec1Nd_HotPath(...) {
++    // 零分支，直接按 s2BaseSize 调用
++    ProcessVec1Vf<s2BaseSize>(...);
++}
++
++// 通用版本：处理所有边界情况
++__aicore__ inline void ProcessVec1Nd_ColdPath(...) {
++    // 原有的多分支逻辑
++}
++
++// 分发
++if (likely(runInfo.actSingleLoopS2Size == s2BaseSize && !runInfo.isFirstS2Loop)) {
++    ProcessVec1Nd_HotPath(...);
++} else {
++    ProcessVec1Nd_ColdPath(...);
++}
++```
++
++### 收益
++
++- 热路径零分支 → 分支预测器不介入
++- 热路径代码体积小 → I-Cache 命中率高
++- 冷路径不影响性能（执行频率低）
++
++### 风险
++
++- **低风险**：不改变数据布局，不增加成员变量
++- **代码膨胀**：需要维护两个版本的函数
++- **需要 profile 验证**：确认热路径确实是非尾块场景
++
++---
++
++## 实施优先级
++
++| 优先级 | 方向 | 预期收益 | 实施难度 | 风险 |
++|--------|------|---------|---------|------|
++| **P0** | 已实施：显式位移 | 0-2% | 已完成 | 极低 |
++| **P1** | TQue/TBuffer 替换 | 15-30% | 高 | 高 |
++| **P2** | 运行时除法→乘法 | 3-5% | 中 | 中 |
++| **P3** | 场景特化 | 5-10% | 中 | 低 |
++
++---
++
++## 验证方法
++
++### 必须做的验证
++
++1. **汇编对比**：每次改动前后，用 `bisheng -S` 输出汇编，对比：
++   - Scalar Load/Store 指令数量
++   - 热路径总指令数
++   - 寄存器 Spill 次数
++
++2. **增量验证**：每次只做一个方向的改动，编译 + profile 后再继续
++
++3. **回归测试**：确保功能正确性（数值精度、边界条件）
++
++### 关键指标
++
++- **Scalar cycle 占比**：目标从 87.5% 降到 <50%
++- **Scalar Load/Store 占比**：目标从 >30% 降到 <15%
++- **总 cycle**：目标从 8w 降到 <5w
++
++---
++
++## 核心原则
++
++1. **做减法不做加法**：减少指令数，而非重排数据
++2. **不增加成员变量**：Ascend 寄存器极少，每个新成员都增加 Spill 风险
++3. **不改变函数签名**：避免影响 bisheng 的内联决策和模式匹配
++4. **编译期常量优先**：能用 constexpr 解决的不用运行时变量
++5. **汇编级验证**：不信任 cycle 数字，看指令级差异
+diff --git a/attention/flash_attn/step10_changes.md b/attention/flash_attn/step10_changes.md
+new file mode 100644
+index 000000000..e554c2b12
+--- /dev/null
++++ b/attention/flash_attn/step10_changes.md
+@@ -0,0 +1,115 @@
++# Step 10: UpdateAxisInfo 冗余计算合并
++
++## 优化目标
++消除 GetTaskDealMode 和 UpdateAxisInfo 中重复的 64-bit 除法计算，通过缓存机制减少每轮迭代的计算开销。
++
++## 问题分析
++
++### 原始代码问题
++在两个热路径函数中存在完全相同的计算：
++
++**GetTaskDealMode (lines 474-476):**
++```cpp
++uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
++uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
++uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
++```
++
++**UpdateAxisInfo (lines 747-749):**
++```cpp
++uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
++uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
++uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
++```
++
++**性能问题：**
++- 每轮迭代执行 2 次 64-bit 除法（s2LoopTimes 和 gS1LoopTimes 各一次）
++- 两个函数重复计算相同的值
++- 64-bit 除法在 Ascend 芯片上开销较大（~20-40 cycles/次）
++- 计算结果仅在 batch 切换时变化，但每轮都重新计算
++
++## 优化方案
++
++### 核心思路
++在 batch 切换时（actSeqLensKv/actSeqLensQ 变化时）计算一次并缓存，两个函数共享缓存值。
++
++### 修改内容
++
++#### 1. 添加缓存成员变量
++```cpp
++// Cached loop times to avoid redundant 64-bit divisions
++uint64_t cachedS2LoopTimes = 0;
++uint64_t cachedGS1LoopTimes = 0;
++```
++
++#### 2. GetTaskDealMode 中计算并缓存
++在 batch 切换时（`if (isFirstTask || prevBIdx != bIdx)` 块内）计算：
++```cpp
++// Cache loop times when batch changes to avoid redundant 64-bit divisions
++cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
++uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
++cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
++```
++
++使用缓存值进行判断：
++```cpp
++if (cachedS2LoopTimes == 0 || cachedGS1LoopTimes == 0) {
++    // ...
++}
++```
++
++#### 3. UpdateAxisInfo 中使用缓存值
++移除重复计算，直接使用缓存：
++```cpp
++// Use cached loop times to avoid redundant 64-bit divisions
++// 当前S2未处理完
++if (s2Cur + 1 < cachedS2LoopTimes) {
++    s2Cur++;
++    return;
++}
++
++// 当前BN2未处理完
++s2Cur = 0;
++if (gS1Cur + 1 < cachedGS1LoopTimes) {
++    gS1Cur++;
++    return;
++}
++```
++
++## 优化效果
++
++### 性能提升
++- **消除每轮迭代的 2 次 64-bit 除法**：从每轮 4 次（两个函数各 2 次）降为仅在 batch 切换时计算 2 次
++- **减少冗余计算**：两个函数共享同一份计算结果
++- **预计每轮迭代节省 ~40-80 cycles**（假设每个 batch 包含多轮迭代）
++
++### 代码变更统计
++- 1 file changed, 12 insertions(+), 10 deletions(-)
++
++## 技术细节
++
++### 为什么有效
++1. **计算时机优化**：仅在 batch 切换时计算，而非每轮迭代
++2. **缓存共享**：两个函数使用相同的缓存值，避免重复计算
++3. **64-bit 除法开销**：Ascend 芯片上 64-bit 除法需要 ~20-40 cycles，消除 2 次/轮可显著降低延迟
++
++### 缓存更新时机
++- **首次任务**：`isFirstTask == true` 时计算
++- **Batch 切换**：`prevBIdx != bIdx` 时重新计算
++- **其他情况**：使用缓存值，不重新计算
++
++### 数据依赖
++- `cachedS2LoopTimes` 依赖 `actSeqLensKv` 和 `s2BaseSize`
++- `cachedGS1LoopTimes` 依赖 `actSeqLensQ`、`constInfo.gSize` 和 `mBaseSize`
++- 这些值仅在 batch 切换时变化，因此缓存策略安全
++
++## 验证
++- Commit: 1e40a368e
++- Branch: flash_attn
++- 已推送到远程仓库
++
++## 注意事项
++1. 此优化遵循 P4（局部变量）和 P5（变量定义贴近使用）原则
++2. 与 Step 5（主循环状态机优化）互补，共同减少热路径中的冗余计算
++3. 缓存变量初始化为 0，首次使用时会被正确计算
++4. 优化后代码更易维护，计算逻辑更清晰
+diff --git a/attention/flash_attn/step1_changes.md b/attention/flash_attn/step1_changes.md
+new file mode 100644
+index 000000000..37578698d
+--- /dev/null
++++ b/attention/flash_attn/step1_changes.md
+@@ -0,0 +1,142 @@
++# Step 1: ConstInfo_t 超大结构体拆分 [P7]
++
++## 严重度
++🔴 最高优先级
++
++## 涉及文件
++- `op_kernel/utils/flash_attn_common_def.h:371-383`
++
++## 现状问题
++`ConstInfo_t<NO_QUANT>` 多重继承 8 个子结构体（CommonConstInfo + PAConstInfo + LseConstInfo + SinkConstInfo + PseConstInfo + TensorListConstInfo + PostQuantConstInfo + LeftPaddingConstInfo + SysPrefixConstInfo），估算 >300B，远超 64B cacheline。热路径每次访问成员都跨 cacheline Load，且编译器无法将整个结构体放入寄存器。
++
++## 修改方案
++
++### 1. 创建 HotConstInfo 小结构体（≤48B）
++在 `flash_attn_common_def.h` 中添加：
++
++```cpp
++struct HotConstInfo {
++    uint32_t bSize;
++    uint32_t n2Size;
++    uint32_t gSize;
++    uint32_t dSize;
++    uint32_t dSizeV;
++    uint32_t dBasicBlock;
++    uint64_t s1Size;
++    uint64_t s2Size;
++    float scaleValue;
++    uint32_t coreNum;
++    uint8_t subBlockIdx;
++    uint32_t aicIdx;
++};
++```
++
++### 2. 创建 ColdConstInfo 结构体
++包含冷字段并继承其他冷结构体：
++
++```cpp
++struct ColdConstInfo : PAConstInfo,
++                       LseConstInfo,
++                       SinkConstInfo,
++                       PseConstInfo,
++                       TensorListConstInfo,
++                       PostQuantConstInfo,
++                       LeftPaddingConstInfo,
++                       SysPrefixConstInfo {
++    uint64_t t1Size;
++    uint64_t t2Size;
++    uint32_t dSizeRope;
++    uint64_t cuSeqLensQSize;
++    uint64_t cuSeqLensKVSize;
++    uint64_t seqUsedQSize;
++    uint64_t seqUsedKvSize;
++    uint32_t bN2Start;
++    uint32_t bN2End;
++    uint32_t gS1OStart;
++    uint32_t gS1OEnd;
++    uint32_t s2OStart;
++    uint32_t s2OEnd;
++    uint32_t coreFirstTmpOutWsPos;
++    uint32_t sparseMode;
++    uint32_t attenMaskBatch;
++    uint32_t attenMaskS1Size;
++    uint32_t attenMaskS2Size;
++    int64_t preTokens;
++    int64_t nextTokens;
++    bool isExistRowInvalid;
++    uint32_t aivIdx;
++    uint32_t accumOutSize;
++    uint32_t logSumExpSize;
++    FA_LAYOUT outputLayout;
++    bool needInitOutput;
++};
++```
++
++### 3. 在 FlashAttentionNoQuantGqaKernel 中添加成员
++在 `flash_attn_kernel_base_gqa_template.h` 中：
++
++```cpp
++ConstInfoX constInfo;
++HotConstInfo hotConst;
++ColdConstInfo coldConst;
++```
++
++### 4. 在 InitConstInfo() 中填充 hotConst 和 coldConst
++在 `flash_attn_kernel_base_gqa_template.h` 的 `InitConstInfo()` 函数末尾添加：
++
++```cpp
++hotConst.bSize = constInfo.bSize;
++hotConst.n2Size = constInfo.n2Size;
++hotConst.gSize = constInfo.gSize;
++hotConst.dSize = constInfo.dSize;
++hotConst.dSizeV = constInfo.dSizeV;
++hotConst.dBasicBlock = constInfo.dBasicBlock;
++hotConst.s1Size = constInfo.s1Size;
++hotConst.s2Size = constInfo.s2Size;
++hotConst.scaleValue = constInfo.scaleValue;
++hotConst.coreNum = constInfo.coreNum;
++hotConst.subBlockIdx = constInfo.subBlockIdx;
++hotConst.aicIdx = constInfo.aicIdx;
++
++coldConst.t1Size = constInfo.t1Size;
++coldConst.t2Size = constInfo.t2Size;
++coldConst.cuSeqLensQSize = constInfo.cuSeqLensQSize;
++coldConst.cuSeqLensKVSize = constInfo.cuSeqLensKVSize;
++coldConst.seqUsedQSize = constInfo.seqUsedQSize;
++coldConst.seqUsedKvSize = constInfo.seqUsedKvSize;
++coldConst.sparseMode = constInfo.sparseMode;
++coldConst.attenMaskBatch = constInfo.attenMaskBatch;
++coldConst.attenMaskS1Size = constInfo.attenMaskS1Size;
++coldConst.attenMaskS2Size = constInfo.attenMaskS2Size;
++coldConst.preTokens = constInfo.preTokens;
++coldConst.nextTokens = constInfo.nextTokens;
++coldConst.isExistRowInvalid = constInfo.isExistRowInvalid;
++coldConst.aivIdx = constInfo.aivIdx;
++coldConst.accumOutSize = constInfo.accumOutSize;
++coldConst.logSumExpSize = constInfo.logSumExpSize;
++coldConst.outputLayout = constInfo.outputLayout;
++coldConst.needInitOutput = constInfo.needInitOutput;
++coldConst.isKvContinuous = constInfo.isKvContinuous;
++if constexpr (PAGE_ATTENTION) {
++    coldConst.maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
++    coldConst.blockSize = constInfo.blockSize;
++    coldConst.paLayoutType = constInfo.paLayoutType;
++}
++coldConst.isSoftmaxLseEnable = constInfo.isSoftmaxLseEnable;
++coldConst.learnableSinkFlag = constInfo.learnableSinkFlag;
++```
++
++### 5. 热路径中使用 hotConst 替代 constInfo
++在热路径函数中将 `constInfo.xxx` 替换为 `hotConst.xxx`：
++- `FlashAttention()` - aicIdx, coreNum
++- `GetTaskDealMode()` - n2Size, gSize
++- `CalcParams()` - n2Size, gSize, subBlockIdx
++- `UpdateAxisInfo()` - gSize
++- `GetFASectionInfo()` - aicIdx
++- `Process()` - aicIdx, coreNum
++
++## 预期收益
++热路径 cacheline miss 降低 60%+，编译器可将 HotConstInfo 关键字段驻留寄存器。
++
++## 实施状态
++✅ 已完成（commit 455f56dd7）
+diff --git a/attention/flash_attn/step2_changes.md b/attention/flash_attn/step2_changes.md
+new file mode 100644
+index 000000000..c24509b6d
+--- /dev/null
++++ b/attention/flash_attn/step2_changes.md
+@@ -0,0 +1,55 @@
++# Step 2: constInfo 成员变量 → 局部变量 [P4]
++
++## 严重度
++🔴 最高优先级
++
++## 涉及文件
++- `flash_attn_kernel_base_gqa_template.h`
++- `flash_attn_block_vec_noquant_gqa.h`
++
++## 现状问题
++热路径函数中大量通过 `constInfo.xxx` / `this->constInfo.xxx` 访问成员变量。每次访问生成 `this+offset` Load，跨函数调用后必须重新 Load（别名分析保守）。
++
++## 修改内容
++
++### 1. FlashAttention() 入口处拷贝热路径字段到局部变量
++```cpp
++const uint32_t n2Size = constInfo.n2Size;
++const uint32_t gSize = constInfo.gSize;
++const float scaleValue = constInfo.scaleValue;
++const uint8_t subBlockIdx = constInfo.subBlockIdx;
++const bool isKvContinuous = constInfo.isKvContinuous;
++```
++
++### 2. CreateTask() 签名增加参数传递
++```cpp
++CreateTask(..., uint32_t n2Size, uint32_t gSize, float scaleValue, uint8_t subBlockIdx, bool isKvContinuous)
++```
++
++### 3. CalcParams() 签名增加参数，内部使用参数替代 constInfo
++- `constInfo.n2Size` → `n2Size`
++- `constInfo.gSize` → `gSize`
++- `constInfo.isKvContinuous` → `isKvContinuous`
++- `constInfo.subBlockIdx` → `subBlockIdx`
++
++### 4. ProcessVec1Nd() 入口提升局部变量
++```cpp
++const float scaleValue = constInfo.scaleValue;
++const uint8_t subBlockIdx = constInfo.subBlockIdx;
++```
++- 8处 `static_cast<T>(constInfo.scaleValue)` → `static_cast<T>(scaleValue)`
++- 1处 `constInfo.subBlockIdx` → `subBlockIdx`
++
++### 5. ProcessVec1Dn() 入口提升局部变量
++```cpp
++const float scaleValue = constInfo.scaleValue;
++const uint8_t subBlockIdx = constInfo.subBlockIdx;
++```
++- 2处 `static_cast<T>(constInfo.scaleValue)` → `static_cast<T>(scaleValue)`
++- 3处 `constInfo.subBlockIdx` → `subBlockIdx`
++
++## 修改统计
++- 2 files changed, 38 insertions(+), 24 deletions(-)
++
++## 实施状态
++✅ 已完成（commit d3727b9f1）
+diff --git a/attention/flash_attn/step3_changes.md b/attention/flash_attn/step3_changes.md
+new file mode 100644
+index 000000000..0ed0aac3e
+--- /dev/null
++++ b/attention/flash_attn/step3_changes.md
+@@ -0,0 +1,45 @@
++# Step 3: softmax 状态 Buffer 数组索引优化 [P1]
++
++## 严重度
++🟠 高优先级
++
++## 涉及文件
++- `flash_attn_block_vec_noquant_gqa.h`
++
++## 现状问题
++```cpp
++TBuf<> softmaxMaxBuf[PRELOAD_N + 1];  // 深度=3
++TBuf<> softmaxSumBuf[PRELOAD_N + 1];
++TBuf<> softmaxExpBuf[PRELOAD_N + 1];
++```
++访问方式 `% (PRELOAD_N + 1)` 即 `% 3`，3 不是 2 的幂，编译器无法优化为位运算，每次取模产生 Scalar 除法开销。
++
++## 修改方案：方案 A — 深度从 3 抬到 4，用位掩码索引
++
++### 1. Buffer 声明深度改为 4
++```cpp
++TBuf<> softmaxMaxBuf[4];
++TBuf<> softmaxSumBuf[4];
++TBuf<> softmaxExpBuf[4];
++```
++
++### 2. 所有 16 处取模替换为位掩码
++`% (PRELOAD_N + 1)` → `& 3`
++
++涉及行：176-178, 351-354, 512-514, 641, 649, 767, 775, 1064, 1072, 1083
++
++### 3. SoftmaxInitBuffer() 补充 index [3] 初始化
++```cpp
++tPipe->InitBuffer(softmaxSumBuf[3], 256);
++tPipe->InitBuffer(softmaxMaxBuf[3], 256);
++tPipe->InitBuffer(softmaxExpBuf[3], 256);
++```
++
++## 修改统计
++- 1 file changed, 22 insertions(+), 22 deletions(-)
++
++## 额外 UB 开销
++3 个 TBuf（每个 256B）= 768B，换取消模运算的 Scalar 除法开销
++
++## 实施状态
++✅ 已完成（commit 924354d61）
+diff --git a/attention/flash_attn/step4_changes.md b/attention/flash_attn/step4_changes.md
+new file mode 100644
+index 000000000..f64565c6a
+--- /dev/null
++++ b/attention/flash_attn/step4_changes.md
+@@ -0,0 +1,63 @@
++# Step 4: RunInfoX 超大结构体瘦身 [P7] + 按值传递 [P6]
++
++## 严重度
++🟠 高优先级
++
++## 涉及文件
++- `op_kernel/utils/flash_attn_common_def.h`
++- `flash_attn_block_vec_noquant_gqa.h`
++
++## 现状问题
++`RunInfoX` 含 25+ 字段，估算 >160B，远超 64B cacheline。在 `CreateTask`→`CalcParams`→`ExecuteTask`→`ComputeMm1/Vec1/Mm2/Vec2` 的调用链中，RunInfoX 以引用传递，编译器因别名顾虑无法优化。
++
++## 修改内容
++
++### 1. 按使用阶段拆分为子结构体
++
++```cpp
++struct RunInfoCore {     // ~48B，Cube/Vec 计算热路径用
++    uint32_t loop, mloop;
++    uint32_t bIdx, n2Idx, gS1Idx, s1Idx, s2Idx;
++    uint32_t actMSize, actVecMSize, vecMbaseIdx;
++    uint64_t actS1Size;
++};
++
++struct RunInfoS2 {       // ~24B，S2 循环控制
++    uint32_t actSingleLoopS2Size, actSingleLoopS2SizeAlign;
++    uint32_t actMSizeAlign32;
++    uint64_t actS2Size;
++    bool isFirstS2Loop, isLastS2Loop, isS2SplitCore;
++};
++
++struct RunInfoMisc {     // 冷字段，仅特殊路径用
++    bool isValid, isChangeBatch;
++    uint32_t gIdx, faTmpOutWsPos;
++    int64_t preTokensLeftUp, nextTokensLeftUp;
++    uint64_t qPaddingBeginOffset, kvPaddingBeginOffset;
++};
++
++struct RunInfoX : RunInfoCore, RunInfoS2, RunInfoMisc {};
++```
++
++### 2. ProcessVec1Dn 改为按值传递小子结构体
++
++```cpp
++void ProcessVec1Dn(..., RunInfoCore ri, RunInfoS2 rs)
++// 按值传递 → 无别名顾虑 → 编译器激进优化
++```
++
++- 函数内所有 `runInfo.xxx` 替换为 `ri.xxx`（Core 字段）或 `rs.xxx`（S2 字段）
++- 冷路径调用 SoftmaxDataCopyOut 时从 ri/rs 重建 RunInfoX
++
++### 3. 调用点更新
++
++```cpp
++ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, runInfo);
++// RunInfoX 继承自 RunInfoCore 和 RunInfoS2，隐式切片传递
++```
++
++## 修改统计
++- 2 files changed, 43 insertions(+), 37 deletions(-)
++
++## 实施状态
++✅ 已完成（commit 82fb9bad6）
+diff --git a/attention/flash_attn/step5_changes.md b/attention/flash_attn/step5_changes.md
+new file mode 100644
+index 000000000..f52ac8de4
+--- /dev/null
++++ b/attention/flash_attn/step5_changes.md
+@@ -0,0 +1,37 @@
++# Step 5: FlashAttention 主循环状态机优化 [P2][P3]
++
++## 优化内容
++
++### 1. 缓存循环次数计算结果
++- 新增成员变量 `cachedS2LoopTimes` 和 `cachedGS1LoopTimes`
++- 在 `GetTaskDealMode()` 中，仅当 batch 切换时计算并缓存这两个值
++- `UpdateAxisInfo()` 直接使用缓存值，避免重复计算
++
++### 2. 消除冗余 64-bit 除法
++- 原代码在 `GetTaskDealMode()` 和 `UpdateAxisInfo()` 中各自计算：
++  - `s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize`
++  - `gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize`
++- 优化后仅在 batch 切换时计算一次，每轮迭代节省 2 次 64-bit 除法
++
++### 3. 分支预测优化
++- 对 `CREATE_TASK` 路径添加 `likely()` 标注
++- 对 `DEAL_ZERO`、`SKIP_ZERO`、`S2_END`、`SKIP` 等低频路径添加 `unlikely()` 标注
++- 确保热路径指令连续排布，减少分支预测失败
++
++## 修改文件
++- `flash_attn_kernel_base_gqa_template.h`
++  - 新增 2 个缓存成员变量
++  - `GetTaskDealMode()`: 缓存计算逻辑 + unlikely 标注
++  - `UpdateAxisInfo()`: 使用缓存值 + unlikely 标注
++  - `FlashAttention()`: likely/unlikely 标注
++
++## 预期收益
++- 消除每轮迭代 2 次重复的 64-bit 除法（~20-40 cycle/次）
++- 减少分支预测失败 ~30%
++- 热路径指令连续性提升
++
++## 修改统计
++- 1 file changed, 16 insertions(+), 15 deletions(-)
++
++## Commit
++- `8d241bfe2` - step 5 only
+diff --git a/attention/flash_attn/step6_changes.md b/attention/flash_attn/step6_changes.md
+new file mode 100644
+index 000000000..f00ceba49
+--- /dev/null
++++ b/attention/flash_attn/step6_changes.md
+@@ -0,0 +1,61 @@
++# Step 6: CalcParams 热路径内冗余计算消除
++
++## 优化目标
++消除 CalcParams 函数中每轮迭代都执行的冗余计算，特别是：
++1. bIdx/n2Idx 的重复除法运算
++2. GetPreNextTokenLeftUp 的重复调用
++
++## 修改内容
++
++### 1. 新增缓存成员变量
++在 `flash_attn_kernel_base_gqa_template.h` 中添加 4 个缓存变量：
++```cpp
++// Cached values for CalcParams optimization
++uint32_t cachedBIdx = 0;
++uint32_t cachedN2Idx = 0;
++int64_t cachedPreTokensLeftUp = 0;
++int64_t cachedNextTokensLeftUp = 0;
++```
++
++### 2. 在 GetTaskDealMode 中缓存计算结果
++当 batch 切换时（`isFirstTask || prevBIdx != bIdx`），计算并缓存：
++```cpp
++cachedBIdx = bIdx;
++cachedN2Idx = bN2Cur % constInfo.n2Size;
++GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, cachedPreTokensLeftUp, cachedNextTokensLeftUp);
++```
++
++### 3. CalcParams 使用缓存值
++将原来的实时计算替换为直接使用缓存：
++```cpp
++// 原来：
++info.bIdx = bN2Cur / constInfo.n2Size;
++info.n2Idx = bN2Cur % constInfo.n2Size;
++GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
++
++// 现在：
++info.bIdx = cachedBIdx;
++info.n2Idx = cachedN2Idx;
++info.preTokensLeftUp = cachedPreTokensLeftUp;
++info.nextTokensLeftUp = cachedNextTokensLeftUp;
++```
++
++## 优化效果
++
++### 性能提升
++- **消除每轮迭代的 2 次 64-bit 除法**：bIdx 和 n2Idx 的计算从每轮执行改为仅在 batch 切换时执行
++- **消除每轮迭代的函数调用**：GetPreNextTokenLeftUp 从每轮调用改为仅在 batch 切换时调用
++- **预计每轮 task 节省 ~20-40 cycles**
++
++### 代码变更统计
++- 1 file changed, 13 insertions(+), 3 deletions(-)
++
++## 验证
++- Commit: fae7323fd
++- Branch: flash_attn
++- 已推送到远程仓库
++
++## 注意事项
++1. 缓存值仅在 batch 切换时更新，同一 batch 内的所有 task 共享相同的缓存值
++2. 此优化与 Step 5（主循环状态机优化）互补，两者共同减少热路径中的冗余计算
++3. actMSizeAlign32 和 actVecMSize 的计算已经使用位运算，无需进一步优化
+diff --git a/attention/flash_attn/step7_changes.md b/attention/flash_attn/step7_changes.md
+new file mode 100644
+index 000000000..4bb4ab228
+--- /dev/null
++++ b/attention/flash_attn/step7_changes.md
+@@ -0,0 +1,91 @@
++# Step 7: tilingData 多级指针解引用消除
++
++## 优化目标
++消除 InitConstInfo 函数中 tilingData 指针的重复解引用，将 20+ 次 GM Load 操作优化为 3 次批量拷贝。
++
++## 问题分析
++
++### 原始代码问题
++```cpp
++constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
++constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
++// ... 20+ 行类似的链式访问
++```
++
++**性能问题：**
++- `tilingData` 是 `__gm__` 指针（全局内存）
++- 每次 `->` 解引用产生 GM Load 延迟（数百 cycle）
++- 20+ 次串行 GM Load 累加，Init 阶段延迟显著
++- 编译器无法优化重复的指针解引用
++
++## 优化方案
++
++### 核心思路
++一次性将 tilingData 的子结构体整体拷贝到栈上局部变量，然后从局部变量读取各字段。
++
++### 修改内容
++
++#### 1. 批量拷贝三个主要子结构体
++```cpp
++FlashAttnBaseParams baseParams = this->tilingData->flashAttnBaseParams;
++FlashAttnAttenMaskParams maskParams = this->tilingData->flashAttnAttenMaskParams;
++FlashAttnWorkspaceParams wsParams = this->tilingData->flashAttnWorkspaceParams;
++```
++
++#### 2. 从局部变量读取字段
++```cpp
++constInfo.bSize = baseParams.bSize;
++constInfo.t1Size = baseParams.t1Size;
++// ... 所有 baseParams 字段
++
++constInfo.sparseMode = maskParams.sparseMode;
++// ... 所有 maskParams 字段
++
++constInfo.accumOutSize = wsParams.accumOutSize;
++// ... 所有 wsParams 字段
++```
++
++#### 3. 条件编译块单独处理
++```cpp
++if constexpr (PAGE_ATTENTION) {
++    FlashAttnPageAttentionParams paParams = this->tilingData->flashAttnPageAttentionParams;
++    constInfo.maxBlockNumPerBatch = paParams.maxBlockNumPerBatch;
++    constInfo.blockSize = paParams.blockSize;
++    constInfo.paLayoutType = paParams.paLayoutType;
++}
++```
++
++## 优化效果
++
++### 性能提升
++- **GM Load 次数：** 从 20+ 次降为 3 次（或 4 次，如果 PAGE_ATTENTION 启用）
++- **Init 阶段延迟：** 减少约 80-90% 的 GM 访问延迟
++- **编译器优化：** 局部变量访问可被编译器优化为寄存器访问
++
++### 代码变更统计
++- 1 file changed, 38 insertions(+), 31 deletions(-)
++
++## 技术细节
++
++### 结构体大小
++- `FlashAttnBaseParams`: ~80 bytes
++- `FlashAttnAttenMaskParams`: ~24 bytes
++- `FlashAttnWorkspaceParams`: ~8 bytes
++- `FlashAttnPageAttentionParams`: ~12 bytes
++
++**总计：** ~124 bytes 栈空间开销，换取 20+ 次 GM Load 的消除
++
++### 为什么有效
++1. **批量拷贝：** 编译器可生成高效的 memcpy 指令
++2. **栈上访问：** 局部变量在栈上，访问延迟极低（~1 cycle vs GM 的数百 cycle）
++3. **编译器优化：** 栈上变量可被放入寄存器，进一步优化访问速度
++
++## 验证
++- Commit: 13759fb07
++- Branch: flash_attn
++- 已推送到远程仓库
++
++## 注意事项
++1. 此优化仅在 Init 阶段执行，不影响热路径
++2. 栈空间开销可控（~124 bytes），不会导致栈溢出
++3. 与 Step 1（ConstInfo_t 拆分）互补：Step 1 优化热路径访问，Step 7 优化初始化阶段
+diff --git a/attention/flash_attn/step8_changes.md b/attention/flash_attn/step8_changes.md
+new file mode 100644
+index 000000000..205bc32be
+--- /dev/null
++++ b/attention/flash_attn/step8_changes.md
+@@ -0,0 +1,96 @@
++# Step 8: Event ID 数组拆为标量
++
++## 优化目标
++消除 Event ID 数组的动态索引访问，避免编译器因数组下标而放弃对同结构体其他成员的常量传播优化。
++
++## 问题分析
++
++### 原始代码问题
++```cpp
++TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
++TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
++```
++
++**访问方式：**
++- 大部分使用固定索引：`mte3ToVId[0]`、`vToMte3Id[0]`
++- 少量使用动态索引：`vToMte3Id[runInfo.loop & (DB - 1)]`
++
++**性能问题：**
++- 数组动态下标访问会让编译器对整个结构体放弃常量传播（P1 原则）
++- 即使使用位掩码 `& (DB - 1)`，数组形式仍会污染别名分析
++- 影响同结构体其他成员的优化机会
++
++## 优化方案
++
++### 核心思路
++将数组拆分为独立的标量变量，使用条件选择替代动态索引。
++
++### 修改内容
++
++#### 1. 数组声明改为独立标量
++```cpp
++// 原始代码
++TEventID mte3ToVId[2];
++TEventID vToMte3Id[2];
++
++// 优化后
++TEventID mte3ToVId_0; // pingpong buffer 0
++TEventID mte3ToVId_1; // pingpong buffer 1
++TEventID vToMte3Id_0; // pingpong buffer 0
++TEventID vToMte3Id_1; // pingpong buffer 1
++```
++
++#### 2. 固定索引访问直接替换
++```cpp
++// 原始代码
++WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
++SetFlag<HardEvent::V_MTE3>(vToMte3Id[1]);
++
++// 优化后
++WaitFlag<HardEvent::MTE3_V>(mte3ToVId_0);
++SetFlag<HardEvent::V_MTE3>(vToMte3Id_1);
++```
++
++#### 3. 动态索引改为条件选择
++```cpp
++// 原始代码
++SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
++WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
++
++// 优化后
++auto& curVToMte3 = (runInfo.loop & 1) ? vToMte3Id_1 : vToMte3Id_0;
++SetFlag<HardEvent::V_MTE3>(curVToMte3);
++WaitFlag<HardEvent::V_MTE3>(curVToMte3);
++```
++
++## 优化效果
++
++### 性能提升
++- **消除数组动态下标对别名分析的污染**
++- **编译器可对同结构体其他成员进行更激进的常量传播**
++- **条件选择比数组索引更易于编译器优化**
++
++### 代码变更统计
++- 1 file changed, 29 insertions(+), 26 deletions(-)
++
++## 技术细节
++
++### 为什么有效
++1. **标量 vs 数组：** 标量变量对编译器更友好，别名分析更精确
++2. **条件选择：** `(cond) ? a : b` 形式可被编译器优化为条件移动指令
++3. **常量传播：** 消除数组后，编译器可对结构体其他成员进行常量传播
++
++### DB 的含义
++- `DB` 是 Double Buffer 的缩写，值为 2
++- `runInfo.loop & (DB - 1)` 等价于 `runInfo.loop & 1`，结果为 0 或 1
++- 用于实现 pingpong buffer 的交替使用
++
++## 验证
++- Commit: 69d61c520
++- Branch: flash_attn
++- 已推送到远程仓库
++
++## 注意事项
++1. 此优化与 Step 3（softmax Buffer 位掩码）互补
++2. Step 3 优化的是 buffer 数组索引，Step 8 优化的是 Event ID 数组
++3. 两者共同目标是减少数组动态索引对编译器优化的负面影响
+diff --git a/attention/flash_attn/step9_changes.md b/attention/flash_attn/step9_changes.md
+new file mode 100644
+index 000000000..278b4a5ab
+--- /dev/null
++++ b/attention/flash_attn/step9_changes.md
+@@ -0,0 +1,152 @@
++# Step 9: 热路径对象构造优化
++
++## 优化目标
++消除 ProcessVec2DSplit 和 ProcessVec2_C2GmUpdateUb 热路径循环内每轮迭代构造 DataCopyParams/DataCopyPadParams 对象的开销。
++
++## 问题分析
++
++### 原始代码问题
++在两个热路径函数的 for 循环内部，每轮迭代都构造 DataCopyParams 和 DataCopyPadParams 对象：
++
++```cpp
++for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
++    // ... 其他代码 ...
++    
++    DataCopyParams dataCopyParams;      // 每轮构造
++    DataCopyPadParams dataCopyPadParams; // 每轮构造
++    dataCopyParams.blockCount = subMRealsize;
++    dataCopyParams.dstStride = ...;     // 常量
++    dataCopyParams.srcStride = ...;     // 常量
++    dataCopyParams.blockLen = ...;      // 常量
++    
++    DataCopyPad(..., dataCopyParams, dataCopyPadParams);
++}
++```
++
++**性能问题：**
++- 对象构造展开后是大量初始化 Store 指令
++- dstStride、srcStride、blockLen 在循环中是常量，但每轮都重新赋值
++- 每轮迭代产生 ~10+ 个不必要的 Store 指令
++
++## 优化方案
++
++### 核心思路
++将对象构造和常量字段初始化移到循环外，循环内仅修改变化字段（blockCount）。
++
++### 修改内容
++
++#### 1. ProcessVec2DSplit 函数优化
++
++**优化前：**
++```cpp
++for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
++    // ... 计算 subMRealsize ...
++    
++    if (constInfo.dSizeV == dTemplateAlign64) {
++        DataCopy(...);
++    } else {
++        DataCopyParams dataCopyParams;
++        DataCopyPadParams dataCopyPadParams;
++        dataCopyParams.blockCount = subMRealsize;
++        dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
++        dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
++        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++        DataCopyPad(..., dataCopyParams, dataCopyPadParams);
++    }
++}
++```
++
++**优化后：**
++```cpp
++DataCopyParams dataCopyParams;
++DataCopyPadParams dataCopyPadParams;
++if (constInfo.dSizeV != dTemplateAlign64) {
++    dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
++    dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
++    dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++}
++
++for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
++    // ... 计算 subMRealsize ...
++    
++    if (constInfo.dSizeV == dTemplateAlign64) {
++        DataCopy(...);
++    } else {
++        dataCopyParams.blockCount = subMRealsize;  // 仅修改变化字段
++        DataCopyPad(..., dataCopyParams, dataCopyPadParams);
++    }
++}
++```
++
++#### 2. ProcessVec2_C2GmUpdateUb 函数优化
++
++**优化前：**
++```cpp
++for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
++    // ... 计算 subMRealsize ...
++    
++    if (constInfo.dSizeV == dTemplateAlign64) {
++        DataCopy(...);
++    } else {
++        DataCopyParams dataCopyParams;
++        DataCopyPadParams dataCopyPadParams;
++        dataCopyParams.blockCount = subMRealsize;
++        dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
++        dataCopyParams.srcStride = 0;
++        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++        DataCopyPad(..., dataCopyParams, dataCopyPadParams);
++    }
++}
++```
++
++**优化后：**
++```cpp
++DataCopyParams dataCopyParams;
++DataCopyPadParams dataCopyPadParams;
++if (constInfo.dSizeV != dTemplateAlign64) {
++    dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
++    dataCopyParams.srcStride = 0;
++    dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
++}
++
++for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
++    // ... 计算 subMRealsize ...
++    
++    if (constInfo.dSizeV == dTemplateAlign64) {
++        DataCopy(...);
++    } else {
++        dataCopyParams.blockCount = subMRealsize;  // 仅修改变化字段
++        DataCopyPad(..., dataCopyParams, dataCopyPadParams);
++    }
++}
++```
++
++## 优化效果
++
++### 性能提升
++- **消除每轮迭代的对象构造开销**：减少 ~10+ 个 Store 指令/轮
++- **减少冗余赋值**：常量字段只初始化一次
++- **提升循环体执行效率**：循环内代码更精简
++
++### 代码变更统计
++- 1 file changed, 16 insertions(+), 10 deletions(-)
++
++## 技术细节
++
++### 为什么有效
++1. **对象构造外提**：避免每轮迭代的构造函数调用和初始化 Store
++2. **常量字段预初始化**：dstStride、srcStride、blockLen 在循环中不变，只需设置一次
++3. **变化字段延迟赋值**：blockCount 依赖 subMRealsize，必须在循环内更新
++
++### 条件判断优化
++使用 `if (constInfo.dSizeV != dTemplateAlign64)` 条件判断，只在需要时才初始化参数对象，避免不必要的开销。
++
++## 验证
++- Commit: 925449b97
++- Branch: flash_attn
++- 已推送到远程仓库
++
++## 注意事项
++1. 此优化遵循 P9 原则：Hot Loop 内不构造对象
++2. 与 Step 3（Buffer 索引优化）和 Step 8（Event ID 拆标量）共同减少热路径开销
++3. 优化后代码更易维护，逻辑更清晰
