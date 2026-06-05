@@ -114,9 +114,17 @@ static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &u
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     coreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(coreNum == 0, OP_LOGE(context, "coreNum is 0"), return ge::GRAPH_FAILED);
+    if (coreNum == 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "coreNum", "0", "coreNum must be > 0");
+        return ge::GRAPH_FAILED;
+    }
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    OP_CHECK_IF(ubSize == 0, OP_LOGE(context, "ubSize is 0"), return ge::GRAPH_FAILED);
+    if (ubSize == 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "ubSize", "0", "ubSize must be > 0");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -158,16 +166,33 @@ static ge::graphStatus ValidateDtype(gert::TilingContext *context)
     auto ksDtype = ksDesc->GetDataType();
     auto kscDtype = kscDesc->GetDataType();
 
-    OP_CHECK_IF((keyDtype != ge::DT_FLOAT8_E5M2 && keyDtype != ge::DT_FLOAT8_E4M3FN),
-                OP_LOGE(context, "key dtype must be FP8_E5M2 or FP8_E4M3FN, got %d", keyDtype),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((keyDtype != valueDtype || keyDtype != kcDtype || keyDtype != vcDtype),
-                OP_LOGE(context, "key/value/key_cache/value_cache dtype must be same"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((smDtype != ge::DT_INT32 && smDtype != ge::DT_INT64),
-                OP_LOGE(context, "slot_mapping dtype must be DT_INT32 or DT_INT64, got %d", smDtype),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((ksDtype != ge::DT_FLOAT || kscDtype != ge::DT_FLOAT),
-                OP_LOGE(context, "key_scale and key_scale_cache dtype must be DT_FLOAT"), return ge::GRAPH_FAILED);
+    if (keyDtype != ge::DT_FLOAT8_E5M2 && keyDtype != ge::DT_FLOAT8_E4M3FN) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key", Ops::Base::ToString(keyDtype).c_str(),
+            "dtype must be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN");
+        return ge::GRAPH_FAILED;
+    }
+    if (keyDtype != valueDtype || keyDtype != kcDtype || keyDtype != vcDtype) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key, value, key_cache, value_cache",
+            (std::string(Ops::Base::ToString(keyDtype)) + ", " + Ops::Base::ToString(valueDtype) + ", " +
+             Ops::Base::ToString(kcDtype) + ", " + Ops::Base::ToString(vcDtype)).c_str(),
+            "dtype of key, value, key_cache, and value_cache must be the same");
+        return ge::GRAPH_FAILED;
+    }
+    if (smDtype != ge::DT_INT32 && smDtype != ge::DT_INT64) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "slot_mapping", Ops::Base::ToString(smDtype).c_str(),
+            "dtype must be DT_INT32 or DT_INT64");
+        return ge::GRAPH_FAILED;
+    }
+    if (ksDtype != ge::DT_FLOAT || kscDtype != ge::DT_FLOAT) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_scale, key_scale_cache",
+            (std::string(Ops::Base::ToString(ksDtype)) + ", " + Ops::Base::ToString(kscDtype)).c_str(),
+            "dtype must be DT_FLOAT");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -192,56 +217,118 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
                                      int64_t kHeadSize, int64_t vHeadSize, int64_t numBlocks, int64_t blockSize)
 {
     auto valueShape = GetTensorShape(context, INPUT_VALUE_IDX);
-    OP_CHECK_IF((valueShape.GetDimNum() == 0), OP_LOGE(context, "value shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((valueShape.GetDim(DIM_HEAD) != numHead), OP_LOGE(context, "value numHead mismatch"),
-                return ge::GRAPH_FAILED);
+    if (valueShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (valueShape.GetDim(DIM_HEAD) != numHead) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value", std::to_string(valueShape.GetDim(DIM_HEAD)).c_str(),
+            "shape[1] must be numHead");
+        return ge::GRAPH_FAILED;
+    }
 
     auto kcShape = GetTensorShape(context, INPUT_KEY_CACHE_IDX);
-    OP_CHECK_IF((kcShape.GetDimNum() == 0), OP_LOGE(context, "key_cache shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kcShape.GetDimNum() != KEY_CACHE_DIM_NUM), OP_LOGE(context, "key_cache must be 4D"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0), OP_LOGE(context, "key_cache head_size cannot be 0"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "key_cache numHead mismatch"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kcShape.GetDim(DIM_CACHE_HEAD_SIZE) != kHeadSize), OP_LOGE(context, "key_cache kHeadSize mismatch"),
-                return ge::GRAPH_FAILED);
+    if (kcShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_cache", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (kcShape.GetDimNum() != KEY_CACHE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcShape.GetDimNum()).c_str(), "4");
+        return ge::GRAPH_FAILED;
+    }
+    if (kcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcShape.GetDim(DIM_CACHE_HEAD_SIZE)).c_str(), "shape[3] cannot be 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (kcShape.GetDim(DIM_CACHE_HEAD) != numHead) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcShape.GetDim(DIM_CACHE_HEAD)).c_str(),
+            "shape[1] must be numHead");
+        return ge::GRAPH_FAILED;
+    }
+    if (kcShape.GetDim(DIM_CACHE_HEAD_SIZE) != kHeadSize) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcShape.GetDim(DIM_CACHE_HEAD_SIZE)).c_str(),
+            "shape[3] must be kHeadSize");
+        return ge::GRAPH_FAILED;
+    }
 
     auto vcShape = GetTensorShape(context, INPUT_VALUE_CACHE_IDX);
-    OP_CHECK_IF((vcShape.GetDimNum() == 0), OP_LOGE(context, "value_cache shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vcShape.GetDimNum() != VALUE_CACHE_DIM_NUM), OP_LOGE(context, "value_cache must be 4D"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0), OP_LOGE(context, "value_cache head_size cannot be 0"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD) != numHead), OP_LOGE(context, "value_cache numHead mismatch"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vcShape.GetDim(DIM_CACHE_HEAD_SIZE) != vHeadSize), OP_LOGE(context, "value_cache vHeadSize mismatch"),
-                return ge::GRAPH_FAILED);
+    if (vcShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value_cache", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (vcShape.GetDimNum() != VALUE_CACHE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "value_cache", std::to_string(vcShape.GetDimNum()).c_str(), "4");
+        return ge::GRAPH_FAILED;
+    }
+    if (vcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value_cache", "value_cache_head_size", "shape[3] cannot be 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (vcShape.GetDim(DIM_CACHE_HEAD) != numHead) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value_cache", std::to_string(vcShape.GetDim(DIM_CACHE_HEAD)).c_str(),
+            "shape[1] must be numHead");
+        return ge::GRAPH_FAILED;
+    }
+    if (vcShape.GetDim(DIM_CACHE_HEAD_SIZE) != vHeadSize) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "value_cache", std::to_string(vcShape.GetDim(DIM_CACHE_HEAD_SIZE)).c_str(),
+            "shape[3] must be vHeadSize");
+        return ge::GRAPH_FAILED;
+    }
 
     auto smShape = GetTensorShape(context, INPUT_SLOT_MAPPING_IDX);
-    OP_CHECK_IF((smShape.GetDimNum() == 0), OP_LOGE(context, "slot_mapping shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((smShape.GetDim(DIM_SLOT_TOKEN) != numTokens), OP_LOGE(context, "slot_mapping shape[0] != numTokens"),
-                return ge::GRAPH_FAILED);
+    if (smShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "slot_mapping", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (smShape.GetDim(DIM_SLOT_TOKEN) != numTokens) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "slot_mapping", "slot_mapping_shape_0",
+            "shape[0] must be numTokens");
+        return ge::GRAPH_FAILED;
+    }
 
     auto ksShape = GetTensorShape(context, INPUT_KEY_SCALE_IDX);
-    OP_CHECK_IF((ksShape.GetDimNum() == 0), OP_LOGE(context, "key_scale shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((ksShape.GetDimNum() != KEY_SCALE_DIM_NUM || ksShape.GetDim(DIM_SCALE_TOKEN) != numTokens ||
-                 ksShape.GetDim(DIM_SCALE_HEAD) != numHead),
-                OP_LOGE(context, "key_scale shape invalid"), return ge::GRAPH_FAILED);
+    if (ksShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_scale", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (ksShape.GetDimNum() != KEY_SCALE_DIM_NUM || ksShape.GetDim(DIM_SCALE_TOKEN) != numTokens ||
+                    ksShape.GetDim(DIM_SCALE_HEAD) != numHead) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_scale", "key_scale_shape",
+            "shape[0] must be numTokens, shape[1] must be numHead, and num dimensions must be 2");
+        return ge::GRAPH_FAILED;
+    }
 
     auto kscShape = GetTensorShape(context, INPUT_KEY_SCALE_CACHE_IDX);
-    OP_CHECK_IF((kscShape.GetDimNum() == 0), OP_LOGE(context, "key_scale_cache shape is invalid"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (kscShape.GetDimNum() != KEY_SCALE_CACHE_DIM_NUM || kscShape.GetDim(DIM_SCALE_CACHE_BLOCK) != numBlocks ||
-         kscShape.GetDim(DIM_SCALE_CACHE_HEAD) != numHead || kscShape.GetDim(DIM_SCALE_CACHE_BLOCK_SIZE) != blockSize ||
-         kscShape.GetDim(DIM_SCALE_CACHE_SIZE) != 1),
-        OP_LOGE(context, "key_scale_cache shape invalid"), return ge::GRAPH_FAILED);
+    if (kscShape.GetDimNum() == 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_scale_cache", "null", "shape is invalid");
+        return ge::GRAPH_FAILED;
+    }
+    if (kscShape.GetDimNum() != KEY_SCALE_CACHE_DIM_NUM || kscShape.GetDim(DIM_SCALE_CACHE_BLOCK) != numBlocks ||
+        kscShape.GetDim(DIM_SCALE_CACHE_HEAD) != numHead ||
+        kscShape.GetDim(DIM_SCALE_CACHE_BLOCK_SIZE) != blockSize || kscShape.GetDim(DIM_SCALE_CACHE_SIZE) != 1) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "key_scale_cache", "key_scale_cache_shape",
+            "shape[0] must be numBlocks, shape[1] must be numHead, shape[2] must be blockSize, shape[3] must be 1, "
+            "and num dimensions must be 4");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -281,7 +368,11 @@ static ge::graphStatus ExtractTensorParams(gert::TilingContext *context, TensorP
     int64_t keyStrideArr[KEY_DIM_NUM];
     int64_t keyDim;
     GetTensorInfo(context, INPUT_KEY_IDX, keyShapeArr, keyStrideArr, keyDim);
-    OP_CHECK_IF((keyDim != KEY_DIM_NUM), OP_LOGE(context, "key must be 3D"), return ge::GRAPH_FAILED);
+    if (keyDim != KEY_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "key", std::to_string(keyDim).c_str(), "3");
+        return ge::GRAPH_FAILED;
+    }
     params.numTokens = keyShapeArr[DIM_TOKEN];
     params.numHead = keyShapeArr[DIM_HEAD];
     params.kHeadSize = keyShapeArr[DIM_HEAD_SIZE];
@@ -291,6 +382,11 @@ static ge::graphStatus ExtractTensorParams(gert::TilingContext *context, TensorP
     int64_t valueStrideArr[KEY_DIM_NUM];
     int64_t valueDim;
     GetTensorInfo(context, INPUT_VALUE_IDX, valueShapeArr, valueStrideArr, valueDim);
+    if (valueDim != KEY_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "value", std::to_string(valueDim).c_str(), "3");
+        return ge::GRAPH_FAILED;
+    }
     params.vHeadSize = valueShapeArr[DIM_HEAD_SIZE];
     CopyStrides<KEY_DIM_NUM>(params.valueStride, valueStrideArr);
 
@@ -298,7 +394,11 @@ static ge::graphStatus ExtractTensorParams(gert::TilingContext *context, TensorP
     int64_t kcStrideArr[KEY_CACHE_DIM_NUM];
     int64_t kcDim;
     GetTensorInfo(context, INPUT_KEY_CACHE_IDX, kcShapeArr, kcStrideArr, kcDim);
-    OP_CHECK_IF((kcDim != KEY_CACHE_DIM_NUM), OP_LOGE(context, "key_cache must be 4D"), return ge::GRAPH_FAILED);
+    if (kcDim != KEY_CACHE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcDim).c_str(), "4");
+        return ge::GRAPH_FAILED;
+    }
     params.numBlocks = kcShapeArr[DIM_BLOCK];
     params.blockSize = kcShapeArr[DIM_BLOCK_SIZE];
     CopyStrides<KEY_CACHE_DIM_NUM>(params.keyCacheStride, kcStrideArr);
@@ -307,24 +407,44 @@ static ge::graphStatus ExtractTensorParams(gert::TilingContext *context, TensorP
     int64_t vcStrideArr[VALUE_CACHE_DIM_NUM];
     int64_t vcDim;
     GetTensorInfo(context, INPUT_VALUE_CACHE_IDX, vcShapeArr, vcStrideArr, vcDim);
+    if (vcDim != VALUE_CACHE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "value_cache", std::to_string(vcDim).c_str(), "4");
+        return ge::GRAPH_FAILED;
+    }
     CopyStrides<VALUE_CACHE_DIM_NUM>(params.valueCacheStride, vcStrideArr);
 
     int64_t smShapeArr[SLOT_MAPPING_DIM_NUM];
     int64_t smStrideArr[SLOT_MAPPING_DIM_NUM];
     int64_t smDim;
     GetTensorInfo(context, INPUT_SLOT_MAPPING_IDX, smShapeArr, smStrideArr, smDim);
+    if (smDim != SLOT_MAPPING_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "slot_mapping", std::to_string(smDim).c_str(), "1");
+        return ge::GRAPH_FAILED;
+    }
     CopyStrides<SLOT_MAPPING_DIM_NUM>(params.slotMappingStride, smStrideArr);
 
     int64_t ksShapeArr[KEY_SCALE_DIM_NUM];
     int64_t ksStrideArr[KEY_SCALE_DIM_NUM];
     int64_t ksDim;
     GetTensorInfo(context, INPUT_KEY_SCALE_IDX, ksShapeArr, ksStrideArr, ksDim);
+    if (ksDim != KEY_SCALE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "key_scale", std::to_string(ksDim).c_str(), "2");
+        return ge::GRAPH_FAILED;
+    }
     CopyStrides<KEY_SCALE_DIM_NUM>(params.keyScaleStride, ksStrideArr);
 
     int64_t kscShapeArr[KEY_SCALE_CACHE_DIM_NUM];
     int64_t kscStrideArr[KEY_SCALE_CACHE_DIM_NUM];
     int64_t kscDim;
     GetTensorInfo(context, INPUT_KEY_SCALE_CACHE_IDX, kscShapeArr, kscStrideArr, kscDim);
+    if (kscDim != KEY_SCALE_CACHE_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "ScatterPaKvCacheWithKScale", "key_scale_cache", std::to_string(kscDim).c_str(), "4");
+        return ge::GRAPH_FAILED;
+    }
     CopyStrides<KEY_SCALE_CACHE_DIM_NUM>(params.keyScaleCacheStride, kscStrideArr);
 
     params.maxSlot = params.numBlocks * params.blockSize;
@@ -410,36 +530,55 @@ static ge::graphStatus ScatterPaKvCacheWithKScaleTilingFunc(gert::TilingContext 
 {
     uint64_t ubSize;
     int64_t coreNum;
-    OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetWorkspaceSize(context) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(context) != ge::GRAPH_SUCCESS, OP_LOGE(context, "ValidateDtype error"),
-                return ge::GRAPH_FAILED);
+    if (GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "GetPlatformInfo error");
+        return ge::GRAPH_FAILED;
+    }
+    if (GetWorkspaceSize(context) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "GetWorkspaceSize error");
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateDtype(context) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "ValidateDtype error");
+        return ge::GRAPH_FAILED;
+    }
 
     TensorParams params;
-    OP_CHECK_IF(ExtractTensorParams(context, params) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "ExtractTensorParams error"), return ge::GRAPH_FAILED);
+    if (ExtractTensorParams(context, params) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "ExtractTensorParams error");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF(ValidateShape(context, params.numTokens, params.numHead, params.kHeadSize, params.vHeadSize,
-                              params.numBlocks, params.blockSize) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "ValidateShape error"), return ge::GRAPH_FAILED);
+    if (ValidateShape(context, params.numTokens, params.numHead, params.kHeadSize, params.vHeadSize,
+                      params.numBlocks, params.blockSize) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "ValidateShape error");
+        return ge::GRAPH_FAILED;
+    }
 
     ScatterPaKvCacheWithKScaleTilingData *tiling = context->GetTilingData<ScatterPaKvCacheWithKScaleTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
-    OP_CHECK_IF(memset_s(tiling, sizeof(ScatterPaKvCacheWithKScaleTilingData), 0,
-                         sizeof(ScatterPaKvCacheWithKScaleTilingData)) != EOK,
-                OP_LOGE(context, "memset tiling data error"), return ge::GRAPH_FAILED);
+    if (memset_s(tiling, sizeof(ScatterPaKvCacheWithKScaleTilingData), 0,
+                 sizeof(ScatterPaKvCacheWithKScaleTilingData)) != EOK) {
+        OP_LOGE(context, "memset tiling data error");
+        return ge::GRAPH_FAILED;
+    }
 
     FillTilingData(tiling, params, coreNum);
     context->SetBlockDim(tiling->needCoreNum);
 
     DumpTilingInfo(context, tiling);
 
-    OP_CHECK_IF((ubSize <= DCACHE_SIZE + STATIC_UB_ESTIMATE), OP_LOGE(context, "ubSize too small"),
-                return ge::GRAPH_FAILED);
+    if (ubSize <= DCACHE_SIZE + STATIC_UB_ESTIMATE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "ScatterPaKvCacheWithKScale", "ubSize", std::to_string(ubSize).c_str(),
+            "ubSize must be > DCACHE_SIZE + STATIC_UB_ESTIMATE");
+        return ge::GRAPH_FAILED;
+    }
     auto res = context->SetLocalMemorySize(static_cast<uint32_t>(ubSize - DCACHE_SIZE - STATIC_UB_ESTIMATE));
-    OP_CHECK_IF((res != ge::GRAPH_SUCCESS), OP_LOGE(context, "SetLocalMemorySize failed"), return ge::GRAPH_FAILED);
+    if (res != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context, "SetLocalMemorySize failed");
+        return ge::GRAPH_FAILED;
+    }
 
     SetTilingKeyByScene(context, params.kHeadSize, params.vHeadSize);
     return ge::GRAPH_SUCCESS;

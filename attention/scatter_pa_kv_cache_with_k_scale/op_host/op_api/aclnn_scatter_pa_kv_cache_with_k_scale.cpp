@@ -121,9 +121,19 @@ static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value, cons
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of key must be 3, but got %ld.", keyDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    auto keyLastDim = key->GetViewShape().GetDim(keyDimNum - 1);
+    if (keyLastDim == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The head_size of key cannot be 0.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     if (valueDimNum != 3) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of value must be 3, but got %ld.", valueDimNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto valueLastDim = value->GetViewShape().GetDim(valueDimNum - 1);
+    if (valueLastDim == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The head_size of value cannot be 0.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
