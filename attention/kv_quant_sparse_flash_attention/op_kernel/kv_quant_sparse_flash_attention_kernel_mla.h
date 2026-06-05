@@ -162,12 +162,17 @@ private:
 
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData();
+    __aicore__ inline void InitCoreIndex();
+    __aicore__ inline void InitWorkspaceAndServices(__gm__ uint8_t *workspace);
+    __aicore__ inline void InitFlashDecodeWorkspace(__gm__ uint8_t *workspace, uint64_t &qsfaOffset);
     __aicore__ inline void InitCalcParamsEach();
+    __aicore__ inline void CalcCoreBoundaries(uint32_t currCoreIdx, uint32_t avgBaseNum);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
     __aicore__ inline void InitOutputSingleCore();
     // ================================Process functions================================
     __aicore__ inline void ProcessBalance();
+    __aicore__ inline void ProcessBalanceVTemplateHead();
     __aicore__ inline void PreloadPipeline(uint32_t loop, uint64_t s2Start, uint64_t s2LoopIdx,
                                            RunInfo extraInfo[QSFA_PRELOAD_TASK_CACHE_SIZE]);
     // ================================Offset Calc=====================================
@@ -176,6 +181,15 @@ private:
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
     __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void InitRunInfoBasicFields(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void CalcActMBaseAndLoopState(RunInfo &info, uint64_t s2Start, uint32_t s2LoopIdx);
+    __aicore__ inline void SetRunInfoVectorMsize(RunInfo &info);
+    __aicore__ inline void CalcLayoutPrefixOffset(RunInfo &info, uint64_t &actualSeqQPrefixSum,
+                                                   uint64_t &actualSeqKVPrefixSum);
+    __aicore__ inline void CalcFirstInnerLoopParams(RunInfo &info, uint64_t actualSeqQPrefixSum,
+                                                     uint64_t actualSeqKVPrefixSum);
+    __aicore__ inline void SetRunInfoFinalFieldsAndS2Batch(RunInfo &info, uint64_t sInnerOffsetDataSize);
+    __aicore__ inline void CalcActualProcessSInnerSize(RunInfo &info, uint64_t sInnerOffsetDataSize);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
@@ -227,6 +241,90 @@ template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<
     constInfo.syncC2V2 = SYNC_C2_V2_FLAG;
     // constInfo.syncC2V1 = SYNC_C2_V1_FLAG;
     constInfo.syncV1NupdateC2 = SYNC_V1_NUPDATE_C2_FLAG;
+}
+
+template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCoreIndex()
+{
+    if ASCEND_IS_AIV {
+        tmpBlockIdx = GetBlockIdx();
+        aiCoreIdx = tmpBlockIdx / 2;
+    } else {
+        tmpBlockIdx = GetBlockIdx();
+        aiCoreIdx = tmpBlockIdx;
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitFlashDecodeWorkspace(
+    __gm__ uint8_t *workspace, uint64_t &qsfaOffset)
+{
+    accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
+    qsfaOffset = qsfaOffset + tilingData->splitKVParams.accumOutSize * sizeof(float);
+    lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
+    lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset) +
+        tilingData->splitKVParams.logSumExpSize / 2);
+    qsfaOffset = qsfaOffset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitWorkspaceAndServices(
+    __gm__ uint8_t *workspace)
+{
+    uint64_t qsfaOffset = 0;
+    mm1ResGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T *)(workspace + qsfaOffset +
+                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
+    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
+
+    vec1ResGm.SetGlobalBuffer(
+        (__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize *
+                            sizeof(K_ROPE_T)));
+    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T);
+
+    mm2ResGm.SetGlobalBuffer(
+        (__gm__ MM2_OUT_T *)(workspace + qsfaOffset +
+                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
+    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
+    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
+
+    vec2ResGm.SetGlobalBuffer((__gm__ T *)(workspace + qsfaOffset +
+                              aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
+    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
+
+    if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
+        kvMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * 512 * 576 * 4 *
+                                   sizeof(K_ROPE_T)));
+        qsfaOffset += GetBlockNum() * 512 * 576 * 4 * sizeof(K_ROPE_T);
+
+        kvValidSizeGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+    }
+
+    if constexpr (FLASH_DECODE) {
+        InitFlashDecodeWorkspace(workspace, qsfaOffset);
+    }
+
+    if ASCEND_IS_AIV {
+        vectorService.InitParams(constInfo, tilingData);
+        vectorService.InitMm2ResInt32GmGlobalTensor(mm2ResInt32Gm);
+        if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
+            vectorService.InitVec0GlobalTensor(kvValidSizeGm_, kvMergeGm_, kRopeGm, keyGm, blockTableGm);
+        }
+        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm,
+                                           actualSeqLengthsKVGm, lseMaxFdGm, lseSumFdGm, topKGm);
+        vectorService.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
+    }
+
+    if ASCEND_IS_AIC {
+        matmulService.InitParams(constInfo);
+        matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
+        matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
+        matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm,
+                                            constInfo.kvCacheBlockSize, constInfo.maxBlockNumPerBatch);
+    }
+    if (pipe != nullptr) {
+        InitBuffers();
+    }
 }
 
 template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitBuffers()
@@ -427,27 +525,18 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(__gm__ uint8_
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
     __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
-    if ASCEND_IS_AIV {
-        tmpBlockIdx = GetBlockIdx(); // vec:0-47
-        aiCoreIdx = tmpBlockIdx / 2;
-    } else {
-        tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;
-    }
+    InitCoreIndex();
 
-    // init tiling data
     tilingData = tiling;
 
     InitTilingData();
     InitActualSeqLen(actualSeqLengthsQ, actualSeqLengths);
 
-    // 初始化计算参数
     InitCalcParamsEach();
     pipe = tPipe;
     keyPtr = key;
     valuePtr = value;
 
-    // init global buffer
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
     valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
@@ -465,106 +554,20 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(__gm__ uint8_
     }
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
 
-    // workspace 内存排布
-    // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
-    // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
-    uint64_t qsfaOffset = 0;
-    mm1ResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T *)(workspace + qsfaOffset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
-    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
-
-    vec1ResGm.SetGlobalBuffer(
-        (__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize *
-                            sizeof(K_ROPE_T)));
-    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T);
-
-    mm2ResGm.SetGlobalBuffer(
-        (__gm__ MM2_OUT_T *)(workspace + qsfaOffset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
-    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
-    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
-
-    vec2ResGm.SetGlobalBuffer((__gm__ T *)(workspace + qsfaOffset +
-                              aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
-    qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
-
-    if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
-        // s2  d+rope bufNum
-        kvMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * 512 * 576 * 4 *
-                                   sizeof(K_ROPE_T)));
-        qsfaOffset += GetBlockNum() * 512 * 576 * 4 * sizeof(K_ROPE_T);
-
-        kvValidSizeGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
-    }
-
-    if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
-        qsfaOffset = qsfaOffset + tilingData->splitKVParams.accumOutSize * sizeof(float);
-        lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
-        lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset) +
-            tilingData->splitKVParams.logSumExpSize / 2);
-        qsfaOffset = qsfaOffset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
-    }
-
-    if ASCEND_IS_AIV {
-        vectorService.InitParams(constInfo, tilingData);
-        vectorService.InitMm2ResInt32GmGlobalTensor(mm2ResInt32Gm);
-        if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
-            vectorService.InitVec0GlobalTensor(kvValidSizeGm_, kvMergeGm_, kRopeGm, keyGm, blockTableGm);
-        }
-        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm,
-                                           actualSeqLengthsKVGm, lseMaxFdGm, lseSumFdGm, topKGm);
-        vectorService.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
-    }
-
-    if ASCEND_IS_AIC {
-        matmulService.InitParams(constInfo);
-        matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
-        matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
-        matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm,
-                                            constInfo.kvCacheBlockSize, constInfo.maxBlockNumPerBatch);
-    }
-    // 要在InitParams之后执行
-    if (pipe != nullptr) {
-        InitBuffers();
-    }
+    InitWorkspaceAndServices(workspace);
 }
 
-template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach()
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcCoreBoundaries(
+    uint32_t currCoreIdx, uint32_t avgBaseNum)
 {
-    // 计算总的基本块
-    uint32_t totalBaseNum = 0;
-    uint32_t s1GBaseSize = constInfo.gSize;
-    uint32_t actBatchS2 = 1;
-    uint32_t coreNum = GetBlockNum();
-    uint32_t currCoreIdx = aiCoreIdx;
-    uint32_t actBatchS1 = 1;
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
-        uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-        if (actBatchS1 < constInfo.qSeqSize) {
-            constInfo.needInit = true;
-        }
-        totalBaseNum += actBatchS1*actBatchS2 ;
-    }
-    uint32_t avgBaseNum = 1;
-    if (totalBaseNum > coreNum) {
-        avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
-    } else {
-        usedCoreNum = totalBaseNum;
-    }
-    if (aiCoreIdx>=usedCoreNum) {
-        return;
-    }
-	// 计算当前核的基本块
-    uint32_t accumBaseNum = 0; // 当前累积的基本块数
-    uint32_t targetBaseNum = 0;
+    uint32_t accumBaseNum = 0;
+    uint32_t targetBaseNum = (currCoreIdx + 1) * avgBaseNum;
     uint32_t lastValidBIdx = 0;
     uint32_t lastValidactBatchS1 = 0;
+    uint32_t actBatchS1 = 1;
     bool setStart = false;
-    targetBaseNum = (currCoreIdx + 1) * avgBaseNum; // 计算当前的目标权重
-    uint32_t targetStartBaseNum = targetBaseNum-avgBaseNum;
+    uint32_t targetStartBaseNum = targetBaseNum - avgBaseNum;
     for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kvHeadNum; bN2Idx++) {
         uint32_t bIdx = bN2Idx / constInfo.kvHeadNum;
         actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
@@ -576,7 +579,6 @@ template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<
                 setStart = true;
             }
             if (accumBaseNum >= targetBaseNum) {
-                // 更新当前核的End分核信息
                 constInfo.bN2End = bN2Idx;
                 constInfo.gS1End = s1GIdx;
                 constInfo.s2End = 0;
@@ -587,19 +589,18 @@ template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<
                 return;
             }
         }
-	    if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
+        if (actBatchS1 > 0) {
             lastValidBIdx = bIdx;
             lastValidactBatchS1 = actBatchS1;
         }
     }
     if (!setStart) {
         constInfo.bN2Start = lastValidBIdx;
-        constInfo.gS1Start = lastValidactBatchS1-1;
+        constInfo.gS1Start = lastValidactBatchS1 - 1;
     }
     if (accumBaseNum < targetBaseNum) {
-		// 更新最后一个核的End分核信息
         constInfo.bN2End = lastValidBIdx;
-        constInfo.gS1End = lastValidactBatchS1-1;
+        constInfo.gS1End = lastValidactBatchS1 - 1;
         constInfo.s2End = 0;
         constInfo.coreStartKVSplitPos = 0;
         if (aiCoreIdx != 0) {
@@ -607,6 +608,32 @@ template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<
         }
         return;
     }
+}
+
+template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach()
+{
+    uint32_t totalBaseNum = 0;
+    uint32_t actBatchS2 = 1;
+    uint32_t coreNum = GetBlockNum();
+    uint32_t currCoreIdx = aiCoreIdx;
+    uint32_t actBatchS1 = 1;
+    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
+        uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
+        if (actBatchS1 < constInfo.qSeqSize) {
+            constInfo.needInit = true;
+        }
+        totalBaseNum += actBatchS1 * actBatchS2;
+    }
+    uint32_t avgBaseNum = 1;
+    if (totalBaseNum > coreNum) {
+        avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+    } else {
+        usedCoreNum = totalBaseNum;
+    }
+    if (aiCoreIdx >= usedCoreNum) {
+        return;
+    }
+    CalcCoreBoundaries(currCoreIdx, avgBaseNum);
 }
 
 template <typename QSFAT>
@@ -630,93 +657,126 @@ template <typename QSFAT>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_t loop, uint64_t s2Start,
                                                                            uint32_t s2LoopIdx, RunInfo &info)
 {
+    InitRunInfoBasicFields(loop, s2Start, s2LoopIdx, info);
+    CalcActMBaseAndLoopState(info, s2Start, s2LoopIdx);
+    SetRunInfoVectorMsize(info);
+    uint64_t actualSeqQPrefixSum;
+    uint64_t actualSeqKVPrefixSum;
+    CalcLayoutPrefixOffset(info, actualSeqQPrefixSum, actualSeqKVPrefixSum);
+    if (info.isFirstSInnerLoop) {
+        CalcFirstInnerLoopParams(info, actualSeqQPrefixSum, actualSeqKVPrefixSum);
+    }
+    SetRunInfoFinalFieldsAndS2Batch(info);
+    CalcActualProcessSInnerSize(info);
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitRunInfoBasicFields(uint32_t loop,
+    uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info)
+{
     info.loop = loop;
     info.bIdx = tempLoopInfo.bIdx;
     info.gS1Idx = tempLoopInfo.gS1Idx;
     info.s2Idx = s2LoopIdx;
     info.curSInnerLoopTimes = tempLoopInfo.s2LoopTimes;
-
     info.tndIsS2SplitCore = tempLoopInfo.tndIsS2SplitCore;
     info.tndCoreStartKVSplitPos = tempLoopInfo.tndCoreStartKVSplitPos;
     info.isBmm2Output = false;
-
     info.actS1Size = tempLoopInfo.actS1Size;
     info.actS2Size = tempLoopInfo.curActualSeqLen;
+    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
+    info.isChangeBatch = false;
+}
 
-
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcActMBaseAndLoopState(RunInfo &info,
+    uint64_t s2Start, uint32_t s2LoopIdx)
+{
     info.actMBaseSize = constInfo.mBaseSize;
     uint32_t qsfaRemainedGS1Size = tempLoopInfo.actS1Size * constInfo.gSize - tempLoopInfo.gS1Idx;
     if (qsfaRemainedGS1Size <= constInfo.mBaseSize && qsfaRemainedGS1Size > 0) {
         info.actMBaseSize = tempLoopInfo.mBasicSizeTail;
     }
-
-    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
-
-    if ASCEND_IS_AIV {
-        info.mSize = info.actMBaseSize;
-        info.mSizeV = (info.mSize <= 16) ? info.mSize : (((info.mSize + 15) / 16 + 1) / 2 * 16);
-        info.mSizeVStart = 0;
-        if (tmpBlockIdx % 2 == 1) {
-            info.mSizeVStart = info.mSizeV;
-            info.mSizeV = info.mSize - info.mSizeV;
-        }
-    }
-
-    info.isChangeBatch = false;
-
     info.isFirstSInnerLoop = s2LoopIdx == s2Start;
     if (info.isFirstSInnerLoop) {
         tempLoopInfo.bn2IdxInCurCore++;
     }
     info.isLastS2Loop = s2LoopIdx == tempLoopInfo.s2LoopTimes - 1;
     info.bn2IdxInCurCore = tempLoopInfo.bn2IdxInCurCore - 1;
-    uint64_t qsfaActualSeqQPrefixSum;
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        qsfaActualSeqQPrefixSum = (info.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(info.bIdx - 1);
-    } else {
-        qsfaActualSeqQPrefixSum = (info.bIdx <= 0) ? 0 : info.bIdx * constInfo.qSeqSize;
-    }
-    info.tndBIdxOffsetForQ = qsfaActualSeqQPrefixSum * constInfo.qHeadNum * constInfo.combineHeadDim;
+}
 
-    uint64_t actualSeqKVPrefixSum;
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::SetRunInfoVectorMsize(RunInfo &info)
+{
+    if ASCEND_IS_AIV {
+        info.mSize = info.actMBaseSize;
+        info.mSizeV = (info.mSize <= 16) ? \
+            info.mSize : (((info.mSize + 15) / 16 + 1) / 2 * 16);
+        info.mSizeVStart = 0;
+        if (tmpBlockIdx % 2 == 1) {
+            info.mSizeVStart = info.mSizeV;
+            info.mSizeV = info.mSize - info.mSizeV;
+        }
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcLayoutPrefixOffset(RunInfo &info,
+    uint64_t &actualSeqQPrefixSum, uint64_t &actualSeqKVPrefixSum)
+{
+    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+        actualSeqQPrefixSum = (info.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(info.bIdx - 1);
+    } else {
+        actualSeqQPrefixSum = (info.bIdx <= 0) ? 0 : info.bIdx * constInfo.qSeqSize;
+    }
+    info.tndBIdxOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.combineHeadDim;
+
     if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
         actualSeqKVPrefixSum = (info.bIdx <= 0) ? 0 : actualSeqLengthsKVGm.GetValue(info.bIdx - 1);
     } else {
         actualSeqKVPrefixSum = (info.bIdx <= 0) ? 0 : info.bIdx * constInfo.kvSeqSize;
     }
     info.tndBIdxOffsetForKV = actualSeqKVPrefixSum * constInfo.kvHeadNum * constInfo.combineHeadDim;
+}
 
-    if (info.isFirstSInnerLoop) {
-        tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * constInfo.combineHeadDim;
-        tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * constInfo.combineHeadDim;
-        if (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) {
-            attenOutOffset = (qsfaActualSeqQPrefixSum * constInfo.qHeadNum + info.gS1Idx) * headDim;
-        } else {
-            uint64_t tndBIdxRopeOffsetForQ = qsfaActualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
-            tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
-            uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
-            tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
-            attenOutOffset = tensorACoreOffset;
-        }
-        if (constInfo.sparseMode == 3) {
-            threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
-        } else {
-            threshold = tempLoopInfo.curActualSeqLenOri;
-        }
-        if constexpr(LAYOUT_T == QSFA_LAYOUT::BSND) {     // B,S1,N2 K
-            topKBaseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
-                            info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
-                            info.n2Idx * constInfo.sparseBlockCount;
-        } else if (LAYOUT_T == QSFA_LAYOUT::TND) {   // T N2 K
-            topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.combineHeadDim * constInfo.kvHeadNum *
-                             constInfo.sparseBlockCount + info.n2Idx * constInfo.sparseBlockCount +
-                             info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
-        } else {    // B N2 S1 K
-            topKBaseOffset = info.bIdx * constInfo.kvHeadNum * constInfo.qSeqSize * constInfo.sparseBlockCount +
-                            info.n2Idx * constInfo.qSeqSize * constInfo.sparseBlockCount +
-                            info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
-        }
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcFirstInnerLoopParams(RunInfo &info,
+    uint64_t actualSeqQPrefixSum, uint64_t actualSeqKVPrefixSum)
+{
+    tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * constInfo.combineHeadDim;
+    tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * constInfo.combineHeadDim;
+    if (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) {
+        attenOutOffset = (actualSeqQPrefixSum * constInfo.qHeadNum + info.gS1Idx) * headDim;
+    } else {
+        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
+        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
+        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
+        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
+        attenOutOffset = tensorACoreOffset;
     }
+    if (constInfo.sparseMode == 3) {
+        threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
+    } else {
+        threshold = tempLoopInfo.curActualSeqLenOri;
+    }
+    if constexpr(LAYOUT_T == QSFA_LAYOUT::BSND) {
+        topKBaseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
+                        info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
+                        info.n2Idx * constInfo.sparseBlockCount;
+    } else if (LAYOUT_T == QSFA_LAYOUT::TND) {
+        topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.combineHeadDim * constInfo.kvHeadNum *
+                         constInfo.sparseBlockCount + info.n2Idx * constInfo.sparseBlockCount +
+                         info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
+    } else {
+        topKBaseOffset = info.bIdx * constInfo.kvHeadNum * constInfo.qSeqSize * constInfo.sparseBlockCount +
+                        info.n2Idx * constInfo.qSeqSize * constInfo.sparseBlockCount +
+                        info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::SetRunInfoFinalFieldsAndS2Batch(RunInfo &info)
+{
     info.topKBaseOffset = topKBaseOffset;
     info.threshold = threshold;
     info.tensorAOffset = tensorACoreOffset;
@@ -727,9 +787,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
 
     uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
     info.s2BatchOffset = s2BatchBaseOffset + sInnerOffsetDataSize;
-
     info.curActualSeqLenOri = tempLoopInfo.curActualSeqLenOri;
-    // 计算实际基本块size
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcActualProcessSInnerSize(RunInfo &info)
+{
+    uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
     if (tempLoopInfo.curActualSeqLen > sInnerOffsetDataSize) {
         info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
         info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > constInfo.s2BaseSize ?
@@ -798,14 +862,10 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::GetBN2Idx(uint32_t
     n2Idx = bN2Idx % kvHeadNum;
 }
 
-template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ProcessBalance()
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ProcessBalanceVTemplateHead()
 {
-    RunInfo extraInfo[QSFA_PRELOAD_TASK_CACHE_SIZE];
-    uint32_t gloop = 0;
-    int gS1LoopEnd;
-    bool globalLoopStart = true;
     if ASCEND_IS_AIC {
-        // CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
         if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
             CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE2>(3);
             CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE2>(3);
@@ -813,6 +873,15 @@ template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<
             CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE2>(3);
         }
     }
+}
+
+template <typename QSFAT> __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ProcessBalance()
+{
+    RunInfo extraInfo[QSFA_PRELOAD_TASK_CACHE_SIZE];
+    uint32_t gloop = 0;
+    int gS1LoopEnd;
+    bool globalLoopStart = true;
+    ProcessBalanceVTemplateHead();
     for (uint32_t qsfaBN2LoopIdx = constInfo.bN2Start; qsfaBN2LoopIdx <= constInfo.bN2End; qsfaBN2LoopIdx++) {
         GetBN2Idx(qsfaBN2LoopIdx, tempLoopInfo.bIdx, tempLoopInfo.n2Idx);
         GetActualSeqLen(tempLoopInfo.bIdx); // 获取actualSeqLength及ActualSeqLengthKV
