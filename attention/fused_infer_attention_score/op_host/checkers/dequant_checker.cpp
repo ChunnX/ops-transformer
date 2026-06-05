@@ -510,7 +510,7 @@ ge::graphStatus DequantChecker::CheckFeaturePertensorFullquant(const FiaTilingIn
     if (!enablePertensorQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    // todo: 不支持非连续
+    
     // 不支持后量化
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
                 OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, postquant is not supported."),
@@ -544,7 +544,7 @@ ge::graphStatus DequantChecker::CheckFeaturePerblockFullquant(const FiaTilingInf
     if (!enablePerblockQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    // todo: 不支持非连续
+
     // 不支持alibipse
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
                 OP_LOGE(fiaInfo.opName, "In per-block quant scenario, pseType should not be 2/3."),
@@ -597,7 +597,7 @@ ge::graphStatus DequantChecker::CheckFeatureMLAFullquant(const FiaTilingInfo &fi
     if (!enableIFAMLAFullQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-    // todo: 不支持非连续
+
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
                 OP_LOGE(fiaInfo.opName, "In MLA fullquant scenario, pseType should not be 2/3."),
                 return ge::GRAPH_FAILED);

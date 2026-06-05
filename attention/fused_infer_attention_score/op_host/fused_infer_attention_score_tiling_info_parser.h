@@ -134,11 +134,11 @@ public:
     uint32_t queryTSize_ = 0; // 仅TND/NTD时生效
     uint32_t keyTSize_ = 0;
     // 增加strides参数，预计5个，k/v/krope/kscale/vscale
-    const gert::Stride *keyStrides_;
-    const gert::Stride *valueStrides_;
-    const gert::Stride *kRopeStrides_;
-    const gert::Stride *kScaleStrides_;
-    const gert::Stride *vScaleStrides_;
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    const gert::Stride *kRopeStrides_ = nullptr;
+    const gert::Stride *kScaleStrides_ = nullptr;
+    const gert::Stride *vScaleStrides_ = nullptr;
     bool isTensorV1_ = false;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;

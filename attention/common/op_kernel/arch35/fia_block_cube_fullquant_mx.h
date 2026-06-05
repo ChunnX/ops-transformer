@@ -243,8 +243,7 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) { // todo: 此处连续与非连续用tensorlist来判断，是否需要更改判断条件
-            printf("[fzj] constInfo.isKvContinuous = %d\n", constInfo.isKvContinuous);
+        if (constInfo.isKvContinuous) {
             ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
             __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
             ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
@@ -323,11 +322,9 @@ public:
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            printf("[fzj] InitKVBuffer BNBD bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                              constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-            printf("[fzj] InitKVBuffer NZ bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
@@ -348,11 +345,9 @@ public:
     {
         kRopeGmTensor.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)gm);
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            printf("[fzj] InitKRopeBuffer BNBD bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             kRopeGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                                 constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-            printf("[fzj] InitKRopeBuffer NZ bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             uint32_t d0 = 32 / sizeof(ROPE_T);
             uint32_t d1 = headDim / d0;
             kRopeGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
@@ -373,11 +368,9 @@ public:
     {
         kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            printf("[fzj] InitKScaleBuffer BNBD bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                                  constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_K_SCALE_PA_NZ) {
-            printf("[fzj] InitKScaleBuffer NZ bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             uint32_t bs0 = 32 / sizeof(KV_T);
             uint32_t kvCacheBlockSize1 = kvCacheBlockSize / bs0 * MXFP_MULTI_BASE_SIZE;
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize1, headDim / MXFP_MULTI_BASE_SIZE, bs0,
@@ -398,11 +391,9 @@ public:
     {
         vScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            printf("[fzj] InitVScaleBuffer BNBD bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                                  constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-            printf("[fzj] InitVScaleBuffer NZ bnStrides = %d, n2Strides = %d\n", bnStrides, n2Strides);
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,

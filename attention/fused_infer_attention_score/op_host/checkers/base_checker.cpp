@@ -65,7 +65,6 @@ ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum,
     for (index = tensorDimNum - 1; index >= 0; index--) {
         if (index == tensorDimNum - 1) {
             if (Strides->GetStride(index) != preStride) {
- 
                 return ge::GRAPH_FAILED;
             } else {
                 continue;
