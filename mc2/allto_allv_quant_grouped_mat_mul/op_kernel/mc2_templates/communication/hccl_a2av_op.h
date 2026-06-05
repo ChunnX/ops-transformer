@@ -387,6 +387,8 @@ public:
         }
         outputPermuteSrcBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)srcBuffer);
         outputPermuteDstBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)dstBuffer);
+        outputPermuteSrcBaseOffset_ = 0UL;
+        outputPermuteDstBaseOffset_ = 0UL;
         TPipe *pipe = GetTPipePtr();
         uint64_t halfUbLen = taskTilingInfo_->ubSize / 2;
         pipe->InitBuffer(outputPermuteBufA_, halfUbLen);
