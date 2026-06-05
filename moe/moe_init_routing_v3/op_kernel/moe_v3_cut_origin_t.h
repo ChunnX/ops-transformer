@@ -37,6 +37,7 @@ private:
     __aicore__ inline void WriteExpertTokens();
     __aicore__ inline void GatherAndWriteChunked();
     __aicore__ inline void GatherAndWriteDroppad();
+    template <int64_t QUANT_MODE>
     __aicore__ inline void PadZerosForDropPad();
 
     // Quantization helper functions
@@ -369,7 +370,13 @@ __aicore__ inline void MoeV3CutOriginT<T>::Process()
     // // // // ======= Phase C: Chunked gather + on-demand x DMA (all cores parallel) =======
     if (dropPadMode_ == DROP_PAD_MODE) {
         SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-        PadZerosForDropPad();
+        if (quantMode_ == 0) {
+            PadZerosForDropPad<0>();
+        } else if (quantMode_ == 1) {
+            PadZerosForDropPad<1>();
+        } else {
+            PadZerosForDropPad<-1>();
+        }
         GatherAndWriteDroppad();
     } else {
         GatherAndWriteChunked();
@@ -1709,6 +1716,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 
 // ========================== PadZerosForDropPad ==========================
 template <typename T>
+template <int64_t QUANT_MODE>
 __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
 {
     // 多核并行 pad：按 expert 轮询分配
@@ -1718,7 +1726,9 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
     // zeroBuf 从 totalCountLocal 之后开始（避免覆盖 totalCountLocal）
     int64_t zeroBufStart = totalCountLocalOffset_ +
         OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
-    int64_t outElemSize = static_cast<int64_t>(sizeof(T));
+
+    // 量化模式下输出元素为 int8，非量化为 T
+    constexpr int64_t outElemSize = (QUANT_MODE != -1) ? static_cast<int64_t>(sizeof(int8_t)) : static_cast<int64_t>(sizeof(T));
     int64_t elemsPerBlock = BLOCK_BYTES / outElemSize;
     int64_t zeroBufMaxBytes = totalBufSize_ - zeroBufStart;
     int64_t zeroBufMaxElems = (zeroBufMaxBytes / outElemSize / elemsPerBlock) * elemsPerBlock;
@@ -1744,15 +1754,26 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
         int64_t totalPadElems = padCount * cols_;
 
         // Zero-fill expandedX
-        LocalTensor<T> zb = zeroBufI32.ReinterpretCast<T>();
-        for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
-            DataCopyExtParams cp{static_cast<uint16_t>(1),
-                static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0, 0};
-            DataCopyPad(expandedXGm_[gmStart + off], zb, cp);
+        if constexpr (QUANT_MODE != -1) {
+            // 量化模式：搬出 int8 零到 expandedXInt8Gm_
+            LocalTensor<int8_t> zb = zeroBufI32.ReinterpretCast<int8_t>();
+            for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
+                DataCopyExtParams cp{static_cast<uint16_t>(1),
+                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(int8_t)), 0, 0, 0};
+                DataCopyPad(expandedXInt8Gm_[gmStart + off], zb, cp);
+            }
+        } else {
+            // 非量化模式：搬出 T 类型零到 expandedXGm_
+            LocalTensor<T> zb = zeroBufI32.ReinterpretCast<T>();
+            for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
+                DataCopyExtParams cp{static_cast<uint16_t>(1),
+                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0, 0};
+                DataCopyPad(expandedXGm_[gmStart + off], zb, cp);
+            }
         }
 
-        // Zero-fill expandedScale
-        if (isInputScale_) {
+        // Zero-fill expandedScale（仅动态量化需要 pad scale）
+        if constexpr (QUANT_MODE == 1) {
             int64_t scaleStart = (expertStart_ + e) * expertCapacity_ + actualWritten;
             LocalTensor<float> zf = zeroBufI32.ReinterpretCast<float>();
             DataCopyExtParams cp{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
