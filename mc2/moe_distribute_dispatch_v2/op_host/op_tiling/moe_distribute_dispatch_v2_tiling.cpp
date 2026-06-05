@@ -97,7 +97,7 @@ namespace {
     constexpr int64_t MAX_TP_WORLD_SIZE = 2;
     constexpr int64_t MAX_TP_WORLD_SIZE_LAYERED = 1;
     constexpr int64_t BS_UPPER_BOUND = 512;
-    constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
+    constexpr int64_t BS_UPPER_BOUND_LAYERED = 512;
     constexpr int64_t FULLMESH_BS_UPPER_BOUND = 256;
     constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
     constexpr uint32_t RANK_NUM_PER_NODE = 16U;
