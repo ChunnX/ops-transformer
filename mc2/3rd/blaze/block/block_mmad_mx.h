@@ -404,6 +404,10 @@ public:
         if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::GM>) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         }
+        // toAiv1 时 fixpipe 走 AIV1 通路可能变异步，同样等上一轮完成
+        if (toAiv1) {
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             uint64_t l1BufId = abL1LoopCnt_ & (l1BufNum_ - 1);
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
@@ -456,9 +460,12 @@ public:
         }
 
         if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
-            // C L0C->UB (toAiv1=true → 输出到 AIV1 的 UB)
+            // C L0C->UB (toAiv1=true → 输出到 AIV1 的 UB，需 FIX_M 同步确保异步 fixpipe 完成)
             auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
             AscendC::Te::Copy(CopyL0C2UB, gmC, tensorL0C, AscendC::Te::FixpipeParams{3, toAiv1});
+            if (toAiv1) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+            }
         } else {
             // C L0C->GM
             auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
