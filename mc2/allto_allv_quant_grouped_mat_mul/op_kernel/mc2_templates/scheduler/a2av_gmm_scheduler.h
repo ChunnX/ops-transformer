@@ -205,8 +205,6 @@ private:
                 commOp.WaitScaleCombinedAic(turnIdx);
             }
 
-            SyncAll<false>();
-
             computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
         }
     }
