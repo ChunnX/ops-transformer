@@ -469,7 +469,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer>& runParam, const 
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    int32_t bIdx, __gm__ int64_t *actualSeqQlenAddr, PseInfo& pseInfo)
+    int32_t bIdx, __gm__ int64_t *actualSeqQlenAddr)
 {
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
@@ -628,7 +628,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    uint32_t sOuterLoopIdx, __gm__ int64_t *actualSeqQlenAddr, PseInfo& pseInfo)
+    uint32_t sOuterLoopIdx, __gm__ int64_t *actualSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
@@ -639,7 +639,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
         return true;
     }
 
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr, pseInfo);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
     return false;
 }
 

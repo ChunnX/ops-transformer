@@ -386,12 +386,6 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     inputParams.set_attenMaskS1Size(s1Size);
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
     inputParams.set_isRowInvalid(0);
-    inputParams.set_isPostQuantPerChnl(0);
-    inputParams.set_isPostQuantBF16(0);
-    inputParams.set_antiquantPageAttentionFlag(0);
-    inputParams.set_antiquantPerTensorFlag(0);
-    inputParams.set_antiquantPerHeadFlag(0);
-    inputParams.set_antiquantParaSeqSize(0);
 
     auto &multiCoreParams = tilingData.multiCoreParamsRegbase;
     multiCoreParams.set_coreNum(static_cast<int32_t>(usedCoreNum));

@@ -33,14 +33,12 @@
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
 
-#include "common/pse.h"
 #include "common/infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
-using namespace optiling;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
@@ -60,14 +58,20 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 class QuantBlockSparseAttentionKernelBase {
 public:
     ARGS_TRAITS;
+    static constexpr ImplModeEnum implMode = kBsaImplMode;
+    static constexpr PseTypeEnum pseMode = kBsaPseMode;
+    static constexpr bool hasDrop = kBsaHasDrop;
+    static constexpr bool hasRope = kBsaHasRope;
+    static constexpr bool isInfer = kBsaIsInfer;
+    static constexpr bool enableKVPrefix = kBsaEnableKVPrefix;
     __aicore__ inline QuantBlockSparseAttentionKernelBase() {};
 
     __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
                             __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
-                            __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, 
-                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
+                            __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                             __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, 
                             __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax, 
                             __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
@@ -78,9 +82,8 @@ public:
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                             __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-                            __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *queryRope,
                             __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
-                            __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+                            __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
                             __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
                             __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace,
                             const QuantBlockSparseAttentionTilingData *__restrict tiling, TPipe *tPipe);
@@ -141,7 +144,6 @@ public:
     /* 初始化后不变的信息 */
     ConstInfo<isInfer, hasRope> constInfo;
     AttenMaskInfo attenMaskInfo;
-    PseInfo pseInfo;
     /* 其他正向独有的一些信息 */
     // Unpack参数
     uint64_t s1OuterSizeAcc;
@@ -164,7 +166,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, 
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
     __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink,
     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
@@ -180,8 +182,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         this->tilingData = tiling;
     }
     this->pipe = tPipe;
-    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
-        attenMaskInfo, pseInfo);
+    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
+        attenMaskInfo);
     vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
@@ -200,8 +202,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     this->InitActualKVPrefixLen(actualSharedPrefixLen);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
-        actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
+        actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale,
+        keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize,
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
@@ -227,7 +229,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *keySharedPrefix,
     __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t*actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace,
@@ -252,7 +254,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_TND || q_layout == LayOutTypeEnum::LAYOUT_NTD) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     } else {
@@ -287,11 +289,11 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         bmm2ResGmBuffers.Init(gmBufferManager, mm2Offset);
         workspace += (totalOffset + mm2Offset * 3);
     }
-    vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
+    vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale,
         prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum,
         workspace, singleCoreOffset,
         this->aicIdx, constInfo);
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
             int64_t actualS1Len;
             int64_t actualS2Len;
@@ -430,13 +432,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
     }
 
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
@@ -456,13 +454,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                 }
             }
         }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+    } else if constexpr (q_layout == LayOutTypeEnum::LAYOUT_BSH) {
         // BSH/BSNGD
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
@@ -482,15 +476,11 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                 }
             }
         }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_SBH) {
+    } else if constexpr (q_layout == LayOutTypeEnum::LAYOUT_SBH) {
         // SBH/SBNGD
         constInfo.bN2GDv = sharedParams.bSize * constInfo.n2GDv;
         constInfo.s1BaseBN2GDv = s1BaseSize * constInfo.bN2GDv;
         constInfo.s2BaseBN2Dv = sharedParams.bSize * constInfo.s2BaseN2Dv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = sharedParams.bSize * constInfo.n2Size * constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = sharedParams.bSize * constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = sharedParams.bSize * constInfo.n2Dv;
@@ -498,28 +488,20 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
             constInfo.attentionOutStride =
                 (sharedParams.bSize * constInfo.n2Size * constInfo.gSize - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+    } else if constexpr (q_layout == LayOutTypeEnum::LAYOUT_BNSD) {
         // bnsd
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.dSize;
         constInfo.mm1Kb = constInfo.dSize;
         constInfo.mm2Kb = constInfo.dSizeV;
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = 0;
         }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+    } else if constexpr (q_layout == LayOutTypeEnum::LAYOUT_NTD) {
         // NG(BS)D
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
         constInfo.mm1Ka = constInfo.dSize;
         constInfo.mm1Kb = constInfo.dSize;
         constInfo.mm2Kb = constInfo.dSizeV;
@@ -569,7 +551,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
 {
     // 计算轴的idx
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_TND) {
         GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
         int64_t actualS1Outersize = this->s1OuterSizeAcc + (CeilDiv(runParam.actualS1Size, this->s1BaseSize) * constInfo.n2G);
 
@@ -595,9 +577,11 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runParam.goIdx = actualS1Outersize / tmpS1Outersize % this->sharedParams.gSize;
         runParam.s1oIdx = actualS1Outersize % tmpS1Outersize;
     } else {
-        runParam.boIdx = multiCoreInnerIdx / constInfo.n2GS1o;
-        runParam.n2oIdx = multiCoreInnerIdx % constInfo.n2GS1o / constInfo.gS1o;
-        runParam.goIdx = multiCoreInnerIdx % constInfo.gS1o / constInfo.s1OuterSize;
+        int64_t gS1OuterSize = constInfo.gSize * constInfo.s1OuterSize;
+        int64_t n2GS1OuterSize = constInfo.n2G * constInfo.s1OuterSize;
+        runParam.boIdx = multiCoreInnerIdx / n2GS1OuterSize;
+        runParam.n2oIdx = multiCoreInnerIdx % n2GS1OuterSize / gS1OuterSize;
+        runParam.goIdx = multiCoreInnerIdx % gS1OuterSize / constInfo.s1OuterSize;
         runParam.s1oIdx = multiCoreInnerIdx % constInfo.s1OuterSize;
         runParam.b1SSOffset = runParam.boIdx * constInfo.s1S2;
         runParam.actualS1Size = constInfo.s1Size;
@@ -635,7 +619,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_TND || q_layout == LayOutTypeEnum::LAYOUT_NTD) {
         runInfo.boIdx = runParam.boIdx;
         runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
         runInfo.s2ScaleNumAcc = s2ScaleNumAcc;

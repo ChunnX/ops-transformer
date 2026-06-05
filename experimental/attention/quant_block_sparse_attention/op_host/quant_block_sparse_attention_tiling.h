@@ -177,12 +177,6 @@ TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
 TILING_DATA_FIELD_DEF(int32_t, attenMaskS1Size)
 TILING_DATA_FIELD_DEF(uint8_t, paLayoutType)
 TILING_DATA_FIELD_DEF(uint8_t, isRowInvalid)
-TILING_DATA_FIELD_DEF(uint8_t, isPostQuantPerChnl)
-TILING_DATA_FIELD_DEF(uint8_t, isPostQuantBF16)
-TILING_DATA_FIELD_DEF(uint8_t, antiquantPageAttentionFlag)
-TILING_DATA_FIELD_DEF(uint16_t, antiquantPerTensorFlag)
-TILING_DATA_FIELD_DEF(uint16_t, antiquantPerHeadFlag)
-TILING_DATA_FIELD_DEF(uint32_t, antiquantParaSeqSize)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttentionInputParamsRegbaseOp, QuantBlockSparseAttentionInputParamsRegbase)
 

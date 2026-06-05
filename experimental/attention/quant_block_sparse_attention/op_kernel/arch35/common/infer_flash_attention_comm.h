@@ -17,9 +17,15 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../quant_block_sparse_attention_attenmask.h"
-#include "pse.h"
+#include "../../quant_block_sparse_attention_common.h"
 
 constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
+constexpr ImplModeEnum kBsaImplMode = ImplModeEnum::AA_HIGH_PRECISION;
+constexpr PseTypeEnum kBsaPseMode = PseTypeEnum::PSE_NONE_TYPE;
+constexpr bool kBsaHasDrop = false;
+constexpr bool kBsaHasRope = false;
+constexpr bool kBsaIsInfer = true;
+constexpr bool kBsaEnableKVPrefix = false;
 
 // INPUT_T - means data type for input
 // T       - means data type when calc
@@ -38,8 +44,8 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     bool hasAtten, bool hasDrop, bool hasRope, bool isInfer, bool isPa, bool enableKVPrefix>
 
 #define CHILD_SPEC_TEMPLATE_ARGS \
-    INPUT_T, T, implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    pseMode, hasAtten, hasDrop, hasRope, OUTPUT_T, isInfer, isPa
+    INPUT_T, T, kBsaImplMode, q_layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    kBsaPseMode, hasAtten, kBsaHasDrop, kBsaHasRope, OUTPUT_T, kBsaIsInfer, isPa
 
 // 伪量化模板参数列表
 #define CHILD_SPEC_TEMPLATE_ARGS_ANTI \
@@ -84,19 +90,14 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(implMode, ImplModeEnum, ImplModeEnum::AA_HIGH_PRECISION) \
-    X(layout, LayOutTypeEnum, LayOutTypeEnum::None) \
+    X(q_layout, LayOutTypeEnum, LayOutTypeEnum::None) \
+    X(kv_layout, BSAKvLayout, BSAKvLayout::PA_BNSD) \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128) \
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
-    X(pseMode, PseTypeEnum, PseTypeEnum::PSE_NONE_TYPE) \
     X(hasAtten, bool, false) \
-    X(hasDrop, bool, false) \
-    X(hasRope, bool, false) \
-    X(isInfer, bool, false) \
     X(isPa, bool, false) \
-    X(enableKVPrefix, bool, false) \
     X(enableS1OutSplit, bool, false)
 
 /* 1. 生成带默认值的模版Template */
