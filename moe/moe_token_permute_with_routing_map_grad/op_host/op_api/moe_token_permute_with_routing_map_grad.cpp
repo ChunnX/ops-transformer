@@ -29,35 +29,6 @@ const std::array<const aclTensor*, 2> MoeTokenPermuteWithRoutingMapGrad(
     L0_DFX(
         MoeTokenPermuteWithRoutingMapGrad, permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices,
         routingMapOptional, numExperts, tokensNum, dropAndPad);
-    if (dropAndPad) {
-        if (permutedProbsOutputGradOptional != nullptr && probsGradOut != nullptr) {
-            ge::DataType probsDtype = permutedProbsOutputGradOptional->GetDataType();
-            op::Shape permuteTokensGradShape;
-            permuteTokensGradShape.AppendDim(permutedTokenOutputGrad->GetViewShape().GetDim(0));
-            permuteTokensGradShape.AppendDim(0);
-            auto permuteTokensGrad = executor->AllocTensor(permuteTokensGradShape, probsDtype, op::Format::FORMAT_ND);
-            if (permuteTokensGrad == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc permuteTokensGrad tensor failed.");
-                return std::array<const aclTensor*, 2>{nullptr, nullptr};
-            }
-            auto tokensOutGrad = executor->AllocTensor(permuteTokensGradShape, probsDtype, op::Format::FORMAT_ND);
-            if (tokensOutGrad == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc tokensOutGrad tensor failed.");
-                return std::array<const aclTensor*, 2>{nullptr, nullptr};
-            }
-            ADD_TO_LAUNCHER_LIST_AICORE(
-                MoeTokenPermuteWithRoutingMapGrad,
-                OP_INPUT(permuteTokensGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional),
-                OP_OUTPUT(tokensOutGrad, probsGradOut), OP_ATTR(numExperts, tokensNum, dropAndPad));
-        }
-
-        ADD_TO_LAUNCHER_LIST_AICORE(
-            MoeTokenPermuteWithRoutingMapGrad,
-            OP_INPUT(permutedTokenOutputGrad, nullptr, sortedIndices, routingMapOptional),
-            OP_OUTPUT(tokensGradOut, nullptr), OP_ATTR(numExperts, tokensNum, dropAndPad));
-
-        return std::array<const aclTensor*, 2>{tokensGradOut, probsGradOut};
-    }
 
     ADD_TO_LAUNCHER_LIST_AICORE(
         MoeTokenPermuteWithRoutingMapGrad,

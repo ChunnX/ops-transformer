@@ -42,6 +42,9 @@ TILING_DATA_FIELD_DEF(int64_t, hiddenSplitedRemain)
 TILING_DATA_FIELD_DEF(int64_t, tokensCoreLength)
 TILING_DATA_FIELD_DEF(int64_t, tokensCoreRemain)
 TILING_DATA_FIELD_DEF(int64_t, bufferNum)
+TILING_DATA_FIELD_DEF(int64_t, haveProbs)
+TILING_DATA_FIELD_DEF(int64_t, tokenUsedCoreNum)
+TILING_DATA_FIELD_DEF(int64_t, probsUsedCoreNum)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(
     MoeTokenpermuteWithRoutingMapDropPadTokenTilingDataOp, MoeTokenpermuteWithRoutingMapDropPadTokenTilingData)
