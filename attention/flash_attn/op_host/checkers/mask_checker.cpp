@@ -34,9 +34,10 @@ using namespace arch35FA;
 ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FaTilingInfo &faInfo)
 {
     const std::vector<int64_t> maskModeList = {static_cast<int64_t>(MaskMode::NO_MASK),
-                                               static_cast<int64_t>(MaskMode::CAUSAL)};
+                                               static_cast<int64_t>(MaskMode::CAUSAL),
+                                               static_cast<int64_t>(MaskMode::BAND)};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
-                OP_LOGE(faInfo.opName, "mask_mode only supports 0/3, but got %ld", faInfo.maskMode),
+                OP_LOGE(faInfo.opName, "mask_mode only supports 0/3/4, but got %ld", faInfo.maskMode),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -122,6 +123,17 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
         OP_CHECK_IF(faInfo.winRight != -1,
                     OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=3 (causal mode), but got %ld.",
                             faInfo.winRight),
+                    return ge::GRAPH_FAILED);
+    }
+    if (faInfo.maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        OP_CHECK_IF(attnMaskTensor == nullptr,
+                    OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=4 (band mode)."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winLeft < -1,
+                    OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1 when mask_mode=4 (band mode).", faInfo.winLeft),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winRight < -1,
+                    OP_LOGE(faInfo.opName, "win_right(%ld) must be >= -1 when mask_mode=4 (band mode).", faInfo.winRight),
                     return ge::GRAPH_FAILED);
     }
 
