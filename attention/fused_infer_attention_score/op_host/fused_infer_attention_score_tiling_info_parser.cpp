@@ -201,9 +201,6 @@ ge::graphStatus FiaInfoParser::GetStrides()
     if (opParamInfo_.keyRope.desc != nullptr) {
         kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
     }
-    // kRopeStrides_ = context_->GetInputStride(25);
-    auto keyStrideDim = keyStrides_->GetDimNum();
-    auto kScaleStrideDim = kScaleStrides_->GetDimNum();
     return ge::GRAPH_SUCCESS;
 }
 
