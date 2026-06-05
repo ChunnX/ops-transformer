@@ -17,6 +17,8 @@
 #include "../../../op_host/moe_init_routing_quant_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "op_tiling_parse_context_builder.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 using namespace std;
 
@@ -143,3 +145,442 @@ TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_error) {
     std::vector<size_t> expectWorkspaces = {18157568};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+// Split-K gather path: n < aivNum && n < k (case2: 1 x 48 x 1024, active=1)
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_split_k)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 1;
+    int64_t k = 48;
+    int64_t h = 1024;
+    int64_t activeNum = 1;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{activeNum * k, h}, {activeNum * k, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1, "", {});
+}
+
+// Gather row path: n/2 > active_num -> tilingKey += 2 (case1: 4096 x 40 x 8, active=8)
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_gather_row)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 4096;
+    int64_t k = 40;
+    int64_t h = 8;
+    int64_t activeNum = 8;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{activeNum * k, h}, {activeNum * k, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4, "", {});
+}
+
+// Split-N with large H (case3: 20 x 20 x 44321, active=20)
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_split_n_large_h)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 20;
+    int64_t k = 20;
+    int64_t h = 44321;
+    int64_t activeNum = 20;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{activeNum * k, h}, {activeNum * k, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1, "", {});
+}
+
+// SrcToDst per-loop split: row gather + multi-core VBS (n/2 > active_num, totalLength > sortLoopMax)
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_src_to_dst_split)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 512;
+    int64_t k = 40;
+    int64_t h = 128;
+    int64_t activeNum = 100;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{activeNum * k, h}, {activeNum * k, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_active_num_negative)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_x_dim)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5, 1}, {6, 5, 1}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_row_idx_dim)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_row_idx_dim)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_idx_mismatch)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_x_row)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{5, 5}, {5, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_x_col)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 6}, {6, 6}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_expanded_row_idx_len)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_x_dim)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{6}, {6}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_fail_input_rows)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{3, 3}, {3, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{3, 3}, {3, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{6, 5}, {6, 5}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_parse_succ)
+{
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.Build();
+    auto parseContext = holder.GetContext();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeInitRoutingQuant");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    EXPECT_EQ(opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext)), ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_split_k_active_zero)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 1;
+    int64_t k = 48;
+    int64_t h = 1024;
+    int64_t activeNum = 0;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{0, h}, {0, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_gather_row_active_zero)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 4096;
+    int64_t k = 40;
+    int64_t h = 8;
+    int64_t activeNum = 0;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{0, h}, {0, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n * k}, {n * k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 4, "", {});
+}
+
+TEST_F(MoeInitRoutingQuantTiling, MoeInitRoutingQuant_tiling_vbs_align_branch)
+{
+    optiling::MoeInitRoutingQuantCompileInfo compileInfo = {};
+    int64_t n = 12500;
+    int64_t k = 4;
+    int64_t h = 128;
+    int64_t activeNum = n * k;
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingQuant",
+                                            {
+                                                {{{n, h}, {n, h}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{n, k}, {n, k}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {{{activeNum, h}, {activeNum, h}}, ge::DT_INT8, ge::FORMAT_ND},
+                                                {{{activeNum}, {activeNum}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{activeNum}, {activeNum}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {
+                                                {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+                                                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                {"offset", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
+                                            },
+                                            &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2, "", {});
+}
+
