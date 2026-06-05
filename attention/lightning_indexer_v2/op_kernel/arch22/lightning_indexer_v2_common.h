@@ -70,9 +70,7 @@ struct RunInfo {
 
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
-    static constexpr uint32_t FIA_SYNC_MODE2 = 2;
-    static constexpr uint32_t LI_SYNC_MODE4 = 4;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
+    static constexpr uint32_t LI_SYNC_MODE2 = 2;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
     // BUFFER的字节数
@@ -88,11 +86,6 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // 无效索引
     static constexpr int INVALID_IDX = -1;
-    // CUBE和VEC的核间同步EventID
-    uint32_t syncC1V1 = 0U;
-    uint32_t syncC1V0 = 2U;
-    uint32_t syncV1C1 = 0U;
-    uint32_t syncV0C1 = 1U;
 
     // 基本块大小
     uint32_t mBaseSize = 1ULL;

@@ -68,7 +68,6 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using OUT_T = typename LIT::outputType;
-    using SCORE_T = typename LIT::scoreType;
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
@@ -83,7 +82,6 @@ public:
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_C1_FLAG = 5;
 
-    static constexpr uint32_t M_BASE_SIZE = 256;
     static constexpr uint32_t S1_BASE_SIZE = 4;
     static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
     static constexpr uint32_t S2_BASE_SIZE = 128;
@@ -256,7 +254,7 @@ __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uin
                                                              bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio,
-                                                             uint32_t cmpResidualK)
+                                                             int32_t cmpResidualK)
 {
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio + cmpResidualK;
@@ -536,13 +534,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
-    GlobalTensor<SCORE_T> scoreGm;
-    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * LIV2Common::Align((uint64_t)constInfo.kSeqSize,
-                                                                            (uint64_t)constInfo.s2BaseSize)
-                                                                            * sizeof(SCORE_T);
-    scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset + aiCoreIdx * singleCoreScoreSize));
-    offset += GetBlockNum() * singleCoreScoreSize;
-
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
 
@@ -560,7 +551,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
         }
         outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         vectorService.InitVecInputTensor(weightsGm, indiceOutGm, valueOutGm, blockTableGm, outputIdxOffsetGm);
-        vectorService.InitVecWorkspaceTensor(scoreGm);
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
     } else {
         matmulService.InitParams(constInfo);
@@ -751,8 +741,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_MTE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
+        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_MTE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
     } else {
         matmulService.AllocEventID();
     }
@@ -783,8 +773,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_MTE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_MTE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
     }
 }
 
@@ -794,9 +784,13 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessBaseBlock(uint32_t 
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
         matmulService.ComputeMm1(runInfo);
+        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_CV_EVENT);
     } else {
+        CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2>(LIV2Common::ConstInfo::CROSS_CV_EVENT);
         vectorService.ProcessVec1(runInfo);
+        CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE2, PIPE_MTE2>(LIV2Common::ConstInfo::CROSS_VC_EVENT);
     }
 }
 

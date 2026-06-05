@@ -52,7 +52,6 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
-    using SCORE_T = typename LIT::scoreType;
     using QK_T = typename LIT::queryKeyType;
     using W_T = typename LightningIndexerV2TypeTraits<Q_T,
                                           typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
@@ -66,7 +65,6 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct LIV2Common::ConstInfo &constInfo,
                                       const LIV2TilingData *__restrict tilingData);
-    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<K_T> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
@@ -79,7 +77,6 @@ public:
     __aicore__ inline void InitLDBuffers(TPipe *pipe);
 
 protected:
-    GlobalTensor<SCORE_T> scoreGm;
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
@@ -223,12 +220,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecInputTensor(
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm)
-{
-    this->scoreGm = scoreGm;
-}
-
-template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm,
                                                                                    GlobalTensor<float> vec1ResGm,
                                                                                    GlobalTensor<int64_t> vec1ParamGm,
@@ -292,11 +283,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const LIV2Common::RunInfo &info)
 {
-    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
-        LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);
-    CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
-        LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
-
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
 
@@ -530,10 +516,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
         blockS2StartIdx_ = 0;
     }
 
-    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
-        LIV2Common::ConstInfo::CROSS_VC_EVENT + (info.loop + 1) % 2);
-    CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
-        LIV2Common::ConstInfo::CROSS_VC_EVENT + (info.loop + 1) % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
 }
 
 template <typename LIT>
@@ -547,7 +529,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
     int64_t s2End;
     int64_t isS2End;
     int64_t bn2Idx;
-    int64_t s1Idx;
+    // [Fix P1-vec-3] s1Idx removed: written by producer (SetValue index 6) but never
+    // read in ProcessLD. It was dead code consuming a local variable unnecessarily.
     uint32_t acc_list_num = 0;
     int64_t bIdx = 0;
     int64_t needFd;
@@ -597,7 +580,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
         wsInfoOffset = tmpCubeId * s1BaseSize_ * 2 * paramNum_ + innerS1Idx * 2 * paramNum_;
         needFd = vec1ParamGm.GetValue(wsInfoOffset);
         isS2End = vec1ParamGm.GetValue(wsInfoOffset + 4);
-        s1Idx = vec1ParamGm.GetValue(wsInfoOffset + 6);
+        // s1Idx (offset 6) intentionally not read here: dead code removed [Fix P1-vec-3]
         outOffset = vec1ParamGm.GetValue(wsInfoOffset + 8);
 
         while (needFd == 1) {
