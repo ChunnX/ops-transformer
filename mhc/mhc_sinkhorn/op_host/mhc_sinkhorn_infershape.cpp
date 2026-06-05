@@ -14,6 +14,7 @@
  */
 
 #include "log/log.h"
+#include <string>
 #include "register/op_impl_registry.h"
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
@@ -70,11 +71,10 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     }
 
     size_t xDims = xShape->GetDimNum();
-    if ((xDims != TNN_DIMS) && (xDims != BSNN_DIMS)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x",
-            std::to_string(xDims).c_str(), "the dim of x must be 3 or 4");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((xDims != TNN_DIMS) && (xDims != BSNN_DIMS),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    context->GetNodeName(), "x", std::to_string(xDims).c_str(), "3 or 4"),
+                return ge::GRAPH_FAILED);
 
     auto numIters = *numItersPtr;
     auto outFlag = *outFlagPtr;
@@ -90,12 +90,12 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
         n1 = xShape->GetDim(DIM_THREE);
     }
 
-    if ((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1)) {
-        std::string shapeMsg = "{" + std::to_string(n0) + ", " + std::to_string(n1) + "}";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x",
-            shapeMsg.c_str(), "n0 must be equal to n1");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1), {
+            std::string incorrectShapes = "n0=" + std::to_string(n0) + ", n1=" + std::to_string(n1);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context->GetNodeName(), "n0, n1", incorrectShapes.c_str(),
+                "n0 must equal n1");
+        }, return ge::GRAPH_FAILED);
 
     int64_t n = n0;
     if ((n == UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE)) {

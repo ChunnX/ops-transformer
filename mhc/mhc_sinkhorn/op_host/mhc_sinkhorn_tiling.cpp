@@ -14,6 +14,7 @@
  */
 
 #include <vector>
+#include <string>
 #include "util/platform_util.h"
 #include "util/shape_util.h"
 #include "platform/platform_info.h"
@@ -63,11 +64,7 @@ ge::graphStatus MhcSinkhornTiling::GetPlatformInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo);
     totalCoreNum_ = compileInfo->coreNum;
     ubSize_ = compileInfo->ubSize;
-    if (ubSize_ <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ubSize", std::to_string(ubSize_).c_str(),
-            "ubSize must be greater than 0");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((ubSize_ <= 0), OP_LOGE(opName_, "ub size less than 0"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -83,19 +80,20 @@ ge::graphStatus MhcSinkhornTiling::GetShapeAttrsInfo()
     auto numItersPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ITERS_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, numItersPtr);
     num_iters_ = static_cast<int64_t>(*numItersPtr);
-    if (num_iters_ < NUM_ONE || num_iters_ > NUM_ONE_HUNDRED) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_iters",
-            std::to_string(num_iters_).c_str(), "num_iters must be between 1 and 100");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(
+        (num_iters_ < NUM_ONE || num_iters_ > NUM_ONE_HUNDRED),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "num_iters", std::to_string(num_iters_).c_str(),
+            "num_iters must be in [1, 100]"),
+        return ge::GRAPH_FAILED);
     auto outFlagPtr = attrs->GetAttrPointer<int64_t>(ATTR_OUT_FLAG_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outFlagPtr);
     outFlag_ = static_cast<int64_t>(*outFlagPtr);
-    if (outFlag_ != NUM_ZERO && outFlag_ != NUM_ONE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "out_flag",
-            std::to_string(outFlag_).c_str(), "out_flag must be 0 or 1");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((outFlag_ != NUM_ZERO && outFlag_ != NUM_ONE),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "outFlag", std::to_string(outFlag_).c_str(),
+                    "outFlag must be 0 or 1"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckInputDtype() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "input dtype check failed."),
                 return ge::GRAPH_FAILED);
@@ -110,21 +108,21 @@ ge::graphStatus MhcSinkhornTiling::CheckInputDtype()
     auto xPtr = context_->GetInputDesc(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xPtr);
     xDtype_ = xPtr->GetDataType();
-    if (X_DTYPE.find(xDtype_) == X_DTYPE.end()) {
-        OP_LOGE_FOR_INVALID_DTYPE(opName_, "x",
-            ge::TypeUtils::DataTypeToSerialString(xDtype_).c_str(), "float32");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((X_DTYPE.find(xDtype_) == X_DTYPE.end()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    opName_, "x", ge::TypeUtils::DataTypeToAscendString(xDtype_).GetString(),
+                    "x dtype only supports float32, please check"),
+                return ge::GRAPH_FAILED);
 
     auto outputPtr = context_->GetOutputDesc(Y_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputPtr);
     auto outputDtype = outputPtr->GetDataType();
-    if (outputDtype != xDtype_) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "y",
-            ge::TypeUtils::DataTypeToSerialString(outputDtype).c_str(),
-            "the dtype of y must be equal to the dtype of x");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(outputDtype != xDtype_,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    opName_, "output", ge::TypeUtils::DataTypeToAscendString(outputDtype).GetString(),
+                    (std::string("output dtype must equal x dtype, x is ") +
+                     ge::TypeUtils::DataTypeToAscendString(xDtype_).GetString()).c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -134,17 +132,15 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     auto xShapePtr = context_->GetInputShape(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     auto xShape = xShapePtr->GetStorageShape();
-    if (xShape.GetShapeSize() == 0) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE(opName_, "x",
-            std::to_string(xShape.GetShapeSize()).c_str(), "1");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((xShape.GetShapeSize() == 0),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "x", "empty tensor", "each dimension must be >= 1"),
+                return ge::GRAPH_FAILED);
     xDimNum_ = static_cast<int64_t>(xShape.GetDimNum());
-    if (xDimNum_ != DIM_NUM_3 && xDimNum_ != DIM_NUM_4) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "x",
-            std::to_string(xDimNum_).c_str(), "the dim of x must be 3 or 4");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((xDimNum_ != DIM_NUM_3 && xDimNum_ != DIM_NUM_4),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    opName_, "x", std::to_string(xDimNum_).c_str(), "3 or 4"),
+                return ge::GRAPH_FAILED);
     auto n0 = xShape.GetDim(DIM_TWO);
     if (xDimNum_ == 3) {
         n0 = xShape.GetDim(DIM_ONE);
@@ -154,38 +150,36 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
         n_ = xShape.GetDim(DIM_THREE);
         T_ = xShape.GetDim(DIM_ZERO) * xShape.GetDim(DIM_ONE);
     }
-    if (n_ != n0) {
-        std::string shapeMsg = "{" + std::to_string(n0) + ", " + std::to_string(n_) + "}";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "x",
-            shapeMsg.c_str(), "n0 must be equal to n1");
-        return ge::GRAPH_FAILED;
-    }
-    if (n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x",
-            std::to_string(n_).c_str(), "the n dimension of x must be 4, 6 or 8");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((n_ != n0), {
+            std::string incorrectShapes = "n0=" + std::to_string(n0) + ", n1=" + std::to_string(n_);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                opName_, "n0, n1", incorrectShapes.c_str(),
+                "n0 must equal n1");
+        }, return ge::GRAPH_FAILED);
+    OP_CHECK_IF((n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    opName_, "x_n", std::to_string(n_).c_str(), "4, 6, or 8"),
+                return ge::GRAPH_FAILED);
 
     auto yShapePtr = context_->GetOutputShape(Y_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, yShapePtr);
     auto yShape = yShapePtr->GetStorageShape();
     yDimNum_ = static_cast<int64_t>(yShape.GetDimNum());
-    if (yDimNum_ != DIM_NUM_3 && yDimNum_ != DIM_NUM_4) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y",
-            std::to_string(yDimNum_).c_str(), "the dim of y must be 3 or 4");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((yDimNum_ != DIM_NUM_3 && yDimNum_ != DIM_NUM_4),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    opName_, "y", std::to_string(yDimNum_).c_str(), "3 or 4"),
+                return ge::GRAPH_FAILED);
     int64_t n = yShape.GetDim(DIM_TWO);
-    if (n != 4 && n != 6 && n != 8) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "y",
-            std::to_string(n).c_str(), "the n dimension of y must be 4, 6 or 8");
-        return ge::GRAPH_FAILED;
-    }
-    if (yDimNum_ != xDimNum_) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "y",
-            std::to_string(yDimNum_).c_str(), "the dim of y must be equal to the dim of x");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((n != 4 && n != 6 && n != 8),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    opName_, "y_n", std::to_string(n).c_str(), "4, 6, or 8"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((yDimNum_ != xDimNum_), {
+            std::string incorrectShapes = std::to_string(yDimNum_) + " != " + std::to_string(xDimNum_);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                opName_, "x, y", incorrectShapes.c_str(),
+                "y dim must equal x dim");
+        }, return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -288,11 +282,8 @@ ge::graphStatus MhcSinkhornTiling::PostTiling()
 {
     context_->SetBlockDim(usedCoreNum_);
     auto res = context_->SetLocalMemorySize(ubSize_);
-    if (res != ge::GRAPH_SUCCESS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ubSize",
-            std::to_string(ubSize_).c_str(), "SetLocalMemorySize failed");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((res != ge::GRAPH_SUCCESS), OP_LOGE(opName_, "SetLocalMemorySize ubSize = %ld failed.", ubSize_),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -331,19 +322,11 @@ static ge::graphStatus TilingPrepareForMhcSinkhorn([[maybe_unused]] gert::Tiling
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->coreNum = ascendcPlatform.GetCoreNumAiv();
-    if (compileInfo->coreNum <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "coreNum",
-            std::to_string(compileInfo->coreNum).c_str(), "coreNum must be greater than 0");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((compileInfo->coreNum <= 0), OP_LOGE(context, "Failed to get core num."), return ge::GRAPH_FAILED);
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
-    if (compileInfo->ubSize <= 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "ubSize",
-            std::to_string(compileInfo->ubSize).c_str(), "ubSize must be greater than 0");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE(context, "Failed to get ub size."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
