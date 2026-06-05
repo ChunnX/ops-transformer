@@ -24,7 +24,7 @@
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
-class QuantBlockSparseAttentionKernel : public QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType>, CubeBlockType, VecBlockType> {
+class QuantBlockSparseAttentionKernel : public QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
 public:
     ARGS_TRAITS;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value && !IsSameType<OUTPUT_T, float>::value;
