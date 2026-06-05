@@ -82,16 +82,16 @@ public:
             // combined mode: scale按rank-first读取，直接用commOut；old flow: 用permuteOut
             computeScaleGm_ = isCombinedMode_ ? gmmxScaleCommOutGm_ : gmmxScalePermuteOutGm_;
         }
-        // combined mode: groupList和output permute buffer
+        // combined mode: groupList and yOffsetList
         if (isCombinedMode_) {
             uint64_t combinedGroupListSize = sizeof(int64_t) *
                 tilingData_->taskTilingInfo.combineExpertSize * tilingData_->taskTilingInfo.epWorldSize;
             combinedGroupListGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += combinedGroupListSize;
-            // permuteOut场景: AIV需要从gmmy重排到permuteOut
-            if (tilingData_->isPermuteOut) {
-                commOp.InitOutputPermuteBuffer(gmmyGM, permuteOutOptionalGM);
-            }
+            uint64_t yOffsetListSize = sizeof(int64_t) *
+                tilingData_->taskTilingInfo.combineExpertSize * tilingData_->taskTilingInfo.epWorldSize;
+            yOffsetListGm_ = workspaceGM + workspaceOffset;
+            workspaceOffset += yOffsetListSize;
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
@@ -171,7 +171,6 @@ private:
     {
         uint32_t commTurn = tilingData_->taskTilingInfo.commTurn;
         uint32_t combineExpertSize = tilingData_->taskTilingInfo.combineExpertSize;
-        bool isPermuteOut = tilingData_->isPermuteOut;
 
         for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
             uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
@@ -188,24 +187,7 @@ private:
 
             SyncAll<false>();
 
-            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_);
-
-            if (isPermuteOut) {
-                uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
-                uint32_t doneFlagId = DONE_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
-
-                if ASCEND_IS_AIC {
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
-                }
-                if ASCEND_IS_AIV {
-                    CrossCoreWaitFlag(notifyFlagId);
-                    commOp.PermuteOutput(turnIdx, realCombineSize);
-                    CrossCoreSetFlag<0x2, PIPE_MTE3>(doneFlagId);
-                }
-                if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag(doneFlagId);
-                }
-            }
+            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
         }
     }
 
@@ -219,14 +201,11 @@ private:
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
     GM_ADDR combinedGroupListGm_ = nullptr;
+    GM_ADDR yOffsetListGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     bool isScaleBatchMode_ = false;
     bool isCombinedMode_ = false;
-
-    static constexpr uint32_t NOTIFY_FLAG_ID_BASE = 8U;
-    static constexpr uint32_t DONE_FLAG_ID_BASE = 5U;
-    static constexpr uint32_t FLAG_ID_ROTATE_COUNT = 3U;
 };
 }; // namespace MC2KernelTemplate
 #endif

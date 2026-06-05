@@ -32,6 +32,7 @@ public:
         GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
         const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
     __aicore__ inline void Process();
+    __aicore__ inline void SetYOffsetListPtr(__gm__ int64_t *yOffsetListPtr);
 
 protected:
     __aicore__ inline void InitAddrAndParams(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
@@ -265,6 +266,12 @@ __aicore__ inline bool Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::IsLastGroupA
     uint64_t roundIdx)
 {
     return groupIdx == groupNum_ - 1 && roundIdx == block_.params_.round - 1 && blockIdx_ <= block_.GetEndBlockIdx();
+}
+
+LOCAL_TEMPLATE_CLASS_PARAMS
+__aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetYOffsetListPtr(__gm__ int64_t *yOffsetListPtr)
+{
+    block_.yOffsetListPtr_ = yOffsetListPtr;
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS

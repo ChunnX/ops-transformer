@@ -80,6 +80,7 @@ public:
     ASWTilingParam params_;
     ASWOffsetParam offset_;
     const TCubeTiling *__restrict tilingData_;
+    __gm__ int64_t *yOffsetListPtr_ = nullptr;
 
 private:
     const uint64_t WINDOW_LEN = 4;
@@ -110,6 +111,7 @@ __aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling *__restrict &til
         params_.cGroupAddrOffset = 0;
         params_.wScaleGroupAddrOffset = 0;
         params_.biasGroupAddrOffset = 0;
+        yOffsetListPtr_ = nullptr;
         // 标记每个group的结束核
         endBlockIdx_ = tilingData_->usedCoreNum - 1; // 上个group核使用结束的索引
     } else {                                         // MM
@@ -142,7 +144,11 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
                 params_.bGroupAddrOffset += params_.n * params_.k;
             }
         }
-        params_.cGroupAddrOffset += params_.m * params_.n;
+        if (yOffsetListPtr_ != nullptr) {
+            params_.cGroupAddrOffset = yOffsetListPtr_[groupIdx];
+        } else {
+            params_.cGroupAddrOffset += params_.m * params_.n;
+        }
         if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE;
             if constexpr (!aTrans) { // mx (m, ceil(k / 64), 2)

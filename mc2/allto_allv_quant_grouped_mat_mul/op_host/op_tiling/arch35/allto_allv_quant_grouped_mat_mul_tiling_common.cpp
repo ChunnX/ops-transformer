@@ -125,7 +125,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     if (isCombinedMode) {
         totalWorkspace += GetCommOutSize();
         totalWorkspace += GetScaleCommOutSize();
-        totalWorkspace += sizeof(int64_t) * combineExpertSize_ * epWorldSize_;
+        uint64_t combinedGroupListSize = sizeof(int64_t) * combineExpertSize_ * epWorldSize_;
+        totalWorkspace += combinedGroupListSize;
+        totalWorkspace += combinedGroupListSize;
     } else {
         totalWorkspace += permuteOutSize_ + permuteScaleOutSize_;
     }

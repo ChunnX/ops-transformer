@@ -110,7 +110,8 @@ public:
         gmmASWKernel.Process();
     }
 
-    __aicore__ inline void ProcessCombined(uint32_t turnIdx, uint32_t realCombineSize, GM_ADDR combinedGroupListGm)
+    __aicore__ inline void ProcessCombined(uint32_t turnIdx, uint32_t realCombineSize, GM_ADDR combinedGroupListGm,
+        GM_ADDR yOffsetListGm)
     {
         if ASCEND_IS_AIV {
             return ;
@@ -131,6 +132,21 @@ public:
         for (uint32_t i = 0U; i < groupIdx; i++) {
             AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                 AscendC::DcciDst::CACHELINE_OUT>(combinedGroupListBuffer[i]);
+        }
+
+        GlobalTensor<int64_t> yOffsetListBuffer;
+        yOffsetListBuffer.SetGlobalBuffer((__gm__ int64_t *)yOffsetListGm);
+        uint64_t expertFirstOffset = 0UL;
+        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+            for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+                uint32_t rankFirstGroupIdx = rankIdx * realCombineSize + localIdx;
+                yOffsetListBuffer.SetValue(rankFirstGroupIdx, static_cast<int64_t>(expertFirstOffset));
+                expertFirstOffset += static_cast<uint64_t>(recvCnt[startExpertIdx + localIdx + rankIdx * expertNumInOneRank_]) * n1_;
+            }
+        }
+        for (uint32_t i = 0U; i < groupIdx; i++) {
+            AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                AscendC::DcciDst::CACHELINE_OUT>(yOffsetListBuffer[i]);
         }
 
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(combinedTokenOffset_ * h1_);
@@ -156,6 +172,7 @@ public:
         tPipe_->Reset();
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, combinedGroupListGm, xScaleGM_, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+        gmmASWKernel.SetYOffsetListPtr(reinterpret_cast<__gm__ int64_t *>(yOffsetListGm));
         gmmASWKernel.Process();
 
         uint64_t turnTotalTokens = 0UL;
