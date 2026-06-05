@@ -349,6 +349,10 @@ bool CheckWeightNzStorageShape(const op::Shape &expectedShape, const op::Shape &
 
 aclTensor *TransX2TensorNZ(const aclTensor *x2)
 {
+    OP_LOGI("TransX2TensorNZ input: viewShape=%s, storageShape=%s, strides=[%ld,%ld].",
+            op::ToString(x2->GetViewShape()).GetString(),
+            op::ToString(x2->GetStorageShape()).GetString(),
+            x2->GetViewStrides()[0], x2->GetViewStrides()[1]);
     uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
     std::vector<int64_t> storageDim(storageShapeDimNum);
     for (uint64_t i = 0; i < storageShapeDimNum; i++) {

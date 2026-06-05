@@ -452,6 +452,13 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
     bool isX2Nz = IsFormatNZ(x2);
+    OP_LOGI("QuantMatmulAlltoAll, x2 viewShape=%s, storageShape=%s, originalShape=%s, "
+            "viewStrides=[%ld,%ld], isX2Nz=%d, transposeX2=%d, IsTransposeLastTwoDims=%d.",
+            op::ToString(x2->GetViewShape()).GetString(),
+            op::ToString(x2->GetStorageShape()).GetString(),
+            op::ToString(x2->GetOriginalShape()).GetString(),
+            x2->GetViewStrides()[0], x2->GetViewStrides()[1],
+            isX2Nz, transposeX2, IsTransposeLastTwoDims(x2));
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
@@ -482,6 +489,12 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
             transX2NZ->SetOriginalShape(transX2->GetViewShape());
             op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
+            OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
+                    "origShape=%s, viewShape=%s.",
+                    op::ToString(expectedNzShape).GetString(),
+                    op::ToString(transX2->GetStorageShape()).GetString(),
+                    op::ToString(transX2->GetOriginalShape()).GetString(),
+                    op::ToString(transX2->GetViewShape()).GetString());
             if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
