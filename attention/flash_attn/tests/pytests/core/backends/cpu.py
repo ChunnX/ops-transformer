@@ -20,23 +20,23 @@ class CPUBackend(Backend):
     def is_available(self) -> bool:
         return True
 
-def compute(self, inputs: Dict[str, torch.Tensor],
-            params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-    from backends.cpu_impl import tforward
+    def compute(self, inputs: Dict[str, torch.Tensor],
+                params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        from backends.cpu_impl import tforward
 
-    layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
-    layout_kv = params.get("layout_kv", layout_q)
+        layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_kv = params.get("layout_kv", layout_q)
 
-    q_cpu = _to_tforward(inputs["q"], layout_q, params)
-    k_cpu = _to_tforward(inputs["k"], layout_kv, params)
-    v_cpu = _to_tforward(inputs["v"], layout_kv, params)
+        q_cpu = _to_tforward(inputs["q"], layout_q, params)
+        k_cpu = _to_tforward(inputs["k"], layout_kv, params)
+        v_cpu = _to_tforward(inputs["v"], layout_kv, params)
 
-    tforward_kwargs = dict(params)
-    tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
+        tforward_kwargs = dict(params)
+        tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
 
-    out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
-    lse = torch.log(x_sum) + x_max
-    return {"out": out_cpu, "lse": lse}
+        out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
+        lse = torch.log(x_sum) + x_max
+        return {"out": out_cpu, "lse": lse}
 
 
 def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
