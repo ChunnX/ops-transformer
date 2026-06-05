@@ -306,23 +306,23 @@ inline int64_t SelectNzK0Value(op::DataType dataType)
 
 op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2)
 {
+    int64_t nzK0Value = SelectNzK0Value(x2->GetDataType());
+
     auto viewShape = x2->GetViewShape();
     size_t viewDimNum = viewShape.GetDimNum();
-    int64_t k = transposeX2 ? viewShape.GetDim(viewDimNum - 1) : viewShape.GetDim(viewDimNum - 2);
-    int64_t n = transposeX2 ? viewShape.GetDim(viewDimNum - 2) : viewShape.GetDim(viewDimNum - 1);
+    int64_t viewK = viewShape.GetDim(viewDimNum - 2);
+    int64_t viewN = viewShape.GetDim(viewDimNum - 1);
 
-    int64_t nzK0Value = SelectNzK0Value(x2->GetDataType());
-    int64_t k1 = transposeX2 ? CeilDiv(k, nzK0Value) : CeilDiv(k, NZ_K0_VALUE_BMM_BLOCK_NUM);
-    int64_t n1 = transposeX2 ? CeilDiv(n, NZ_K0_VALUE_BMM_BLOCK_NUM) : CeilDiv(n, nzK0Value);
+    auto originalShape = x2->GetOriginalShape();
+    int64_t origK = (originalShape.GetDimNum() >= viewDimNum) ? originalShape.GetDim(viewDimNum - 2) : viewK;
+    int64_t origN = (originalShape.GetDimNum() >= viewDimNum) ? originalShape.GetDim(viewDimNum - 1) : viewN;
+
+    int64_t n1 = CeilDiv(origN, nzK0Value);
+    int64_t k1 = CeilDiv(origK, NZ_K0_VALUE_BMM_BLOCK_NUM);
 
     op::Shape weightNzShape;
-    if (transposeX2) {
-        weightNzShape.AppendDim(k1);
-        weightNzShape.AppendDim(n1);
-    } else {
-        weightNzShape.AppendDim(n1);
-        weightNzShape.AppendDim(k1);
-    }
+    weightNzShape.AppendDim(n1);
+    weightNzShape.AppendDim(k1);
     weightNzShape.AppendDim(NZ_STORAGE_PENULTIMATE_DIM);
     weightNzShape.AppendDim(nzK0Value);
     return weightNzShape;

@@ -474,20 +474,20 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
                     x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
                     transX2->GetViewShape().GetDim(1));
         }
-        // NZ格式预处理：校验NZ存储shape并设置originalShape
+        // NZ格式预处理：先设置格式属性和originalShape，再校验NZ存储shape
         if (isX2Nz) {
+            auto transX2NZ = const_cast<aclTensor *>(transX2);
+            transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+            transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
+            transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
+            transX2NZ->SetOriginalShape(transX2->GetViewShape());
             op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
             if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            auto transX2NZ = const_cast<aclTensor *>(transX2);
-            transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-            transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
-            transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-            transX2NZ->SetOriginalShape(transX2->GetViewShape());
-            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, format and shape attributes set.");
+            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, format and shape attributes set, NZ shape validated.");
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
