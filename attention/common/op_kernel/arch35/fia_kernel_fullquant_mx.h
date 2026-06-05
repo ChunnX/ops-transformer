@@ -373,7 +373,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
@@ -529,13 +529,13 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
-        if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
+        if (constInfo.sparseMode == fa_base_vector::BAND || constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
         if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
+        } else if (constInfo.sparseMode == fa_base_vector::BAND || constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
