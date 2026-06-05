@@ -919,7 +919,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             std::to_string(dispatchQuantOutDtype).c_str(),
             "only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1"),
         return ge::GRAPH_FAILED);
-        return ge::GRAPH_FAILED);
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
