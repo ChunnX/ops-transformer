@@ -113,7 +113,7 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
                                     0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                    "The op [FusedInferAttentionScore] received bad params, the reason is: [Try alloc tensor failed]");
+                    "The op [FusedInferAttentionScore] try alloc tensor failed");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }

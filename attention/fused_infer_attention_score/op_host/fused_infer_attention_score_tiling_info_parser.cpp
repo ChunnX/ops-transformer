@@ -1033,8 +1033,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskBatchStride_ = 1;
             attenMaskStride_ = 1;
         } else {
-            OP_LOGE(opName_, "In op [FusedInferAttentionScore], %s is %d, it should be 1.",
-                    INNER_PRECISE_NAME.c_str(), *opParamInfo_.innerPrecise);
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], when layout is TND/NTD, "
+                    "Tree mask(%u) matrix dim only support 1.",
+                    *opParamInfo_.sparseMode);
         }
     } else {
         if (maskDimNum == 3U) {
