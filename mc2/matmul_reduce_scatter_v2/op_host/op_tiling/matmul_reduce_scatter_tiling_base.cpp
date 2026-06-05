@@ -22,7 +22,6 @@
 #include <cmath>
 #include <cstdint>
 #include "mc2_hcom_topo_info.h"
-#include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
@@ -111,12 +110,14 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size %lu still exceeds 256MB.", sizeOfSingleM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulOutputSize", std::to_string(sizeOfSingleM).c_str(),
+            "should not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
-    
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
+            "should not exceed 256MB after splitting M into 16 parts"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -132,7 +133,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
         tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
 
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMmMode",
+            std::to_string(static_cast<int>(quantMmMode)).c_str(), "PERBLOCK_MODE when size exceeds 256MB after formulaic splitting"),
         return ge::GRAPH_FAILED);
 
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
@@ -317,7 +319,7 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
              OP_TILING_CHECK((*groupSizePtr != 0), 
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "should be nullptr or 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "groupSize must be nullptr or 0"),
                 return false);
         }
     }
@@ -353,7 +355,7 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         OP_TILING_CHECK(
             (kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName_, "kValue", std::to_string(kValue).c_str(), "should be in range [256, 65535)"),
+                opName_, "kValue", std::to_string(kValue).c_str(), "The value of kValue must be in the range [256, 65535)"),
             return false);
     }
     auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
@@ -416,13 +418,13 @@ bool MatmulReduceScatterTilingBase::ReduceScatterCheckShapeInfo()
     uint64_t x2Dim0 = bShape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = bShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
-        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
+        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 of x1 must not be 0"), return false);
     OP_TILING_CHECK(
-        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
+        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 of x1 must not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
+        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 of x2 must not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
+        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 of x2 must not be 0"), return false);
 
     return CheckAttrInfoValid(x1Dim1);
 }
@@ -537,7 +539,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     // 为通信而进行调整搬运
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "must be positive and divisible by orgMValue"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "The value of rankDim must be positive and divisible by orgMValue"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 };
@@ -546,6 +548,8 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &r
                                                    const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
                                                    uint32_t debugMode)
 {
+    (void)mmTiling;
+    (void)tailTiling;
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,

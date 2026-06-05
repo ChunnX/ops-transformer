@@ -15,7 +15,10 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
+#include "log/log.h"
 using namespace op;
+
+static const char *BMM_ACLNN_OP_NAME = "aclnnBatchMatMulReduceScatterAlltoAll";
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,11 +31,11 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
     OP_CHECK_NULL(weight, return false);
     OP_CHECK_NULL(out, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name is Empty.");
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "groupEp", "empty", "non-empty");
         return false;
     }
     if ((groupTp == nullptr) || (strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupTp name is Empty.");
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "groupTp", "empty", "non-empty");
         return false;
     }
     return true;
@@ -55,8 +58,8 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
         }
         if (x->GetDataType() == op::DataType::DT_BF16) {
             if (bias->GetDataType() != op::DataType::DT_FLOAT) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected bias dtype to be float32, but got %s.",
-                        op::ToString(bias->GetDataType()).GetString());
+                OP_LOGE_FOR_INVALID_DTYPE(BMM_ACLNN_OP_NAME, "bias",
+                    op::ToString(bias->GetDataType()).GetString(), "FLOAT");
                 return false;
             }
         }
@@ -74,8 +77,8 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected bias dim to be 2 or 3, but got dim [%zu].",
-                    bias->GetViewShape().GetDimNum());
+            std::string bmmBiasDimStr = std::to_string(bias->GetViewShape().GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(BMM_ACLNN_OP_NAME, "bias", bmmBiasDimStr.c_str(), "2D or 3D");
             return false;
         }
     }
@@ -88,23 +91,27 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
 {
     // E = E/ep * ep, y_0 == x_0 * ep
     if ((x->GetViewShape().GetDim(DIM_0) * epWorldSize) != out->GetViewShape().GetDim(DIM_0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of x multi epSize must equal the first dim of out, "
-                "but got y_0=[%ld], x_0=[%ld], epSize=[%ld].", out->GetViewShape().GetDim(DIM_0),
-                x->GetViewShape().GetDim(DIM_0), epWorldSize);
+        std::string bmmShapeStr = "y_0=" + std::to_string(out->GetViewShape().GetDim(DIM_0)) +
+            ", x_0=" + std::to_string(x->GetViewShape().GetDim(DIM_0)) +
+            ", ep=" + std::to_string(epWorldSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
+            "The first dim of x multiplied by epSize must equal the first dim of out");
         return false;
     }
     // x_0 == w_0
     if (x->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of x must equal the first dim of weight, "
-                "but got x_0=[%ld], W_0=[%ld].", x->GetViewShape().GetDim(DIM_0),
-                weight->GetViewShape().GetDim(DIM_0));
+        std::string bmmShapeStr = "x_0=" + std::to_string(x->GetViewShape().GetDim(DIM_0)) +
+            ", W_0=" + std::to_string(weight->GetViewShape().GetDim(DIM_0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
+            "The first dim of x must equal the first dim of weight");
         return false;
     }
     // x_2 == w_1
     if (x->GetViewShape().GetDim(DIM_2) != weight->GetViewShape().GetDim(DIM_1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The last dim of x must equal the second dim of weight(without transpose), "
-                "but got x_2=[%ld], W_1=[%ld].", x->GetViewShape().GetDim(DIM_2),
-                weight->GetViewShape().GetDim(DIM_1));
+        std::string bmmShapeStr = "x_2=" + std::to_string(x->GetViewShape().GetDim(DIM_2)) +
+            ", W_1=" + std::to_string(weight->GetViewShape().GetDim(DIM_1));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
+            "The last dim of x must equal the second dim of weight (without transpose)");
         return false;
     }
     return true;
@@ -116,33 +123,42 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
     if (yShardType == 0) {
         // H = H/tp * tp, w_2 == y_2 * tp
         if ((out->GetViewShape().GetDim(DIM_2) * tpWorldSize) != weight->GetViewShape().GetDim(DIM_2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected H = H/tp * tp, but got W_2=[%ld], out_1=[%ld], tp=[%ld].",
-                    weight->GetViewShape().GetDim(DIM_2), out->GetViewShape().GetDim(DIM_1), tpWorldSize);
+            std::string bmmShapeStr = "W_2=" + std::to_string(weight->GetViewShape().GetDim(DIM_2)) +
+                ", out_1=" + std::to_string(out->GetViewShape().GetDim(DIM_1)) +
+                ", tp=" + std::to_string(tpWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "weight", bmmShapeStr.c_str(),
+                "Expected H = H/tp * tp, W_2 must equal out_1 * tp");
             return false;
         }
         // x_1 == y_1 * ep
         if ((out->GetViewShape().GetDim(DIM_1) * epWorldSize) != x->GetViewShape().GetDim(DIM_1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected x_1 = out_1 * ep, but got x_1=[%ld], out_1=[%ld], ep=[%ld].",
-                    x->GetViewShape().GetDim(DIM_1), out->GetViewShape().GetDim(DIM_1), epWorldSize);
+            std::string bmmShapeStr = "x_1=" + std::to_string(x->GetViewShape().GetDim(DIM_1)) +
+                ", out_1=" + std::to_string(out->GetViewShape().GetDim(DIM_1)) +
+                ", ep=" + std::to_string(epWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
+                "Expected x_1 = out_1 * ep");
             return false;
         }
     } else if (yShardType == 1) {
         // w_2 == y_2
         if (out->GetViewShape().GetDim(DIM_2) != weight->GetViewShape().GetDim(DIM_2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The last dim of weight(without transpose) must equal the last dim of out, "
-                    "but got out_2=[%ld], W_2=[%ld].", out->GetViewShape().GetDim(DIM_2),
-                    weight->GetViewShape().GetDim(DIM_2));
+            std::string bmmShapeStr = "out_2=" + std::to_string(out->GetViewShape().GetDim(DIM_2)) +
+                ", W_2=" + std::to_string(weight->GetViewShape().GetDim(DIM_2));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "weight", bmmShapeStr.c_str(),
+                "The last dim of weight must equal the last dim of out");
             return false;
         }
         // x_1 == y_1 * ep * tp
         if ((out->GetViewShape().GetDim(DIM_1) * epWorldSize * tpWorldSize) != x->GetViewShape().GetDim(DIM_1)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The second dim of out multi ep multi tp must equal the second dim of x, "
-                    "but got x_1=[%ld], out_1=[%ld], ep=[%ld], tp=[%ld].", x->GetViewShape().GetDim(DIM_1),
-                    out->GetViewShape().GetDim(DIM_1), epWorldSize, tpWorldSize);
+            std::string bmmShapeStr = "x_1=" + std::to_string(x->GetViewShape().GetDim(DIM_1)) +
+                ", out_1=" + std::to_string(out->GetViewShape().GetDim(DIM_1)) +
+                ", ep=" + std::to_string(epWorldSize) + ", tp=" + std::to_string(tpWorldSize);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
+                "The second dim of out multiplied by ep and tp must equal the second dim of x");
             return false;
         }
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "yShardType [%ld] is invalid.", yShardType);
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "yShardType", std::to_string(yShardType).c_str(), "0 or 1");
         return false;
     }
     return true;
@@ -155,11 +171,13 @@ static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const a
             ((bias->GetViewShape().GetDimNum() == SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDim(DIM_1) != 1)) ||
             (bias->GetViewShape().GetDim(bias->GetViewShape().GetDimNum() - 1) != out->GetViewShape().GetDim(DIM_2))) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Expected biasOptional shape to be [%ld,%ld] or [%ld,1,%ld], but got [%s].",
-                    weight->GetViewShape().GetDim(DIM_0), out->GetViewShape().GetDim(DIM_2),
-                    weight->GetViewShape().GetDim(DIM_0), out->GetViewShape().GetDim(DIM_2),
-                    op::ToString(bias->GetViewShape()).GetString());
+            std::string bmmBiasShapeStr = op::ToString(bias->GetViewShape()).GetString();
+            std::string bmmExpectedShape = "[" + std::to_string(weight->GetViewShape().GetDim(DIM_0)) +
+                "," + std::to_string(out->GetViewShape().GetDim(DIM_2)) + "] or [" +
+                std::to_string(weight->GetViewShape().GetDim(DIM_0)) + ",1," +
+                std::to_string(out->GetViewShape().GetDim(DIM_2)) + "]";
+            OP_LOGE_FOR_INVALID_SHAPE(BMM_ACLNN_OP_NAME, "biasOptional", bmmBiasShapeStr.c_str(),
+                                      bmmExpectedShape.c_str());
             return false;
         }
     }
@@ -197,16 +215,16 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
   {
     // yShardType 当前支持 0 或 1
     if ((yShardType) != 0 && (yShardType != 1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected yShardType to be 0 or 1, but got [%ld].", yShardType);
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "yShardType", std::to_string(yShardType).c_str(), "0 or 1");
         return false;
     }
     // ep和tp 仅支持2、4、8、16、32
     if ((epWorldSize != WORLD_SIZE_PAIR) && (epWorldSize != WORLD_SIZE_QUAD) && (epWorldSize != WORLD_SIZE_OCTET) && (epWorldSize != WORLD_SIZE_SEXTET) && (epWorldSize != WORLD_SIZE_THIRTYTWO)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected epWorldSize to be 2, 4, 8, 16, or 32, but got [%ld].", epWorldSize);
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "epWorldSize", std::to_string(epWorldSize).c_str(), "2, 4, 8, 16, or 32");
         return false;
     }
     if ((tpWorldSize != WORLD_SIZE_PAIR) && (tpWorldSize != WORLD_SIZE_QUAD) && (tpWorldSize != WORLD_SIZE_OCTET) && (tpWorldSize != WORLD_SIZE_SEXTET) && (tpWorldSize != WORLD_SIZE_THIRTYTWO)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tpWorldSize to be 2, 4, 8, 16, or 32, but got [%ld].", tpWorldSize);
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "tpWorldSize", std::to_string(tpWorldSize).c_str(), "2, 4, 8, 16, or 32");
         return false;
     }
     return true;
@@ -218,32 +236,38 @@ static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight, const a
     // 暂不支持空tensor场景
     // M/tp in [1, 65535], 空tensor K校验
     if ((x->GetViewShape().GetDim(DIM_2) <= 0) || (x->GetViewShape().GetDim(DIM_2) > MATMUL_K_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected M/tp in range of [1, %ld], but got [%ld].", MATMUL_K_LIMIT,
-                x->GetViewShape().GetDim(DIM_2));
+        std::string bmmRangeStr = "M/tp=" + std::to_string(x->GetViewShape().GetDim(DIM_2));
+        std::string bmmExpectedStr = "[1, " + std::to_string(MATMUL_K_LIMIT) + "]";
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "M/tp", bmmRangeStr.c_str(), bmmExpectedStr.c_str());
         return false;
     }
     // E/ep in [1, 32], 空tensor E校验
     if ((x->GetViewShape().GetDim(DIM_0) <= 0) || (x->GetViewShape().GetDim(DIM_0) > MATMUL_E_OVER_EP_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected E/ep in range of [1, %ld], but got [%ld].", MATMUL_E_OVER_EP_LIMIT,
-                x->GetViewShape().GetDim(DIM_0));
+        std::string bmmRangeStr = "E/ep=" + std::to_string(x->GetViewShape().GetDim(DIM_0));
+        std::string bmmExpectedStr = "[1, " + std::to_string(MATMUL_E_OVER_EP_LIMIT) + "]";
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "E/ep", bmmRangeStr.c_str(), bmmExpectedStr.c_str());
         return false;
     }
     // E in [2, 512]
     if ((out->GetViewShape().GetDim(DIM_0) < EXPERT_LOWER_LIMIT) ||
         (out->GetViewShape().GetDim(DIM_0) > EXPERT_UPPER_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected E in range of [%ld, %ld], but got [%ld].", EXPERT_LOWER_LIMIT,
-                EXPERT_UPPER_LIMIT, out->GetViewShape().GetDim(DIM_0));
+        std::string bmmRangeStr = "E=" + std::to_string(out->GetViewShape().GetDim(DIM_0));
+        std::string bmmExpectedStr = "[" + std::to_string(EXPERT_LOWER_LIMIT) + ", " +
+            std::to_string(EXPERT_UPPER_LIMIT) + "]";
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "E", bmmRangeStr.c_str(), bmmExpectedStr.c_str());
         return false;
     }
     // C > 0, C/tp > 0, 空tensor M校验
     if (out->GetViewShape().GetDim(DIM_1) <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected C > 0, but got [%ld].", out->GetViewShape().GetDim(DIM_1));
+        std::string bmmRangeStr = "C=" + std::to_string(out->GetViewShape().GetDim(DIM_1));
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "C", bmmRangeStr.c_str(), "positive");
         return false;
     }
     // H in [1, 65535], 空tensor N校验
     if ((weight->GetViewShape().GetDim(DIM_2) <= 0) || (weight->GetViewShape().GetDim(DIM_2) > MATMUL_K_LIMIT)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected H in range of [1, %ld], but got [%ld].", MATMUL_K_LIMIT,
-                weight->GetViewShape().GetDim(DIM_2));
+        std::string bmmRangeStr = "H=" + std::to_string(weight->GetViewShape().GetDim(DIM_2));
+        std::string bmmExpectedStr = "[1, " + std::to_string(MATMUL_K_LIMIT) + "]";
+        OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "H", bmmRangeStr.c_str(), bmmExpectedStr.c_str());
         return false;
     }
     return true;
@@ -257,11 +281,15 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *weight, cons
     CHECK_RET(CheckNotNull(x, weight, groupEp, groupTp, out), ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_WITH_INVALID_ATTR_SIZE(BMM_ACLNN_OP_NAME, "groupEp",
+            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::to_string(HCCL_GROUP_NAME_MAX).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_WITH_INVALID_ATTR_SIZE(BMM_ACLNN_OP_NAME, "groupTp",
+            std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::to_string(HCCL_GROUP_NAME_MAX).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -324,7 +352,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTenso
     bool transposeWeight = Ops::Transformer::IsTransposeLastTwoDims(weight);
     if(transposeWeight){
         if(weight->GetTensor() == nullptr){
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of weight is null.");
+            OP_LOGE_WITH_INVALID_INPUT(BMM_ACLNN_OP_NAME, "weight");
             return ACLNN_ERR_INNER_NULLPTR;
         }
         auto weightTrans = TransTensor(weight);

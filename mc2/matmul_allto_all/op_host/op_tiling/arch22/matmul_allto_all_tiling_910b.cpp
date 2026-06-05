@@ -483,7 +483,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1,x2,bias,y",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
                  Ops::Base::ToString(biasDtype) + "," + Ops::Base::ToString(yDtype)).c_str(),
-                "unsupported dtype combination");
+                "The dtype combination of x1, x2, bias and y is not supported");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -496,7 +496,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckTensorDataType(MatmulAlltoAllInfo
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1,x2,y",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
                  Ops::Base::ToString(yDtype)).c_str(),
-                "unsupported dtype combination");
+                "The dtype combination of x1, x2 and y is not supported");
         return ge::GRAPH_FAILED;
     }
 
@@ -526,7 +526,7 @@ static ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, 
         OP_TILING_CHECK((x1Dim1 != x2Dim1),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Dim1,x2Dim1",
                                 (std::to_string(x1Dim1) + "," + std::to_string(x2Dim1)).c_str(),
-                                "x1 second dim must equal x2 second dim when x2 is transposed"),
+                                "When x2 is transposed, the second dim of x1 must be equal to the second dim of x2"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             ((x1Dim0 * worldSize != yDim0) || (x2Dim0 != yDim1 * worldSize)),
@@ -534,13 +534,13 @@ static ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, 
                     (std::string("x1Dim0=") + std::to_string(x1Dim0) + " yDim0=" + std::to_string(yDim0) +
                      " x2Dim0=" + std::to_string(x2Dim0) + " yDim1=" + std::to_string(yDim1) +
                      " worldSize=" + std::to_string(worldSize)).c_str(),
-                    "x1Dim0*worldSize=yDim0 and x2Dim0=yDim1*worldSize when x2 is transposed"),
+                    "When x2 is transposed, x1Dim0*worldSize must equal yDim0 and x2Dim0 must equal yDim1*worldSize"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((x1Dim1 != x2Dim0),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Dim1,x2Dim0",
                                 (std::to_string(x1Dim1) + "," + std::to_string(x2Dim0)).c_str(),
-                                "x1 second dim must equal x2 first dim"),
+                                "The second dim of x1 must be equal to the first dim of x2"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             ((x1Dim0 * worldSize != yDim0) || (x2Dim1 != yDim1 * worldSize)),
@@ -548,7 +548,7 @@ static ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, 
                     (std::string("x1Dim0=") + std::to_string(x1Dim0) + " yDim0=" + std::to_string(yDim0) +
                      " x2Dim1=" + std::to_string(x2Dim1) + " yDim1=" + std::to_string(yDim1) +
                      " worldSize=" + std::to_string(worldSize)).c_str(),
-                    "x1Dim0*worldSize=yDim0 and x2Dim1=yDim1*worldSize"),
+                    "The value of x1Dim0*worldSize must equal yDim0 and x2Dim1 must equal yDim1*worldSize"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -627,11 +627,11 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
                         return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(info.M == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", "0", "dim 0(m) cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.M == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.M).c_str(), "The value of dim 0 (m) of x1 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验K,K的范围应该在[1, 65535]
-    OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(), "k dim must not exceed 65535"),
+    OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1", std::to_string(info.K).c_str(), "The value of k dim of x1 must not exceed 65535"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", "0", "N cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(), "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

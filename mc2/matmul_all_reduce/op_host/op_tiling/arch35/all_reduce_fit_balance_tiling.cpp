@@ -125,7 +125,7 @@ void MMAllReduceFitBalanceTiling::AlignLongTileLen()
     }
     uint64_t baseM = matmulPerf_.GetBaseM();
     if (baseM == 0) {
-        OP_LOGE("MMAllReduceFitBalanceTiling", "baseM is zero, skip alignment");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MMAllReduceFitBalanceTiling", "baseM", "0", "skip alignment");
         return;
     }
     if (tilingM_.cutRes.longTileLen % baseM == 0) {

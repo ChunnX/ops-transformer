@@ -81,7 +81,7 @@ static ge::graphStatus CheckOutputTensors(const gert::Tensor* y, const gert::Ten
 static ge::graphStatus GroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
     OPS_LOG_D("GroupedMatMulAlltoAllvFallback", "Start GroupedMatMulAlltoAllvFallback.");
-    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("GroupedMatMulAlltoAllvFallback", "host_api_ctx is null"),
+    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatMulAlltoAllvFallback", "host_api_ctx"),
                return ge::GRAPH_FAILED);
 
     // 获取输入参数
