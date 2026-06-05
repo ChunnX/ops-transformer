@@ -111,6 +111,24 @@ uint64_t AlltoAllvQuantGmmTilingCommon::GetScaleCommOutSize() const
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     return scaleCommOutLen;
 }
+
+ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
+{
+    OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
+        return ge::GRAPH_FAILED);
+    const uint64_t tensorListSize = 512;
+    uint64_t groupListSize = sizeof(int64_t) * e_;
+    uint64_t totalWorkspace = libApiWorkSpaceSize_ + groupListSize + tensorListSize;
+    bool isCombinedMode = combineExpertSize_ > 1U;
+    if (isCombinedMode) {
+        totalWorkspace += GetCommOutSize();
+        totalWorkspace += GetScaleCommOutSize();
+        totalWorkspace += sizeof(int64_t) * combineExpertSize_ * epWorldSize_;
+    } else {
+        totalWorkspace += permuteOutSize_ + permuteScaleOutSize_;
+    }
     workspaces[0] = totalWorkspace;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
