@@ -34,8 +34,6 @@ struct GMMFinalizeRoutingDataParams {
     uint32_t biasDtype = 0;
     uint8_t groupListType = 0;
     uint8_t hasBias = 0;
-    uint16_t reserved1 = 0;
-    uint32_t reserved2 = 0;
     uint32_t deterministicFlag = 0;
     uint32_t deterWorkspaceSize = 0;
 };
