@@ -220,8 +220,10 @@ ge::graphStatus QuantBlockSparseAttentionInfoParser::ParseAttributes(QuantBlockS
 
     opParamInfo.qBlockSize = attrs->GetAttrPointer<int64_t>(BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX);
     opParamInfo.kvBlockSize = attrs->GetAttrPointer<int64_t>(BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX);
+    opParamInfo.paBlockStride = attrs->GetAttrPointer<int64_t>(BSA_PA_BLOCK_STRIDE_ATTR_INDEX);
     tilingInfo.qBlockSizeVal = BSAGetPositiveAttr(attrs, BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
     tilingInfo.kvBlockSizeVal = BSAGetPositiveAttr(attrs, BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
+    tilingInfo.paBlockStrideVal = BSAGetUintAttr(attrs, BSA_PA_BLOCK_STRIDE_ATTR_INDEX, 0U);
     if (tilingInfo.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo.kvBlockSizeVal != BSA_BLOCK_SIZE) {
         return ge::GRAPH_FAILED;
     }

@@ -48,12 +48,13 @@ constexpr uint32_t BSA_MAX_SEQLEN_KV_ATTR_INDEX = 1U;
 constexpr uint32_t BSA_SOFTMAX_SCALE_ATTR_INDEX = 2U;
 constexpr uint32_t BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX = 3U;
 constexpr uint32_t BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX = 4U;
-constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 5U;
-constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 6U;
-constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 7U;
-constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 8U;
-constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 9U;
-constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_PA_BLOCK_STRIDE_ATTR_INDEX = 5U;
+constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 6U;
+constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 7U;
+constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 8U;
+constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 9U;
+constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 11U;
 
 struct BSARequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc = nullptr;
@@ -92,6 +93,7 @@ struct QuantBlockSparseAttentionParaInfo {
     const int64_t *maxSeqlenKV = nullptr;
     const int64_t *qBlockSize = nullptr;
     const int64_t *kvBlockSize = nullptr;
+    const int64_t *paBlockStride = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutSparseIndices = nullptr;
@@ -118,6 +120,7 @@ struct QuantBlockSparseAttentionTilingInfo {
     uint32_t sparseCount = 0;
     uint32_t qBlockSizeVal = 0;
     uint32_t kvBlockSizeVal = 0;
+    uint32_t paBlockStrideVal = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t paBlockNumSum = 0;
     uint32_t gS1OuterSize = 0;
