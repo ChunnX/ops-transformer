@@ -1,0 +1,15 @@
+=== EngramFetch 常用指令 ===
+
+--- 编译指令 ---
+ophost: bash build.sh --ophost --ops=engram_fetch --soc=ascend910b,ascend910_95 -v
+opkernel (A3): bash build.sh --opkernel --ops=engram_fetch --soc=ascend910_93 -v
+opkernel (A5): bash build.sh --opkernel --ops=engram_fetch --soc=ascend910_95 -v
+
+--- 清理编译产物 ---
+bash scripts/clean_artifacts.sh
+
+--- Git 操作 ---
+下载 PR:   gh pr checkout 6377
+           或: git clone -b pr_6377 https://gitcode.com/wuchenhao123/ops-transformer_g.git
+下载分支:  git fetch upstream <branch_name> && git checkout <branch_name>
+强制推送:  git push upstream -f

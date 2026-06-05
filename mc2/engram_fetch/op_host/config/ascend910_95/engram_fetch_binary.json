@@ -1,0 +1,47 @@
+{
+  "EngramFetch_ND_ND_BF16": {
+    "inputs": [
+      {"name": "bufferhandle", "dtype": "int32", "format": "ND"},
+      {"name": "indices", "dtype": "int32", "format": "ND"}
+    ],
+    "outputs": [
+      {"name": "fetched", "dtype": "bfloat16", "format": "ND"}
+    ],
+    "attrs": [
+      {"name": "num_entries_per_rank", "dtype": "int64", "value": 0},
+      {"name": "hidden_size", "dtype": "int64", "value": 0},
+      {"name": "group", "dtype": "string", "value": ""},
+      {"name": "output_dtype", "dtype": "int64", "value": 1}
+    ]
+  },
+  "EngramFetch_ND_ND_FP16": {
+    "inputs": [
+      {"name": "bufferhandle", "dtype": "int32", "format": "ND"},
+      {"name": "indices", "dtype": "int32", "format": "ND"}
+    ],
+    "outputs": [
+      {"name": "fetched", "dtype": "float16", "format": "ND"}
+    ],
+    "attrs": [
+      {"name": "num_entries_per_rank", "dtype": "int64", "value": 0},
+      {"name": "hidden_size", "dtype": "int64", "value": 0},
+      {"name": "group", "dtype": "string", "value": ""},
+      {"name": "output_dtype", "dtype": "int64", "value": 2}
+    ]
+  },
+  "EngramFetch_ND_ND_FP32": {
+    "inputs": [
+      {"name": "bufferhandle", "dtype": "int32", "format": "ND"},
+      {"name": "indices", "dtype": "int32", "format": "ND"}
+    ],
+    "outputs": [
+      {"name": "fetched", "dtype": "float32", "format": "ND"}
+    ],
+    "attrs": [
+      {"name": "num_entries_per_rank", "dtype": "int64", "value": 0},
+      {"name": "hidden_size", "dtype": "int64", "value": 0},
+      {"name": "group", "dtype": "string", "value": ""},
+      {"name": "output_dtype", "dtype": "int64", "value": 3}
+    ]
+  }
+}
