@@ -92,6 +92,11 @@ bool IsScaleStrideValid(const TensorStrideInfo &stride, uint32_t blockNum, uint3
            ScaleMaxOffsetFitsUint32(stride, blockNum, heads, blockSize);
 }
 
+bool CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs, const TensorStrideInfo &rhs)
+{
+    return lhs.stride0 == rhs.stride0 && lhs.stride1 == rhs.stride1 && lhs.stride2 == rhs.stride2;
+}
+
 uint32_t CalcQkL0cRows(uint32_t tokenTile, uint32_t numQHeads, uint32_t numKHeads)
 {
     return AlignUp(tokenTile * numQHeads, 16) + AlignUp(tokenTile * numKHeads, 16);
@@ -212,6 +217,9 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     }
     if (!IsCacheStrideValid(input.kCache.stride, input.blockNum, input.numKHeads, input.blockSize, input.headDim, 1U) ||
         !IsCacheStrideValid(input.vCache.stride, input.blockNum, input.numVHeads, input.blockSize, input.headDim, 1U)) {
+        return ContractStatus::kInvalidCacheStride;
+    }
+    if (!CacheNonInnermostStridesMatch(input.kCache.stride, input.vCache.stride)) {
         return ContractStatus::kInvalidCacheStride;
     }
     if (!IsScaleStrideValid(input.kScaleCache.stride, input.blockNum, input.numKHeads, input.blockSize)) {

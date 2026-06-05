@@ -363,18 +363,32 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
     ContractTiling tiling;
     auto input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
-    input.vCache.stride = Stride({52000, 25000, 192, 1});
+    input.vCache.stride = Stride({45000, 21000, 160, 1});
     input.kScaleCache.stride = Stride({1024, 256, 2, 1});
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     EXPECT_EQ(tiling.kCacheStrideBlock, 45000U);
     EXPECT_EQ(tiling.kCacheStrideHead, 21000U);
     EXPECT_EQ(tiling.kCacheStrideToken, 160U);
-    EXPECT_EQ(tiling.vCacheStrideBlock, 52000U);
-    EXPECT_EQ(tiling.vCacheStrideHead, 25000U);
-    EXPECT_EQ(tiling.vCacheStrideToken, 192U);
+    EXPECT_EQ(tiling.vCacheStrideBlock, 45000U);
+    EXPECT_EQ(tiling.vCacheStrideHead, 21000U);
+    EXPECT_EQ(tiling.vCacheStrideToken, 160U);
     EXPECT_EQ(tiling.kScaleCacheStrideBlock, 1024U);
     EXPECT_EQ(tiling.kScaleCacheStrideHead, 256U);
     EXPECT_EQ(tiling.kScaleCacheStrideToken, 2U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
+{
+    ContractTiling tiling;
+    auto input = BuildInput();
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({45000, 21000, 192, 1});
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+
+    input = BuildInput();
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({52000, 21000, 160, 1});
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)

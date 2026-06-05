@@ -15,11 +15,12 @@ Current state:
 3. The kernel uses a POD tiling layout under `op_kernel` that host tiling writes
    directly. Host tiling computes `coreTokenTile` with ceil division and writes
    `coreGroupNum`; AIC and paired AIV cores consume those values to derive the
-   same contiguous cube-group token range. Host tiling also writes independent
-   `k_cache`, `v_cache`, and `k_scale_cache` stride triplets so cache writeback
-   does not assume a shared contiguous cache layout. The controller creates the
-   contiguous core token range, expands it into token-size tiles, and derives
-   per-tile tail parameters before calling the D=128 fast-path basic block.
+   same contiguous cube-group token range. Host tiling writes cache stride
+   triplets, requiring `k_cache` and `v_cache` to share their non-innermost
+   strides so the kernel can reuse the `slot_mapping`-derived cache offsets.
+   The controller creates the contiguous core token range, expands it into
+   token-size tiles, and derives per-tile tail parameters before calling the
+   D=128 fast-path basic block.
 4. T03 adds static GM/L1/UB tensor binding. `qRotationL1Nz_` and
    `kRotationL1Nz_` are AIC-only resident rotation slots, `a_rot_l1_nz` is the
    Cube AL1 data slot shared by the AIV->AIC protocol, and

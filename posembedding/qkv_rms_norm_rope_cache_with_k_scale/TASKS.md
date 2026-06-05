@@ -42,8 +42,9 @@
 
 Close T14 with kernel UT/ST. Coverage should include a golden/runtime case where
 `q_rotation != k_rotation`, Q/K use the compact single-A-buffer segment layout,
-and `k_cache`, `v_cache`, and `k_scale_cache` use padded tail-contiguous strides
-so the H04 stride-aware cache writeback path is validated end-to-end.
+and cache outputs use padded tail-contiguous strides with matching K/V
+non-innermost stride so the stride-aware cache writeback path is validated
+end-to-end.
 
 ## Kernel Layout
 

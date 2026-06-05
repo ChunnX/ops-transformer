@@ -102,6 +102,8 @@ private:
     static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS =
         QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
     static constexpr uint32_t QK_PREPROCESS_UB_NZ_ROW_STRIDE = QKV_RRC_HEAD_DIM_D128;
+    static constexpr uint32_t CACHE_OFFSET_BASE_INDEX = QKV_RRC_MAX_TOKEN_TILE_PER_AIV;
+    static constexpr uint32_t CACHE_OFFSET_VALUES_PER_TOKEN = 2U;
     static constexpr uint32_t QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS =
         QKV_RRC_HEAD_DIM_D128 + QKV_RRC_HEAD_DIM_D128 / 2U;
     static constexpr float QKV_RRC_HEAD_DIM_D128_RECIP = 1.0F / static_cast<float>(QKV_RRC_HEAD_DIM_D128);
@@ -116,6 +118,9 @@ private:
     static_assert(QK_PREPROCESS_BF16_NZ_ELEMENTS >=
             (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * QK_PREPROCESS_UB_NZ_ROW_STRIDE * QKV_RRC_NZ_C0,
         "QkvRmsNormRopeCacheWithKScale Q/K BF16 NZ staging buffer is too small.");
+    static_assert(QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS >=
+            QKV_RRC_MAX_TOKEN_TILE_PER_AIV * (1U + CACHE_OFFSET_VALUES_PER_TOKEN),
+        "QkvRmsNormRopeCacheWithKScale slot mapping DB buffer is too small for cache offset reuse.");
     static_assert(QKV_RRC_QK_NZ_SCATTER_INDEX_UB_ELEMENTS >= QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS,
         "QkvRmsNormRopeCacheWithKScale Q/K NZ scatter index load buffer is too small.");
     static_assert(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
@@ -277,6 +282,7 @@ private:
 
         CopyPreprocessInputs(slice);
         SetAndWaitMte2ToSSlotMappingReady();
+        BuildCacheOffsetsFromSlotMapping(slice);
         SetMte2ToVInputReady(activeDataBufferId_);
         WaitMte2ToVInputReady(activeDataBufferId_);
         BuildRopeBf16NzUb(slice);
@@ -297,6 +303,38 @@ private:
                 slotMapping, slotMappingGm_[slice.tokenOffset],
                 {1U, slice.tokenSize, slice.tokenSize});
             CopyCosSinTile(slice);
+        }
+    }
+
+    __aicore__ inline LocalTensor<uint32_t> CacheOffsetDbUb() const
+    {
+        return slotMappingDbPoolUb_[activeDataBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS]
+            .template ReinterpretCast<uint32_t>();
+    }
+
+    __aicore__ inline uint32_t CacheBaseOffsetIndex(uint32_t tokenIdx) const
+    {
+        return CACHE_OFFSET_BASE_INDEX + tokenIdx * CACHE_OFFSET_VALUES_PER_TOKEN;
+    }
+
+    __aicore__ inline uint32_t ScaleCacheBaseOffsetIndex(uint32_t tokenIdx) const
+    {
+        return CACHE_OFFSET_BASE_INDEX + tokenIdx * CACHE_OFFSET_VALUES_PER_TOKEN + 1U;
+    }
+
+    __aicore__ inline void BuildCacheOffsetsFromSlotMapping(const AivSlice &slice)
+    {
+        const LocalTensor<int32_t> slotMapping =
+            slotMappingDbPoolUb_[activeDataBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<uint32_t> cacheOffsets = CacheOffsetDbUb();
+        for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
+            const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
+            const uint32_t blockId = slot / tilingData_->blockSize;
+            const uint32_t blockOffset = slot % tilingData_->blockSize;
+            cacheOffsets.SetValue(CacheBaseOffsetIndex(tokenIdx),
+                blockId * tilingData_->kCacheStrideBlock + blockOffset * tilingData_->kCacheStrideToken);
+            cacheOffsets.SetValue(ScaleCacheBaseOffsetIndex(tokenIdx),
+                blockId * tilingData_->kScaleCacheStrideBlock + blockOffset * tilingData_->kScaleCacheStrideToken);
         }
     }
 
@@ -452,15 +490,11 @@ private:
 
         const LocalTensor<fp8_e4m3fn_t> vOut =
             vOutDbPoolUb_[activeDataBufferId_ * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
-        const LocalTensor<int32_t> slotMapping =
-            slotMappingDbPoolUb_[activeDataBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<uint32_t> cacheOffsets = CacheOffsetDbUb();
         for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
-            const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
-            const uint32_t blockId = slot / tilingData_->blockSize;
-            const uint32_t blockOffset = slot % tilingData_->blockSize;
             const uint32_t ubOffset = tokenIdx * tile.vHeadSize * tilingData_->headDim;
-            const uint32_t gmOffset = blockId * tilingData_->vCacheStrideBlock +
-                tile.vHeadOffset * tilingData_->vCacheStrideHead + blockOffset * tilingData_->vCacheStrideToken;
+            const uint32_t gmOffset =
+                cacheOffsets.GetValue(CacheBaseOffsetIndex(tokenIdx)) + tile.vHeadOffset * tilingData_->vCacheStrideHead;
             DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
         }
     }
@@ -551,8 +585,7 @@ private:
             outputDbPoolUb_[activeOutputBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const LocalTensor<fp8_e4m3fn_t> qkFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = qkScaleStagingUb_;
-        const LocalTensor<int32_t> slotMapping =
-            slotMappingDbPoolUb_[activeDataBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<uint32_t> cacheOffsets = CacheOffsetDbUb();
         const uint32_t kLocalBaseRow = QkLocalKBaseRow(tile);
         if (qRows > 0U) {
             const uint32_t qGmOffset = slice.tokenOffset * tilingData_->numQHeads * tilingData_->headDim;
@@ -561,15 +594,10 @@ private:
             DataCopyPad(qScaleGm_[qScaleOffset], qkScale, qScaleCopyParams);
         }
         for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
-            const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
-            const uint32_t blockId = slot / tilingData_->blockSize;
-            const uint32_t blockOffset = slot % tilingData_->blockSize;
             const uint32_t kRowIdx = kLocalBaseRow + tokenIdx * tilingData_->numKHeads;
             const uint32_t kUbOffset = kRowIdx * tilingData_->headDim;
-            const uint32_t kCacheOffset =
-                blockId * tilingData_->kCacheStrideBlock + blockOffset * tilingData_->kCacheStrideToken;
-            const uint32_t kScaleOffset =
-                blockId * tilingData_->kScaleCacheStrideBlock + blockOffset * tilingData_->kScaleCacheStrideToken;
+            const uint32_t kCacheOffset = cacheOffsets.GetValue(CacheBaseOffsetIndex(tokenIdx));
+            const uint32_t kScaleOffset = cacheOffsets.GetValue(ScaleCacheBaseOffsetIndex(tokenIdx));
             DataCopyPad(kCacheOutGm_[kCacheOffset], qkFp8[kUbOffset], kCopyParams);
             DataCopyPad(
                 kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(slice, tokenIdx, 0U)], kScaleCopyParams);
