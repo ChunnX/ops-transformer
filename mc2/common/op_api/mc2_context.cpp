@@ -375,11 +375,11 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol protocol)
 {
     bool isFoundUbMemProtocol = false;
     for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UBC_CTP) {
+        if (linksList[j].linkAttr.linkProtocol == protocol) {
             isFoundUbMemProtocol = true;
             break;
         }
@@ -387,7 +387,8 @@ aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
     return isFoundUbMemProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                             const CommProtocol &protocol)
 {
     uint32_t srcRankId = 0;
     uint32_t dstRankId = 0;
@@ -426,7 +427,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
-            if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
+            if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
                 OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
@@ -450,19 +451,17 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
         OP_LOGI("HCCL communication layerNum is %u,so set protocol to UBC_CTP", layerNum);
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         return ACLNN_SUCCESS;
     }
 
     OP_LOGD("start CheckProtocolSupport, layerNum is %u", layerNum);
 
-    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum);
+    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum, protocol);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
 
     OP_LOGD("CheckProtocolSupport success!");
-    protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
     return ACLNN_SUCCESS;
 }
 
@@ -493,7 +492,7 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
 }
 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                            aclTensor *&mc2Context)
+                                            aclTensor *&mc2Context, CommProtocol protocol)
 {
     OP_LOGI("Start to get Mc2MoeContext Tensor");
     Mc2Context instance;
@@ -502,7 +501,6 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     void *ctx = nullptr;
-    CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
     hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
