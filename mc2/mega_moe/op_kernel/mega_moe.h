@@ -597,7 +597,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             int32_t rowEnd = rowDstOffsetPerCore + rowsThisCore;
             int32_t waveLo = rowDstOffsetPerCore / L1_TILE_M_I32;
             int32_t waveHi = (rowEnd - 1) / L1_TILE_M_I32;
-            __gm__ int32_t* flagBase = (__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr());
+            __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
             for (int32_t w = waveLo; w <= waveHi; ++w) {
                 int32_t waveStartRow = w * L1_TILE_M_I32;
                 int32_t waveEndRow = waveStartRow + L1_TILE_M_I32;
@@ -690,15 +690,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bScaleGlobal =
             params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(offset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.gmm1OutGlobal =
-            params_.workspaceInfo.ptrGmm1MmadRes + Get<IDX_GMM1_OFFSET>(offset) * sizeof(float);
+            params_.workspaceInfo.ptrGmm1MmadRes + Get<IDX_GMM1_OFFSET>(offset) * sizeof(bfloat16_t);
         if constexpr (g_coreType == AIV) {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(offset), Get<IDX_C_SCALE_OFFSET>(offset),
                 Get<IDX_FLAG_OFFSET>(offset), 0L, 0L, 0L};
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
-        gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2 +
-                                    Get<IDX_FLAG_OFFSET>(offset) * INT_CACHELINE;
+        gmmAddrInfo.groupFlagList =
+            (__gm__ int32_t *)params_.workspaceInfo.ptrFlagSwiGluToGmm2 + Get<IDX_FLAG_OFFSET>(offset) * INT_CACHELINE;
     } else { // kGmm2: B2, B2-scale, GMM2 output, C/A2 (AIC only)
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(offset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
@@ -710,12 +710,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             gmmAddrInfo.aScaleGlobal =
                 params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(offset) * sizeof(QuantScaleOutType);
         }
+        gmmAddrInfo.groupFlagList =
+            (__gm__ int32_t *)params_.workspaceInfo.ptrFlagSwiGluToGmm2 + Get<IDX_FLAG_OFFSET>(offset) * INT_CACHELINE;
     }
 
     // Dispatch→GMM1 sync flag: needed by both Dispatch and GMM1, not GMM2
     if constexpr (Mode != AddrUpdateMode::kGmm2) {
-        gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
-                                    Get<IDX_FLAG_OFFSET>(offset) * dispatchFlagSlotsPerExpert_;
+        gmmAddrInfo.groupFlagList2 = (__gm__ int32_t *)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
+                                     Get<IDX_FLAG_OFFSET>(offset) * dispatchFlagSlotsPerExpert_;
     }
 }
 
