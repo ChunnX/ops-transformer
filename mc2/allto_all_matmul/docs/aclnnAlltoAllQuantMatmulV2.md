@@ -449,7 +449,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllMatmulV2GetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllQuantMatmulV2GetWorkspaceSize获取。</td>
     </tr>
     <tr>
         <td>executor</td>
