@@ -9181,12 +9181,6 @@ class TestFIAV4SplitFuse():
         if is_benchmark_task:
             dtype = np.float64
         for i in range(kv_head):
-            # if high_prec == 0:
-            #     group_score = np.matmul(left[i * group_num:(i + 1) * group_num, :, :],
-            #                             right[i:(i + 1), :, :]).astype(np.float32)
-            # else:
-            #     group_score = np.matmul(left[i * group_num:(i + 1) * group_num, :, :].astype(np.float32),
-            #                             right[i:(i + 1), :, :].astype(np.float32)).astype(np.float32)
             group_score = np.matmul(left[i * group_num:(i + 1) * group_num, :, :].astype(dtype),
                                     right[i:(i + 1), :, :].astype(dtype))
             if score is None:
@@ -9203,8 +9197,6 @@ class TestFIAV4SplitFuse():
         if sink_matrix is not None:
             assert sink_matrix.shape == row_max.shape, \
                 f"sink_matrix 形状 {sink_matrix.shape} 与 row_max 形状 {row_max.shape} 不一致！"
-            # 更新含sink的rowmax
-            # row_max = np.maximum(row_max, sink_matrix)
             row_max[valid_row_mask] = np.maximum(
                 row_max[valid_row_mask], 
                 sink_matrix[valid_row_mask]
@@ -9226,7 +9218,6 @@ class TestFIAV4SplitFuse():
 
         soft_res = sim_sub / row_sum
         lse = np.squeeze((np.log(row_sum_high) + row_max.astype(np.float64)), axis=-1)
-        # lse = np.squeeze((np.log(row_sum) + row_max), axis=-1)
 
         return soft_res, lse, row_max
 
@@ -9240,7 +9231,6 @@ class TestFIAV4SplitFuse():
         interm_dtype = np.float16
     ):
         sim = qk_result.astype(interm_dtype)
-        # sim = qk_result
         lm = np.max(sim, axis=-1, keepdims=True)
         if is_first:
             hm = lm
@@ -9258,20 +9248,17 @@ class TestFIAV4SplitFuse():
                 hm[valid_hm_mask], 
                 sink_matrix[valid_hm_mask]
             )
-            # hm = np.maximum(hm, sink_matrix)
             dm = gm - hm if not is_first else 0
 
         gm = hm
         sim_sub = sim - hm
         sim_sub = np.exp(sim_sub.astype(interm_dtype))
-        # sim_sub = sim_sub.astype(np.float16)
 
         row_sum = np.sum(sim_sub, axis=-1, keepdims=True)
 
         sink_exp = None
         if sink_matrix is not None and is_kvs_last_loop:
             sink_exp = np.exp((sink_matrix - hm).astype(interm_dtype)).astype(interm_dtype)
-            # row_sum = row_sum + sink_exp
 
         return sim_sub, row_sum, dm, gm, sink_exp
 
@@ -9365,12 +9352,6 @@ class TestFIAV4SplitFuse():
             noSkipKvS = kvSeqlen
             (noSkipKvS + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN
 
-        # ===================== 3. C++ 边界裁剪（保留原生逻辑）=====================
-        # if preTokenEndLen > kvSeqlen and preToken != SPARSE_MODE_INT_MAX:
-        #     delStartRow = kvSeqlen - leftPointPreToken
-        # elif nextTokenStartLen < 0 and nextToken != SPARSE_MODE_INT_MAX:
-        #     delEndRow = -leftPointNextToken
-
         return startIdx, kvSLoopNumTotal
 
     def ref_flash_attention(
@@ -9441,7 +9422,6 @@ class TestFIAV4SplitFuse():
                     MASK_TYPE = 4
                     startIdx, kvSLoopNumTotal = self.calc_swa_kvsLoop(preToken, nextToken, q_seqlen, kv_seqlen, qSBlockIdx = q_id,  
                         qSBlockSize = q_sub_len, curQSBlockTile=q_chunk_size,  MAX_KV_STACK_LEN = kv_chunk_size)
-                    print(f"ljl-q_id:{q_id},startIdx:{startIdx},kvSLoopNumTotal:{kvSLoopNumTotal}")
                     if startIdx >= kvSLoopNumTotal or kvSLoopNumTotal <= 0:
                         continue
             sink_matrix_sub = None
@@ -9458,7 +9438,6 @@ class TestFIAV4SplitFuse():
                 elif MASK_TYPE == 3 or MASK_TYPE == 4: # causal & swa
                     is_kvs_last_loop = (kv_id+1) >= kvSLoopNumTotal
                 else:
-                    print(f"MASK_TYPE no in expectation! ")
                     exit(-99)
                 sub_key = key[:, :, kv_start : kv_start + sub_kv_len]
                 sub_value = value[:, kv_start : kv_start + sub_kv_len, :]
@@ -9472,7 +9451,6 @@ class TestFIAV4SplitFuse():
                 if mask is not None:
                     qk_result += sub_mask
             
-
                 # 分块 Softmax
                 p_result, row_sum, dm, gm_chunk, sink_exp = self.softmax1(
                     qk_result, 
@@ -9536,7 +9514,6 @@ class TestFIAV4SplitFuse():
             final_output = np.zeros(out_shape, dtype=np.float32)
             # ✅ 修复1：初始化完整的LSE存储数组（和Q长度对齐）
             final_lse = np.zeros((num_heads, q_seqlen), dtype=np.float32)
-            print(f"lwg_ref_masked_attention.final_lse.shape: {final_lse.shape}")
             return final_output, final_lse
 
         query = np.transpose(query, (1, 0, 2))
@@ -9570,21 +9547,16 @@ class TestFIAV4SplitFuse():
         sparseMode = attention_inputs.auxAttrs.sparseMode
         if learnable_sink is not None:
             learnable_sink = learnable_sink.astype(np.float32)
-            # print("sink_lwg")
+
         swa_auxAttrs = attention_inputs.auxAttrs
 
         batch = len(attention_inputs.q_seqlen_list)
         cu_seqlen = 0
         kv_seqlen_now = 0
-        # print("ljl-1{attention_inputs.k_seqlen_list}")
         for i in range(batch):
             q_seqlen = int(attention_inputs.q_seqlen_list[i])
             k_seqlen = int(attention_inputs.k_seqlen_list[i])
-            print(f"ljl-1234444:{k_seqlen}")
-            # if i == 0:
-            #     k_seqlen = 183
-            # elif i == 1:
-            #     k_seqlen = 192
+
             q = None
             if attention_inputs.auxAttrs.layout_dtype == 1:
                 q = attention_inputs.query[cu_seqlen:(cu_seqlen + q_seqlen), :, :]
@@ -9598,9 +9570,10 @@ class TestFIAV4SplitFuse():
                 block_table = attention_inputs.block_tables[i]
                 for j in range(k_seqlen):
                     if block_size == 0:
-                        print(f"lwg-block_size: {block_size} \n")
-                    block_number = int(block_table[j // block_size])
-                    block_offset = j % block_size
+                        print(f"block_size: {block_size} \n")
+                    else:
+                        block_number = int(block_table[j // block_size])
+                        block_offset = j % block_size
 
                     k = attention_inputs.key_cache[block_number, block_offset, :, :]
                     k = k.reshape(kv_heads, head_size_qk)
@@ -9623,7 +9596,6 @@ class TestFIAV4SplitFuse():
                 mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
             elif attention_inputs.auxAttrs.mask_type == 2:
                 mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
-                print(f"ljl-batch:{i},attention_inputs.global_mask:{attention_inputs.global_mask.shape},{cu_seqlen},{q_seqlen}")
             elif attention_inputs.auxAttrs.mask_type == 0:
                 mask = None
 
@@ -9635,7 +9607,6 @@ class TestFIAV4SplitFuse():
                 # [num_heads, 1, 1] → [num_heads, q_seqlen, 1]
                 sink_matrix = np.broadcast_to(sink_expanded, shape=(learnable_sink.shape[0], q_seqlen, 1))
 
-            # # ljl
             preTokens = attention_inputs.auxAttrs.preTokens
             nextTokens = attention_inputs.auxAttrs.nextTokens
             
@@ -9645,8 +9616,6 @@ class TestFIAV4SplitFuse():
             preTokensError = (q_seqlen - k_seqlen - preTokensChange) if q_seqlen > k_seqlen + preTokensChange else 0
             actualSeq = q_seqlen
             
-            # nextTokensChange += nextTokensError
-            # preTokensChange -= nextTokensError
             actualSeq -= nextTokensError
             actualSeq -= preTokensError
             print(f"ljl-2 {i},:{preTokens},{nextTokens},{preTokensChange},{nextTokensChange},{preTokensError},{nextTokensError},{actualSeq}")
@@ -9659,9 +9628,7 @@ class TestFIAV4SplitFuse():
                     actualSeq = actualSeq
             
             out_normal, lse = self.ref_masked_attention(q, keys, values, scale, mask, sink_matrix, i , is_benchmark_task)
-            # out_normal, lse = self.ref_flash_attention(q, keys, values, scale, mask, attention_inputs, sink_matrix, i)
             out_gpu, lse_gpu = self.ref_flash_attention(q, keys, values, scale, mask, attention_inputs, sink_matrix, i, swa_auxAttrs ,is_benchmark_task)
-                        # out_normal, lse = out_gpu.astype(np.float32), lse_gpu
             out_gpu_test = torch.from_numpy(out_gpu.astype(np.float32))
             nan_out_gpu = torch.isnan(out_gpu_test)
             nan_count = nan_out_gpu.sum().item()
@@ -9787,7 +9754,6 @@ def gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthskv, inputLay
         kvSeqlenList = list(actualseqlengthskv)
     return qSeqlenList, kvSeqlenList
 
-
 def create_binary_matrix(qSeqlen, kvSeqlen, preToken, nextToken):
     preToken = kvSeqlen - qSeqlen - preToken
     nextToken = kvSeqlen - qSeqlen + nextToken
@@ -9810,7 +9776,6 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
         query = input_data.kwargs["query"].to(torch.float32).numpy().astype(bfloat16)
     else:
         query = input_data.kwargs["query"].numpy()
-        print(f"lwg_高精度_4阶段 \n")
 
     if input_data_dtype == torch.float16:
         key = input_data.kwargs["key"][0].numpy()
@@ -9825,10 +9790,7 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
         value = input_data.kwargs["value"][0].to(torch.float32).numpy().astype(bfloat16)
     else:
         value = input_data.kwargs["value"][0].numpy()
-    print(f"ljl-1111{input_data.kwargs['sparseMode']}")
-    # query = input_data.kwargs["query"].numpy() if input_data_dtype == torch.float16 else input_data.kwargs["query"].to(torch.float32).numpy().astype(bfloat16)
-    # key = input_data.kwargs["key"][0].numpy() if input_data_dtype == torch.float16 else input_data.kwargs["key"][0].to(torch.float32).numpy().astype(bfloat16)
-    # value = input_data.kwargs["value"][0].numpy() if input_data_dtype == torch.float16 else input_data.kwargs["value"][0].to(torch.float32).numpy().astype(bfloat16)
+
     blockTable = None
     pagedAttentionFlag = False
     if input_data.kwargs["blockTableOptional"] != None:
@@ -9873,44 +9835,25 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
         for i in range(len(qSeqlenList)):
             qSeqlen = qSeqlenList[i]
             kSeqlen = kvSeqlenList[i]
-            # tri = create_complex_mask(qSeqlen, kSeqlen, preTokens, nextTokens)
             tri = create_binary_matrix(qSeqlen, kSeqlen, preTokens, nextTokens)
-            # print(f"ljl-preTokens:{preTokens},nextTokens:{nextTokens},qSeqlen:{qSeqlen},kSeqlen:{kSeqlen},maxKvSeqlen:{maxKvSeqlen}")
-            print(f"ljl-i:{i},kSeqlen:{kSeqlen},qSeqlen{qSeqlen},prevQseqlen{prevQseqlen},fullMask:{fullMask.shape},maskDtype{maskDtype},{tri.dtype}")
             tri = tri.astype(maskDtype)
-            # tri = tri.astype(np.float16)
             tri *= pre_mask_factor
             fullMask[prevQseqlen : (prevQseqlen + qSeqlen), :kSeqlen] = tri
             prevQseqlen += qSeqlen
 
     learnable_sink = None 
     if input_data.kwargs.get("learnableSinkOptional") is not None:
-        print("golden, sink不为空 \n")
-        # 格式转换：torch张量 → numpy数组（和query保持一致的dtype规则）
         sink_torch_dtype = input_data.kwargs["learnableSinkOptional"].dtype
         if sink_torch_dtype == torch.float16:
-            # 可以报错
-            # print(f"[ERROR] learnableSinkOptional dtype is {sink_torch_dtype} (float16), not allowed!")
-            # sys.exit(-99)
-            print("sink_fp16 \n")
             learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
-            print(f"sink_fp16: {learnable_sink}")
             learnable_sink = learnable_sink.astype(np.float32)
-            print(f"sink_fp32: {learnable_sink}")
         elif sink_torch_dtype == torch.bfloat16:
-            print("sink_bf16 \n")
             learnable_sink = input_data.kwargs["learnableSinkOptional"].to(torch.float32).numpy()
             learnable_sink_bf16 = np.array(learnable_sink, dtype=bfloat16)
         # 2. 强制第三头的sink值为BF16近似值（关键：和NPU侧完全一致）
             learnable_sink = learnable_sink_bf16.astype(np.float32)
-            print(f"learnable_sink: {learnable_sink} \n")
         else:
-            # bf16场景：先转float32再转bfloat16
-            # learnable_sink = input_data.kwargs["learnableSinkOptional"].to(torch.float32).numpy()
-            # # bf16场景：先转float32再转bfloat16
-            print("sink_fp32\n")
             learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
-            print(f"learnable_sink: {learnable_sink} \n")
     else:
         print("golden, sink为空 \n")
     
@@ -9921,7 +9864,6 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     headSize = query.shape[2] if inputLayout == 'TND' else 0
     numBlocks = key.shape[0] if pagedAttentionFlag == True else 0
     blockSize = input_data.kwargs["blockSize"]
-    print(f"lwg-blockSize-coming:{blockSize} \n")
     maskType = maskTypeMap[input_data.kwargs["sparseMode"]]
     sparseMode = input_data.kwargs["sparseMode"]
     dtype = dtypeMap[input_data_dtype]
@@ -9938,7 +9880,6 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     testObj = TestFIAV4SplitFuse()
     auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode)
     attentionInputs = testObj.AttentionInputs(query, key, value, blockTable, qSeqlenList, kvSeqlenList, fullMask, learnable_sink, auxAttrs)
-    print("ljl-1{attention_inputs.k_seqlen_list}")
     golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = testObj.calc_data(attentionInputs, is_benchmark_task)
     if golden_output.dtype == "bfloat16":
         print("=================================走入bf16分支",golden_output.dtype)
@@ -10063,15 +10004,10 @@ def load_kv_cache(input_data: InputDataset):
     if len(key_shape) == 3:
         H = key_shape[2]
     else:
-        # 注意：这里如果 GQA 场景下 numKeyValueHeads != numHeads，计算 H 可能需要调整
-        # 但既然我们约束了 GQA=1，这里暂时安全
         H = input_data.kwargs["numHeads"] * key_shape[3]
 
     blocktable_shape = list(input_data.kwargs["blockTableOptional"].shape)
-    
-    # [关键修正]
-    # 原错误逻辑: cache_shape = [blocktable_shape[1], input_data.kwargs["blockSize"], H]
-    # 修正逻辑: cache_shape[0] 应该是总 Block 数 (Batch * MaxBlocks)
+
     total_blocks = blocktable_shape[0] * blocktable_shape[1]
     cache_shape = [total_blocks, input_data.kwargs["blockSize"], H]
 
@@ -10335,7 +10271,6 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
     params["v_antiquant_mode"] = input_data.kwargs["valueAntiquantMode"]
     params["query_quant_mode"] = input_data.kwargs["queryQuantMode"]
     params["softmax_lse_flag"] = input_data.kwargs["softmaxLseFlag"]
-
     params['shape_input'] = shape_input
     params['dtype_input'] = dtype_input
     params['range_input'] = range_input
@@ -10397,7 +10332,6 @@ class fusedInferAttentionScoreApi(BaseApi):
                 return output, output_lse
             else:
                 output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
-                # print("cpu output is: ", output)
                 return output
 
 @register("executor_aclnn_fused_infer_attention_score_v4")
@@ -10478,5 +10412,4 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
             if self.split_fuse_flag:
                 temp_output_pack = temp_output_pack.to(dtype=torch.float32)
             output.append(temp_output_pack)
-        # print("gloden output is: ", output)
         return output
