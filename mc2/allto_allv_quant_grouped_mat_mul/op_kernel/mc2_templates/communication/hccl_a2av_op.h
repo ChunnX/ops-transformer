@@ -62,6 +62,22 @@ public:
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
+        // Initialize hcclDataType_ early so AIC can use it in combined mode
+        if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_BFP16;
+        } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_FP16;
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_HIF8;
+        } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e5m2_t>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
+        } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
+            hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
+#endif
+        } else {
+            hcclDataType_ = HCCL_DATA_TYPE_INT8;
+        }
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
@@ -273,6 +289,245 @@ public:
         }
     }
 
+    __aicore__ inline void LaunchCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            combinedSendCnt[i] = 0UL;
+            combinedRecvCnt[i] = 0UL;
+            for (uint64_t j = 0UL; j < realCombineSize; j++) {
+                combinedSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * axis;
+                combinedRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * axis;
+            }
+        }
+        combinedSendOffset[0] = 0UL;
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            combinedSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * axis;
+        }
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            combinedSendOffset[i] = combinedSendOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                combinedSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * axis;
+            }
+        }
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            combinedRecvOffset[i] = combinedRecvOffsetLastSum;
+            combinedRecvOffsetLastSum += combinedRecvCnt[i];
+        }
+        combinedHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), combinedSendCnt, combinedSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), combinedRecvCnt, combinedRecvOffset, hcclDataType_);
+    }
+
+    __aicore__ inline void WaitCombinedAic(uint32_t turnIdx)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(combinedHandleId_[turnIdx]);
+    }
+
+    __aicore__ inline void LaunchScaleCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        uint64_t scaleAxis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            combinedScaleSendCnt[i] = 0UL;
+            combinedScaleRecvCnt[i] = 0UL;
+            for (uint64_t j = 0UL; j < realCombineSize; j++) {
+                combinedScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * scaleAxis;
+                combinedScaleRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * scaleAxis;
+            }
+        }
+        combinedScaleSendOffset[0] = 0UL;
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            combinedScaleSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * scaleAxis;
+        }
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            combinedScaleSendOffset[i] = combinedScaleSendOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                combinedScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * scaleAxis;
+            }
+        }
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            combinedScaleRecvOffset[i] = combinedScaleRecvOffsetLastSum;
+            combinedScaleRecvOffsetLastSum += combinedScaleRecvCnt[i];
+        }
+        combinedScaleHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), combinedScaleSendCnt, combinedScaleSendOffset,
+            HCCL_DATA_TYPE_FP8E8M0,
+            (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), combinedScaleRecvCnt, combinedScaleRecvOffset,
+            HCCL_DATA_TYPE_FP8E8M0);
+    }
+
+    __aicore__ inline void WaitScaleCombinedAic(uint32_t turnIdx)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(combinedScaleHandleId_[turnIdx]);
+    }
+
+    __aicore__ inline void InitOutputPermuteBuffer(GM_ADDR srcBuffer, GM_ADDR dstBuffer)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        outputPermuteSrcBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)srcBuffer);
+        outputPermuteDstBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)dstBuffer);
+        TPipe *pipe = GetTPipePtr();
+        uint64_t halfUbLen = taskTilingInfo_->ubSize / 2;
+        pipe->InitBuffer(outputPermuteBufA_, halfUbLen);
+        pipe->InitBuffer(outputPermuteBufB_, halfUbLen);
+    }
+
+    __aicore__ inline void PermuteOutput(uint32_t turnIdx, uint32_t realCombineSize)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        uint32_t subBlockIdx = GetSubBlockIdx();
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
+
+        uint32_t expertStart = (subBlockIdx == 0U) ? 0U : realCombineSize / 2U;
+        uint32_t expertEnd = (subBlockIdx == 0U) ? realCombineSize / 2U : realCombineSize;
+
+        uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
+        uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
+
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+                uint32_t posBefore = rankIndex * realCombineSize + localIdx;
+                uint32_t globalExpertIdx = startExpertIdx + localIdx;
+                recvSumCntSrc[posBefore] = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+                if (posBefore != 0U) {
+                    recvSumCntSrc[posBefore] += recvSumCntSrc[posBefore - 1U];
+                }
+            }
+        }
+
+        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posAfter = localIdx * rankDim_ + rankIndex;
+                uint32_t globalExpertIdx = startExpertIdx + localIdx;
+                recvSumCntDst[posAfter] = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+                if (posAfter != 0U) {
+                    recvSumCntDst[posAfter] += recvSumCntDst[posAfter - 1U];
+                }
+            }
+        }
+
+        TPipe *permutePipe = GetTPipePtr();
+        permutePipe->Reset();
+        LocalTensor<hcclDataType> ubBufA = outputPermuteBufA_.Get<hcclDataType>();
+        LocalTensor<hcclDataType> ubBufB = outputPermuteBufB_.Get<hcclDataType>();
+
+        for (uint32_t localIdx = expertStart; localIdx < expertEnd; localIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posBefore = rankIndex * realCombineSize + localIdx;
+                uint32_t posAfter = localIdx * rankDim_ + rankIndex;
+                uint64_t srcOffset = outputPermuteSrcBaseOffset_;
+                if (posBefore != 0U) {
+                    srcOffset += recvSumCntSrc[posBefore - 1U];
+                }
+                uint64_t dstOffset = outputPermuteDstBaseOffset_;
+                if (posAfter != 0U) {
+                    dstOffset += recvSumCntDst[posAfter - 1U];
+                }
+                uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
+                uint64_t tileNum = CeilDiv(totalCnt, DATACOPY_MAX_BLOCK_LEN);
+
+                if (tileNum == 0UL) {
+                    continue;
+                }
+
+                DataCopyParams dataCopyParams{1U, 0U, 0U, 0U};
+                DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+                int32_t readEvent = 0;
+                int32_t writeEvent = 0;
+
+                uint64_t firstLen = (tileNum == 1UL) ? totalCnt : DATACOPY_MAX_BLOCK_LEN;
+                dataCopyParams.blockLen = static_cast<uint16_t>(firstLen);
+                DataCopyPad(ubBufA, outputPermuteSrcBuffer_[srcOffset], dataCopyParams, dataCopyPadParams);
+                readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                SetFlag<HardEvent::MTE2_MTE3>(readEvent);
+                WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
+
+                if (tileNum == 1UL) {
+                    DataCopyPad(outputPermuteDstBuffer_[dstOffset], ubBufA, dataCopyParams);
+                    writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                    SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                    WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                } else {
+                    for (uint64_t tile = 1UL; tile < tileNum; tile++) {
+                        uint64_t realLength = (tile == tileNum - 1UL) ? (totalCnt - tile * DATACOPY_MAX_BLOCK_LEN) : DATACOPY_MAX_BLOCK_LEN;
+                        dataCopyParams.blockLen = static_cast<uint16_t>(realLength);
+                        LocalTensor<hcclDataType> &readBuf = (tile % 2UL == 1UL) ? ubBufB : ubBufA;
+                        LocalTensor<hcclDataType> &writeBuf = (tile % 2UL == 1UL) ? ubBufA : ubBufB;
+                        DataCopyPad(readBuf, outputPermuteSrcBuffer_[srcOffset + tile * DATACOPY_MAX_BLOCK_LEN],
+                                    dataCopyParams, dataCopyPadParams);
+                        DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tile - 1UL) * DATACOPY_MAX_BLOCK_LEN],
+                                    writeBuf, dataCopyParams);
+                        readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                        SetFlag<HardEvent::MTE2_MTE3>(readEvent);
+                        WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
+                        writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                        SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                        WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                    }
+                    uint64_t lastLen = totalCnt - (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN;
+                    dataCopyParams.blockLen = static_cast<uint16_t>(lastLen);
+                    LocalTensor<hcclDataType> &lastBuf = ((tileNum - 1UL) % 2UL == 0UL) ? ubBufA : ubBufB;
+                    DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN],
+                                lastBuf, dataCopyParams);
+                    writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                    SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                    WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                }
+            }
+        }
+
+        uint64_t turnTotalData = 0UL;
+        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
+            }
+        }
+        outputPermuteSrcBaseOffset_ += turnTotalData;
+        outputPermuteDstBaseOffset_ += turnTotalData;
+    }
+
     __aicore__ inline void End()
     {
         SyncAll<false>();
@@ -402,6 +657,30 @@ private:
 
     // recvCounts
     uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
+
+    // combined expert mode gmmX communication (AIC block 0 only)
+    HcclHandle combinedHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
+    uint64_t combinedSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedRecvOffsetLastSum = 0UL;
+
+    // combined expert mode scale communication (AIC block 0 only, MX quant)
+    HcclHandle combinedScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
+    uint64_t combinedScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t combinedScaleRecvOffsetLastSum = 0UL;
+
+    // output permute buffers (AIV only, ping-pong double buffering)
+    GlobalTensor<hcclDataType> outputPermuteSrcBuffer_;
+    GlobalTensor<hcclDataType> outputPermuteDstBuffer_;
+    TBuf<QuePosition::VECIN> outputPermuteBufA_;
+    TBuf<QuePosition::VECIN> outputPermuteBufB_;
+    uint64_t outputPermuteSrcBaseOffset_ = 0UL;
+    uint64_t outputPermuteDstBaseOffset_ = 0UL;
 };
 }; // namespace MC2KernelTemplate
 
