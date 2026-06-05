@@ -1185,11 +1185,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
         // Write to maskOutGm
         // Note: uint8_t and int8_t have identical memory layout (1 byte each)
         // Values 0 and 1 are the same in both types
-        // Create a uint8_t view of the int8_t output tensor
+        // GetPhyAddr() returns const pointer, need const_cast to remove const qualifier
         VToMTE3Sync();
         GlobalTensor<uint8_t> maskOutGmU8;
         maskOutGmU8.SetGlobalBuffer(
-            reinterpret_cast<__gm__ uint8_t*>(maskOutGm.GetPhyAddr()) + 
+            const_cast<__gm__ uint8_t*>(
+                reinterpret_cast<const __gm__ uint8_t*>(maskOutGm.GetPhyAddr())) +
             (outputOffset + tileGmOffset) * sizeof(OUT_T));
         DataCopyPad(maskOutGmU8, maskLocal8,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
