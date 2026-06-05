@@ -194,8 +194,11 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::CopyOutXQuant(int64_t p
 }
 
 template <typename T>
-__aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal,
-                                                            int32_t srcIdx, int32_t expertIdx, int64_t j)
+__aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor<float> &inLocal,
+                                                                     LocalTensor<float> &scaleLocal,
+                                                                     int32_t srcIdx,
+                                                                     int32_t expertIdx,
+                                                                     int64_t j)
 {
     DataCopyExtParams intriParamsT{1, static_cast<uint32_t>(colsTileLength_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams intriParamsFp32{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
