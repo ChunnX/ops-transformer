@@ -62,7 +62,8 @@ public:
                                 __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-                                __gm__ uint8_t *workspace, const SITilingData *__restrict tiling, TPipe *tPipe);
+                                __gm__ uint8_t *sparseSeqLen,
+                                __gm__ uint8_t *workspace, const StemIndexerTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -76,7 +77,7 @@ public:
     using SCORE_T = typename SIT::scoreType;
 
     QLIMatmul<SIT> matmulService;
-    QLIVector<SIT> vectorService;
+    SIVector<SIT> vectorService;
 
     // =================================常量区=================================
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
@@ -130,7 +131,7 @@ protected:
     QLICommon::LdSplitCoreInfo ldInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const SITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     // ================================Split Core================================
@@ -156,7 +157,7 @@ protected:
 };
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::InitTilingData(const SITilingData *__restrict tilingData)
+__aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingData *__restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -414,8 +415,9 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
                                               __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
                                               __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
                                               __gm__ uint8_t *blockTable, __gm__ uint8_t *metadata,
-                                              __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                              const SITilingData *__restrict tiling, TPipe *tPipe)
+                                              __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
+                                              __gm__ uint8_t *workspace,
+                                              const StemIndexerTilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
@@ -452,7 +454,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        indiceLenGm.SetGlobalBuffer((__gm__ int32_t *)indiceLen);
+        indiceLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         weightsGm.SetGlobalBuffer((__gm__ float *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
@@ -660,20 +662,30 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
+        
+        // 保存原始值（ProcessDirectOutput 需要）
+        uint32_t originalActS2Size = tempLoopInfo.actS2Size;
+        const uint32_t INIT_BLOCKS = 4;
+        const uint32_t WINDOW_BLOCKS = 4;
+        
+        // 在 gS1 循环外统一减去 WINDOW_BLOCKS
+        if (tempLoopInfo.actS2Size > INIT_BLOCKS + WINDOW_BLOCKS) {
+            tempLoopInfo.actS2Size -= WINDOW_BLOCKS;
+            // 重新计算 s2BasicSizeTail
+            tempLoopInfo.s2BasicSizeTail = tempLoopInfo.actS2Size % constInfo.s2BaseSize;
+            tempLoopInfo.s2BasicSizeTail = tempLoopInfo.s2BasicSizeTail == 0 ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
+        }
+
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
-            CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
-            runInfo.s2Start = splitCoreInfo.s2Start;
-            runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
             // 短路分支：validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS 时直接输出连续索引
-            const uint32_t INIT_BLOCKS = 4;
-            const uint32_t WINDOW_BLOCKS = 4;
-            if (tempLoopInfo.validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS) {
+            if (originalActS2Size <= INIT_BLOCKS + WINDOW_BLOCKS) {
                 // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
-                vectorService.ProcessDirectOutput(runInfo, tempLoopInfo.validS2Len);
+                vectorService.ProcessDirectOutput(runInfo, originalActS2Size);
             } else {
-                // 正常 TopK 流程：减去 WINDOW_BLOCKS
-                tempLoopInfo.validS2Len = tempLoopInfo.validS2Len - WINDOW_BLOCKS;
-                
+                // 正常流程：actS2Size 已经减过 WINDOW_BLOCKS
+                CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+                runInfo.s2Start = splitCoreInfo.s2Start;
+                runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
                 for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
                     ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
                     ++gloop;
