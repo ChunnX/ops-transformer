@@ -678,8 +678,9 @@ void QuantLightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &
     uint32_t s1Size = GetS1SeqSize(splitBIdx);
 
     // 计算归约数据的FD均衡划分信息
-    uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                            (static_cast<uint64_t>(s1Size) * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
+    uint32_t curFdS1gSize =
+        (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
+            (static_cast<uint64_t>(s1Size) * groupSize_ - static_cast<uint64_t>(splitS1GIdx) * mBaseSize_) : mBaseSize_;
     // 记录
     result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
     // 若存在头归约，则切分点一定为上一个核结束的位置
