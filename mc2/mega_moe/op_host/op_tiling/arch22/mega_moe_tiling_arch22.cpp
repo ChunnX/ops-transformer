@@ -101,6 +101,191 @@ namespace {
 
 namespace optiling {
 
+// =========================== Attr 校验分函数 ===========================
+
+static ge::graphStatus CheckMoeExpertNumAttr(const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr || *ptr <= 0,
+        OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*ptr < MIN_MOE_EXPERT_NUM || *ptr > MAX_MOE_EXPERT_NUM,
+        OP_LOGE(K_INNER_DEBUG, "moeExpertNum should be in [%ld, %ld], but got %ld.",
+            MIN_MOE_EXPERT_NUM, MAX_MOE_EXPERT_NUM, *ptr), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr || *ptr <= 0,
+        OP_LOGE(K_INNER_DEBUG, "epWorldSize is invalid."), return GRAPH_FAILED);
+    bool isValidEpWorldSize = false;
+    for (size_t i = 0; i < sizeof(VALID_EP_WORLD_SIZE) / sizeof(VALID_EP_WORLD_SIZE[0]); i++) {
+        if (*ptr == VALID_EP_WORLD_SIZE[i]) {
+            isValidEpWorldSize = true;
+            break;
+        }
+    }
+    OP_TILING_CHECK(!isValidEpWorldSize,
+        OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64, 128}, but got %ld.",
+            *ptr), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "cclBufferSize is null."), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckMaxRecvTokenNumAttr(const int64_t *ptr)
+{
+    if (ptr != nullptr) {
+        OP_TILING_CHECK(*ptr < 0,
+            OP_LOGE(K_INNER_DEBUG, "max_recv_token_num is invalid, should be >= 0, but got %ld.",
+                *ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 dispatch_quant_mode，同时返回 w1DataType 供后续校验使用
+static ge::graphStatus CheckDispatchQuantModeAttr(gert::TilingContext *context,
+    const int64_t *ptr, ge::DataType &outW1DataType)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "dispatchQuantMode is null."), return GRAPH_FAILED);
+    auto w1Desc = context->GetDynamicInputDesc(WEIGHT1_INDEX, 0);
+    OP_TILING_CHECK(w1Desc == nullptr, OP_LOGE(K_INNER_DEBUG, "weight1 desc is null."), return GRAPH_FAILED);
+    ge::DataType w1DataType = w1Desc->GetDataType();
+    int64_t expectedDispatchQuantMode = 0;
+    if (w1DataType == ge::DT_INT4 || w1DataType == ge::DT_INT8) {
+        expectedDispatchQuantMode = 2;
+    } else if (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) {
+        expectedDispatchQuantMode = 0;
+    }
+    OP_TILING_CHECK(*ptr != expectedDispatchQuantMode,
+        OP_LOGE(K_INNER_DEBUG, "dispatch_quant_mode is invalid, should be %ld for weight dataType %d, but got %ld.",
+            expectedDispatchQuantMode, static_cast<int>(w1DataType), *ptr), return GRAPH_FAILED);
+    outW1DataType = w1DataType;
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckDispatchQuantOutDtypeAttr(const int64_t *ptr, ge::DataType w1DataType)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "dispatchQuantOutDtype is null."), return GRAPH_FAILED);
+    if (*ptr != static_cast<int64_t>(ge::DT_UNDEFINED)) {
+        int64_t expectedQuantOutType = 0;
+        if (w1DataType == ge::DT_BF16) {
+            expectedQuantOutType = static_cast<int64_t>(ge::DT_BF16);
+        } else if (w1DataType == ge::DT_FLOAT16) {
+            expectedQuantOutType = static_cast<int64_t>(ge::DT_FLOAT16);
+        } else if (w1DataType == ge::DT_INT4 || w1DataType == ge::DT_INT8) {
+            expectedQuantOutType = static_cast<int64_t>(ge::DT_INT8);
+        }
+        OP_TILING_CHECK(*ptr != expectedQuantOutType,
+            OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type is invalid, should be %ld for weight dataType %d, but got %ld.",
+                expectedQuantOutType, static_cast<int>(w1DataType), *ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckCombineQuantModeAttr(const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "combineQuantMode is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*ptr != 0,
+        OP_LOGE(K_INNER_DEBUG, "combine_quant_mode is invalid, only support 0, but got %ld.",
+            *ptr), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 num_max_token_per_rank，需要从 x shape 获取 bs
+static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context, const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "numMaxTokensPerRankPtr is null."), return GRAPH_FAILED);
+    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
+    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    if (ptr != nullptr && *ptr > 0) {
+        OP_TILING_CHECK(*ptr < bs,
+            OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be >= bs(%ld), but got %ld.",
+                bs, *ptr), return GRAPH_FAILED);
+        OP_TILING_CHECK(*ptr < MIN_BS || *ptr > MAX_BS,
+            OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
+                MIN_BS, MAX_BS, *ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationAttr(const char *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "activation is null."), return GRAPH_FAILED);
+    if (ptr != nullptr) {
+        std::string activationStr(ptr);
+        OP_TILING_CHECK(activationStr != "swiglu",
+            OP_LOGE(K_INNER_DEBUG, "activation is invalid, only support 'swiglu', but got '%s'.",
+                ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationClampAttr(const float *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "activationClamp is null."), return GRAPH_FAILED);
+    if (ptr != nullptr) {
+        OP_TILING_CHECK(*ptr < 0 || std::isnan(*ptr),
+            OP_LOGE(K_INNER_DEBUG, "activation_clamp is invalid, should be >= 0 and not NAN, but got %f.",
+                *ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationOutDtypeAttr(const int64_t *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "activationOutDtypePtr is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*ptr != static_cast<int64_t>(ge::DT_UNDEFINED),
+        OP_LOGE(K_INNER_DEBUG, "activation_out_dtype is invalid, should be default value %ld, but got %ld.",
+            static_cast<int64_t>(ge::DT_UNDEFINED), *ptr), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckTransposeWeightAttr(const bool *w1, const bool *w2)
+{
+    OP_TILING_CHECK(w1 == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "transposeWeight1 is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(w2 == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "transposeWeight2 is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(*w1 != *w2,
+        OP_LOGE(K_INNER_DEBUG, "transpose_weight1 and transpose_weight2 must be the same, transpose_weight1 = %d, transpose_weight2 = %d.",
+            static_cast<int>(*w1), static_cast<int>(*w2)), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 weight1_interleave，需要从 weight1 tensor 获取 N
+static ge::graphStatus CheckWeight1InterleaveAttr(gert::TilingContext *context, const int64_t *ptr)
+{
+    if (ptr != nullptr) {
+        OP_TILING_CHECK(*ptr < 0,
+            OP_LOGE(K_INNER_DEBUG, "weight1_interleave is invalid, should be >= 0, but got %ld.",
+                *ptr), return GRAPH_FAILED);
+    }
+    auto w1Tensor = context->GetDynamicInputTensor(WEIGHT1_INDEX, 0);
+    OP_TILING_CHECK(w1Tensor == nullptr, OP_LOGE(K_INNER_DEBUG, "weight1 tensor is null."), return GRAPH_FAILED);
+    uint32_t w1TensorDims = w1Tensor->GetOriginShape().GetDimNum();
+    uint32_t N = w1Tensor->GetStorageShape().GetDim(w1TensorDims - 1);
+    if (ptr != nullptr) {
+        uint32_t maxInterleave = N / 2;
+        OP_TILING_CHECK(static_cast<uint32_t>(*ptr) > maxInterleave,
+            OP_LOGE(K_INNER_DEBUG, "weight1_interleave is invalid, should be in [0, %u], but got %ld.",
+                maxInterleave, *ptr), return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData& info)
 {
     auto attrs = context->GetAttrs();
@@ -121,161 +306,72 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
-    
-    // ==================== 1. moe_expert_num 校验 (REQUIRED) ====================
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0,
-        OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(*moeExpertNumPtr < MIN_MOE_EXPERT_NUM || *moeExpertNumPtr > MAX_MOE_EXPERT_NUM,
-        OP_LOGE(K_INNER_DEBUG, "moeExpertNum should be in [%ld, %ld], but got %ld.",
-            MIN_MOE_EXPERT_NUM, MAX_MOE_EXPERT_NUM, *moeExpertNumPtr), return GRAPH_FAILED);
-    
-            // ==================== 2. ep_world_size 校验 (REQUIRED) ====================
-    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0,
-        OP_LOGE(K_INNER_DEBUG, "epWorldSize is invalid."), return GRAPH_FAILED);
-    bool isValidEpWorldSize = false;
-    for (size_t i = 0; i < sizeof(VALID_EP_WORLD_SIZE) / sizeof(VALID_EP_WORLD_SIZE[0]); i++) {
-        if (*epWorldSizePtr == VALID_EP_WORLD_SIZE[i]) {
-            isValidEpWorldSize = true;
-            break;
-        }
-    }
-    OP_TILING_CHECK(!isValidEpWorldSize,
-        OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64, 128}, but got %ld.",
-            *epWorldSizePtr), return GRAPH_FAILED);
-    
-            // ==================== 3. ccl_buffer_size 校验 (REQUIRED) ====================
-    OP_TILING_CHECK(cclBufferSizePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "cclBufferSize is null."), return GRAPH_FAILED);
-    
-        // ==================== 4. max_recv_token_num 校验 (OPTIONAL) ====================
-    if (maxRecvTokenNumPtr != nullptr) {
-        OP_TILING_CHECK(*maxRecvTokenNumPtr < 0,
-            OP_LOGE(K_INNER_DEBUG, "max_recv_token_num is invalid, should be >= 0, but got %ld.",
-                *maxRecvTokenNumPtr), return GRAPH_FAILED);
-    }
-    
-    // ==================== 5. dispatch_quant_mode 校验 (OPTIONAL) ====================
-    OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "dispatchQuantMode is null."), return GRAPH_FAILED);
-    // dispatch_quant_mode 校验：与 weight 数据类型对应
-    // BF16/FP16 -> dispatch_quant_mode=0, INT4/INT8 -> dispatch_quant_mode=2
-    // 获取 weight1 数据类型用于后续校验
-    auto w1Desc = context->GetDynamicInputDesc(WEIGHT1_INDEX, 0);
-    OP_TILING_CHECK(w1Desc == nullptr, OP_LOGE(K_INNER_DEBUG, "weight1 desc is null."), return GRAPH_FAILED);
-    ge::DataType w1DataType = w1Desc->GetDataType();
-    int64_t expectedDispatchQuantMode = 0;
-    if (w1DataType == ge::DT_INT4 || w1DataType == ge::DT_INT8) {
-        expectedDispatchQuantMode = 2;
-    } else if (w1DataType == ge::DT_BF16 || w1DataType == ge::DT_FLOAT16) {
-        expectedDispatchQuantMode = 0;
-    }
-    OP_TILING_CHECK(*dispatchQuantModePtr != expectedDispatchQuantMode,
-        OP_LOGE(K_INNER_DEBUG, "dispatch_quant_mode is invalid, should be %ld for weight dataType %d, but got %ld.",
-            expectedDispatchQuantMode, static_cast<int>(w1DataType), *dispatchQuantModePtr), return GRAPH_FAILED);
-    
-    // ==================== 6. dispatch_quant_out_dtype 校验 (OPTIONAL) ====================
-    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "dispatchQuantOutDtype is null."), return GRAPH_FAILED);
-    // dispatch_quant_out_type 校验：与 weight 数据类型对应
-    // 默认值 DT_UNDEFINED 不校验，非默认值时需要匹配
-    if (*dispatchQuantOutDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED)) {
-        int64_t expectedQuantOutType = 0;
-        if (w1DataType == ge::DT_BF16) {
-            expectedQuantOutType = static_cast<int64_t>(ge::DT_BF16);
-        } else if (w1DataType == ge::DT_FLOAT16) {
-            expectedQuantOutType = static_cast<int64_t>(ge::DT_FLOAT16);
-        } else if (w1DataType == ge::DT_INT4 || w1DataType == ge::DT_INT8) {
-            expectedQuantOutType = static_cast<int64_t>(ge::DT_INT8);
-        }
-        OP_TILING_CHECK(*dispatchQuantOutDtypePtr != expectedQuantOutType,
-            OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type is invalid, should be %ld for weight dataType %d, but got %ld.",
-                expectedQuantOutType, static_cast<int>(w1DataType), *dispatchQuantOutDtypePtr), return GRAPH_FAILED);
-    }
 
-    // ==================== 7. combine_quant_mode 校验 (OPTIONAL) ====================
-    OP_TILING_CHECK(combineQuantModePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "combineQuantMode is null."), return GRAPH_FAILED);
-    // combine_quant_mode 校验：当前仅支持 0
-    OP_TILING_CHECK(*combineQuantModePtr != 0,
-        OP_LOGE(K_INNER_DEBUG, "combine_quant_mode is invalid, only support 0, but got %ld.",
-            *combineQuantModePtr), return GRAPH_FAILED);
-    
-    // ==================== 8. num_max_token_per_rank 校验 (OPTIONAL) ====================
-    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "numMaxTokensPerRankPtr is null."), return GRAPH_FAILED);
-    // 获取 x 的 bs 值用于后续校验
-    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
-    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    // 1. moe_expert_num
+    OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckMoeExpertNumAttr failed."),
+        return GRAPH_FAILED);
 
-    // num_max_token_per_rank 校验：必须 >= bs 且在 bs 合法范围内
-    if (numMaxTokensPerRankPtr != nullptr && *numMaxTokensPerRankPtr > 0) {
-        OP_TILING_CHECK(*numMaxTokensPerRankPtr < bs,
-            OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be >= bs(%ld), but got %ld.",
-                bs, *numMaxTokensPerRankPtr), return GRAPH_FAILED);
-        OP_TILING_CHECK(*numMaxTokensPerRankPtr < MIN_BS || *numMaxTokensPerRankPtr > MAX_BS,
-            OP_LOGE(K_INNER_DEBUG, "num_max_token_per_rank is invalid, should be in [%ld, %ld], but got %ld.",
-                MIN_BS, MAX_BS, *numMaxTokensPerRankPtr), return GRAPH_FAILED);
-    }
-    // ==================== 9. activation 校验 (OPTIONAL, default="swiglu") ====================
-    OP_TILING_CHECK(activationPtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "activation is null."), return GRAPH_FAILED);
-    // activation 校验：当前仅支持 "swiglu"
-    if (activationPtr != nullptr) {
-        std::string activationStr(activationPtr);
-        OP_TILING_CHECK(activationStr != "swiglu",
-            OP_LOGE(K_INNER_DEBUG, "activation is invalid, only support 'swiglu', but got '%s'.",
-                activationPtr), return GRAPH_FAILED);
-    }
+    // 2. ep_world_size
+    OP_TILING_CHECK(CheckEpWorldSizeAttr(epWorldSizePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckEpWorldSizeAttr failed."),
+        return GRAPH_FAILED);
 
-    // ==================== 10. activation_clamp 校验 (OPTIONAL, default=float::max) ====================
-    OP_TILING_CHECK(activationClampPtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "activationClamp is null."), return GRAPH_FAILED);
-    // activation_clamp 校验：必须 >= 0 且不为 NAN
-    if (activationClampPtr != nullptr) {
-        OP_TILING_CHECK(*activationClampPtr < 0 || std::isnan(*activationClampPtr),
-            OP_LOGE(K_INNER_DEBUG, "activation_clamp is invalid, should be >= 0 and not NAN, but got %f.",
-                *activationClampPtr), return GRAPH_FAILED);
-    }
+    // 3. ccl_buffer_size
+    OP_TILING_CHECK(CheckCclBufferSizeAttr(cclBufferSizePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckCclBufferSizeAttr failed."),
+        return GRAPH_FAILED);
 
-    // ==================== 11. activation_out_dtype 校验 (OPTIONAL, default=DT_UNDEFINED) ====================
-    OP_TILING_CHECK(activationOutDtypePtr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "activationOutDtypePtr is null."), return GRAPH_FAILED);
-    // activation_out_dtype 校验：A2A3当前仅支持 DT_UNDEFINED
-    OP_TILING_CHECK(*activationOutDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED),
-        OP_LOGE(K_INNER_DEBUG, "activation_out_dtype is invalid, should be default value %ld, but got %ld.",
-            static_cast<int64_t>(ge::DT_UNDEFINED), *activationOutDtypePtr), return GRAPH_FAILED);
-    
-    // ==================== 12. transpose_weight1/2 校验 (OPTIONAL, default=false) ====================
-    OP_TILING_CHECK(transposeWeight1Ptr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "transposeWeight1 is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(transposeWeight2Ptr == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "transposeWeight2 is null."), return GRAPH_FAILED);
-    // transpose_weight1 和 transpose_weight2 必须一致
-    OP_TILING_CHECK(*transposeWeight1Ptr != *transposeWeight2Ptr,
-        OP_LOGE(K_INNER_DEBUG, "transpose_weight1 and transpose_weight2 must be the same, transpose_weight1 = %d, transpose_weight2 = %d.",
-            static_cast<int>(*transposeWeight1Ptr), static_cast<int>(*transposeWeight2Ptr)), return GRAPH_FAILED);
-    
-    // ==================== 13. weight1_interleave 校验 (OPTIONAL, default=0) ====================
-    if (weight1InterleavePtr != nullptr) {
-        OP_TILING_CHECK(*weight1InterleavePtr < 0,
-            OP_LOGE(K_INNER_DEBUG, "weight1_interleave is invalid, should be >= 0, but got %ld.",
-                *weight1InterleavePtr), return GRAPH_FAILED);
-    }
+    // 4. max_recv_token_num
+    OP_TILING_CHECK(CheckMaxRecvTokenNumAttr(maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckMaxRecvTokenNumAttr failed."),
+        return GRAPH_FAILED);
 
-    // 获取 weight1 的 N 值用于 weight1_interleave 范围校验
-    auto w1Tensor = context->GetDynamicInputTensor(WEIGHT1_INDEX, 0);
-    OP_TILING_CHECK(w1Tensor == nullptr, OP_LOGE(K_INNER_DEBUG, "weight1 tensor is null."), return GRAPH_FAILED);
-    uint32_t w1TensorDims = w1Tensor->GetOriginShape().GetDimNum();
-    uint32_t N = w1Tensor->GetStorageShape().GetDim(w1TensorDims - 1);
+    // 5. dispatch_quant_mode（返回 w1DataType）
+    ge::DataType w1DataType = ge::DT_UNDEFINED;
+    OP_TILING_CHECK(CheckDispatchQuantModeAttr(context, dispatchQuantModePtr, w1DataType) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantModeAttr failed."),
+        return GRAPH_FAILED);
 
-    // weight1_interleave 范围校验：必须在 [0, N/2] 之间
-    if (weight1InterleavePtr != nullptr) {
-        uint32_t maxInterleave = N / 2;
-        OP_TILING_CHECK(static_cast<uint32_t>(*weight1InterleavePtr) > maxInterleave,
-            OP_LOGE(K_INNER_DEBUG, "weight1_interleave is invalid, should be in [0, %u], but got %ld.",
-                maxInterleave, *weight1InterleavePtr), return GRAPH_FAILED);
-    }
+    // 6. dispatch_quant_out_dtype
+    OP_TILING_CHECK(CheckDispatchQuantOutDtypeAttr(dispatchQuantOutDtypePtr, w1DataType) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckDispatchQuantOutDtypeAttr failed."),
+        return GRAPH_FAILED);
+
+    // 7. combine_quant_mode
+    OP_TILING_CHECK(CheckCombineQuantModeAttr(combineQuantModePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckCombineQuantModeAttr failed."),
+        return GRAPH_FAILED);
+
+    // 8. num_max_token_per_rank
+    OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."),
+        return GRAPH_FAILED);
+
+    // 9. activation
+    OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."),
+        return GRAPH_FAILED);
+
+    // 10. activation_clamp
+    OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."),
+        return GRAPH_FAILED);
+
+    // 11. activation_out_dtype
+    OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckActivationOutDtypeAttr failed."),
+        return GRAPH_FAILED);
+
+    // 12. transpose_weight1/2
+    OP_TILING_CHECK(CheckTransposeWeightAttr(transposeWeight1Ptr, transposeWeight2Ptr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckTransposeWeightAttr failed."),
+        return GRAPH_FAILED);
+
+    // 13. weight1_interleave
+    OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."),
+        return GRAPH_FAILED);
 
     info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
     info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
@@ -309,117 +405,121 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+// 校验 weight_scales1/weight_scales2 输入（可选），quant 权重时必选
+static ge::graphStatus CheckWeightScaleInput(gert::TilingContext *context, uint32_t inputIndex,
+    const char *inputName, uint32_t listLen, bool isQuantWeight,
+    uint32_t expertPerRank, int64_t dim1Expected, const char *dim1Name)
 {
-    // ==================== 1. 输入张量非空校验 ====================
-    const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
-    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
-    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(TOPK_IDS_INDEX);
-    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "context shape is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_ids shape is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_weights shape is null."), return GRAPH_FAILED);
+    auto wScaleTensor = context->GetDynamicInputTensor(inputIndex, 0);
+    if (isQuantWeight) {
+        OP_TILING_CHECK(wScaleTensor == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "%s is required when weight1/weight2 is INT8 or INT4.", inputName),
+            return GRAPH_FAILED);
+    }
+    if (wScaleTensor != nullptr) {
+        auto wScaleDesc = context->GetDynamicInputDesc(inputIndex, 0);
+        OP_TILING_CHECK(wScaleDesc == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "%s desc is null.", inputName), return GRAPH_FAILED);
+        OP_TILING_CHECK(wScaleDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE(K_INNER_DEBUG, "%s dataType is invalid, should be FLOAT, but got %d.",
+                inputName, static_cast<int>(wScaleDesc->GetDataType())), return GRAPH_FAILED);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetStorageFormat())) != ge::FORMAT_ND,
+            OP_LOGE(K_INNER_DEBUG, "%s format is invalid, should be FORMAT_ND.", inputName), return GRAPH_FAILED);
 
-    // ==================== 2. context 输入校验 ====================
-    auto contextDesc = context->GetInputDesc(CONTEXT_INDEX);
-    OP_TILING_CHECK(contextDesc == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "context desc is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(K_INNER_DEBUG, "context dataType is invalid, should be INT32, but got %d.",
-            static_cast<int>(contextDesc->GetDataType())), return GRAPH_FAILED);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) != ge::FORMAT_ND,
-        OP_LOGE(K_INNER_DEBUG, "context format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(K_INNER_DEBUG, "contextShape dims must be 1, but current dim num is %zu.",
-        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+        uint32_t scaleListLen = 0;
+        while (true) {
+            auto sTensorT = context->GetDynamicInputTensor(inputIndex, ++scaleListLen);
+            if (sTensorT == nullptr) { break; }
+        }
+        OP_TILING_CHECK(scaleListLen != listLen,
+            OP_LOGE(K_INNER_DEBUG, "%s's listLen not equal to weight1's listLen, %s's listLen = %u, weight1's listLen = %u.",
+                inputName, inputName, scaleListLen, listLen), return GRAPH_FAILED);
 
-    // ==================== 3. x 输入校验 ====================
-    // 维度数校验：必须为 2 维
-    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(K_INNER_DEBUG, "x must be 2-dimension, but got %lu dim.",
-            xStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
+        if (scaleListLen == 1) {
+            uint32_t scaleDims = wScaleTensor->GetOriginShape().GetDimNum();
+            OP_TILING_CHECK(scaleDims != TWO_DIMS && scaleDims != ONE_DIM,
+                OP_LOGE(K_INNER_DEBUG, "%s must be 1-dimension or 2-dimension, but got %u dim.", inputName, scaleDims),
+                return GRAPH_FAILED);
+            if (scaleDims == TWO_DIMS) {
+                int64_t scaleDim0 = wScaleTensor->GetStorageShape().GetDim(0);
+                int64_t scaleDim1 = wScaleTensor->GetStorageShape().GetDim(1);
+                OP_TILING_CHECK(scaleDim0 != expertPerRank,
+                    OP_LOGE(K_INNER_DEBUG, "%s's dim0 not equal to expertPerRank, %s's dim0 = %ld, expertPerRank = %u.",
+                        inputName, inputName, scaleDim0, expertPerRank), return GRAPH_FAILED);
+                OP_TILING_CHECK(scaleDim1 != dim1Expected,
+                    OP_LOGE(K_INNER_DEBUG, "%s's dim1 not equal to %s, %s's dim1 = %ld, %s = %ld.",
+                        inputName, dim1Name, inputName, scaleDim1, dim1Name, dim1Expected), return GRAPH_FAILED);
+            }
+        } else {
+            for (uint32_t i = 0; i < scaleListLen; i++) {
+                auto sTensorI = context->GetDynamicInputTensor(inputIndex, i);
+                OP_TILING_CHECK(sTensorI == nullptr,
+                    OP_LOGE(K_INNER_DEBUG, "%s[%u] tensor is null.", inputName, i), return GRAPH_FAILED);
+                OP_TILING_CHECK(sTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
+                    OP_LOGE(K_INNER_DEBUG, "%s[%u] must be 1-dimension, but got %lu dim.",
+                        inputName, i, sTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
+            }
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t hiddenSize = xStorageShape->GetStorageShape().GetDim(1);
+// 校验 bias1/bias2 输入（可选），INT4 权重时必选
+static ge::graphStatus CheckBiasInput(gert::TilingContext *context, uint32_t inputIndex,
+    const char *inputName, uint32_t listLen, bool isInt4Weight,
+    int64_t dim0Expected, const char *dim0Name)
+{
+    const gert::StorageShape *biasStorageShape = context->GetDynamicInputShape(inputIndex, 0);
+    if (isInt4Weight) {
+        OP_TILING_CHECK(biasStorageShape == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "%s is required when weight1 and weight2 are INT4.", inputName),
+            return GRAPH_FAILED);
+    }
 
-    // 维度值范围校验
-    OP_TILING_CHECK(bs < MIN_BS || bs > MAX_BS,
-        OP_LOGE(K_INNER_DEBUG, "x's dim0(bs) is invalid, should be in [%ld, %ld], but got %ld.",
-            MIN_BS, MAX_BS, bs), return GRAPH_FAILED);
-    OP_TILING_CHECK(hiddenSize < MIN_HIDDEN_SIZE || hiddenSize > MAX_HIDDEN_SIZE,
-        OP_LOGE(K_INNER_DEBUG, "x's dim1(hidden_size) is invalid, should be in [%ld, %ld], but got %ld.",
-            MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, hiddenSize), return GRAPH_FAILED);
-    OP_TILING_CHECK(hiddenSize % HIDDEN_SIZE_ALIGN != 0,
-        OP_LOGE(K_INNER_DEBUG, "x's dim1(hidden_size) should be %ld aligned, but got %ld.",
-            HIDDEN_SIZE_ALIGN, hiddenSize), return GRAPH_FAILED);
+    if (biasStorageShape != nullptr) {
+        auto biasTensor = context->GetDynamicInputTensor(inputIndex, 0);
+        OP_TILING_CHECK(biasTensor == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "%s tensor is null.", inputName), return GRAPH_FAILED);
 
-    // 数据类型校验
-    auto xDesc = context->GetInputDesc(X_INDEX);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "x desc is null."), return GRAPH_FAILED);
-    ge::DataType xDataType = xDesc->GetDataType();
-    OP_TILING_CHECK(xDataType != ge::DT_FLOAT16 && xDataType != ge::DT_BF16,
-        OP_LOGE(K_INNER_DEBUG, "x dataType is invalid, should be FLOAT16 or BF16, but got %d.",
-            static_cast<int>(xDataType)), return GRAPH_FAILED);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) != ge::FORMAT_ND,
-        OP_LOGE(K_INNER_DEBUG, "x format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+        auto biasDesc = context->GetDynamicInputDesc(inputIndex, 0);
+        OP_TILING_CHECK(biasDesc == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "%s desc is null.", inputName), return GRAPH_FAILED);
+        OP_TILING_CHECK(biasDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE(K_INNER_DEBUG, "%s dataType is invalid, should be FP32, but got %d.",
+                inputName, static_cast<int>(biasDesc->GetDataType())), return GRAPH_FAILED);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat())) != ge::FORMAT_ND,
+            OP_LOGE(K_INNER_DEBUG, "%s format is invalid, should be FORMAT_ND.", inputName), return GRAPH_FAILED);
 
-    // ==================== 4. topk_ids 输入校验 ====================
-    // 维度数校验：必须为 2 维
-    OP_TILING_CHECK(topkIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(K_INNER_DEBUG, "topk_ids must be 2-dimension, but got %lu dim.",
-            topkIdsStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
+        uint32_t biasListLen = 0;
+        while (true) {
+            auto bTensorT = context->GetDynamicInputTensor(inputIndex, ++biasListLen);
+            if (bTensorT == nullptr) { break; }
+        }
+        OP_TILING_CHECK(biasListLen != listLen,
+            OP_LOGE(K_INNER_DEBUG, "%s's listLen not equal to weight1's listLen, %s's listLen = %u, weight1's listLen = %u.",
+                inputName, inputName, biasListLen, listLen), return GRAPH_FAILED);
 
-    int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
-    int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
+        for (uint32_t i = 0; i < biasListLen; i++) {
+            auto bTensorI = context->GetDynamicInputTensor(inputIndex, i);
+            OP_TILING_CHECK(bTensorI == nullptr,
+                OP_LOGE(K_INNER_DEBUG, "%s[%u] tensor is null.", inputName, i), return GRAPH_FAILED);
+            OP_TILING_CHECK(bTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
+                OP_LOGE(K_INNER_DEBUG, "%s[%u] must be 1-dimension, but got %lu dim.",
+                    inputName, i, bTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
+            uint32_t bDim0 = bTensorI->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK(bDim0 != static_cast<uint32_t>(dim0Expected),
+                OP_LOGE(K_INNER_DEBUG, "%s[%u]'s dim0 not equal to %s, %s[%u]'s dim0 = %u, %s = %ld.",
+                    inputName, i, dim0Name, inputName, i, bDim0, dim0Name, dim0Expected), return GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    // Shape 一致性校验：dim0 必须与 x 的 dim0 相等
-    OP_TILING_CHECK(topkIdsDim0 != bs,
-        OP_LOGE(K_INNER_DEBUG, "topk_ids's dim0 not equal to x's dim0, topk_ids's dim0 = %ld, x's dim0 = %ld.",
-            topkIdsDim0, bs), return GRAPH_FAILED);
-
-    // topK 范围校验
-    OP_TILING_CHECK(topK < MIN_TOPK || topK > MAX_TOPK,
-        OP_LOGE(K_INNER_DEBUG, "topk_ids's dim1(topK) is invalid, should be in [%ld, %ld], but got %ld.",
-            MIN_TOPK, MAX_TOPK, topK), return GRAPH_FAILED);
-
-    // 数据类型校验
-    auto topkIdsDesc = context->GetInputDesc(TOPK_IDS_INDEX);
-    OP_TILING_CHECK(topkIdsDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_ids desc is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(topkIdsDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(K_INNER_DEBUG, "topk_ids dataType is invalid, should be INT32, but got %d.",
-            static_cast<int>(topkIdsDesc->GetDataType())), return GRAPH_FAILED);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) != ge::FORMAT_ND,
-        OP_LOGE(K_INNER_DEBUG, "topk_ids format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-    // ==================== 5. topk_weights 输入校验 ====================
-    // 维度数校验：必须为 2 维
-    OP_TILING_CHECK(topkWeightsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(K_INNER_DEBUG, "topk_weights must be 2-dimension, but got %lu dim.",
-            topkWeightsStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
-
-    int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
-    int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
-
-    // Shape 一致性校验
-    OP_TILING_CHECK(topkWeightsDim0 != bs,
-        OP_LOGE(K_INNER_DEBUG, "topk_weights's dim0 not equal to x's dim0, topk_weights's dim0 = %ld, x's dim0 = %ld.",
-            topkWeightsDim0, bs), return GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsDim1 != topK,
-        OP_LOGE(K_INNER_DEBUG, "topk_weights's dim1 not equal to topk_ids's dim1, topk_weights's dim1 = %ld, topk_ids's dim1 = %ld.",
-            topkWeightsDim1, topK), return GRAPH_FAILED);
-
-    // 数据类型校验
-    auto topkWeightsDesc = context->GetInputDesc(TOPK_WEIGHTS_INDEX);
-    OP_TILING_CHECK(topkWeightsDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_weights desc is null."), return GRAPH_FAILED);
-    ge::DataType topkWeightsDataType = topkWeightsDesc->GetDataType();
-    OP_TILING_CHECK(topkWeightsDataType != ge::DT_FLOAT && topkWeightsDataType != ge::DT_BF16,
-        OP_LOGE(K_INNER_DEBUG, "topk_weights dataType is invalid, should be FLOAT or BF16, but got %d.",
-            static_cast<int>(topkWeightsDataType)), return GRAPH_FAILED);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) != ge::FORMAT_ND,
-        OP_LOGE(K_INNER_DEBUG, "topk_weights format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-    // ==================== 6. weight1 输入校验 ====================
+// 校验 weight1 动态输入，返回 N / listLen / expertPerRank / w1DataType / w1Format
+static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t hiddenSize,
+    uint32_t &outN, uint32_t &outListLen, uint32_t &outExpertPerRank,
+    ge::DataType &outW1DataType, ge::Format &outW1Format)
+{
     auto w1Tensor = context->GetDynamicInputTensor(WEIGHT1_INDEX, 0);
     OP_TILING_CHECK(w1Tensor == nullptr, OP_LOGE(K_INNER_DEBUG, "weight1 tensor is null."), return GRAPH_FAILED);
 
@@ -474,12 +574,20 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
         }
     }
 
-    // expertPerRank 范围校验
-    OP_TILING_CHECK(expertPerRank < MIN_EXPERT_PER_RANK || expertPerRank > MAX_EXPERT_PER_RANK,
-        OP_LOGE(K_INNER_DEBUG, "expertPerRank is invalid, should be in [%ld, %ld], but got %u.",
-            MIN_EXPERT_PER_RANK, MAX_EXPERT_PER_RANK, expertPerRank), return GRAPH_FAILED);
+    outN = N;
+    outListLen = listLen;
+    outExpertPerRank = expertPerRank;
+    outW1DataType = w1DataType;
+    outW1Format = w1Format;
+    return ge::GRAPH_SUCCESS;
+}
 
-    // ==================== 7. weight2 输入校验 ====================
+// 校验 weight2 动态输入，与 weight1 做交叉校验
+static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t hiddenSize,
+    uint32_t N, uint32_t listLen, uint32_t expertPerRank,
+    ge::DataType w1DataType, ge::Format w1Format,
+    ge::DataType &outW2DataType)
+{
     auto w2Tensor = context->GetDynamicInputTensor(WEIGHT2_INDEX, 0);
     OP_TILING_CHECK(w2Tensor == nullptr, OP_LOGE(K_INNER_DEBUG, "weight2 tensor is null."), return GRAPH_FAILED);
 
@@ -549,6 +657,211 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
         }
     }
 
+    outW2DataType = w2DataType;
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 context 输入
+static ge::graphStatus CheckContextInput(gert::TilingContext *context,
+    const gert::StorageShape *contextStorageShape)
+{
+    auto contextDesc = context->GetInputDesc(CONTEXT_INDEX);
+    OP_TILING_CHECK(contextDesc == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "context desc is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(K_INNER_DEBUG, "context dataType is invalid, should be INT32, but got %d.",
+            static_cast<int>(contextDesc->GetDataType())), return GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) != ge::FORMAT_ND,
+        OP_LOGE(K_INNER_DEBUG, "context format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(K_INNER_DEBUG, "contextShape dims must be 1, but current dim num is %zu.",
+        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 x 输入，返回 bs 和 hiddenSize
+static ge::graphStatus CheckXInput(gert::TilingContext *context,
+    const gert::StorageShape *xStorageShape,
+    int64_t &outBs, int64_t &outHiddenSize)
+{
+    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(K_INNER_DEBUG, "x must be 2-dimension, but got %lu dim.",
+            xStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
+
+    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t hiddenSize = xStorageShape->GetStorageShape().GetDim(1);
+
+    OP_TILING_CHECK(bs < MIN_BS || bs > MAX_BS,
+        OP_LOGE(K_INNER_DEBUG, "x's dim0(bs) is invalid, should be in [%ld, %ld], but got %ld.",
+            MIN_BS, MAX_BS, bs), return GRAPH_FAILED);
+    OP_TILING_CHECK(hiddenSize < MIN_HIDDEN_SIZE || hiddenSize > MAX_HIDDEN_SIZE,
+        OP_LOGE(K_INNER_DEBUG, "x's dim1(hidden_size) is invalid, should be in [%ld, %ld], but got %ld.",
+            MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, hiddenSize), return GRAPH_FAILED);
+    OP_TILING_CHECK(hiddenSize % HIDDEN_SIZE_ALIGN != 0,
+        OP_LOGE(K_INNER_DEBUG, "x's dim1(hidden_size) should be %ld aligned, but got %ld.",
+            HIDDEN_SIZE_ALIGN, hiddenSize), return GRAPH_FAILED);
+
+    auto xDesc = context->GetInputDesc(X_INDEX);
+    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "x desc is null."), return GRAPH_FAILED);
+    ge::DataType xDataType = xDesc->GetDataType();
+    OP_TILING_CHECK(xDataType != ge::DT_FLOAT16 && xDataType != ge::DT_BF16,
+        OP_LOGE(K_INNER_DEBUG, "x dataType is invalid, should be FLOAT16 or BF16, but got %d.",
+            static_cast<int>(xDataType)), return GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) != ge::FORMAT_ND,
+        OP_LOGE(K_INNER_DEBUG, "x format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+
+    outBs = bs;
+    outHiddenSize = hiddenSize;
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 topk_ids 输入，返回 topK
+static ge::graphStatus CheckTopkIdsInput(gert::TilingContext *context,
+    const gert::StorageShape *topkIdsStorageShape, int64_t bs,
+    int64_t &outTopK)
+{
+    OP_TILING_CHECK(topkIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids must be 2-dimension, but got %lu dim.",
+            topkIdsStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
+
+    int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
+    int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
+
+    OP_TILING_CHECK(topkIdsDim0 != bs,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids's dim0 not equal to x's dim0, topk_ids's dim0 = %ld, x's dim0 = %ld.",
+            topkIdsDim0, bs), return GRAPH_FAILED);
+    OP_TILING_CHECK(topK < MIN_TOPK || topK > MAX_TOPK,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids's dim1(topK) is invalid, should be in [%ld, %ld], but got %ld.",
+            MIN_TOPK, MAX_TOPK, topK), return GRAPH_FAILED);
+
+    auto topkIdsDesc = context->GetInputDesc(TOPK_IDS_INDEX);
+    OP_TILING_CHECK(topkIdsDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_ids desc is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(topkIdsDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids dataType is invalid, should be INT32, but got %d.",
+            static_cast<int>(topkIdsDesc->GetDataType())), return GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) != ge::FORMAT_ND,
+        OP_LOGE(K_INNER_DEBUG, "topk_ids format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+
+    outTopK = topK;
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 topk_weights 输入
+static ge::graphStatus CheckTopkWeightsInput(gert::TilingContext *context,
+    const gert::StorageShape *topkWeightsStorageShape, int64_t bs, int64_t topK)
+{
+    OP_TILING_CHECK(topkWeightsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights must be 2-dimension, but got %lu dim.",
+            topkWeightsStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
+
+    int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
+    int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
+
+    OP_TILING_CHECK(topkWeightsDim0 != bs,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights's dim0 not equal to x's dim0, topk_weights's dim0 = %ld, x's dim0 = %ld.",
+            topkWeightsDim0, bs), return GRAPH_FAILED);
+    OP_TILING_CHECK(topkWeightsDim1 != topK,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights's dim1 not equal to topk_ids's dim1, topk_weights's dim1 = %ld, topk_ids's dim1 = %ld.",
+            topkWeightsDim1, topK), return GRAPH_FAILED);
+
+    auto topkWeightsDesc = context->GetInputDesc(TOPK_WEIGHTS_INDEX);
+    OP_TILING_CHECK(topkWeightsDesc == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_weights desc is null."), return GRAPH_FAILED);
+    ge::DataType topkWeightsDataType = topkWeightsDesc->GetDataType();
+    OP_TILING_CHECK(topkWeightsDataType != ge::DT_FLOAT && topkWeightsDataType != ge::DT_BF16,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights dataType is invalid, should be FLOAT or BF16, but got %d.",
+            static_cast<int>(topkWeightsDataType)), return GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) != ge::FORMAT_ND,
+        OP_LOGE(K_INNER_DEBUG, "topk_weights format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 x_active_mask 输入（可选），返回 isActiveMask
+static ge::graphStatus CheckXActiveMaskInput(gert::TilingContext *context, int64_t bs,
+    bool &outIsActiveMask)
+{
+    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+    bool isActiveMask = (xActiveMaskStorageShape != nullptr);
+    if (isActiveMask) {
+        int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(xActiveMaskDimNums != ONE_DIM,
+            OP_LOGE(K_INNER_DEBUG, "x_active_mask must be 1-dimension, but got %ld dim. 2-dimension is not supported now.",
+                xActiveMaskDimNums), return GRAPH_FAILED);
+        int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(xActiveMaskDim0 != bs,
+            OP_LOGE(K_INNER_DEBUG, "x_active_mask's dim0 not equal to x's dim0, x_active_mask's dim0 = %ld, x's dim0 = %ld.",
+                xActiveMaskDim0, bs), return GRAPH_FAILED);
+        auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
+        OP_TILING_CHECK(xActiveMaskDesc == nullptr,
+            OP_LOGE(K_INNER_DEBUG, "x_active_mask desc is null."), return GRAPH_FAILED);
+        OP_TILING_CHECK(xActiveMaskDesc->GetDataType() != ge::DT_INT8,
+            OP_LOGE(K_INNER_DEBUG, "x_active_mask dataType is invalid, should be INT8, but got %d.",
+                static_cast<int>(xActiveMaskDesc->GetDataType())), return GRAPH_FAILED);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) != ge::FORMAT_ND,
+            OP_LOGE(K_INNER_DEBUG, "x_active_mask format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
+    }
+    outIsActiveMask = isActiveMask;
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+{
+    // ==================== 1. 输入张量非空校验 ====================
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
+    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
+    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(TOPK_IDS_INDEX);
+    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
+    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "context shape is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "x shape is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_ids shape is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE(K_INNER_DEBUG, "topk_weights shape is null."), return GRAPH_FAILED);
+
+    // ==================== 2. context 输入校验 ====================
+    OP_TILING_CHECK(CheckContextInput(context, contextStorageShape) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckContextInput failed."),
+        return GRAPH_FAILED);
+
+    // ==================== 3. x 输入校验 ====================
+    int64_t bs = 0;
+    int64_t hiddenSize = 0;
+    OP_TILING_CHECK(CheckXInput(context, xStorageShape, bs, hiddenSize) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckXInput failed."),
+        return GRAPH_FAILED);
+
+    // ==================== 4. topk_ids 输入校验 ====================
+    int64_t topK = 0;
+    OP_TILING_CHECK(CheckTopkIdsInput(context, topkIdsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckTopkIdsInput failed."),
+        return GRAPH_FAILED);
+
+    // ==================== 5. topk_weights 输入校验 ====================
+    OP_TILING_CHECK(CheckTopkWeightsInput(context, topkWeightsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckTopkWeightsInput failed."),
+        return GRAPH_FAILED);
+
+    // ==================== 6. weight1 输入校验 ====================
+    uint32_t N = 0;
+    uint32_t listLen = 0;
+    uint32_t expertPerRank = 0;
+    ge::DataType w1DataType = ge::DT_UNDEFINED;
+    ge::Format w1Format = ge::FORMAT_RESERVED;
+    OP_TILING_CHECK(CheckWeight1Input(context, hiddenSize,
+        N, listLen, expertPerRank, w1DataType, w1Format) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeight1Input failed."),
+        return GRAPH_FAILED);
+
+    // expertPerRank 范围校验
+    OP_TILING_CHECK(expertPerRank < MIN_EXPERT_PER_RANK || expertPerRank > MAX_EXPERT_PER_RANK,
+        OP_LOGE(K_INNER_DEBUG, "expertPerRank is invalid, should be in [%ld, %ld], but got %u.",
+            MIN_EXPERT_PER_RANK, MAX_EXPERT_PER_RANK, expertPerRank), return GRAPH_FAILED);
+
+    // ==================== 7. weight2 输入校验 ====================
+    ge::DataType w2DataType = ge::DT_UNDEFINED;
+    OP_TILING_CHECK(CheckWeight2Input(context, hiddenSize,
+        N, listLen, expertPerRank, w1DataType, w1Format,
+        w2DataType) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeight2Input failed."),
+        return GRAPH_FAILED);
+
     // ==================== 量化权重必须提供 scale 校验 ====================
     // 当 weight1 和 weight2 的类型都为 INT8 或 INT4 时，GMM1/GMM2 需要进行反量化
     // 此时 weight_scales1/weight_scales2 必须存在
@@ -559,254 +872,41 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
     // 支持两种场景：
     //   1. 传入一个 TensorList，list 包含一个 2 维 tensor，shape 为 (num_experts_per_rank, N)
     //   2. 传入一个 TensorList，list 包含 num_experts_per_rank 个 tensor，每个 tensor 的 shape 为 (N,)
-    auto wScale1Tensor = context->GetDynamicInputTensor(WEIGHT_SCALES1_INDEX, 0);
-    if (isQuantWeight) {
-        OP_TILING_CHECK(wScale1Tensor == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales1 is required when weight1/weight2 is INT8 or INT4."),
-            return GRAPH_FAILED);
-    }
-    if (wScale1Tensor != nullptr) {
-        // 数据类型校验
-        auto wScale1Desc = context->GetDynamicInputDesc(WEIGHT_SCALES1_INDEX, 0);
-        OP_TILING_CHECK(wScale1Desc == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales1 desc is null."), return GRAPH_FAILED);
-        OP_TILING_CHECK(wScale1Desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales1 dataType is invalid, should be FLOAT, but got %d.",
-                static_cast<int>(wScale1Desc->GetDataType())), return GRAPH_FAILED);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(wScale1Desc->GetStorageFormat())) != ge::FORMAT_ND,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales1 format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-        // 统计 weight_scales1 的 tensor list 长度
-        uint32_t scale1ListLen = 0;
-        while (true) {
-            auto sTensorT = context->GetDynamicInputTensor(WEIGHT_SCALES1_INDEX, ++scale1ListLen);
-            if (sTensorT == nullptr) { break; }
-        }
-
-        // weight_scales1 的长度必须与 weight1 的长度一致
-        OP_TILING_CHECK(scale1ListLen != listLen,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales1's listLen not equal to weight1's listLen, weight_scales1's listLen = %u, weight1's listLen = %u.",
-                scale1ListLen, listLen), return GRAPH_FAILED);
-
-        if (scale1ListLen == 1) {
-            // 场景1：传入一个 tensor，可以是 2 维或 1 维
-            uint32_t scale1Dims = wScale1Tensor->GetOriginShape().GetDimNum();
-            OP_TILING_CHECK(scale1Dims != TWO_DIMS && scale1Dims != ONE_DIM,
-                OP_LOGE(K_INNER_DEBUG, "weight_scales1 must be 1-dimension or 2-dimension, but got %u dim.", scale1Dims),
-                return GRAPH_FAILED);
-            if (scale1Dims == TWO_DIMS) {
-                // 2 维：shape 为 (num_experts_per_rank, N)
-                int64_t scale1Dim0 = wScale1Tensor->GetStorageShape().GetDim(0);
-                int64_t scale1Dim1 = wScale1Tensor->GetStorageShape().GetDim(1);
-                OP_TILING_CHECK(scale1Dim0 != expertPerRank,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales1's dim0 not equal to expertPerRank, weight_scales1's dim0 = %ld, expertPerRank = %u.",
-                        scale1Dim0, expertPerRank), return GRAPH_FAILED);
-                OP_TILING_CHECK(scale1Dim1 != N,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales1's dim1 not equal to N, weight_scales1's dim1 = %ld, N = %u.",
-                        scale1Dim1, N), return GRAPH_FAILED);
-            }
-        } else {
-            // 场景2：传入多个 tensor，每个 tensor 的 shape 为 (N,)
-            for (uint32_t i = 0; i < scale1ListLen; i++) {
-                auto sTensorI = context->GetDynamicInputTensor(WEIGHT_SCALES1_INDEX, i);
-                OP_TILING_CHECK(sTensorI == nullptr,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales1[%u] tensor is null.", i), return GRAPH_FAILED);
-                OP_TILING_CHECK(sTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales1[%u] must be 1-dimension, but got %lu dim.",
-                        i, sTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
-            }
-        }
-    }
+    OP_TILING_CHECK(CheckWeightScaleInput(context, WEIGHT_SCALES1_INDEX, "weight_scales1",
+        listLen, isQuantWeight, expertPerRank, N, "N") != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeightScaleInput for weight_scales1 failed."),
+        return GRAPH_FAILED);
 
     // ==================== 9. weight_scales2 输入校验（可选） ====================
     // weight_scales2：可选输入，weight1/weight2 为 INT8 或 INT4 时需要，GMM2 反量化参数
     // 支持两种场景：
     //   1. 传入一个 TensorList，list 包含一个 2 维 tensor，shape 为 (num_experts_per_rank, hidden_size)
     //   2. 传入一个 TensorList，list 包含 num_experts_per_rank 个 tensor，每个 tensor 的 shape 为 (hidden_size,)
-    auto wScale2Tensor = context->GetDynamicInputTensor(WEIGHT_SCALES2_INDEX, 0);
-    if (isQuantWeight) {
-        OP_TILING_CHECK(wScale2Tensor == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales2 is required when weight1/weight2 is INT8 or INT4."),
-            return GRAPH_FAILED);
-    }
-    if (wScale2Tensor != nullptr) {
-        // 数据类型校验
-        auto wScale2Desc = context->GetDynamicInputDesc(WEIGHT_SCALES2_INDEX, 0);
-        OP_TILING_CHECK(wScale2Desc == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales2 desc is null."), return GRAPH_FAILED);
-        OP_TILING_CHECK(wScale2Desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales2 dataType is invalid, should be FLOAT, but got %d.",
-                static_cast<int>(wScale2Desc->GetDataType())), return GRAPH_FAILED);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(wScale2Desc->GetStorageFormat())) != ge::FORMAT_ND,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales2 format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-        // 统计 weight_scales2 的 tensor list 长度
-        uint32_t scale2ListLen = 0;
-        while (true) {
-            auto sTensorT = context->GetDynamicInputTensor(WEIGHT_SCALES2_INDEX, ++scale2ListLen);
-            if (sTensorT == nullptr) { break; }
-        }
-
-        // weight_scales2 的长度必须与 weight1 的长度一致
-        OP_TILING_CHECK(scale2ListLen != listLen,
-            OP_LOGE(K_INNER_DEBUG, "weight_scales2's listLen not equal to weight1's listLen, weight_scales2's listLen = %u, weight1's listLen = %u.",
-                scale2ListLen, listLen), return GRAPH_FAILED);
-
-        if (scale2ListLen == 1) {
-            // 场景1：传入一个 tensor，可以是 2 维或 1 维
-            uint32_t scale2Dims = wScale2Tensor->GetOriginShape().GetDimNum();
-            OP_TILING_CHECK(scale2Dims != TWO_DIMS && scale2Dims != ONE_DIM,
-                OP_LOGE(K_INNER_DEBUG, "weight_scales2 must be 1-dimension or 2-dimension, but got %u dim.", scale2Dims),
-                return GRAPH_FAILED);
-            if (scale2Dims == TWO_DIMS) {
-                // 2 维：shape 为 (num_experts_per_rank, hidden_size)
-                int64_t scale2Dim0 = wScale2Tensor->GetStorageShape().GetDim(0);
-                int64_t scale2Dim1 = wScale2Tensor->GetStorageShape().GetDim(1);
-                OP_TILING_CHECK(scale2Dim0 != expertPerRank,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales2's dim0 not equal to expertPerRank, weight_scales2's dim0 = %ld, expertPerRank = %u.",
-                        scale2Dim0, expertPerRank), return GRAPH_FAILED);
-                OP_TILING_CHECK(scale2Dim1 != hiddenSize,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales2's dim1 not equal to hidden_size, weight_scales2's dim1 = %ld, hidden_size = %ld.",
-                        scale2Dim1, hiddenSize), return GRAPH_FAILED);
-            }
-        } else {
-            // 场景2：传入多个 tensor，每个 tensor 的 shape 为 (hidden_size,)
-            for (uint32_t i = 0; i < scale2ListLen; i++) {
-                auto sTensorI = context->GetDynamicInputTensor(WEIGHT_SCALES2_INDEX, i);
-                OP_TILING_CHECK(sTensorI == nullptr,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales2[%u] tensor is null.", i), return GRAPH_FAILED);
-                OP_TILING_CHECK(sTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(K_INNER_DEBUG, "weight_scales2[%u] must be 1-dimension, but got %lu dim.",
-                        i, sTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
-            }
-        }
-    }
+    OP_TILING_CHECK(CheckWeightScaleInput(context, WEIGHT_SCALES2_INDEX, "weight_scales2",
+        listLen, isQuantWeight, expertPerRank, hiddenSize, "hidden_size") != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckWeightScaleInput for weight_scales2 failed."),
+        return GRAPH_FAILED);
 
     // ==================== 10. bias1 输入校验 ====================
     // 当 weight1 和 weight2 数据类型都为 INT4 时，bias1 必须存在
     bool isInt4Weight = (w1DataType == ge::DT_INT4 && w2DataType == ge::DT_INT4);
-    const gert::StorageShape *bias1StorageShape = context->GetDynamicInputShape(BIAS1_INDEX, 0);
-    if (isInt4Weight) {
-        OP_TILING_CHECK(bias1StorageShape == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "bias1 is required when weight1 and weight2 are INT4."),
-            return GRAPH_FAILED);
-    }
-    
-    if (bias1StorageShape != nullptr) {
-        auto bias1Tensor = context->GetDynamicInputTensor(BIAS1_INDEX, 0);
-        OP_TILING_CHECK(bias1Tensor == nullptr, 
-            OP_LOGE(K_INNER_DEBUG, "bias1 tensor is null."), return GRAPH_FAILED);
-        
-        auto bias1Desc = context->GetDynamicInputDesc(BIAS1_INDEX, 0);
-        OP_TILING_CHECK(bias1Desc == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "bias1 desc is null."), return GRAPH_FAILED);
-        OP_TILING_CHECK(bias1Desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(K_INNER_DEBUG, "bias1 dataType is invalid, should be FP32, but got %d.",
-                static_cast<int>(bias1Desc->GetDataType())), return GRAPH_FAILED);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(bias1Desc->GetStorageFormat())) != ge::FORMAT_ND,
-            OP_LOGE(K_INNER_DEBUG, "bias1 format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-        // 统计 bias1 的 tensor list 长度
-        uint32_t bias1ListLen = 0;
-        while (true) {
-            auto bTensorT = context->GetDynamicInputTensor(BIAS1_INDEX, ++bias1ListLen);
-            if (bTensorT == nullptr) { break; }
-        }
-
-        // bias1 的长度必须与 weight1 的长度一致
-        OP_TILING_CHECK(bias1ListLen != listLen,
-            OP_LOGE(K_INNER_DEBUG, "bias1's listLen not equal to weight1's listLen, bias1's listLen = %u, weight1's listLen = %u.",
-                bias1ListLen, listLen), return GRAPH_FAILED);
-        
-        // 每个 bias1[i] 的 shape 必须是 (N,)
-        for (uint32_t i = 0; i < bias1ListLen; i++) {
-            auto bTensorI = context->GetDynamicInputTensor(BIAS1_INDEX, i);
-            OP_TILING_CHECK(bTensorI == nullptr,
-                OP_LOGE(K_INNER_DEBUG, "bias1[%u] tensor is null.", i), return GRAPH_FAILED);
-            OP_TILING_CHECK(bTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
-                OP_LOGE(K_INNER_DEBUG, "bias1[%u] must be 1-dimension, but got %lu dim.",
-                    i, bTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
-            uint32_t bias1Dim0 = bTensorI->GetStorageShape().GetDim(0);
-            OP_TILING_CHECK(bias1Dim0 != N,
-                OP_LOGE(K_INNER_DEBUG, "bias1[%u]'s dim0 not equal to N, bias1[%u]'s dim0 = %u, N = %u.",
-                    i, i, bias1Dim0, N), return GRAPH_FAILED);
-        }
-    }
+    OP_TILING_CHECK(CheckBiasInput(context, BIAS1_INDEX, "bias1",
+        listLen, isInt4Weight, N, "N") != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckBiasInput for bias1 failed."),
+        return GRAPH_FAILED);
 
     // ==================== 11. bias2 输入校验 ====================
     // 当 weight1 和 weight2 数据类型都为 INT4 时，bias2 必须存在
-    const gert::StorageShape *bias2StorageShape = context->GetDynamicInputShape(BIAS2_INDEX, 0);
-    if (isInt4Weight) {
-        OP_TILING_CHECK(bias2StorageShape == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "bias2 is required when weight1 and weight2 are INT4."),
-            return GRAPH_FAILED);
-    }
-    
-    if (bias2StorageShape != nullptr) {
-        auto bias2Tensor = context->GetDynamicInputTensor(BIAS2_INDEX, 0);
-        OP_TILING_CHECK(bias2Tensor == nullptr, 
-            OP_LOGE(K_INNER_DEBUG, "bias2 tensor is null."), return GRAPH_FAILED);
-        
-        auto bias2Desc = context->GetDynamicInputDesc(BIAS2_INDEX, 0);
-        OP_TILING_CHECK(bias2Desc == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "bias2 desc is null."), return GRAPH_FAILED);
-        OP_TILING_CHECK(bias2Desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(K_INNER_DEBUG, "bias2 dataType is invalid, should be FP32, but got %d.",
-                static_cast<int>(bias2Desc->GetDataType())), return GRAPH_FAILED);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(bias2Desc->GetStorageFormat())) != ge::FORMAT_ND,
-            OP_LOGE(K_INNER_DEBUG, "bias2 format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-
-        // 统计 bias2 的 tensor list 长度
-        uint32_t bias2ListLen = 0;
-        while (true) {
-            auto bTensorT = context->GetDynamicInputTensor(BIAS2_INDEX, ++bias2ListLen);
-            if (bTensorT == nullptr) { break; }
-        }
-
-        // bias2 的长度必须与 weight1 的长度一致
-        OP_TILING_CHECK(bias2ListLen != listLen,
-            OP_LOGE(K_INNER_DEBUG, "bias2's listLen not equal to weight1's listLen, bias2's listLen = %u, weight1's listLen = %u.",
-                bias2ListLen, listLen), return GRAPH_FAILED);
-        
-        // 每个 bias2[i] 的 shape 必须是 (hiddenSize,)
-        for (uint32_t i = 0; i < bias2ListLen; i++) {
-            auto bTensorI = context->GetDynamicInputTensor(BIAS2_INDEX, i);
-            OP_TILING_CHECK(bTensorI == nullptr,
-                OP_LOGE(K_INNER_DEBUG, "bias2[%u] tensor is null.", i), return GRAPH_FAILED);
-            OP_TILING_CHECK(bTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
-                OP_LOGE(K_INNER_DEBUG, "bias2[%u] must be 1-dimension, but got %lu dim.",
-                    i, bTensorI->GetOriginShape().GetDimNum()), return GRAPH_FAILED);
-            uint32_t bias2Dim0 = bTensorI->GetStorageShape().GetDim(0);
-            OP_TILING_CHECK(bias2Dim0 != static_cast<uint32_t>(hiddenSize),
-                OP_LOGE(K_INNER_DEBUG, "bias2[%u]'s dim0 not equal to hiddenSize, bias2[%u]'s dim0 = %u, hiddenSize = %ld.",
-                    i, i, bias2Dim0, hiddenSize), return GRAPH_FAILED);
-        }
-    }
+    OP_TILING_CHECK(CheckBiasInput(context, BIAS2_INDEX, "bias2",
+        listLen, isInt4Weight, hiddenSize, "hiddenSize") != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckBiasInput for bias2 failed."),
+        return GRAPH_FAILED);
 
     // ==================== 12. x_active_mask 输入校验（可选） ====================
-    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-    bool isActiveMask = (xActiveMaskStorageShape != nullptr);
-    if (isActiveMask) {
-        int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
-        
-        OP_TILING_CHECK(xActiveMaskDimNums != ONE_DIM,
-            OP_LOGE(K_INNER_DEBUG, "x_active_mask must be 1-dimension, but got %ld dim. 2-dimension is not supported now.",
-                xActiveMaskDimNums), return GRAPH_FAILED);
-
-        int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(xActiveMaskDim0 != bs,
-            OP_LOGE(K_INNER_DEBUG, "x_active_mask's dim0 not equal to x's dim0, x_active_mask's dim0 = %ld, x's dim0 = %ld.",
-                xActiveMaskDim0, bs), return GRAPH_FAILED);
-
-        auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
-        OP_TILING_CHECK(xActiveMaskDesc == nullptr,
-            OP_LOGE(K_INNER_DEBUG, "x_active_mask desc is null."), return GRAPH_FAILED);
-        OP_TILING_CHECK(xActiveMaskDesc->GetDataType() != ge::DT_INT8,
-            OP_LOGE(K_INNER_DEBUG, "x_active_mask dataType is invalid, should be INT8, but got %d.",
-                static_cast<int>(xActiveMaskDesc->GetDataType())), return GRAPH_FAILED);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) != ge::FORMAT_ND,
-            OP_LOGE(K_INNER_DEBUG, "x_active_mask format is invalid, should be FORMAT_ND."), return GRAPH_FAILED);
-    }
+    bool isActiveMask = false;
+    OP_TILING_CHECK(CheckXActiveMaskInput(context, bs, isActiveMask) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckXActiveMaskInput failed."),
+        return GRAPH_FAILED);
 
     // ==================== 13. scales 输入校验（可选，预留） ====================
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
