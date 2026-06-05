@@ -520,15 +520,15 @@ struct ConfigA8W4 {
     }
 };
 
-template <typename Policy>
-__aicore__ inline void WaitReadyA8W4(
-    const Params& params, const GMMAddrInfo& gmmAddrInfo, uint32_t m, uint32_t n, uint32_t k)
+template <typename Policy, typename Config>
+__aicore__ inline void WaitForUpstreamReadyA8W4(
+    const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
 {
     if constexpr (Policy::IS_GMM1) {
-        GlobalTensor<int32_t> groupFlagListGm2;
-        groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList2);
-        uint32_t targetValue = params.tilingData->epWorldSize * params.tilingData->blockNumPerEP;
-        __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
+        // wave-grain: 每 L1_TILE_M 行一个 flag 槽位，目标值 = min(L1_TILE_M, m - mLoc)
+        uint32_t waveIdx = mLoc / L1_TILE_M;
+        uint32_t targetValue = (mLoc + L1_TILE_M > config.m) ? (config.m - mLoc) : L1_TILE_M;
+        __gm__ int32_t* flagValueAddr = gmmAddrInfo.groupFlagList2 + waveIdx;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -538,7 +538,7 @@ __aicore__ inline void WaitReadyA8W4(
         GlobalTensor<int32_t> groupFlagListGm;
         groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
         BlockScheduler gmmBlockScheduler(
-            {m, k, n},
+            {config.m, config.k, config.n},
             BlockScheduler::Params{
                 Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
@@ -555,9 +555,10 @@ template <typename Policy, typename BlockMmad, typename Scheduler, typename Tens
     typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void AicComputeA8W4(
     BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB,
-    TensorC& l0cOutGm, const Params& params, const GMMAddrInfo& gmmAddrInfo, const Config& config,
+    TensorC& l0cOutGm, const GMMAddrInfo& gmmAddrInfo, const Config& config,
     uint32_t startLoopIdx, uint32_t tileNum)
 {
+    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -565,8 +566,19 @@ __aicore__ inline void AicComputeA8W4(
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        if (loopIdx == startLoopIdx) {
-            WaitReadyA8W4<Policy>(params, gmmAddrInfo, config.m, config.n, config.k);
+        bool shouldWait = false;
+        uint32_t waveIdx = 0;
+        if constexpr (Policy::IS_GMM1) {
+            waveIdx = mLoc / L1_TILE_M;
+            shouldWait = waveIdx != lastWaveWaited;
+        } else {
+            shouldWait = loopIdx == startLoopIdx;
+        }
+        if (shouldWait) {
+            WaitForUpstreamReadyA8W4<Policy>(gmmAddrInfo, config, mLoc);
+            if constexpr (Policy::IS_GMM1) {
+                lastWaveWaited = waveIdx;
+            }
         }
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
@@ -721,7 +733,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         AicComputeA8W4<Policy>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
-            workSet.l0cOutGm, params, gmmAddrInfo, config, startLoopIdx, tileNum);
+            workSet.l0cOutGm, gmmAddrInfo, config, startLoopIdx, tileNum);
     } else {
         if (config.subBlockIdx == 0) {
             // AIV sub-block 0: B prologue, prefetch weight into L1.
