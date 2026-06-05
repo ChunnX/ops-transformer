@@ -91,7 +91,9 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     }
 
     OP_CHECK_IF((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1),
-            OP_LOGE(context->GetNodeName(), "input n0 is %ld, must be equal to n1 which is %ld.", n0, n1),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
+                ("n0=" + std::to_string(n0) + ", n1=" + std::to_string(n1)).c_str(),
+                "n0 and n1 of x must be equal"),
             return ge::GRAPH_FAILED);
 
     int64_t n = n0;
