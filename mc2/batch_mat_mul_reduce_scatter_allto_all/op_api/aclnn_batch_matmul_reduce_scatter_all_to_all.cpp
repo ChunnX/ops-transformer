@@ -127,7 +127,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
                 ", out_1=" + std::to_string(out->GetViewShape().GetDim(DIM_1)) +
                 ", tp=" + std::to_string(tpWorldSize);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "weight", bmmShapeStr.c_str(),
-                "Expected H = H/tp * tp, W_2 must equal out_1 * tp");
+                "The shape of weight: H = H/tp * tp, W_2 must equal out_1 * tp");
             return false;
         }
         // x_1 == y_1 * ep
@@ -136,7 +136,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
                 ", out_1=" + std::to_string(out->GetViewShape().GetDim(DIM_1)) +
                 ", ep=" + std::to_string(epWorldSize);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(BMM_ACLNN_OP_NAME, "x", bmmShapeStr.c_str(),
-                "Expected x_1 = out_1 * ep");
+                "The shape of x: x_1 must equal out_1 * ep");
             return false;
         }
     } else if (yShardType == 1) {

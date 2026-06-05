@@ -76,13 +76,13 @@ bool Mc2WeightQuantBatchMatmulV2TilingAS::IsCapable()
         matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "antiQuantScaleDtype",
             ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->antiQuantScaleDtype).GetString(),
-            "NpuArch 3510 does not support antiQuantScaleDtype is uint64"),
+            "The value of antiQuantScaleDtype is not supported as uint64 on NpuArch 3510."),
         return false);
     OP_TILING_CHECK(
         (matmulInfoPtr_->bDtype == ge::DT_INT4 && matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
             (matmulInfoPtr_->transA || matmulInfoPtr_->transB),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transpose/format",
-            "", "NpuArch 3510 does not support A16W4 transA or transB when weight layout is FRACTAL_NZ"),
+            "", "The value of transpose/format is not supported for A16W4 transA or transB when weight layout is FRACTAL_NZ on NpuArch 3510."),
         return false);
 
     // PS 从RegBase模板迁移的场景: pergroup int4 Nz groupsize(32, 64, 128, 256)

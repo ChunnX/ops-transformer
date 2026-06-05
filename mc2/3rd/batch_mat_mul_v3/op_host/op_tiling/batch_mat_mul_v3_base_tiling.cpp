@@ -148,7 +148,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     if (biasDims == NO_BATCH_SHAPE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("[Mc2BatchMatMulV3]", "bias",
             std::to_string(biasDims).c_str(),
-            "Bias dimension must not be 2.");
+            "The shape dim of bias cannot be 2.");
         return false;
     }
 
@@ -157,7 +157,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     if (biasMValue != 1UL) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "bias M",
             std::to_string(biasMValue).c_str(),
-            "M of bias must be 1.");
+            "The value of bias M must be 1.");
         return false;
     }
 
@@ -174,7 +174,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     if (batchInfo_.biasWithBatch && !biasBatchValid) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "bias batch",
             std::to_string(batchBias3).c_str(),
-            "Batch of bias must be equal to batch of C.");
+            "The value of bias batch must be equal to batch of C.");
         return false;
     }
     return true;

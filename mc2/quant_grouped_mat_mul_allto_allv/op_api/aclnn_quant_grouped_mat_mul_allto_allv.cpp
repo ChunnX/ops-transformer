@@ -111,7 +111,7 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
             "sendCountsTensorOptional/recvCountsTensorOptional",
             (sendCountsTensorOptional ? "non-empty" : "empty"),
-            "These optional tensors must be both empty (current version does not support them).");
+            "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
         return false;
     }
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) { // HCCL_GROUP_NAME_MAX = 128U

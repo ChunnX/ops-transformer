@@ -70,14 +70,14 @@ bool AllGatherMatmulTilingBase::CheckInputParaEmptyPointer()
         OP_LOGE_WITH_INVALID_INPUT(opName_, "x1TensorDesc or x2TensorDesc or yDesc"), return false);
     OP_TILING_CHECK((scaleShape != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantScale", "not nullptr",
-        "quantScale must be nullptr in non-quant mode"),
+        "The value of quantScale must be nullptr in non-quant mode"),
         return false);
     if (amaxOutShape != nullptr) {
         OP_LOGI(opName_, "amaxOutShapeDim0 is %lu", amaxOutShape->GetStorageShape().GetDim(0));
     }
     OP_TILING_CHECK((amaxOutShape != nullptr) && (amaxOutShape->GetStorageShape().GetDim(0) != 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "amaxOut",
-        std::to_string(amaxOutShape->GetStorageShape().GetDim(0)).c_str(), "amaxOut must be nullptr or empty tensor"),
+        std::to_string(amaxOutShape->GetStorageShape().GetDim(0)).c_str(), "The value of amaxOut must be nullptr or empty tensor"),
         return false);
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK((attrs == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return false);
@@ -125,7 +125,7 @@ bool AllGatherMatmulTilingBase::CheckInputScale()
     }
     OP_TILING_CHECK((scaleShape != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantScale", "not nullptr",
-        "quantScale must be nullptr in non-quant mode"),
+        "The value of quantScale must be nullptr in non-quant mode"),
         return false);
     return true;
 }
@@ -182,7 +182,7 @@ bool AllGatherMatmulTilingBase::CheckInputAndOutputParaFormat()
     OP_TILING_CHECK(x1Format != yFormat,
         OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "x1 and output",
         (TypeUtils::FormatToSerialString(x1Format) + " and " + TypeUtils::FormatToSerialString(yFormat)).c_str(),
-        "The formats of x1 and output must be the same"),
+        "The formats of x1 and output must be the same."),
         return false);
     OP_TILING_CHECK(!mc2tiling::CheckSuppportedFormat(x1Format) || !mc2tiling::CheckSuppportedFormat(x2Format),
         OP_LOGE_FOR_INVALID_FORMAT(opName_, "x1Format", TypeUtils::FormatToSerialString(x1Format).c_str(), "ND"),
@@ -413,13 +413,13 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSingleM).c_str(), "exceeds 256MB even after splitting into (1, k)"),
+            std::to_string(sizeOfSingleM).c_str(), "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
         return ge::GRAPH_FAILED);
 
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
-            std::to_string(sizeOfSplitM).c_str(), "exceeds 256MB even after splitting M into 63 parts"),
+            std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB even after splitting M into 63 parts"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

@@ -61,7 +61,7 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
     // // 检查必选入参出参为非空
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize",
-            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "should be null");
+            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
         return false;
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {

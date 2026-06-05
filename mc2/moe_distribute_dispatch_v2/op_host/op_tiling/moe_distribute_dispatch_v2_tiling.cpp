@@ -190,7 +190,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape"), return false);
     OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xShape", std::to_string(xStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xShape", std::to_string(xStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of xShape must be 2D."), return false);
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
@@ -213,7 +213,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     }
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdShape"), return false);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertIdShape", std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertIdShape", std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of expertIdShape must be 2D."), return false);
     const int64_t expertIdDim0 = expertIdStorageShape->GetStorageShape().GetDim(0);
     const int64_t expertIdDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     OP_LOGD(nodeName, "expertId dim0 = %ld", expertIdDim0);
@@ -230,7 +230,7 @@ static bool CheckCommonOutputTensorDim(const gert::TilingContext *context, const
     const gert::StorageShape *expandXStorageShape = context->GetOutputShape(OUTPUT_EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXShape"), return false);
     OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandXShape", std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandXShape", std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of expandXShape must be 2D."), return false);
     OP_LOGD(nodeName, "expandX dim0 = %ld", expandXStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expandX dim1 = %ld", expandXStorageShape->GetStorageShape().GetDim(1));
 
@@ -241,27 +241,27 @@ static bool CheckCommonOutputTensorDim(const gert::TilingContext *context, const
     const gert::StorageShape *assistInfoStorageShape = context->GetOutputShape(OUTPUT_ASSIST_INFO_INDEX);
     OP_TILING_CHECK(assistInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "assistInfoShape"), return false);
     OP_TILING_CHECK(assistInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "assistInfoShape", std::to_string(assistInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "assistInfoShape", std::to_string(assistInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of assistInfoShape must be 1D."), return false);
     OP_LOGD(nodeName, "assistInfoForCombine dim0 = %ld", assistInfoStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *expertTokenNumsStorageShape = context->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     OP_TILING_CHECK(expertTokenNumsStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertTokenNumsShape"), return false);
     OP_TILING_CHECK(expertTokenNumsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertTokenNumsShape", std::to_string(expertTokenNumsStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expertTokenNumsShape", std::to_string(expertTokenNumsStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of expertTokenNumsShape must be 1D."), return false);
     OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *epRecvCountStorageShape = context->GetOutputShape(OUTPUT_EP_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(epRecvCountStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epRecvCountShape"), return false);
     OP_TILING_CHECK(epRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "epRecvCountShape", std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "epRecvCountShape", std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of epRecvCountShape must be 1D."), return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *tpRecvCountStorageShape = context->GetOutputShape(OUTPUT_TP_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(tpRecvCountStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountShape"), return false);
     OP_TILING_CHECK(tpRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "tpRecvCountShape", std::to_string(tpRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "tpRecvCountShape", std::to_string(tpRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of tpRecvCountShape must be 1D."), return false);
     OP_LOGD(nodeName, "tpRecvCount dim0 = %ld", tpRecvCountStorageShape->GetStorageShape().GetDim(0));
 
     return true;
@@ -283,7 +283,7 @@ static bool CheckTensorDim(const gert::TilingContext *context, const char *nodeN
             return false);
         const int64_t xActiveMaskDimNum = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(((xActiveMaskDimNum != ONE_DIM) && (xActiveMaskDimNum != TWO_DIMS)),
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xActiveMask", std::to_string(xActiveMaskDimNum).c_str(), "should be 1D or 2D"), return false);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xActiveMask", std::to_string(xActiveMaskDimNum).c_str(), "The shape dim of xActiveMask must be within the range {1D, 2D}."), return false);
         OP_TILING_CHECK((xActiveMaskStorageShape->GetStorageShape().GetDim(0) != xDim0), OP_LOGE(nodeName,
             "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %ld.",
             xActiveMaskStorageShape->GetStorageShape().GetDim(0), xDim0), return false);
@@ -297,14 +297,14 @@ static bool CheckTensorDim(const gert::TilingContext *context, const char *nodeN
         const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
         OP_TILING_CHECK(elasticInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfo"), return false);
         OP_TILING_CHECK(elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "elasticInfo", std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "elasticInfo", std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of elasticInfo must be 1D."), return false);
         OP_LOGD(nodeName, "elasticInfo dim0 = %ld", elasticInfoStorageShape->GetStorageShape().GetDim(0));
     }
     if (isPerformance) {
         const gert::StorageShape *performanceInfoStorageShape = context->GetOptionalInputShape(config.performanceInfoIndex);
         OP_TILING_CHECK(performanceInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "performanceInfo"), return false);
         OP_TILING_CHECK(performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "performanceInfo", std::to_string(performanceInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "performanceInfo", std::to_string(performanceInfoStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of performanceInfo must be 1D."), return false);
         OP_LOGD(nodeName, "performanceInfo dim0 = %ld", performanceInfoStorageShape->GetStorageShape().GetDim(0));
     }
 
@@ -1300,7 +1300,7 @@ static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char 
     OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextShape"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "contextShape", std::to_string(contextStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "contextShape", std::to_string(contextStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of contextShape must be 1D"), return ge::GRAPH_FAILED);
     int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
 

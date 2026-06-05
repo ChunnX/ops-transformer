@@ -187,17 +187,17 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1",
                         Ops::Base::ToString(x1Dtype).c_str(),
-                        "should be in mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"), return ge::GRAPH_FAILED);
+                        "The dtype of x1 must be in the mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(MX_QUANT_X_DTYPE_LIST, x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2",
                         Ops::Base::ToString(x2Dtype).c_str(),
-                        "should be in mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"), return ge::GRAPH_FAILED);
+                        "The dtype of x2 must be in the mx-quant range (float8_e4m3fn/float8_e5m2/float4_e2m1)"), return ge::GRAPH_FAILED);
     if (x1Dtype == ge::DataType::DT_FLOAT4_E2M1 || x2Dtype == ge::DataType::DT_FLOAT4_E2M1) {
         isMxfp4_ = true;
         OP_TILING_CHECK(x1Dtype != x2Dtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1,x2",
                         (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "in mxfp4 quant mode, both x1 and x2 should be DT_FLOAT4_E2M1"), return ge::GRAPH_FAILED);
+                        "The dtype of x1 and x2 must be the same in mxfp4 quant mode"), return ge::GRAPH_FAILED);
     }
     // 校验 bias 数据类型（如果存在）
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
@@ -205,7 +205,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         OP_TILING_CHECK(
             (biasDtype != ge::DT_FLOAT),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "should be float"),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "The dtype of bias must be float"),
             return ge::GRAPH_FAILED);
     }
     // 校验 x1Scale和x2Scale 数据类型
@@ -217,7 +217,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxQuantTensorDataType(cons
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(MX_QUANT_Y_DTYPE_LIST, yDtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
-                        "should be float16, bfloat16 or float"), return ge::GRAPH_FAILED);
+                        "The dtype of y must be float16, bfloat16 or float"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

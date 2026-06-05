@@ -113,7 +113,7 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
                 (std::to_string(x->GetViewShape().GetDim(DIM_0)) + " vs " +
                  std::to_string(weight->GetViewShape().GetDim(DIM_0))).c_str(),
                 ("The first dim of weight multiplied by ep(" + std::to_string(epWorldSize) +
-                 ") should equal the first dim of x").c_str());
+                 ") must equal the first dim of x").c_str());
         return false;
     }
     // y1_0 == w_0
@@ -121,7 +121,7 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and weight",
                 (std::to_string(y1Out->GetViewShape().GetDim(DIM_0)) + " vs " +
                  std::to_string(weight->GetViewShape().GetDim(DIM_0))).c_str(),
-                "The first dim of y1Out should equal the first dim of weight");
+                "The first dim of y1Out must equal the first dim of weight");
         return false;
     }
     // y1_2 == w_2
@@ -129,7 +129,7 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and weight",
                 (std::to_string(y1Out->GetViewShape().GetDim(DIM_2)) + " vs " +
                  std::to_string(weight->GetViewShape().GetDim(DIM_2))).c_str(),
-                "The last dim of y1Out should equal the last dim of weight(without transpose)");
+                "The last dim of y1Out must equal the last dim of weight (without transpose)");
         return false;
     }
     return true;
@@ -144,7 +144,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "weight and x",
                 (std::to_string(weight->GetViewShape().GetDim(DIM_1)) + " vs " +
                  std::to_string(x->GetViewShape().GetDim(DIM_2))).c_str(),
-                ("H = H/tp * tp, w_1 should equal x_2 * tp, tp=" + std::to_string(tpWorldSize)).c_str());
+                ("H = H/tp * tp, w_1 must equal x_2 * tp, tp=" + std::to_string(tpWorldSize)).c_str());
             return false;
         }
         // y1_1 == x_1 * ep
@@ -152,7 +152,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and x",
                 (std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + " vs " +
                  std::to_string(x->GetViewShape().GetDim(DIM_1))).c_str(),
-                ("y1_1 should equal x_1 * ep, ep=" + std::to_string(epWorldSize)).c_str());
+                ("The value of y1_1 must equal x_1 * ep, ep=" + std::to_string(epWorldSize)).c_str());
             return false;
         }
     } else if (xShardType == 1) {
@@ -161,7 +161,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "x and weight",
                 (std::to_string(x->GetViewShape().GetDim(DIM_2)) + " vs " +
                  std::to_string(weight->GetViewShape().GetDim(DIM_1))).c_str(),
-                "The second dim of weight should equal the last dim of x");
+                "The second dim of weight must equal the last dim of x");
             return false;
         }
         // y1_1 == x_1 * ep * tp
@@ -169,7 +169,7 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out and x",
                 (std::to_string(y1Out->GetViewShape().GetDim(DIM_1)) + " vs " +
                  std::to_string(x->GetViewShape().GetDim(DIM_1))).c_str(),
-                ("y1_1 should equal x_1 * ep * tp, ep=" + std::to_string(epWorldSize) +
+                ("The value of y1_1 must equal x_1 * ep * tp, ep=" + std::to_string(epWorldSize) +
                  ", tp=" + std::to_string(tpWorldSize)).c_str());
             return false;
         }

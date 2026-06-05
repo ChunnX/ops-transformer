@@ -47,7 +47,7 @@ uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
     uint64_t singleRowSize = kValue * dtypeSize * rankDim;
     if (singleRowSize == 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "singleRowSize", std::to_string(singleRowSize).c_str(),
-            "kValue*dtypeSize*rankDim must not be zero");
+            "The value of singleRowSize must not be zero");
         return HCCL_UNSUPPORTED;
     }
 
@@ -84,7 +84,7 @@ uint64_t CalcMaxTileMFromHcclLimit(const CutResult& cutRes,
     uint64_t maxTileM = HCCL_MEM_LIMIT / singleRowSize;
     if (maxTileM < ALIGN_LEN) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "maxTileM",
-            std::to_string(maxTileM).c_str(), "shape too small to satisfy HCCL limit");
+            std::to_string(maxTileM).c_str(), "The value of maxTileM must satisfy the HCCL memory limit");
         return HCCL_UNSUPPORTED;
     }
 
@@ -180,7 +180,7 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
 
     if (finalTileM > maxTileM) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "HCCL tile size",
-            std::to_string(finalTileM).c_str(), "cannot satisfy HCCL 256MB limit");
+            std::to_string(finalTileM).c_str(), "The value of HCCL tile size must satisfy the HCCL 256MB limit");
         return HCCL_UNSUPPORTED;
     }
 
@@ -227,7 +227,7 @@ void ApplyTileSplit(CutResult& cutRes, uint64_t mValue, uint64_t tileM,
         uint64_t newCommSize = tileM * kValue * dtypeSize * rankDim;
         if (newCommSize > HCCL_MEM_LIMIT) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName.c_str(), "newCommSize",
-                std::to_string(newCommSize).c_str(), "shape too small to satisfy HCCL limit");
+                std::to_string(newCommSize).c_str(), "The value of newCommSize must not exceed the HCCL limit");
             return;
         }
     }

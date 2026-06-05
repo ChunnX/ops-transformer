@@ -47,7 +47,7 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
     OP_CHECK_NULL(y, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize",
-            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "should be null");
+            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
         return false;
     }
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {

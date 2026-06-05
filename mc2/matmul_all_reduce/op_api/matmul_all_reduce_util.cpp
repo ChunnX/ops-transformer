@@ -84,7 +84,7 @@ bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* te
     // x2非连续时仅支持转置场景
     if (!isTransposeX2 && !MC2Aclnn::IsTensorContiguous(tensor)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MatmulAllReduce", tensorName, "non-contiguous",
-            "without transpose must be contiguous");
+            "The value of tensor without transpose must be contiguous");
         return false;
     }
     return true;

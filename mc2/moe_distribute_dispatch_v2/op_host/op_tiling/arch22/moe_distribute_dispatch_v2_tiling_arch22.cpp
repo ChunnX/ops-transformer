@@ -391,7 +391,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     if (isActiveMask) {
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xActiveMask", std::to_string(xActiveMaskDimNums).c_str(), "should be 1D or 2D"), return GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "xActiveMask", std::to_string(xActiveMaskDimNums).c_str(), "The shape dim of xActiveMask must be within the range {1D, 2D}."), return GRAPH_FAILED);
 
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(xActiveMaskDim0 != static_cast<int64_t>(bs),

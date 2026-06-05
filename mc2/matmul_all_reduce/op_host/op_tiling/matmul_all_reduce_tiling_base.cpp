@@ -730,12 +730,12 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W16()
          (mmrCtxInfo_.dequant_scale_shape != nullptr)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "antiquantScale/antiquantOffset/dequantScale",
-            "not null", "antiquantScale, antiquantOffset and dequantScale must be nullptr in A16W16 mode"),
+            "not null", "The value of antiquantScale/antiquantOffset/dequantScale must be nullptr in A16W16 mode"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "comm_quant_scale",
-            "not null", "comm_quant_scale is not supported in A16W16 mode"),
+                "not null", "The value of comm_quant_scale must be nullptr in A16W16 mode"),
             return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -797,10 +797,10 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
             ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "comm_quant_scale",
-                "not null", "comm_quant_scale is not supported on 310P"),
+                "not null", "The value of comm_quant_scale must be nullptr on 310P"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "socVersion", "current", "unsupported SoC version");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "socVersion", "current", "The value of socVersion is not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -906,7 +906,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
     OP_TILING_CHECK(
         (!CheckAntiQuantScaleShape(kValue, nValue)) || (mmrCtxInfo_.dequant_scale_shape != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "dequantScale",
-            "not null", "dequantScale must be nullptr in antiquant mode"),
+            "not null", "The value of dequantScale must be nullptr in antiquant mode"),
         return ge::GRAPH_FAILED);
     if (!CheckAntiQuantOffsetValid()) {
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "antiquantOffset",
@@ -916,7 +916,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
     OP_TILING_CHECK(
         (mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "comm_quant_scale",
-            "not null", "comm_quant_scale is not supported in A16W8 mode"),
+            "not null", "The value of comm_quant_scale must be nullptr in A16W8 mode"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

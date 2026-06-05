@@ -62,7 +62,7 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* sessionIds,
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnFFNToAttention", "group",
             std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
-            std::string("group name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
+            (std::string("The length of group must be less than ") + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
  

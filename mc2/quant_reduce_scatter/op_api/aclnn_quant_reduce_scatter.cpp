@@ -99,7 +99,7 @@ static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, con
             (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
              op::ToString(scales->GetDataType()).GetString() + "/" +
              op::ToString(output->GetDataType()).GetString()).c_str(),
-            "Tensors x, scales and output are not simultaneously supported");
+            "The dtypes of x, scales and output must be valid");
     }
     return isAllDtypesValid;
 }
@@ -115,7 +115,7 @@ static bool CheckGroupLength(const char* group)
     if (groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantReduceScatter", "group",
             "length exceeds " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX),
-            "Limit the length of the group to less than " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + " characters");
+            "The length of group must be less than " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + " characters");
         return false;
     }
 

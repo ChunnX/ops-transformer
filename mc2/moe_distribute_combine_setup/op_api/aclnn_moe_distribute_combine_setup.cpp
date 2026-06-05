@@ -31,7 +31,7 @@ static inline bool CheckEmptyTensor(const aclTensor *tensor, const char *name)
 {
     const auto &shape = tensor->GetViewShape();
     if (shape.GetDimNum() == 0) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", name, "[]", "tensor should not have empty shape");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", name, "[]", (std::string("The shape of ") + name + " cannot be empty.").c_str());
         return false;
     }
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
@@ -184,7 +184,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     if (expandX->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",
-            "dim=" + std::to_string(expandX->GetViewShape().GetDimNum()), "expected 2D");
+            "dim=" + std::to_string(expandX->GetViewShape().GetDimNum()), "The shape dim of expandX must be 2D.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t a = expandX->GetViewShape().GetDim(0);

@@ -162,7 +162,7 @@ static bool CheckShape(
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnQuantMatmulAllReduceV3", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
+            std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -233,7 +233,7 @@ static bool CheckShape(
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
                 (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
                  std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
-                "expected both to have same shape");
+                "The shapes of commQuantScale1,commQuantScale2 must be the same");
             return false;
         }
         uint64_t commQuantScale1Dim0 = commQuantScale1Optional->GetViewShape().GetDim(0);
@@ -252,7 +252,7 @@ static bool CheckShape(
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
                 (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
                  std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
-                std::string("expected [n] or [1,n], last dim should be " + std::to_string(x2Dim1)).c_str());
+                std::string("The shapes of commQuantScale1,commQuantScale2 must be [n] or [1,n], last dim must be " + std::to_string(x2Dim1)).c_str());
             return false;
         }
     }

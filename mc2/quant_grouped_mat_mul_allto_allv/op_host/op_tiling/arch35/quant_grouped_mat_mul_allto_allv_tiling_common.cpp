@@ -85,13 +85,13 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "sendCountsTensor, recvCountsTensor",
                             "not null",
-                            "sendCountsTensor and recvCountsTensor must be nullptr"),
+                            "The values of sendCountsTensor and recvCountsTensor must be nullptr."),
                     return ge::GRAPH_FAILED);
     auto commQuantScaleTensorShape = context_->GetOptionalInputShape(COMM_QUANT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(commQuantScaleTensorShape != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantScale",
                                                           "not null",
-                                                          "commQuantScale must be nullptr"), return ge::GRAPH_FAILED);
+                                                          "The value of commQuantScale must be nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -107,7 +107,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "gmmXScale, gmmWeightScale",
                             "null",
-                            "gmmXScale and gmmWeightScale cannot be nullptr"),
+                            "The values of gmmXScale and gmmWeightScale must not be nullptr."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -907,7 +907,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "outputDataType",
-            Ops::Base::ToString(outputDataType).c_str(), "not supported"),
+            Ops::Base::ToString(outputDataType).c_str(), "The dtype of outputDataType must be within the supported range."),
         return ge::GRAPH_FAILED);
 
     auto alltoAllvDstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);

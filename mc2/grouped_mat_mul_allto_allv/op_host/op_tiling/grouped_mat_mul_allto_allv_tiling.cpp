@@ -55,7 +55,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotS
     auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
     OP_TILING_CHECK(sendCountsTensorShape != nullptr || recvCountsTensorShape != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sendCountsTensor/recvCountsTensor",
-                        "not nullptr", "both should be nullptr"),
+                        "not nullptr", "The values of sendCountsTensor/recvCountsTensor must be nullptr."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

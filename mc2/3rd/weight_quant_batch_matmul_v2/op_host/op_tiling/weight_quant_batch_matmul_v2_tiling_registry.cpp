@@ -73,7 +73,7 @@ static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext
             OP_TILING_CHECK(
                 wqbmmv2Checker.Check() != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "parameters", "",
-                    "WeightQuantBatchMatMul para is illegal"),
+                    "The value of parameters is invalid."),
                 return ge::GRAPH_FAILED);
             std::vector<int32_t> registerList = {ASW_PRIORITY};
             return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
@@ -82,7 +82,7 @@ static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext
             OP_TILING_CHECK(
                 Mc2CheckPara(context, socVersion) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "parameters", "",
-                    "WeightQuantBatchMatMul para is illegal"),
+                    "The value of parameters is invalid."),
                 return ge::GRAPH_FAILED);
             if (socVersion != platform_ascendc::SocVersion::ASCEND910B) {
                 OP_LOGI(context->GetNodeName(), "Platform support Intrinsic_data_move_l12bt bf16");

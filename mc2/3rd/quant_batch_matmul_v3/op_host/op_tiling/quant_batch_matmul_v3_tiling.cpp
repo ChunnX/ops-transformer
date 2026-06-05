@@ -141,7 +141,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2ub() const
         inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1 and x2",
             (std::string(DType2Str(inputParams_.aDtype)) + " and " + DType2Str(inputParams_.bDtype)).c_str(),
-            "The dtype of x1 and x2 should both be INT8."),
+            "The dtype of x1 and x2 must both be INT8."),
         return false);
     OP_TILING_CHECK(
         inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64,
@@ -185,7 +185,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForSupportedList() cons
             !(inputParams_.bDtype == ge::DT_INT8 || inputParams_.bDtype == ge::DT_INT4),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1 and x2",
             (std::string(DType2Str(inputParams_.aDtype)) + " and " + DType2Str(inputParams_.bDtype)).c_str(),
-            "The dtype of x1 and x2 should both be INT8 or INT4."),
+            "The dtype of x1 and x2 must both be INT8 or INT4."),
         return false);
     OP_TILING_CHECK(!(inputParams_.scaleDtype == ge::DT_UINT64 || inputParams_.scaleDtype == ge::DT_BF16 ||
                       inputParams_.scaleDtype == ge::DT_INT64 || inputParams_.scaleDtype == ge::DT_FLOAT),
@@ -300,7 +300,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForPertoken() const
                 inputParams_.scaleDtype == ge::DT_FLOAT,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "scale",
                 DType2Str(inputParams_.scaleDtype).c_str(),
-                "When output dtype is int8 or float16 without pertokenScale, scale dtype should not be float."),
+                "When output dtype is int8 or float16 without pertokenScale, scale dtype must not be float."),
             return false);
     }
     return true;
@@ -314,7 +314,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForX1NZ() const
     OP_TILING_CHECK(inputParams_.cDtype == ge::DT_INT8 && x1Format != ge::Format::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "x1",
                                                ge::TypeUtils::FormatToSerialString(x1Format).c_str(),
-                                               "When out dtype is INT8, X1 format should be ND."),
+                                               "When out dtype is INT8, X1 format must be ND."),
                     return false);
     // 当x2为ND时，x1必须为ND
     auto x2Desc = context_->GetInputDesc(X2_INDEX);
@@ -323,7 +323,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDtypeOnOnlyL0c2outForX1NZ() const
         x2Format == ge::Format::FORMAT_ND && x1Format != ge::Format::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "x1",
                                    ge::TypeUtils::FormatToSerialString(x1Format).c_str(),
-                                   "When X2 format is ND, X1 format should be ND."),
+                                   "When X2 format is ND, X1 format must be ND."),
         return false);
     return true;
 }
@@ -406,14 +406,14 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckShapeInRangeForOptionalInputs(const gert:
         OP_TILING_CHECK(!(biasDimNum == 1 || biasDimNum == BIAS_THREE_DIM),
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "bias",
                                                                   std::to_string(biasDimNum).c_str(),
-                                                                  "The shape dim of bias must be 1 or 3"), return false);
+                                                                  "The shape dim of bias must be 1 or 3."), return false);
     }
     if (pertokenShape != nullptr) {
         auto pertokenDimNum = pertokenShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(pertokenDimNum != 1,
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "pertoken",
                                                                   std::to_string(pertokenDimNum).c_str(),
-                                                                  "The shape dim of pertoken must be 1"), return false);
+                                                                  "The shape dim of pertoken must be 1."), return false);
     }
     return true;
 }
@@ -425,7 +425,7 @@ bool Mc2QuantBatchMatmulV3Tiling::BiasShapeCheck(const gert::Shape &biasShape) c
         OP_TILING_CHECK(static_cast<uint64_t>(biasShape.GetDim(0)) != inputParams_.nSize,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "bias",
                                                                std::to_string(biasShape.GetDim(0)).c_str(),
-                                                               "The dimension of bias must be equal to n"),
+                                                               "The dimension of bias must be equal to n."),
                                               return false);
     }
     // 3 dim bias case
@@ -436,15 +436,15 @@ bool Mc2QuantBatchMatmulV3Tiling::BiasShapeCheck(const gert::Shape &biasShape) c
         OP_TILING_CHECK(biasFirstDim != inputParams_.batchC,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "bias",
                                                                std::to_string(biasFirstDim).c_str(),
-                                                               "The 1st dimension of bias must be equal to batchC"), return false);
+                                                               "The 1st dimension of bias must be equal to batchC."), return false);
         OP_TILING_CHECK(biasSecondDim != 1,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "bias",
                                                                std::to_string(biasSecondDim).c_str(),
-                                                               "The 2nd dimension of bias must be 1"), return false);
+                                                               "The 2nd dimension of bias must be 1."), return false);
         OP_TILING_CHECK(biasThirdDim != inputParams_.nSize,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "bias",
                                                                std::to_string(biasThirdDim).c_str(),
-                                                               "The 3rd dimension of bias must be equal to nSize"), return false);
+                                                               "The 3rd dimension of bias must be equal to nSize."), return false);
     }
     return true;
 }
@@ -461,12 +461,12 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, 
     OP_TILING_CHECK(inputParams_.kSize != kBSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "k dimension",
                                                            std::to_string(inputParams_.kSize).c_str(),
-                                                           "The k dimension of x1 must be equal to the k dimension of x2"),
+                                                           "The k dimension of x1 must be equal to the k dimension of x2."),
                     return false);
     OP_TILING_CHECK(scaleDimValue != 1 && scaleDimValue != inputParams_.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "scale",
                                                            std::to_string(scaleDimValue).c_str(),
-                                                           "The dimension of scale must be 1 or n"),
+                                                           "The dimension of scale must be 1 or n."),
                     return false);
     if (biasShape != nullptr && !BiasShapeCheck(biasShape->GetStorageShape())) {
         return false;
@@ -476,14 +476,14 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckDimValue(const gert::Shape & scaleShape, 
         OP_TILING_CHECK(static_cast<uint64_t>(pertoken.GetDim(0)) != inputParams_.mSize,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "pertoken",
                                                                std::to_string(pertoken.GetDim(0)).c_str(),
-                                                               "The shape of pertoken must be equal to m"), return false);
+                                                               "The shape of pertoken must be equal to m."), return false);
     }
     if (inputParams_.aDtype == ge::DT_INT4) {
         // remainder by 2 to check if it is a even number
         OP_TILING_CHECK(x1Inner < 0 || x1Inner % 2 != 0 || x2Inner < 0 || x2Inner % 2 != 0,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
                             (std::to_string(x1Inner) + " and " + std::to_string(x2Inner)).c_str(),
-                            "If input dtype is int4, last axis of x1 and x2 has to be a positive even number."),
+                            "If input dtype is int4, last axis of x1 and x2 must be a positive even number."),
                         return false);
     }
     return true;
@@ -501,7 +501,7 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckShape(const std::vector<gert::Shape *> &m
     OP_TILING_CHECK(scaleShape.GetDimNum() != 1 && scaleShape.GetDimNum() != 2,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "scale",
                                                               std::to_string(scaleShape.GetDimNum()).c_str(),
-                                                              "The shape dim of scale must be 1 or 2"), return false);
+                                                              "The shape dim of scale must be 1 or 2."), return false);
 
     if (!CheckShapeInRangeForOptionalInputs(biasShape, pertokenShape)){
         return false;
@@ -544,20 +544,20 @@ bool Mc2QuantBatchMatmulV3Tiling::CheckShapeInBoundary(const gert::Shape &shape,
         OP_TILING_CHECK(i == shape.GetDimNum() - LAST_FIRST_DIM_INDEX && curDim > LAST_AXIS_LIMIT,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, dimName,
                                                                std::to_string(curDim).c_str(),
-"The last dimension must not be larger than 65535"),
+"The last dimension must not be larger than 65535."),
                         return false);
 
         OP_TILING_CHECK(curDim <= 0 || curDim > static_cast<int64_t>(INT32_MAX),
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, dimName,
                                                                std::to_string(curDim).c_str(),
-                                                               "The shape must be within the range [1, INT32_MAX]"),
+                                                               "The shape must be within the range [1, INT32_MAX]."),
                         return false);
 
         mulBound = curDim * mul;
         OP_TILING_CHECK(mulBound / curDim != mul,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, dimName,
                                                                std::to_string(mulBound).c_str(),
-                                                               "The product of shape dimensions must be within the boundary of INT64_MAX"),
+                                                               "The product of shape dimensions must be within the boundary of INT64_MAX."),
                         return false);
         mul = mulBound;
     }

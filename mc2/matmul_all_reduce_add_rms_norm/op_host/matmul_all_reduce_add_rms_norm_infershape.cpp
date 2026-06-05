@@ -160,7 +160,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_y);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_norm);
     OPS_CHECK(
-        InferAllZeroShape(context), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1", "k=0", "MatmulAllReduceAddRmsNorm does not support k = 0"),
+        InferAllZeroShape(context), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1", "k=0", "The value of x1 k must not be 0"),
         return ge::GRAPH_FAILED);
     const size_t dim_num = res_shape->GetDimNum();
     OPS_CHECK(

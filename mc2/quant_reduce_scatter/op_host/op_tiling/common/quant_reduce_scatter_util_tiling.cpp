@@ -112,7 +112,7 @@ static bool SetQuantMode(const gert::TilingContext *context, TilingRunInfo &runI
     OP_TILING_CHECK(!static_cast<bool>(quantMode),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode",
                         ("x=" + std::string(Ops::Base::ToString(xDtype).c_str()) + ", scales=" + std::string(Ops::Base::ToString(scalesDtype).c_str())).c_str(),
-                        "should match a known quantization mode (TG or MX)"),
+                        "The value of quantMode must match a known quantization mode (TG or MX)"),
                     return false);
     // 设置quantMode
     runInfo.quantMode = quantMode;
@@ -208,7 +208,7 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
     OP_TILING_CHECK(emptyTensor,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
                         Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
-                        "all dimensions must be positive (>=1)"),
+                        "The shape of x must have all dimensions positive (>=1)"),
                     return false);
 
     // 校验BS是否被worldSize整除
@@ -323,7 +323,7 @@ static bool CheckScalesValid(const gert::TilingContext *context,
     if (actualDimNum != expectedScalesDims.size()) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
             FormatShape(expectedScalesDims).c_str(),
-            ("expected " + std::to_string(expectedScalesDims.size()) + "D but got " + std::to_string(actualDimNum) + "D").c_str());
+            ("The shape dim of scales must be " + std::to_string(expectedScalesDims.size()) + "D").c_str());
         return false;
     }
 
@@ -334,7 +334,7 @@ static bool CheckScalesValid(const gert::TilingContext *context,
         if (expectedDim != actualDim) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales",
                 std::to_string(actualDim).c_str(),
-                ("expected " + std::to_string(expectedDim) + " at dim " + std::to_string(i)).c_str());
+                ("The shape of scales dim " + std::to_string(i) + " must be " + std::to_string(expectedDim)).c_str());
             return false;
         }
     }
@@ -420,13 +420,13 @@ static bool CheckAllReduceOutputShape(const gert::TilingContext *context, const 
         OP_TILING_CHECK(invalidShape,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
                             ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ", " + std::to_string(outputValueThree) + ")").c_str(),
-                            ("should match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ", " + std::to_string(xValueThree) + ")").c_str()),
+                            ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ", " + std::to_string(xValueThree) + ")").c_str()),
                         return false);
     } else {
         OP_TILING_CHECK(invalidShape,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
                             ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                            ("should match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ")").c_str()),
+                            ("The shape of output must match x shape (" + std::to_string(xValueOne) + ", " + std::to_string(xValueTwo) + ")").c_str()),
                         return false);
     }
     
@@ -449,7 +449,7 @@ static bool CheckReduceScatter3DShape(const gert::TilingContext *context,
     OP_TILING_CHECK(invalidShape,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
                         ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                        ("should match x shape/rankSize (BS=" + std::to_string(xValueBS) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueThree) + ")").c_str()),
+                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueBS) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueThree) + ")").c_str()),
                     return false);
     return true;
 }
@@ -467,7 +467,7 @@ static bool CheckReduceScatter2DShape(uint64_t outputValueOne, uint64_t outputVa
     OP_TILING_CHECK(invalidShape,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output",
                         ("(" + std::to_string(outputValueOne) + ", " + std::to_string(outputValueTwo) + ")").c_str(),
-                        ("should match x shape/rankSize (BS=" + std::to_string(xValueOne) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueTwo) + ")").c_str()),
+                        ("The shape of output must match x shape/rankSize (BS=" + std::to_string(xValueOne) + "/" + std::to_string(runInfo.rankSize) + ", H=" + std::to_string(xValueTwo) + ")").c_str()),
                     return false);
     return true;
 }
@@ -650,7 +650,7 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckNpuArch(const gert::TilingCon
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
     OP_TILING_CHECK(npuArch != NpuArch::DAV_3510,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch",
-                        "non-DAV_3510", "should be DAV_3510"),
+                        "non-DAV_3510", "The value of npuArch must be DAV_3510"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
