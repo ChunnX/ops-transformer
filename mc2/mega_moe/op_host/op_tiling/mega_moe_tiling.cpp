@@ -818,13 +818,11 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     OP_TILING_CHECK(maxRecvTokenNumPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "maxRecvTokenNum"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
-    OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantMode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantOutTypePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantOutType"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(combineQuantModePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "combineQuantMode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commAlgPtr == nullptr,
     OP_TILING_CHECK(commAlgPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
