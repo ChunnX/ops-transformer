@@ -232,7 +232,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::Init()
     OP_CHECK_IF(
         ubSize_ <= 0, OP_LOGE(context_->GetNodeName(), "ubSize must be greater than 0."),
         return ge::GRAPH_FAILED);
-    OP_LOGI(context_->GetNodeName(),"coreNum_ is %ld, ubSize_ %ld ",coreNum_, ubSize_);
+    OP_LOGI(context_->GetNodeName(), "coreNum_ is %ld, ubSize_ %ld ", coreNum_, ubSize_);
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
