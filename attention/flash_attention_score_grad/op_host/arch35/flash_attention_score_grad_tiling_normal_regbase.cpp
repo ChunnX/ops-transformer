@@ -1651,9 +1651,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
-    s1s2BNGS1S2BaseParams_->set_qSize(fBaseParams.qSize);
-    s1s2BNGS1S2BaseParams_->set_kSize(fBaseParams.kSize);
-    s1s2BNGS1S2BaseParams_->set_vSize(fBaseParams.vSize);
 
     bool isSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
@@ -1667,7 +1664,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
                          fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
         isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) &&
+            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
              fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
              bandCond);

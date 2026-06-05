@@ -49,6 +49,7 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
+    static constexpr bool ENABLE_TREE = FIAT::enableTree;
 
     using UPDATE_T = T;
     using TMP_T = T;
@@ -598,7 +599,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.attenMaskType = fa_base_vector::MASK_BOOL; // compatible with int8/uint8
 
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (maskInfo.sparseMode == fa_base_vector::TREE) {
+        if constexpr (ENABLE_TREE) {
             // TREE模式：提前分配并初始化为0，保持占用直到处理完成
             LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
             LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
@@ -616,14 +617,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                     maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
                 }
             }
-            if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<ENABLE_TREE>(maskInfo)) {
                 fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             }
             inputQue2.FreeTensor(maskUb);
         } else {
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<ENABLE_TREE>(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
                 fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);

@@ -90,7 +90,10 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetAttrsInfo()
     fBaseParams.sparseMode = *context_->GetAttrs()->GetAttrPointer<int>(SPARSE_MODE);
 
     OP_CHECK_IF((fBaseParams.keepProb <= 0 || fBaseParams.keepProb > 1),
-               OP_LOGE(context_, "keepProb is illegal."), return ge::GRAPH_FAILED);
+               OP_LOGE(context_,
+                       "The op [FlashAttentionScoreGrad] received bad params, "
+                       "the reason is: [keepProb should be greater than 0 and less than or equal to 1, keepProb=%f]",
+                       fBaseParams.keepProb), return ge::GRAPH_FAILED);
 
     fBaseParams.dropMskEnable = (dropMask != nullptr || fBaseParams.keepProb < 1.0f);
     if (context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(PSETYPE)) {
@@ -119,7 +122,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
         auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
 
         if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-            OP_LOGE(context_, "actualSeqQLenTensor or actualSeqKvLenTensor is nullptr");
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
             return ge::GRAPH_FAILED;
         }
         if (qStartTensor != nullptr || kvStartTensor != nullptr) {
@@ -133,9 +136,13 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
         const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
 
         OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
-                OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]."), return ge::GRAPH_FAILED);
         OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                OP_LOGE(context_, "actualSeqQLenTensor shapeSize is not equal actualSeqKvLenTensor"),
+                OP_LOGE(context_,
+                        "In op [FlashAttentionScoreGrad], the tensor shapes of [actualSeqQLenTensor, actualSeqKvLenTensor] are mismatched, "
+                        "the reason is: [actualSeqQLenTensor shape size and actualSeqKvLenTensor shape size should be same, "
+                        "actualSeqQLenTensor shape size=%zu, actualSeqKvLenTensor shape size=%zu]",
+                        seqQShapeSize, kvSeqShapeSize),
                 return ge::GRAPH_FAILED);
 
         for (size_t i = 0; i < seqQShapeSize; i++) {
@@ -172,7 +179,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
     fBaseParams.n2 = keyShape->GetStorageShape().GetDim(1);
     fBaseParams.d = queryShape->GetStorageShape().GetDim(DIM_NUM_2);
     fBaseParams.dv = valueShape->GetStorageShape().GetDim(DIM_NUM_2);
-    OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
     fBaseParams.g = fBaseParams.n1 / fBaseParams.n2;
     return CheckTndShapeValid(context_, fBaseParams.t1, fBaseParams.n1, fBaseParams.d);
 }
@@ -392,7 +399,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo *>(
             context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile_info is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                    return ge::GRAPH_FAILED);
 
         aicoreParams_.numBlocks = compileInfoPtr->aivNum;
@@ -414,7 +421,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::GetPlatformInfo()
     }
 
     OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-               OP_LOGE(context_, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+               OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [num of coreNum(aivNum) is %lu, num of aicNum is %lu.]",
                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
                return ge::GRAPH_FAILED);
 
@@ -424,15 +431,15 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::GetPlatformInfo()
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMultiHeadLatentAttentionGrad(gert::TilingParseContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-                OP_LOGE("TilingPrepare", "context is null."), return ge::GRAPH_FAILED);
+                OP_LOGE("TilingPrepare", "The op [FlashAttentionScoreGrad] received bad params, the reason is: [context is null]"), return ge::GRAPH_FAILED);
     
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
-                OP_LOGE(context, "platformInfoPtr is null."), return ge::GRAPH_FAILED);
+                OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [platformInfoPtr is null]"), return ge::GRAPH_FAILED);
 
     auto compileInfoPtr = context->GetCompiledInfo<MultiHeadLatentAttentionGradCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-                OP_LOGE(context, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
+                OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compileInfoPtr is null]"), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();

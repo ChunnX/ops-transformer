@@ -68,6 +68,7 @@ struct FlashAttnBaseParams {
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;
+    bool needInitOutput;
 };
 
 struct FlashAttnAttenMaskParams {
