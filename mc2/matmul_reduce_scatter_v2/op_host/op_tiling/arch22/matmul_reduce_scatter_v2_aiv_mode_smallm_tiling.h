@@ -16,8 +16,10 @@
 #ifndef DECISION_RULES_H
 #define DECISION_RULES_H
 
-#include <cstddef>
 #include <cstdint>
+
+#include "ge_error_codes.h"
+#include "tiling_context.h"
 
 namespace Tiling_Small_M {
 enum class FeatureType {
