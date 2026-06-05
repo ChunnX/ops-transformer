@@ -415,7 +415,7 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
     } else {
         // k will be checked again in following CheckShape()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
-            "0", "The value of x1 k-axis must not be 0");
+            std::to_string(kValX1).c_str(), "The value of x1 k-axis must not be 0");
     }
     return false;
 }

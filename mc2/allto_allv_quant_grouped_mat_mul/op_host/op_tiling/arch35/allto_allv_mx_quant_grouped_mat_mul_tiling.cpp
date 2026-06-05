@@ -157,7 +157,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantGroupSize() const
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "groupSize",
                 (std::string("[M=") + std::to_string(groupSizeM) + ", N=" + std::to_string(groupSizeN) +
                  ", K=" + std::to_string(groupSizeK) + "]").c_str(),
-                "M should be 1 or 0, N should be 1 or 0, K should be 32 or 0"), return ge::GRAPH_FAILED);
+                "The value of groupSize M must be 1 or 0, N must be 1 or 0, K must be 32 or 0."), return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckQuantGroupSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -194,7 +194,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
         OP_TILING_CHECK(mmXQuantMode != gmmXQuantMode,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmXQuantMode",
                 std::to_string(mmXQuantMode).c_str(),
-                "mmXQuantMode should be same as gmmXQuantMode(6)"), return ge::GRAPH_FAILED);
+                "The value of mmXQuantMode must be the same as gmmXQuantMode (6)."), return ge::GRAPH_FAILED);
         // check mmWeightQuantMode null
         OP_TILING_CHECK(mmWeightQuantModePtr_ == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeightQuantMode"),
@@ -204,7 +204,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckQuantMode() const
         OP_TILING_CHECK(mmWeightQuantMode != gmmWeightQuantMode,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmWeightQuantMode",
                 std::to_string(mmWeightQuantMode).c_str(),
-                "mmWeightQuantMode should be same as gmmWeightQuantMode(6)"),
+                "The value of mmWeightQuantMode must be the same as gmmWeightQuantMode (6)."),
             return ge::GRAPH_FAILED);
     }
     ge::graphStatus status = CheckQuantGroupSize();

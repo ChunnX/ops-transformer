@@ -148,7 +148,7 @@ bool Mc2QuantBatchMatmulV3Checker::CheckScalesDtype() const
     } else {
         OP_TILING_CHECK(
             isFp4,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "pertokenScale", "",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "pertokenScale", "nullptr",
                                   "If the dtype of input is FLOAT4, pertokenScale cannot be nullptr"),
             return false);
         OP_TILING_CHECK(
@@ -332,7 +332,7 @@ bool Mc2QuantBatchMatmulV3Checker::CheckInputValidInPerblockMode(const gert::Sha
        return true;
     }
     OP_TILING_CHECK(inputParams_.hasBias,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias", "", "If the quantization mode is perblock, bias is not supported."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias", "not nullptr", "If the quantization mode is perblock, bias must be nullptr."),
                     return false);
     auto scaleShapeLen = scaleShape.GetDimNum();
     auto x2ShapeLen = x2Shape.GetDimNum();
@@ -571,7 +571,7 @@ bool Mc2QuantBatchMatmulV3Checker::CheckShapeInRangeForOptionalInputs(const gert
     }
     if (offsetShape != nullptr) {
         OP_TILING_CHECK(inputParams_.aDtype == ge::DT_INT8 && inputParams_.cDtype != ge::DT_INT8,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "offset", "", "If the dtype of input is INT8 and that of output is not INT8, offset must be nullptr."), return false);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "offset", "not nullptr", "If the dtype of input is INT8 and that of output is not INT8, offset must be nullptr."), return false);
         OP_TILING_CHECK(inputParams_.cDtype == ge::DT_INT8 && offsetShape->GetStorageShape().GetDimNum() != 1,
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "offset",
                                                                    std::to_string(offsetShape->GetStorageShape().GetDimNum()).c_str(),
@@ -579,7 +579,7 @@ bool Mc2QuantBatchMatmulV3Checker::CheckShapeInRangeForOptionalInputs(const gert
                         return false);
         OP_TILING_CHECK(
             inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "offset", "", "If the dtype of scale is not UINT64 or INT64, offset must be nullptr."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "offset", "not nullptr", "If the dtype of scale is not UINT64 or INT64, offset must be nullptr."),
             return false);
     }
     if (pertokenShape != nullptr) {
@@ -658,7 +658,7 @@ bool Mc2QuantBatchMatmulV3Checker::BiasShapeCheck(const gert::Shape &biasShape, 
             inputParams_.scaleDtype == ge::DT_FLOAT && static_cast<uint64_t>(scaleShape.GetDim(0)) == inputParams_.nSize &&
             inputParams_.nSize != 1UL && pertokenShape != nullptr && inputParams_.perTokenScaleDtype == ge::DT_FLOAT &&
             pertokenShape->GetStorageShape().GetDim(0) == 1L && inputParams_.mSize != 1UL,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias", "", "The value of bias is not supported."), return false);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias", (std::to_string(biasDimNum) + "D").c_str(), "The value of bias must be within the supported range."), return false);
 
     return true;
 }

@@ -155,8 +155,9 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     bool batch0Invalid = batchInfo.batchA0 != batchInfo.batchB0 && batchInfo.batchA0 != 1UL && batchInfo.batchB0 != 1UL;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "batch dims",
-            "",
-            "M broadcast to N situation is not supported.");
+            (std::to_string(batchInfo.batchA3) + ", " + std::to_string(batchInfo.batchA2) + ", " +
+             std::to_string(batchInfo.batchA1) + " and " + std::to_string(batchInfo.batchA0)).c_str(),
+            "The batch dims must not use M broadcast to N mode.");
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK((GetBmmBiasInfo(context, args, batchInfo) != ge::GRAPH_SUCCESS),

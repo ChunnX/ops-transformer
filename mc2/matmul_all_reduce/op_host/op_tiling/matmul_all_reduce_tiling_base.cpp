@@ -800,7 +800,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
                 "not null", "The value of comm_quant_scale must be nullptr on 310P"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "socVersion", "current", "The value of socVersion is not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "socVersion", std::to_string(static_cast<int>(npuArch_)).c_str(), "The value of socVersion must be within the supported range.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

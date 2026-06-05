@@ -652,7 +652,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
         localParams_.groupSize != 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
                                                std::to_string(localParams_.groupSize),
-                                               "The value of groupSize must be 0 as group quant is not supported"),
+                                                "The value of groupSize must be 0. Group quant mode is unavailable."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

@@ -287,7 +287,7 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext* c
                && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "x1QuantMode and x2QuantMode",
                    (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
-                   "The value of x1QuantMode and x2QuantMode is not supported"),
+                   "The value of x1QuantMode and x2QuantMode must be within the supported range."),
                return ge::GRAPH_FAILED);
 
     // 初始默认值
