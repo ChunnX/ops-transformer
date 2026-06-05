@@ -93,43 +93,55 @@ bool MlaPrologTilingCheck::CheckAttrsRange() const
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (GetCurNpuArch() == NpuArch::DAV_3510) {
             const std::unordered_set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U, 3U, 4U, 5U};
+            // 原报错: OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.", *context_.weightQuantMode) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名WeightQuantMode、期望值{0, 1, 2, 3, 4, 5}、实际值
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
-                OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
-                    *context_.weightQuantMode),
+                OP_LOGE_WITH_INVALID_ATTR(context_.opName,
+                    "WeightQuantMode", std::to_string(*context_.weightQuantMode), "{0, 1, 2, 3, 4, 5}"),
                     return false);
         } else {
             const std::unordered_set<uint32_t> supportedWeightQuantMode {0U, 1U, 2U};
+            // 原报错: OP_LOGE(context_.opName, "WeightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.", *context_.weightQuantMode) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名WeightQuantMode、期望值{0, 1, 2}、实际值
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
-                OP_LOGE(context_.opName,
-                    "WeightQuantMode must be within {0, 1, 2}, actually is %d.",
-                    *context_.weightQuantMode),
+                OP_LOGE_WITH_INVALID_ATTR(context_.opName,
+                    "WeightQuantMode", std::to_string(*context_.weightQuantMode), "{0, 1, 2}"),
                     return false);
         }
 
         const std::unordered_set<uint32_t> supportedKvQuantMode {0U, 1U, 2U, 3U};
+        // 原报错: OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", ...) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名KvQuantMode、期望值{0, 1, 2, 3}、实际值
         OP_CHECK_IF(supportedKvQuantMode.find(*context_.kvQuantMode) == supportedKvQuantMode.end(),
-            OP_LOGE(context_.opName, "KvQuantMode must be within {0, 1, 2, 3}, actually is %d.", *context_.kvQuantMode),
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "KvQuantMode", std::to_string(*context_.kvQuantMode), "{0, 1, 2, 3}"),
                 return false);
 
         const std::unordered_set<uint32_t> supportedQueryQuantMode {0U, 1U};
+        // 原报错: OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %d.", ...) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名QueryQuantMode、期望值{0, 1}、实际值
         OP_CHECK_IF(supportedQueryQuantMode.find(*context_.queryQuantMode) == supportedQueryQuantMode.end(),
-            OP_LOGE(context_.opName, "QueryQuantMode must be within {0, 1}, actually is %d.", *context_.queryQuantMode),
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "QueryQuantMode", std::to_string(*context_.queryQuantMode), "{0, 1}"),
                 return false);
                 
         const std::unordered_set<uint32_t> supportedCkvkrRepoMode {0U, 1U};
+        // 原报错: OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %d.", ...) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名CkvkrRepoMode、期望值{0, 1}、实际值
         OP_CHECK_IF(supportedCkvkrRepoMode.find(*context_.ckvkrRepoMode) == supportedCkvkrRepoMode.end(),
-            OP_LOGE(context_.opName, "CkvkrRepoMode must be within {0, 1}, actually is %d.", *context_.ckvkrRepoMode),
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "CkvkrRepoMode", std::to_string(*context_.ckvkrRepoMode), "{0, 1}"),
                 return false);
                 
         const std::unordered_set<uint32_t> supportedQuantScaleRepoMode {0U, 1U};
+        // 原报错: OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %d.", ...) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名QuantScaleRepoMode、期望值{0, 1}、实际值
         OP_CHECK_IF(supportedQuantScaleRepoMode.find(*context_.quantScaleRepoMode) == supportedQuantScaleRepoMode.end(),
-            OP_LOGE(context_.opName, "QuantScaleRepoMode must be within {0, 1}, actually is %d.", *context_.quantScaleRepoMode),
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "QuantScaleRepoMode", std::to_string(*context_.quantScaleRepoMode), "{0, 1}"),
                 return false);
 
         const std::unordered_set<uint32_t> supportedTileSize {128U};
+        // 原报错: OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %d.", ...) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名TileSize、期望值{128}、实际值
         OP_CHECK_IF(supportedTileSize.find(*context_.tileSize) == supportedTileSize.end(),
-            OP_LOGE(context_.opName, "TileSize must be within {128}, actually is %d.", *context_.tileSize),
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "TileSize", std::to_string(*context_.tileSize), "{128}"),
                 return false);
     }
     return true;
@@ -137,42 +149,66 @@ bool MlaPrologTilingCheck::CheckAttrsRange() const
 
 bool MlaPrologTilingCheck::CheckAttrsNotNull() const
 {
+    // 原报错: OP_LOGE(context_.opName, "rmsNormEspilonCq is null") → 上报EZ0004
+    // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入rmsNormEspilonCq无效
     OP_CHECK_IF(context_.rmsNormEspilonCq == nullptr,
-        OP_LOGE(context_.opName, "Get rmsNormEspilonCq is nullptr."), return false);
+        OP_LOGE_WITH_INVALID_INPUT(context_.opName, "rmsNormEspilonCq"), return false);
 
+    // 原报错: OP_LOGE(context_.opName, "rmsNormEspilonCkv is null") → 上报EZ0004
+    // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入rmsNormEspilonCkv无效
     OP_CHECK_IF(context_.rmsNormEspilonCkv == nullptr,
-        OP_LOGE(context_.opName, "Get rmsNormEspilonCkv is nullptr."), return false);
+        OP_LOGE_WITH_INVALID_INPUT(context_.opName, "rmsNormEspilonCkv"), return false);
 
+    // 原报错: OP_LOGE(context_.opName, "cacheMode is null") → 上报EZ0004
+    // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入cacheMode无效
     OP_CHECK_IF(context_.cacheMode== nullptr,
-        OP_LOGE(context_.opName, "Get cacheMode is nullptr."), return false);
+        OP_LOGE_WITH_INVALID_INPUT(context_.opName, "cacheMode"), return false);
 
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+        // 原报错: OP_LOGE(context_.opName, "queryNormFlag is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入queryNormFlag无效
         OP_CHECK_IF(context_.queryNormFlag == nullptr,
-            OP_LOGE(context_.opName, "Get queryNormFlag is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "queryNormFlag"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "weightQuantMode is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入weightQuantMode无效
         OP_CHECK_IF(context_.weightQuantMode == nullptr,
-            OP_LOGE(context_.opName, "Get weightQuantMode is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "weightQuantMode"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "kvQuantMode is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入kvQuantMode无效
         OP_CHECK_IF(context_.kvQuantMode == nullptr,
-            OP_LOGE(context_.opName, "Get kvQuantMode is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "kvQuantMode"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "queryQuantMode is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入queryQuantMode无效
         OP_CHECK_IF(context_.queryQuantMode == nullptr,
-            OP_LOGE(context_.opName, "Get queryQuantMode is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "queryQuantMode"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "ckvkrRepoMode is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入ckvkrRepoMode无效
         OP_CHECK_IF(context_.ckvkrRepoMode == nullptr,
-            OP_LOGE(context_.opName, "Get ckvkrRepoMode is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "ckvkrRepoMode"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "quantScaleRepoMode is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入quantScaleRepoMode无效
         OP_CHECK_IF(context_.quantScaleRepoMode == nullptr,
-            OP_LOGE(context_.opName, "Get quantScaleRepoMode is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "quantScaleRepoMode"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "tileSize is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入tileSize无效
         OP_CHECK_IF(context_.tileSize == nullptr,
-            OP_LOGE(context_.opName, "Get tileSize is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "tileSize"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "qcQrScale is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入qcQrScale无效
         OP_CHECK_IF(context_.qcQrScale == nullptr,
-            OP_LOGE(context_.opName, "Get qcQrScale is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "qcQrScale"), return false);
 
+        // 原报错: OP_LOGE(context_.opName, "kcScale is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入kcScale无效
         OP_CHECK_IF(context_.kcScale == nullptr,
-            OP_LOGE(context_.opName, "Get kcScale is nullptr."), return false);
+            OP_LOGE_WITH_INVALID_INPUT(context_.opName, "kcScale"), return false);
     }
     return true;
 }
@@ -186,46 +222,6 @@ ge::graphStatus MlaPrologTilingCheck::CheckAttrs() const
 }
 
 ge::graphStatus MlaPrologTilingCheck::CheckDims() const
-{
-    OP_CHECK_IF(baseShapeInfo_.bSize > MAX_B_SIZE,
-        OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
-            MAX_B_SIZE, baseShapeInfo_.bSize),
-        return ge::GRAPH_FAILED);
-    const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
-    OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
-        OP_LOGE(context_.opName, "He allows only %s, got %u.",
-            ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
-        return ge::GRAPH_FAILED);
-    const std::set<uint32_t> supportedNSize {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-    OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
-        OP_LOGE(context_.opName, "N allows only %s, but got %u.",
-            ConvertContainerToString(supportedNSize).c_str(), baseShapeInfo_.nSize),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.hckvSize != HCKV_SIZE,
-        OP_LOGE(context_.opName, "Hckv allows only %u, got %u.",
-            HCKV_SIZE, baseShapeInfo_.hckvSize),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
-        OP_LOGE(context_.opName, "Dr allows only %u, got %u.",
-            DR_SIZE, baseShapeInfo_.drSize),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.nkvSize != NKV_SIZE,
-        OP_LOGE(context_.opName, "Nkv allows only %u, got %u.",
-            NKV_SIZE, baseShapeInfo_.nkvSize),
-        return ge::GRAPH_FAILED);
-    if (scenarioInfo_.cacheMode_ != CACHE_MODE::BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::TND) {
-        OP_CHECK_IF(baseShapeInfo_.blockSize < MIN_BLOCK_SIZE || baseShapeInfo_.blockSize > MAX_BLOCK_SIZE || baseShapeInfo_.blockSize % ALIGN_BLOCK_SIZE != 0,
-            OP_LOGE(context_.opName, "BlockSize must be within [%u, %u] and a multiple of %u, got %u.",
-                MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
-            return ge::GRAPH_FAILED);
-    }
-    CheckHcqSize();
-    CheckDSize();
-    CheckDtileSize();
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
         const std::set<uint32_t> supportedQuantModes {
@@ -246,70 +242,116 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
             static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE),
             static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE)
         };
-        OP_CHECK_IF(
-            supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
-            OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.",
-                ConvertContainerToString(supportedQuantModes).c_str(), static_cast<uint32_t>(scenarioInfo_.quantMode_)),
+        OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
+            // 原报错: OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.", ...) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名quantMode、期望值[supportedQuantModes]、实际值
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "quantMode",
+                std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)),
+                ConvertContainerToString(supportedQuantModes)),
             return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
-{
+    // 原报错: OP_LOGE(context_.opName, "B should not be greater than %u, got %u.", MAX_B_SIZE, baseShapeInfo_.bSize) → 上报EZ0026
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(EZ0026) → 上报EZ0026，含参数名B、实际值、原因"B size should not be greater than [MAX_B_SIZE]"
+    OP_CHECK_IF(baseShapeInfo_.bSize > MAX_B_SIZE,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "B", std::to_string(baseShapeInfo_.bSize),
+            "B size should not be greater than " + std::to_string(MAX_B_SIZE)),
+        return ge::GRAPH_FAILED);
+    const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
+    // 原报错: OP_LOGE(context_.opName, "He allows only %s, got %u.", ...) → 上报EZ0024
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名He、期望值[supportedHeSize]、实际值
+    OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
+        OP_LOGE_FOR_INVALID_VALUE(context_.opName, "He", std::to_string(baseShapeInfo_.heSize),
+            ConvertContainerToString(supportedHeSize)),
+        return ge::GRAPH_FAILED);
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedHcqSize {1536U, 2048U};
+        // 原报错: OP_LOGE(context_.opName, "Hcq allows %s, got %u.", ...) → 上报EZ0024
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名Hcq、期望值[supportedHcqSize]、实际值
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
-            OP_LOGE(context_.opName, "Hcq allows %s, got %u.",
-                ConvertContainerToString(supportedHcqSize).c_str(), baseShapeInfo_.hcqSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hcq", std::to_string(baseShapeInfo_.hcqSize),
+                ConvertContainerToString(supportedHcqSize)),
             return ge::GRAPH_FAILED);
     } else {
+        // 原报错: OP_LOGE(context_.opName, "Hcq allows only %u, got %u.", HCQ_SIZE, ...) → 上报EZ0024
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名Hcq、期望值HCQ_SIZE、实际值
         OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
-            OP_LOGE(context_.opName, "Hcq allows only %u, got %u.",
-                HCQ_SIZE, baseShapeInfo_.hcqSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hcq", std::to_string(baseShapeInfo_.hcqSize),
+                std::to_string(HCQ_SIZE)),
             return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTilingCheck::CheckDSize() const
-{
+    const std::set<uint32_t> supportedNSize {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
+    // 原报错: OP_LOGE(context_.opName, "N allows only %s, but got %u.", ...) → 上报EZ0024
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名N、期望值[supportedNSize]、实际值
+    OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
+        OP_LOGE_FOR_INVALID_VALUE(context_.opName, "N", std::to_string(baseShapeInfo_.nSize),
+            ConvertContainerToString(supportedNSize)),
+        return ge::GRAPH_FAILED);
+    // 原报错: OP_LOGE(context_.opName, "Hckv allows only %u, got %u.", HCKV_SIZE, ...) → 上报EZ0024
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名Hckv、期望值HCKV_SIZE、实际值
+    OP_CHECK_IF(baseShapeInfo_.hckvSize != HCKV_SIZE,
+        OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hckv", std::to_string(baseShapeInfo_.hckvSize),
+            std::to_string(HCKV_SIZE)),
+        return ge::GRAPH_FAILED);
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedDSize {128U, 192U};
+        // 原报错: OP_LOGE(context_.opName, "D allows %s, got %u.", ...) → 上报EZ0024
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名D、期望值[supportedDSize]、实际值
         OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
-            OP_LOGE(context_.opName, "D allows %s, got %u.",
-                ConvertContainerToString(supportedDSize).c_str(), baseShapeInfo_.dSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_.opName, "D", std::to_string(baseShapeInfo_.dSize),
+                ConvertContainerToString(supportedDSize)),
             return ge::GRAPH_FAILED);
     } else {
+        // 原报错: OP_LOGE(context_.opName, "D allows only %u, got %u.", D_SIZE, ...) → 上报EZ0024
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名D、期望值D_SIZE、实际值
         OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
-            OP_LOGE(context_.opName, "D allows only %u, got %u.",
-                D_SIZE, baseShapeInfo_.dSize),
+            OP_LOGE_FOR_INVALID_VALUE(context_.opName, "D", std::to_string(baseShapeInfo_.dSize),
+                std::to_string(D_SIZE)),
             return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
-{
+    // 原报错: OP_LOGE(context_.opName, "Dr allows only %u, got %u.", DR_SIZE, ...) → 上报EZ0024
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名Dr、期望值DR_SIZE、实际值
+    OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
+        OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Dr", std::to_string(baseShapeInfo_.drSize),
+            std::to_string(DR_SIZE)),
+        return ge::GRAPH_FAILED);
+    // 原报错: OP_LOGE(context_.opName, "Nkv allows only %u, got %u.", NKV_SIZE, ...) → 上报EZ0024
+    // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → 上报EZ0024，含参数名Nkv、期望值NKV_SIZE、实际值
+    OP_CHECK_IF(baseShapeInfo_.nkvSize != NKV_SIZE,
+        OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Nkv", std::to_string(baseShapeInfo_.nkvSize),
+            std::to_string(NKV_SIZE)),
+        return ge::GRAPH_FAILED);
+    if (scenarioInfo_.cacheMode_ != CACHE_MODE::BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::TND) {
+        // 原报错: OP_LOGE(context_.opName, "BlockSize must be within [%u, %u] and a multiple of %u, got %u.", ...) → 上报EZ0026
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(EZ0026) → 上报EZ0026，含参数名blockSize、实际值、原因"BlockSize must be within [MIN, MAX] and a multiple of ALIGN"
+        OP_CHECK_IF(baseShapeInfo_.blockSize < MIN_BLOCK_SIZE || baseShapeInfo_.blockSize > MAX_BLOCK_SIZE || baseShapeInfo_.blockSize % ALIGN_BLOCK_SIZE != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "blockSize", std::to_string(baseShapeInfo_.blockSize),
+                "BlockSize must be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " + std::to_string(MAX_BLOCK_SIZE) + "] and a multiple of " + std::to_string(ALIGN_BLOCK_SIZE)),
+            return ge::GRAPH_FAILED);
+    }
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         uint32_t supportedDtileSize = baseShapeInfo_.hckvSize;
         if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
-            supportedDtileSize +=
-                baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize += baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (*(context_.quantScaleRepoMode) == static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
-            supportedDtileSize +=
-                baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) *
-                    (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize += baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) * (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (baseShapeInfo_.dtileSize != supportedDtileSize) {
             if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
-                OP_LOGE(context_.opName, "When kvQuantMode is PER_TILE, dtileSize allows only %u, got %u.",
-                    supportedDtileSize, baseShapeInfo_.dtileSize);
+                // 原报错: OP_LOGE(context_.opName, "dtileSize allows only %u when PER_TILE, got %u.", ...) → 上报EZ0026
+                // 新报错: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(EZ0026) → 上报EZ0026，含参数名dtileSize、实际值、原因"when kvQuantMode is PER_TILE, dtileSize allows only [supportedDtileSize]"
+                // TODO
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "dtileSize",
+                    std::to_string(baseShapeInfo_.dtileSize),
+                    "when kvQuantMode is PER_TILE, dtileSize allows only " + std::to_string(supportedDtileSize));
             } else {
-                OP_LOGE(context_.opName,
-                    "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
-                    supportedDtileSize, baseShapeInfo_.dtileSize);
+                // 原报错: OP_LOGE(context_.opName, "dtileSize allows only %u when non-PER_TILE, got %u.", ...) → 上报EZ0026
+                // 新报错: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(EZ0026) → 上报EZ0026，含参数名dtileSize、实际值、原因"when kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only [supportedDtileSize]"
+                // TODO
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "dtileSize",
+                    std::to_string(baseShapeInfo_.dtileSize),
+                    "when kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only " + std::to_string(supportedDtileSize));
             }
             return ge::GRAPH_FAILED;
         }
@@ -825,13 +867,19 @@ ge::graphStatus MlaPrologTilingCheck::CheckCkvkrRepoMode()
         // 校验所有维度的乘积是否为0
         if(context_.krCache.shape->GetStorageShape().GetShapeSize() != 0) {
             isCorrect = ge::GRAPH_FAILED;
-            OP_LOGE(context_.opName, "When ckvkrRepoMode is COMBINE, KrCache should be empty tensor, but got %s.",
-                GetShapeStr(context_.krCache.shape->GetStorageShape()).c_str());
+            // 原报错: OP_LOGE(context_.opName, "krCache should be empty but got shape [...]") → 上报EZ0009
+            // 新报错: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(EZ0009) → 上报EZ0009，含参数名krCache、实际shape、原因"When ckvkrRepoMode is COMBINE, krCache should be empty tensor"
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_.opName, "krCache",
+                GetShapeStr(context_.krCache.shape->GetStorageShape()),
+                "When ckvkrRepoMode is COMBINE, krCache should be empty tensor");
         }
         if(context_.krCacheOut.shape->GetStorageShape().GetShapeSize() != 0) {
             isCorrect = ge::GRAPH_FAILED;
-            OP_LOGE(context_.opName, "When ckvkrRepoMode is COMBINE, KrCacheOut should be empty tensor, but got %s.",
-                GetShapeStr(context_.krCacheOut.shape->GetStorageShape()).c_str());
+            // 原报错: OP_LOGE(context_.opName, "krCacheOut should be empty but got shape [...]") → 上报EZ0009
+            // 新报错: OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(EZ0009) → 上报EZ0009，含参数名krCacheOut、实际shape、原因"When ckvkrRepoMode is COMBINE, krCacheOut should be empty tensor"
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_.opName, "krCacheOut",
+                GetShapeStr(context_.krCacheOut.shape->GetStorageShape()),
+                "When ckvkrRepoMode is COMBINE, krCacheOut should be empty tensor");
         }    
     }
     return isCorrect;
@@ -849,16 +897,17 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheIndexDim()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(context_.cacheIndex.shape == nullptr,
-        OP_LOGE(context_.opName,
-            "When cacheMode is in {PA_BLK_BSND, PA_BLK_NZ},"
-            "cacheIndex should not be null."),
+        // 原报错: OP_LOGE(context_.opName, "cacheIndex is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入cacheIndex无效
+        OP_LOGE_WITH_INVALID_INPUT(context_.opName, "cacheIndex"),
         return ge::GRAPH_FAILED);
 
+    // 原报错: OP_LOGE(context_.opName, "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ}, cacheIndex shape dim should be 2, got %u.", ...) → 上报EZ0012
+    // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名cacheIndex、实际维度、原因"When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX dim is 2, cacheIndex dim should be 1"
     OP_CHECK_IF(context_.cacheIndex.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_1,
-        OP_LOGE(context_.opName,
-            "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX shape dim num is 2,"
-            "cacheIndex shape dim num should be 1, but got %d.",
-            context_.cacheIndex.shape->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "cacheIndex",
+            std::to_string(context_.cacheIndex.shape->GetStorageShape().GetDimNum()) + "D",
+            "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX dim is 2, cacheIndex dim should be 1"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -884,29 +933,32 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
         if (__builtin_expect((expectedParam != it.second), 0)) {
             isCorrect = ge::GRAPH_FAILED;
             if (expectedParam.isValid != it.second.isValid) {
-                OP_LOGE(context_.opName, "%s expected %s, got %s.",
-                    it.first.c_str(),
-                    expectedParam.isValid ? "not null" : "null",
-                    it.second.isValid ? "not null" : "null");
+                // 原报错: OP_LOGE(context_.opName, "[paramName] is null") 或 "should not be null" → 上报EZ0004
+                // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入[paramName]无效（null/not-null不一致）
+                // TODO
+                OP_LOGE_WITH_INVALID_INPUT(context_.opName, it.first);
                 continue;
             }
             if (expectedParam.dtype != it.second.dtype) {
-                OP_LOGE(context_.opName, "%s expected dtype %s, but got %s.",
-                    it.first.c_str(),
-                    TypeUtils::DataTypeToSerialString(expectedParam.dtype).c_str(),
-                    TypeUtils::DataTypeToSerialString(it.second.dtype).c_str());
+                // 原报错: OP_LOGE(context_.opName, "[paramName] dtype should be [expectedDtype], got [actualDtype]") → 上报EZ0019
+                // 新报错: OP_LOGE_FOR_INVALID_DTYPE(EZ0019) → 上报EZ0019，含参数名、期望dtype、实际dtype
+                OP_LOGE_FOR_INVALID_DTYPE(context_.opName, it.first,
+                    TypeUtils::DataTypeToSerialString(it.second.dtype),
+                    TypeUtils::DataTypeToSerialString(expectedParam.dtype));
             }
             if (expectedParam.format != it.second.format) {
-                OP_LOGE(context_.opName, "%s expected format %s, but got %s.",
-                    it.first.c_str(),
-                    ge::GetFormatName(expectedParam.format),
-                    ge::GetFormatName(it.second.format));
+                // 原报错: OP_LOGE(context_.opName, "[paramName] format should be [expectedFormat], got [actualFormat]") → 上报EZ0017
+                // 新报错: OP_LOGE_FOR_INVALID_FORMAT(EZ0017) → 上报EZ0017，含参数名、期望format、实际format
+                OP_LOGE_FOR_INVALID_FORMAT(context_.opName, it.first,
+                    std::string(ge::GetFormatName(it.second.format)),
+                    std::string(ge::GetFormatName(expectedParam.format)));
             }
             if (expectedParam.shape != it.second.shape) {
-                OP_LOGE(context_.opName, "%s expected shape %s, but got %s.",
-                    it.first.c_str(),
-                    ConvertContainerToString(expectedParam.shape).c_str(),
-                    ConvertContainerToString(it.second.shape).c_str());
+                // 原报错: OP_LOGE(context_.opName, "[paramName] shape should be [expected], got [actual]") → 上报EZ0008
+                // 新报错: OP_LOGE_FOR_INVALID_SHAPE(EZ0008) → 上报EZ0008，含参数名、期望shape、实际shape
+                OP_LOGE_FOR_INVALID_SHAPE(context_.opName, it.first,
+                    ConvertContainerToString(it.second.shape),
+                    ConvertContainerToString(expectedParam.shape));
             }
         }
     }
@@ -926,25 +978,40 @@ ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
         scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE ||
         scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE) {
         if (*(context_.ckvkrRepoMode) != static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
-            OP_LOGE(context_.opName, "The ckvkrRepoMode expected %d, but got %d.",
-                static_cast<int>(CKVKR_REPO_MODE::COMBINE), *(context_.ckvkrRepoMode));
+            // 原报错: OP_LOGE(context_.opName, "expected COMBINE(...) for pertile quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名ckvkrRepoMode、期望值COMBINE、实际值、原因"When pertile quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "ckvkrRepoMode",
+                std::to_string(*(context_.ckvkrRepoMode)),
+                "When pertile quant mode, must be COMBINE(" + std::to_string(static_cast<int>(CKVKR_REPO_MODE::COMBINE)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
         if (*(context_.quantScaleRepoMode) != static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
-            OP_LOGE(context_.opName, "The quantScaleRepoMode expected %d, but got %d.",
-                static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE), *(context_.quantScaleRepoMode));
-
+            // 原报错: OP_LOGE(context_.opName, "expected COMBINE(...) for pertile quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名quantScaleRepoMode、期望值COMBINE、实际值、原因"When pertile quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "quantScaleRepoMode",
+                std::to_string(*(context_.quantScaleRepoMode)),
+                "When pertile quant mode, must be COMBINE(" + std::to_string(static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
     } else {
         if (*(context_.ckvkrRepoMode) != static_cast<int>(CKVKR_REPO_MODE::DIVIDE)) {
-            OP_LOGE(context_.opName, "The ckvkrRepoMode expected %d, but got %d.",
-                static_cast<int>(CKVKR_REPO_MODE::DIVIDE), *(context_.ckvkrRepoMode));
+            // 原报错: OP_LOGE(context_.opName, "expected DIVIDE(...) for non-pertile quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名ckvkrRepoMode、期望值DIVIDE、实际值、原因"When non-pertile quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "ckvkrRepoMode",
+                std::to_string(*(context_.ckvkrRepoMode)),
+                "When non-pertile quant mode, must be DIVIDE(" + std::to_string(static_cast<int>(CKVKR_REPO_MODE::DIVIDE)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
         if (*(context_.quantScaleRepoMode) != static_cast<int>(QUANT_SCALE_REPO_MODE::DIVIDE)) {
-            OP_LOGE(context_.opName, "The quantScaleRepoMode expected %d, but got %d.",
-                static_cast<int>(QUANT_SCALE_REPO_MODE::DIVIDE), *(context_.quantScaleRepoMode));
+            // 原报错: OP_LOGE(context_.opName, "expected DIVIDE(...) for non-pertile quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名quantScaleRepoMode、期望值DIVIDE、实际值、原因"When non-pertile quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "quantScaleRepoMode",
+                std::to_string(*(context_.quantScaleRepoMode)),
+                "When non-pertile quant mode, must be DIVIDE(" + std::to_string(static_cast<int>(QUANT_SCALE_REPO_MODE::DIVIDE)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
     }
@@ -953,24 +1020,22 @@ ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
         scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
         if (*(context_.queryQuantMode) != static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD)) {
-            OP_LOGE(context_.opName,
-                "When weightQuantMode is %d and kvQuantMode is %d,"
-                " expected queryQuantMode to be %d, but got %d.",
-                *(context_.weightQuantMode),
-                *(context_.kvQuantMode),
-                static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD),
-                *(context_.queryQuantMode));
+            // 原报错: OP_LOGE(context_.opName, "queryQuantMode must be PER_TOKEN_HEAD for pertensor quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名queryQuantMode、期望值PER_TOKEN_HEAD、实际值、原因"When pertensor quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "queryQuantMode",
+                std::to_string(*(context_.queryQuantMode)),
+                "When pertensor quant mode, must be PER_TOKEN_HEAD(" + std::to_string(static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
     } else {
         if (*(context_.queryQuantMode) != static_cast<int>(QUERY_QUANT_MODE::NO_QUANT)) {
-            OP_LOGE(context_.opName,
-                "When weightQuantMode is %d and kvQuantMode is %d,"
-                " expected queryQuantMode to be %d, but got %d.",
-                *(context_.weightQuantMode),
-                *(context_.kvQuantMode),
-                static_cast<int>(QUERY_QUANT_MODE::NO_QUANT),
-                *(context_.queryQuantMode));
+            // 原报错: OP_LOGE(context_.opName, "queryQuantMode must be NO_QUANT for non-pertensor quant mode") → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名queryQuantMode、期望值NO_QUANT、实际值、原因"When non-pertensor quant mode"
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "queryQuantMode",
+                std::to_string(*(context_.queryQuantMode)),
+                "When non-pertensor quant mode, must be NO_QUANT(" + std::to_string(static_cast<int>(QUERY_QUANT_MODE::NO_QUANT)) + ")");
             isCorrect = ge::GRAPH_FAILED;
         }
     }
@@ -985,28 +1050,34 @@ bool MlaPrologTilingCheck::IsSingleParamValid(const BaseParaInfo &param, const s
                                               const std::set<size_t> &expectedDimNum) const
 {
     OP_CHECK_IF((param.shape == nullptr) || (param.desc == nullptr),
-        OP_LOGE(context_.opName, "%s should not be null.", paramName.c_str()), return false);
+        // 原报错: OP_LOGE(context_.opName, "[paramName] is null") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → 上报EZ0004，提示输入[paramName]无效
+        OP_LOGE_WITH_INVALID_INPUT(context_.opName, paramName), return false);
 
     ge::DataType dtype = param.desc->GetDataType();
+    // 原报错: OP_LOGE(context_.opName, "[paramName] dtype should be [expectedDtype], got [actual]") → 上报EZ0019
+    // 新报错: OP_LOGE_FOR_INVALID_DTYPE(EZ0019) → 上报EZ0019，含参数名、期望dtype集合、实际dtype
     OP_CHECK_IF((expectedDtype.find(dtype) == expectedDtype.end()),
-        OP_LOGE(context_.opName, "%s datatype only supports %s, but got %s.",
-            paramName.c_str(),
-            ConvertContainerToString(expectedDtype, TypeUtils::DataTypeToSerialString).c_str(),
-            TypeUtils::DataTypeToSerialString(dtype).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context_.opName, paramName,
+            TypeUtils::DataTypeToSerialString(dtype),
+            ConvertContainerToString(expectedDtype, TypeUtils::DataTypeToSerialString)),
         return false);
 
     ge::Format format = static_cast<ge::Format>(ge::GetPrimaryFormat(param.desc->GetStorageFormat()));
+    // 原报错: OP_LOGE(context_.opName, "[paramName] format should be [expectedFormat], got [actual]") → 上报EZ0017
+    // 新报错: OP_LOGE_FOR_INVALID_FORMAT(EZ0017) → 上报EZ0017，含参数名、期望format集合、实际format
     OP_CHECK_IF((expectedFormat.find(format) == expectedFormat.end()),
-        OP_LOGE(context_.opName, "%s format only supports %s, but got %s.",
-            paramName.c_str(),
-            ConvertContainerToString(expectedFormat, FormatToString).c_str(),
-            ge::GetFormatName(format)),
+        OP_LOGE_FOR_INVALID_FORMAT(context_.opName, paramName,
+            std::string(ge::GetFormatName(format)),
+            ConvertContainerToString(expectedFormat, FormatToString)),
         return false);
 
     size_t dimNum = param.shape->GetStorageShape().GetDimNum();
+    // 原报错: OP_LOGE(context_.opName, "[paramName] shape dim should be [expectedDimNum], got %u.", ...) → 上报EZ0011
+    // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM(EZ0011) → 上报EZ0011，含参数名、期望维度数集合、实际维度数
     OP_CHECK_IF((expectedDimNum.find(dimNum) == expectedDimNum.end()),
-        OP_LOGE(context_.opName, "%s dim num supports only %s, but got %zu.",
-            paramName.c_str(), ConvertContainerToString(expectedDimNum).c_str(), dimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_.opName, paramName,
+            std::to_string(dimNum), ConvertContainerToString(expectedDimNum)),
         return false);
     return true;
 }
@@ -1145,10 +1216,12 @@ bool MlaPrologTilingCheck::CheckActSeqLen() const
         return true;
     };
     ge::DataType dtype = context_.actualSeqLen.desc->GetDataType();
+    // 原报错: OP_LOGE(context_.opName, "actualSeqLen dtype should be INT32, got [actual]") → 上报EZ0019
+    // 新报错: OP_LOGE_FOR_INVALID_DTYPE(EZ0019) → 上报EZ0019，含参数名actualSeqLen、期望dtype INT32、实际dtype
     OP_CHECK_IF((ge::DT_INT32 != dtype),
-        OP_LOGE(context_.opName, "actualSeqLen datatype only supports %s, but got %s.",
-           TypeUtils::DataTypeToSerialString(ge::DT_INT32).c_str(),
-            TypeUtils::DataTypeToSerialString(dtype).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context_.opName, "actualSeqLen",
+            TypeUtils::DataTypeToSerialString(dtype),
+            TypeUtils::DataTypeToSerialString(ge::DT_INT32)),
         return false);
     return true;
 }
@@ -1156,32 +1229,42 @@ bool MlaPrologTilingCheck::CheckActSeqLen() const
 bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
 {
     if (std::strncmp(context_.cacheMode, CACHE_MODE_TND, CACHE_MODE_LEN) == 0) {
+        // 原报错: OP_LOGE(context_.opName, "When cacheMode is TND, tokenX shape dim should be 2, got %u.", ...) → 上报EZ0012
+        // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名tokenX、实际维度、原因"When cacheMode is TND, tokenX dim must be 2"
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_2,
-            OP_LOGE(context_.opName,
-                "When cacheMode is TND, tokenX dim must be 2, actually is %d.",
-                context_.tokenX.shape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "tokenX",
+                std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is TND, tokenX dim must be 2"),
             return false);
+        // 原报错: OP_LOGE(context_.opName, "When cacheMode is TND, kvCache shape dim should be 3, got %u.", ...) → 上报EZ0012
+        // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名kvCache、实际维度、原因"When cacheMode is TND, kvCache dim must be 3"
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
-            OP_LOGE(context_.opName,
-                "When cacheMode is TND, kvCache dim must be 3, actually is %d.",
-                context_.kvCache.shape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "kvCache",
+                std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is TND, kvCache dim must be 3"),
             return false);
     } else if (std::strncmp(context_.cacheMode, CACHE_MODE_BSND, CACHE_MODE_LEN) == 0) {
+        // 原报错: OP_LOGE(context_.opName, "When cacheMode is BSND, tokenX shape dim should be 3, got %u.", ...) → 上报EZ0012
+        // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名tokenX、实际维度、原因"When cacheMode is BSND, tokenX dim must be 3"
         OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
-            OP_LOGE(context_.opName,
-                "When cacheMode is BSND, tokenX dim must be 3, actually is %d.",
-                context_.tokenX.shape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "tokenX",
+                std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is BSND, tokenX dim must be 3"),
             return false);
+        // 原报错: OP_LOGE(context_.opName, "When cacheMode is BSND, kvCache shape dim should be 4, got %u.", ...) → 上报EZ0012
+        // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名kvCache、实际维度、原因"When cacheMode is BSND, kvCache dim must be 4"
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
-            OP_LOGE(context_.opName,
-                "When cacheMode is BSND, kvCache dim must be 4, actually is %d.",
-                context_.kvCache.shape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "kvCache",
+                std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is BSND, kvCache dim must be 4"),
             return false);
     } else {
+        // 原报错: OP_LOGE(context_.opName, "When cacheMode in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache shape dim should be 4, got %u.", ...) → 上报EZ0012
+        // 新报错: OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(EZ0012) → 上报EZ0012，含参数名kvCache、实际维度、原因"When cacheMode in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4"
         OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
-            OP_LOGE(context_.opName,
-                "When cacheMode is in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4, actually is %d.",
-                context_.kvCache.shape->GetStorageShape().GetDimNum()),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_.opName, "kvCache",
+                std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4"),
             return false);
     }
     return true;
@@ -1192,10 +1275,10 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) != 0) {
         if (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BSND, CACHE_MODE_LEN) != 0 &&
             std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) != 0) {
-            OP_LOGE(context_.opName,
-                "%s only support cacheMode {PA_BSND, PA_NZ}, actually is %s.",
-                context_.opType,
-                context_.cacheMode);
+            // 原报错: OP_LOGE(context_.opName, "cacheMode must be within {PA_BSND, PA_NZ}, got %s.", context_.cacheMode) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名cacheMode、期望值{PA_BSND, PA_NZ}、实际值
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "cacheMode",
+                std::string(context_.cacheMode), "{PA_BSND, PA_NZ}");
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -1207,9 +1290,11 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) != 0) &&
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_BSND, CACHE_MODE_LEN) != 0) &&
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_NZ, CACHE_MODE_LEN) != 0)) {
-            OP_LOGE(context_.opName,
-                "Only support cacheMode {BSND, TND, PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, actually is %s.",
-                context_.cacheMode);
+            // 原报错: OP_LOGE(context_.opName, "cacheMode must be within {BSND, TND, PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, got %s.", context_.cacheMode) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名cacheMode、期望值{BSND, TND, PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}、实际值
+            OP_LOGE_WITH_INVALID_ATTR(context_.opName, "cacheMode",
+                std::string(context_.cacheMode),
+                "{BSND, TND, PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}");
             return ge::GRAPH_FAILED;
         }
     if (!CheckCacheModeParamShape()) {
@@ -1223,8 +1308,12 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
     if ((std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) == 0) ||
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_BSND, CACHE_MODE_LEN) == 0) ||
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_NZ, CACHE_MODE_LEN) == 0)) {
-        OP_LOGE(
-            context_.opName, "Not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and pertile effective.");
+        // 原报错: OP_LOGE(context_.opName, "not support both cacheMode {PA_NZ, PA_BLK_BSND, PA_BLK_NZ} and pertile effective") → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → 上报EZ0002，含attr名cacheMode、期望值（非PA_NZ/PA_BLK_BSND/PA_BLK_NZ）、实际值、原因"pertile quant模式下cacheMode冲突"
+        // TODO
+        OP_LOGE_WITH_INVALID_ATTR(context_.opName, "cacheMode",
+            std::string(context_.cacheMode),
+            "When pertile quant mode, cacheMode cannot be {PA_NZ, PA_BLK_BSND, PA_BLK_NZ}");
         return ge::GRAPH_FAILED;
     }
     

@@ -98,7 +98,11 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
             return QUANT_MODE::NO_QUANT;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==0, must be {0}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==0, must be {0}");
         }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
@@ -108,20 +112,31 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
         } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.", *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==1, must be {0, 2, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==1, must be {0, 2, 3}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+} else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
                 return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==2, must be {0, 1, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==2, must be {0, 1, 3}");
         }
     } else {
-        OP_LOGE(context_->opName, "WeightQuantMode must be within {0, 1, 2}, actually is %d.", *(context_->weightQuantMode));
+        // 原报错: OP_LOGE(context_->opName, "WeightQuantMode must be within {0, 1, 2}, actually is %d.", *(context_->weightQuantMode)) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute weightQuantMode of [opName] has incorrect value [val]. It should be {0, 1, 2}."
+        OP_LOGE_WITH_INVALID_ATTR(context_->opName, "weightQuantMode",
+            std::to_string(*(context_->weightQuantMode)), "{0, 1, 2}");
     }
     return QUANT_MODE::ERROR_MODE;
 }
@@ -132,70 +147,87 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Mxfp8() const
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
             return QUANT_MODE::NO_QUANT;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 0, kvQuantMode must be within {0}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be {0}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==0, must be {0}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+    } else if *(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::PARTIAL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_CHANNEL)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_CHANNEL)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName,
-                "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.",
-                *(context_->kvQuantMode));
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==1, must be {0, 2, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==1, must be {0, 2, 3}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+    } else if *(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
                 return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName,
-                "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.",
-                *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==2, must be {0, 1, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==2, must be {0, 1, 3}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+    } else if *(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
                 return QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName,
-                "When weightQuantMode == 4, kvQuantMode must be within {0, 1, 3}, actually is %d.",
-                *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 4, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==4, must be {0, 1, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==4, must be {0, 1, 3}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+    } else if *(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
                 return QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName,
-                "When weightQuantMode == 5, kvQuantMode must be within {0, 1, 3}, actually is %d.",
-                *(context_->kvQuantMode)); 
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 5, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==5, must be {0, 1, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==5, must be {0, 1, 3}");
         }
-    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
-        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+    } else if *(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
+        if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
                 return QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
                 return QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR;
-        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+        } else if *(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 return QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 3, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode));
+            // 原报错: OP_LOGE(context_->opName, "When weightQuantMode == 3, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode)) → 上报EZ0002
+            // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvQuantMode of [opName] has incorrect value [val]. It should be When weightQuantMode==3, must be {0, 1, 3}."
+            // TODO
+            OP_LOGE_WITH_INVALID_ATTR(context_->opName, "kvQuantMode",
+                std::to_string(*(context_->kvQuantMode)), "When weightQuantMode==3, must be {0, 1, 3}");
         }
     } else {
-        OP_LOGE(context_->opName,
-            "weightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
-            *(context_->weightQuantMode)); 
+        // 原报错: OP_LOGE(context_->opName, "weightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.", *(context_->weightQuantMode)) → 上报EZ0002
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute weightQuantMode of [opName] has incorrect value [val]. It should be {0, 1, 2, 3, 4, 5}."
+        OP_LOGE_WITH_INVALID_ATTR(context_->opName, "weightQuantMode",
+            std::to_string(*(context_->weightQuantMode)), "{0, 1, 2, 3, 4, 5}");
     }
     return QUANT_MODE::ERROR_MODE;
 }
@@ -310,10 +342,13 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
 
     if (scenarioInfo_.batchSeqFusedFlag_ && 
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
+        // 原报错: OP_LOGE(context_->opName, "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX shape dim num is 2, actualSeqLen should not be null.") → 上报EZ0004
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter actualSeqLen of [opName] is required, but it is empty."
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
-            OP_LOGE(context_->opName, 
-                "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX shape dim num is 2,"
-                    "actualSeqLen should not be null."), return GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->opName, "actualSeqLen"),
+            // TODO: 此处为条件非空检查（特定cacheMode下actualSeqLen不应为null），当前使用EZ0004替代，
+            // 后续申请EZ0035(参数在特定条件下不应为空)规则后替换
+            return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
     } else {
@@ -325,8 +360,16 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS>=8K
+<<<<<<< HEAD
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
         scenarioInfo_.splitMFlag_ = 1U;
+=======
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+        if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE1) &&
+            baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
+            scenarioInfo_.splitMFlag_ = 1U;
+        }
+>>>>>>> 2fb579cb423db0be35343026476169b9a2775a42
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -507,6 +550,11 @@ ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
 
 ge::graphStatus MlaPrologTiling::FillTiling()
 {
+    baseParams_->batchSize = baseShapeInfo_.bSize;
+    baseParams_->stepBatchSize = stepBatchSize_;
+    baseParams_->stepNumHeadDequant = stepNumHeadDequant_;
+    baseParams_->mSubSize = mSubSize_;
+    baseParams_->mSubCoreNum = mSubCoreNum_;
     baseParams_->tokenSize = baseShapeInfo_.tSize;
     baseParams_->seq1Size = baseShapeInfo_.s1Size;
     baseParams_->seq2Size = baseShapeInfo_.s2Size;
@@ -523,6 +571,15 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     baseParams_->dimHeadRope = baseShapeInfo_.drSize;
     baseParams_->blockNum = baseShapeInfo_.blockNum;
     baseParams_->blockSize = baseShapeInfo_.blockSize;
+    baseParams_->mm1BlockNum = mm1BlockNum_;
+    baseParams_->mm2BlockNum = mm2BlockNum_;
+    baseParams_->mm3BlockNum = mm3BlockNum_;
+    baseParams_->mm4BlockNum = mm4BlockNum_;
+    baseParams_->mm1SingleCoreN = singlecoreHeadSizeCq_;
+    baseParams_->mm2SingleCoreN = singlecoreHeadSizeCkvKr_;
+    baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
+    baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
+    baseParams_->vectorBlockNum = vectorBlockNum_;
     baseParams_->reciprocalCq = reciprocalCq_;
     baseParams_->epsilonCq = epsilonCq_;
     baseParams_->reciprocalCkv = reciprocalCkv_;
@@ -548,26 +605,6 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isQcQrScaleEnable = 0U;
         baseParams_->isKcScaleEnable = 0U;
     }
-    FillTilingCoreParams(); // 分核相关baseParams
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTiling::FillTilingCoreParams()
-{
-    baseParams_->batchSize = baseShapeInfo_.bSize;
-    baseParams_->stepBatchSize = stepBatchSize_;
-    baseParams_->stepNumHeadDequant = stepNumHeadDequant_;
-    baseParams_->mSubSize = mSubSize_;
-    baseParams_->mSubCoreNum = mSubCoreNum_;
-    baseParams_->mm1BlockNum = mm1BlockNum_;
-    baseParams_->mm2BlockNum = mm2BlockNum_;
-    baseParams_->mm3BlockNum = mm3BlockNum_;
-    baseParams_->mm4BlockNum = mm4BlockNum_;
-    baseParams_->mm1SingleCoreN = singlecoreHeadSizeCq_;
-    baseParams_->mm2SingleCoreN = singlecoreHeadSizeCkvKr_;
-    baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
-    baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
-    baseParams_->vectorBlockNum = vectorBlockNum_;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -652,21 +689,42 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
             (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT ||
             (scenarioInfo_.cacheMode_ != CACHE_MODE::PA_BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::PA_NZ))) {
-        OP_LOGE(context_->opName,
-            "CV1:1 mode only support quantMode is in {NO_QUANT} and cacheMode is in {PA_BSND,PA_NZ}, quantMode is %d, cacheMode is %u.",
-            scenarioInfo_.quantMode_, scenarioInfo_.cacheMode_);
+        // 原报错: OP_LOGE(context_->opName, "CV1:1 mode only support quantMode is in {NO_QUANT} and cacheMode is in {PA_BSND,PA_NZ}, quantMode is %d, cacheMode is %u.", ...) → 上报EZ0026
+        // 新报错: OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(EZ0026) → "Parameter quantMode of [opName] has incorrect value [val]. Reason: CV1:1 mode only support quantMode in {NO_QUANT} and cacheMode in {PA_BSND,PA_NZ}"
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "quantMode",
+            std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)) + ", cacheMode is " +
+            std::to_string(static_cast<uint32_t>(scenarioInfo_.cacheMode_)),
+            "CV1:1 mode only support quantMode in {NO_QUANT} and cacheMode in {PA_BSND,PA_NZ}"
+            // TODO
+        );
         return ge::GRAPH_FAILED;
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = GET_TPL_TILING_KEY(0, 0, 0, false, false,
-            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            0,
+            0,
+            0,
+            false,
+            false,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
+            0,
+            0,
+            cvMode
+        );
     } else {
         uint8_t cacheMode = scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
-        context_->tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(cacheMode), typeValue, quantType,
-            enableDequantOpt_, enableGroupComputeOpt_, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            static_cast<uint8_t>(cacheMode),
+            typeValue, 
+            quantType,
+            enableDequantOpt_,
+            enableGroupComputeOpt_,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
             static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_),
+            cvMode
+        );
         OP_LOGI(context_->opName, "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
             "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
@@ -693,7 +751,6 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
         std::bind(&MlaPrologTiling::SetShapeInfo, this),
         std::bind(&MlaPrologTiling::SetScenarioInfo, this),
         std::bind(&MlaPrologTilingCheck::CheckScenarParam, &tilingCheck_),
-        std::bind(&MlaPrologTilingCheck::CheckQuantMode, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckDims, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckSpecialScenarioParamShape, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckParamByScenario, &tilingCheck_),
@@ -738,8 +795,10 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
 
 ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, MlaPrologContext &mlaPrologContext)
 {
+    // 原报错: OP_LOGE(V1_OP_NAME, "OpName got from TilingContext is nullptr.") → 上报EZ0004
+    // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter OpName of V1_OP_NAME is required, but it is empty."
     OP_CHECK_IF(context.GetNodeName() == nullptr,
-        OP_LOGE(V1_OP_NAME, "OpName got from TilingContext is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(V1_OP_NAME, "OpName"), return ge::GRAPH_FAILED);
 
     mlaPrologContext.opName = context.GetNodeName();
     mlaPrologContext.opType = context.GetNodeType();
@@ -749,8 +808,10 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     ConvertOptionalParams(context, mlaPrologContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, 
-        OP_LOGE(context.GetNodeName(), "Attrs got from ge is nullptr."), return ge::GRAPH_FAILED);
+    // 原报错: OP_LOGE(context.GetNodeName(), "Attrs got from ge is nullptr.") → 上报EZ0004
+    // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter attrs of [nodeName] is required, but it is empty."
+    OP_CHECK_IF(attrs == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(context.GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     mlaPrologContext.rmsNormEspilonCq = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CQ_ATTR_INDEX);
     mlaPrologContext.rmsNormEspilonCkv = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CKV_ATTR_INDEX);
     mlaPrologContext.cacheMode = attrs->GetStr(CACHE_MODE_ATTR_INDEX);
@@ -881,8 +942,10 @@ MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context)
         OPS_REPORT_VECTOR_INNER_ERR(V1_OP_NAME, "Context is nullptr."), return ge::GRAPH_FAILED);
 
     MlaPrologContext mlaPrologContext{};
+    // 原报错: OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to MlaProlog context.")
+    // 新做法: 内部已报EZ，不加日志直接返回
     OP_CHECK_IF(MlaPrologTiling::ConvertContext(*context, mlaPrologContext) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to MlaProlog context."),
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "Error occurred while converting tilingContext to MlaProlog context."),
             return ge::GRAPH_FAILED);
 
     MlaPrologTiling mlaPrologTiling;
