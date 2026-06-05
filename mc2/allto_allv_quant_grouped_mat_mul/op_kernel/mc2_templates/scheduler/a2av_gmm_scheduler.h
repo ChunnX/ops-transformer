@@ -179,11 +179,15 @@ private:
         for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
             uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
                 (e_ - turnIdx * combineExpertSize) : combineExpertSize;
-
             commOp.LaunchCombinedAic(turnIdx, realCombineSize);
             if constexpr (MX_QUANT_MODE) {
                 commOp.LaunchScaleCombinedAic(turnIdx, realCombineSize);
             }
+        }
+
+        for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
+            uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
+                (e_ - turnIdx * combineExpertSize) : combineExpertSize;
             commOp.WaitCombinedAic(turnIdx);
             if constexpr (MX_QUANT_MODE) {
                 commOp.WaitScaleCombinedAic(turnIdx);
