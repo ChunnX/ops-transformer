@@ -30,7 +30,9 @@ using namespace AscendC;
     do {                                                                                                 \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                      \
             BaseApi::BSABlockCube<__VA_ARGS__>, BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type;          \
-        BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType> op;                             \
+        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                       \
+            BaseApi::BSABlockVecDummy<__VA_ARGS__>, BaseApi::BSABlockVec<__VA_ARGS__>>::type;            \
+        BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType> op;                             \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, /*dropMask*/nullptr, /*paddingMask*/nullptr,   \
