@@ -592,8 +592,8 @@ void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLi
         }
     }
 
-    OP_LOGE(opName_, "%s %s only supports %s, but got %s",
-              name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str());
+    OP_LOGE_FOR_INVALID_VALUE(opName_, (name + " " + subName).c_str(),
+                    std::to_string(actualValue).c_str(), oss.str());
 }
 
 template <typename T>
@@ -698,7 +698,8 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaKvHeadNums() const
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 {
     OP_CHECK_IF((*opParamInfo_.sparseMode != 3 && *opParamInfo_.sparseMode != 0),
-        OP_LOGE(opName_, "sparseMode must == 0/3, but got: %ld.", *opParamInfo_.sparseMode),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseMode",
+                    std::to_string(*opParamInfo_.sparseMode).c_str(), "sparseMode must be 0 or 3."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -707,8 +708,8 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
     OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
-        OP_LOGE(opName_, "sparseBlockSize should be in range [1, 16] and be a power of 2, but got: %ld.",
-            *opParamInfo_.sparseBlockSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
+                    std::to_string(*opParamInfo_.sparseBlockSize).c_str(), "sparseBlockSize must be in range [1, 16] and be a power of 2."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1189,33 +1190,43 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
 {
     OP_CHECK_IF(attentionMode_ != 2, // 2:MLA-absorb
-        OP_LOGE(opName_, "attention_mode should be 2(MLA-absorb), but got %d",
-        attentionMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attention_mode",
+                    std::to_string(attentionMode_).c_str(), "attention_mode should be 2(MLA-absorb)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
         OP_LOGE(opName_, "key_quant_mode should be 2(per-tile), but got %d",
         keyQuantMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode",
+                    std::to_string(keyQuantMode_).c_str(), "key_quant_mode should be 2(per-tile)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(valueQuantMode_ != 2, // 2:per-tile
         OP_LOGE(opName_, "value_quant_mode should be 2(per-tile), but got %d",
         valueQuantMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "value_quant_mode",
+                    std::to_string(valueQuantMode_).c_str(), "value_quant_mode should be 2(per-tile)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
         OP_LOGE(opName_, "quant_scale_repo_mode should be 1(combine), but got %d",
         quantScaleRepoMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_scale_repo_mode",
+                    std::to_string(quantScaleRepoMode_).c_str(), "quant_scale_repo_mode should be 1(combine)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(preTokens_ != INT64_MAX,
         OP_LOGE(opName_, "preTokens_ should be INT64_MAX, but got %ld",
         preTokens_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "preTokens_",
+                    std::to_string(preTokens_).c_str(), "preTokens_ should be INT64_MAX."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(nextTokens_ != INT64_MAX,
         OP_LOGE(opName_, "nextTokens_ should be INT64_MAX, but got %ld",
         nextTokens_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nextTokens_",
+                    std::to_string(nextTokens_).c_str(), "nextTokens_ should be INT64_MAX."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(tileSize_ != 128, // 128:当前不泛化
