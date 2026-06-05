@@ -310,12 +310,14 @@ op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2)
 
     auto viewShape = x2->GetViewShape();
     size_t viewDimNum = viewShape.GetDimNum();
-    int64_t viewK = viewShape.GetDim(viewDimNum - 2);
-    int64_t viewN = viewShape.GetDim(viewDimNum - 1);
+    int64_t viewK = transposeX2 ? viewShape.GetDim(viewDimNum - 1) : viewShape.GetDim(viewDimNum - 2);
+    int64_t viewN = transposeX2 ? viewShape.GetDim(viewDimNum - 2) : viewShape.GetDim(viewDimNum - 1);
 
     auto originalShape = x2->GetOriginalShape();
-    int64_t origK = (originalShape.GetDimNum() >= viewDimNum) ? originalShape.GetDim(viewDimNum - 2) : viewK;
-    int64_t origN = (originalShape.GetDimNum() >= viewDimNum) ? originalShape.GetDim(viewDimNum - 1) : viewN;
+    int64_t origK = (originalShape.GetDimNum() >= viewDimNum) ?
+        (transposeX2 ? originalShape.GetDim(viewDimNum - 1) : originalShape.GetDim(viewDimNum - 2)) : viewK;
+    int64_t origN = (originalShape.GetDimNum() >= viewDimNum) ?
+        (transposeX2 ? originalShape.GetDim(viewDimNum - 2) : originalShape.GetDim(viewDimNum - 1)) : viewN;
 
     int64_t n1 = CeilDiv(origN, nzK0Value);
     int64_t k1 = CeilDiv(origK, NZ_K0_VALUE_BMM_BLOCK_NUM);
@@ -330,19 +332,19 @@ op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2)
 
 bool CheckWeightNzStorageShape(const op::Shape &expectedShape, const op::Shape &actualShape)
 {
-    if (expectedShape.GetDimNum() != actualShape.GetDimNum()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantMatmulAlltoAll, x2 NZ storage shape dimension mismatch: expected %zu, actual %zu.",
-                expectedShape.GetDimNum(), actualShape.GetDimNum());
-        return false;
-    }
+    int64_t expectedTotal = 1;
     for (size_t i = 0; i < expectedShape.GetDimNum(); i++) {
-        if (expectedShape.GetDim(i) != actualShape.GetDim(i)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "QuantMatmulAlltoAll, x2 NZ storage shape mismatch at dim %zu: expected %ld, actual %ld.",
-                    i, expectedShape.GetDim(i), actualShape.GetDim(i));
-            return false;
-        }
+        expectedTotal *= expectedShape.GetDim(i);
+    }
+    int64_t actualTotal = 1;
+    for (size_t i = 0; i < actualShape.GetDimNum(); i++) {
+        actualTotal *= actualShape.GetDim(i);
+    }
+    if (expectedTotal != actualTotal) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "QuantMatmulAlltoAll, x2 NZ storage shape element count mismatch: expected total %ld, actual total %ld.",
+                expectedTotal, actualTotal);
+        return false;
     }
     return true;
 }

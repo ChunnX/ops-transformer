@@ -354,19 +354,6 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
     }
     if (IsFormatNZ(x2) && isMxQuantMode) {
         OP_LOGI("QuantMatmulAlltoAll, x2 format is FRACTAL_NZ in MX quant mode, skip ReFormat.");
-        auto x2NZ = const_cast<aclTensor *>(x2);
-        x2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-        x2NZ->SetViewFormat(op::Format::FORMAT_ND);
-        x2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-        op::Shape nzOrigShape;
-        if (transposeX2) {
-            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(1));
-            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(0));
-        } else {
-            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(0));
-            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(1));
-        }
-        x2NZ->SetOriginalShape(nzOrigShape);
     } else if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
         x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
@@ -496,15 +483,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
             transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-            op::Shape nzOrigShape;
-            if (transposeX2) {
-                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(1));
-                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(0));
-            } else {
-                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(0));
-                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(1));
-            }
-            transX2NZ->SetOriginalShape(nzOrigShape);
+            transX2NZ->SetOriginalShape(transX2->GetViewShape());
             op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
             OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
                     "origShape=%s, viewShape=%s.",
