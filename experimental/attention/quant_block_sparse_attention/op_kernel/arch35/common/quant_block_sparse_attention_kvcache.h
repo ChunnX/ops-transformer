@@ -426,24 +426,9 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                 runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
                     runParam.sOuterOffset * constInfo.dSizeV;
         } else {
-            if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-                constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
-                (constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) &&
-                constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD) && layout == LayOutTypeEnum::LAYOUT_BSH)) {
-                runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                    runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
-                    runParam.goIdx * constInfo.dSizeV;
-            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
-                runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.dSizeV + // b
-                    runParam.n2oIdx * constInfo.t1Size * constInfo.gDv + // n
-                    runParam.goIdx * constInfo.t1Size * constInfo.dSizeV + // g
-                    runParam.sOuterOffset * constInfo.dSizeV; // s1
-            } else {
-                runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gS1Dv +
-                    runParam.goIdx * constInfo.s1Dv + (runParam.sOuterOffset + runParam.queryLeftPaddingSize) *
-                    constInfo.dSizeV;
-            }
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
+                runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
+                runParam.goIdx * constInfo.dSizeV;
         }
 
         int64_t softmaxLseSeqOffset = seqOffset * constInfo.n2G;

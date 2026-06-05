@@ -68,16 +68,6 @@ QuantBlockSparseAttentionKernel<CubeBlockType>::InitUniqueConstInfo()
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
         this->constInfo.paBlockStride = this->sharedParams.paBlockStride;
     }
-
-    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
-    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
-        this->constInfo.attentionOutStride =
-            (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
-    } else if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) ||
-        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD)) {
-        this->constInfo.attentionOutStride = 0;
-    }
 }
 
 template <typename CubeBlockType>
@@ -229,23 +219,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType>::ComputeAx
 {
     constexpr uint64_t fp8QBlockSize = 128U; // 128 is SOuterSize
     constexpr uint64_t fp8KvBlockSize = 256U; // 256 is SInnerSize
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-        if (runParam.boIdx == 0 || runParam.boIdx == 1) {
-            this->s1ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqQlenAddr[0], fp8QBlockSize);
-            this->s2ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqKvlenAddr[0], fp8KvBlockSize);
-            this->s1SizeAcc = runParam.boIdx == 0 ? 0 : this->actualSeqQlenAddr[0];
-            this->s2SizeAcc = runParam.boIdx == 0 ? 0 : this->actualSeqKvlenAddr[0];
-        } else {
-            this->s1ScaleNumAcc = CeilDiv(this->actualSeqQlenAddr[0], fp8QBlockSize);
-            this->s2ScaleNumAcc = CeilDiv(this->actualSeqKvlenAddr[0], fp8KvBlockSize);
-            for (uint32_t boIdx = 1; boIdx < runParam.boIdx; boIdx++) {
-                this->s1ScaleNumAcc += CeilDiv(this->actualSeqQlenAddr[boIdx] - this->actualSeqQlenAddr[boIdx - 1], fp8QBlockSize);
-                this->s2ScaleNumAcc += CeilDiv(this->actualSeqKvlenAddr[boIdx] - this->actualSeqKvlenAddr[boIdx - 1], fp8KvBlockSize);
-            }
-            this->s1SizeAcc = this->actualSeqQlenAddr[runParam.boIdx - 1];
-            this->s2SizeAcc = this->actualSeqKvlenAddr[runParam.boIdx - 1];
-        }
-    }
     // GS1合轴时，g轴信息包含在gS1中；GS1不合轴时，g轴信息包含在bn2g中；
     if (this->constInfo.isGqa) {
         runParam.goIdx = gS1Index / this->constInfo.s1OuterSize;

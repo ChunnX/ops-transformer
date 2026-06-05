@@ -227,18 +227,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
-    } else {
-        if constexpr (isInfer) {
-            if (!constInfo.isActualLenDimsNull) {
-                actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
-            }
-            if (!constInfo.isActualLenDimsKVNull) {
-                actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
-            }
-        }
     }
 
     // vecBlock.InitDropOut(dropMask, workspace);
@@ -370,12 +361,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
-    if (sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD) ||
-        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
-        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD)) {
-        constInfo.t1Size = constInfo.bSize * constInfo.s1Size;
-    }
-
     if constexpr (isInfer) {
         constInfo.s1D = constInfo.s1Size * constInfo.dSize;
         constInfo.gD = constInfo.gSize * constInfo.dSize;
@@ -404,60 +389,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                     constInfo.attentionOutStride = 0;
                 }
             }
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-        // BSH/BSNGD
-        constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = constInfo.n2Dv;
-        if constexpr (isInfer) {
-            if (sharedParams.isGqa) {
-                constInfo.mm1Ka = constInfo.dSize;
-            }
-        }
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride =
-                (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            if constexpr (isInfer) {
-                if (sharedParams.isPfaGS1Merge == 1) {
-                    constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-                } else if (sharedParams.isGqa == 1) {
-                    constInfo.attentionOutStride = 0;
-                }
-            }
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_SBH) {
-        // SBH/SBNGD
-        constInfo.bN2GDv = sharedParams.bSize * constInfo.n2GDv;
-        constInfo.s1BaseBN2GDv = s1BaseSize * constInfo.bN2GDv;
-        constInfo.s2BaseBN2Dv = sharedParams.bSize * constInfo.s2BaseN2Dv;
-        constInfo.mm1Ka = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = sharedParams.bSize * constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = sharedParams.bSize * constInfo.n2Dv;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride =
-                (sharedParams.bSize * constInfo.n2Size * constInfo.gSize - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-        // bnsd
-        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        constInfo.mm1Ka = constInfo.dSize;
-        constInfo.mm1Kb = constInfo.dSize;
-        constInfo.mm2Kb = constInfo.dSizeV;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = 0;
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-        // NG(BS)D
-        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        constInfo.mm1Ka = constInfo.dSize;
-        constInfo.mm1Kb = constInfo.dSize;
-        constInfo.mm2Kb = constInfo.dSizeV;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = 0;
         }
     }
 
@@ -557,7 +488,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         runInfo.boIdx = runParam.boIdx;
         runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
         runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
