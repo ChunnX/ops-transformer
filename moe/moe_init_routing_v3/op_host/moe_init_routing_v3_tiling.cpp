@@ -1050,7 +1050,6 @@ uint64_t MoeInitRountingV3TilingBase::GetTilingKey() const
                 rowIdxTytpe_ == SCATTER && expertTokensNumType_ == COUNT && countingSortFullLoad_ == -1)) {
         uint64_t sortMode = 3;
         return static_cast<uint64_t>(TILINGKEY_BASE + sortMode * SORT_CORE_TILINGKEY_BASE +
-                                     static_cast<uint64_t>(quantMode_ + 1) * QUANT_MODE_TILINGKEY_BASE +
                                      static_cast<uint64_t>(rowIdxTytpe_) * ROWIDX_TYPE_TILINGKEY_BASE);
     } else {
         return static_cast<uint64_t>(TILINGKEY_BASE + static_cast<uint64_t>(sortMode_) * SORT_CORE_TILINGKEY_BASE +
