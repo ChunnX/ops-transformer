@@ -41,11 +41,13 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
     uint32_t keySharedPrefixDimNum = keySharedPrefixTensor->GetStorageShape().GetDimNum();
     uint32_t valueSharedPrefixDimNum = valueSharedPrefixTensor->GetStorageShape().GetDimNum();
     uint32_t keyDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF((keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum),
-        OP_LOGE(fiaInfo.opName,
-            "The dimension of keySharedPrefix(%u), valueSharedPrefix(%u) and "
-            "key/value(%u) are different.", keySharedPrefixDimNum, valueSharedPrefixDimNum, keyDimNum),
-        return ge::GRAPH_FAILED);
+    if (keySharedPrefixDimNum != keyDimNum || valueSharedPrefixDimNum != keyDimNum) {
+        std::string dimsStr = std::to_string(keySharedPrefixDimNum) + ", " + std::to_string(valueSharedPrefixDimNum) +
+            " and " + std::to_string(keyDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_shared_prefix, value_shared_prefix and key",
+            dimsStr.c_str(), "The shape dims of key_shared_prefix, value_shared_prefix and key/value must be the same.");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -58,20 +60,18 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
         // keySharedPrefix和valueSharedPrefix的数据类型与key/value相同
         auto keySharedPrefixType = keySharedPrefixDesc->GetDataType();
         auto valueSharedPrefixType = valueSharedPrefixDesc->GetDataType();
-        OP_CHECK_IF((keySharedPrefixType != fiaInfo.inputKvType),
-            OP_LOGE(fiaInfo.opName,
-                "The datatype of keySharedPrefix(%s) and key/value(%s) are different. The datatype of keySharedPrefix "
-                "and key/value must be the same",
-                DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF((keySharedPrefixType != valueSharedPrefixType),
-            OP_LOGE(fiaInfo.opName,
-                "The datatype of keySharedPrefix(%s) and valueSharedPrefix(%s) are different. The datatype "
-                "of keySharedPrefix and valueSharedPrefix must be the same.",
-                DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(valueSharedPrefixType).c_str()),
-            return ge::GRAPH_FAILED);
+        if (keySharedPrefixType != fiaInfo.inputKvType) {
+            std::string dtypeMsg = ToString(keySharedPrefixType) + " and " + ToString(fiaInfo.inputKvType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and key/value",
+                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and key/value must be the same.");
+            return ge::GRAPH_FAILED;
+        }
+        if (keySharedPrefixType != valueSharedPrefixType) {
+            std::string dtypeMsg = ToString(keySharedPrefixType) + " and " + ToString(valueSharedPrefixType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and value_shared_prefix must be the same.");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -86,14 +86,16 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         auto &valueSharedPrefixShape = fiaInfo.opParamInfo.valueSharedPrefix.tensor->GetStorageShape();
         auto &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
         // 第一维batch必须为1
-        OP_CHECK_IF((keySharedPrefixShape.GetDim(DIM_NUM_0) != 1),
-            OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of keySharedPrefix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF((valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1),
-            OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of valueSharedPrefix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
-            return ge::GRAPH_FAILED);
+        if (keySharedPrefixShape.GetDim(DIM_NUM_0) != 1) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
+                ToString(keySharedPrefixShape).c_str(), "The 1st axis of key_shared_prefix must be equal to 1.");
+            return ge::GRAPH_FAILED;
+        }
+        if (valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_shared_prefix",
+                ToString(valueSharedPrefixShape).c_str(), "The 1st axis of value_shared_prefix must be equal to 1.");
+            return ge::GRAPH_FAILED;
+        }
         // layout为BNSD和BSND情况下，N、D轴与key一致
         if (fiaInfo.kvLayout == FiaLayout::BNSD) {
             uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_1);
@@ -129,12 +131,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
                     "the layout of key is BNSD or BSND.", keySharedPrefixD, valueSharedPrefixD),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
-            OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
-                OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
-                return ge::GRAPH_FAILED);
+            if (keySharedPrefixS != valueSharedPrefixS) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                return ge::GRAPH_FAILED;
+            }
         }
         if (fiaInfo.kvLayout == FiaLayout::BSND) {
             uint32_t keySharedPrefixN = keySharedPrefixShape.GetDim(DIM_NUM_2);
@@ -170,12 +172,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
                     "the layout of key is BNSD or BSND.", keySharedPrefixD, valueSharedPrefixD),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
-            OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
-                OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
-                return ge::GRAPH_FAILED);
+            if (keySharedPrefixS != valueSharedPrefixS) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                return ge::GRAPH_FAILED;
+            }
         }
         // layout为BSH情况下H与key一致
         if (fiaInfo.kvLayout == FiaLayout::BSH) {
@@ -197,12 +199,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
                     "the layout of key is BSH.", keySharedPrefixH, valueSharedPrefixH),
                 return ge::GRAPH_FAILED);
             // keySharedPrefix和valueSharedPrefix的S应相等
-            OP_CHECK_IF((keySharedPrefixS != valueSharedPrefixS),
-                OP_LOGE(fiaInfo.opName,
-                    "The S axis of keySharedPrefix(%ld) and valueSharedPrefix(%ld) are different. "
-                    "The S axis of keySharedPrefix and valueSharedPrefix must be "
-                    "the same.", keySharedPrefixS, valueSharedPrefixS),
-                return ge::GRAPH_FAILED);
+            if (keySharedPrefixS != valueSharedPrefixS) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                    (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -246,21 +248,24 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
     }
     int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
-    OP_CHECK_IF((actualSharedPrefixLenData > keySharedPrefixS),
-        OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%lld) can not be greater than "
-            "keySharedPrefixS(%u).", actualSharedPrefixLenData, keySharedPrefixS),
-        return ge::GRAPH_FAILED);
+    if (actualSharedPrefixLenData > keySharedPrefixS) {
+        std::string reason = "The value of actual_shared_prefix_len cannot be greater than keySharedPrefixS: " +
+            std::to_string(keySharedPrefixS) + ".";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_shared_prefix_len",
+            std::to_string(actualSharedPrefixLenData).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF((actualSharedPrefixLenData > valueSharedPrefixS),
         OP_LOGE(fiaInfo.opName,
             "actualSharedPrefixLen(%lld) can not be greater than "
             "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((actualSharedPrefixLenData < 0),
-        OP_LOGE(fiaInfo.opName,
-                "actualSharedPrefixLen(%lld) can not be "
-                "less than 0.", actualSharedPrefixLenData),
-            return ge::GRAPH_FAILED);
+    if (actualSharedPrefixLenData < 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_shared_prefix_len",
+            std::to_string(actualSharedPrefixLenData).c_str(),
+            "The value of actual_shared_prefix_len cannot be less than 0.");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

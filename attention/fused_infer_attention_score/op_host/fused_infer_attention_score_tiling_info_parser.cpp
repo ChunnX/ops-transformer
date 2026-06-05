@@ -94,11 +94,11 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
          opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() != 0) ||
         (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() != 0 &&
          opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-        OP_LOGE(opName_,
-                "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while "
-                "the other is not",
-                opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
-                opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize());
+        std::string sizesStr = opParamInfo_.query.shape->GetStorageShape().GetShapeSize() + " and " +
+            opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
+        std::string reason = "The shape sizes of query and attention_out must be both greater than 0 or both equal to 0."
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "query and attention_out",
+            sizesStr.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
@@ -448,9 +448,10 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
         bIdx++;
     }
-    OP_CHECK_IF(bIdx == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", name.c_str()),
-                return ge::GRAPH_FAILED);
+    if (bIdx == 0) {
+        OP_LOGE_FOR_INVALID_TENSORNUM(fiaInfo.opName, name.c_str(),
+            std::to_string(bIdx).c_str(), ">0");
+    }
     cache.resize(bIdx);
     return ge::GRAPH_SUCCESS;
 }
@@ -464,12 +465,11 @@ ge::graphStatus FiaInfoParser::GetKvCache()
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(kCache_.size() != vCache_.size(),
-                OPS_REPORT_VECTOR_INNER_ERR(
-                    context_->GetNodeName(),
-                    "tensor list of %s has %zu tensor, but tensor list of %s has %zu tensor, they should be equal.",
-                    KEY_NAME.c_str(), kCache_.size(), VALUE_NAME.c_str(), vCache_.size()),
-                return ge::GRAPH_FAILED);
+    if (kCache_.size() != vCache_.size()) {
+        std::string numsStr = std::to_string(kCache_.size()) + " and " + std::to_string(vCache_.size());
+        OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(fiaInfo.opName, "key and value",
+            numsStr.c_str(), "The tensor nums in key and value must be the same.");
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -716,7 +716,7 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
     if (antiQuantFlag_) {
         uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
         if (dimNum != 2U) {
-            OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "block_table", std::to_string(dimNum).c_str(), "2");
             return ge::GRAPH_FAILED;
         }
         maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -763,7 +763,7 @@ ge::graphStatus FiaInfoParser::GetBlockTableDim2()
 {
     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
     if (dimNum != 2U) {
-        OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "block_table", std::to_string(dimNum).c_str(), "2");
         return ge::GRAPH_FAILED;
     }
     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -886,12 +886,13 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         }
         uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
         uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
-        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName_,
-                        "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
-                        queryRopeHeadDim, keyRopeHeadDim),
-                    return GRAPH_FAILED);
+        if (queryRopeHeadDim != keyRopeHeadDim) {
+            std::string shapesStr = ToString(opParamInfo_.queryRope.tensor->GetStorageShape()) + " and " +
+                ToString(opParamInfo_.keyRope.tensor->GetStorageShape());
+            std::string reason = "D of query_rope must be equal to D of key_rope.";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query_rope and key_rope", shapesStr.c_str(), reason.c_str());
+            return GRAPH_FAILED;
+        }
         ropeHeadDim_ = queryRopeHeadDim;
     }
     return ge::GRAPH_SUCCESS;
@@ -927,7 +928,8 @@ ge::graphStatus FiaInfoParser::GetN1Size()
     // 获取N1基准值
     int32_t numHeads = *(opParamInfo_.numHeads);
     if (numHeads <= 0) {
-        OP_LOGE(opName_, "%s is %d, it should be greater than 0.", QUERY_HEADS_NUM_NAME.c_str(), numHeads);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, QUERY_HEADS_NUM_NAME.c_str, std::to_string(numHeads).c_str(),
+            "The value of num_heads must be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     n1Size_ = static_cast<uint32_t>(numHeads);
@@ -939,7 +941,8 @@ ge::graphStatus FiaInfoParser::GetN2Size()
     // 获取N2基准值
     int32_t kvHeadNums = *(opParamInfo_.kvHeadNums);
     if (kvHeadNums < 0) {
-        OP_LOGE(opName_, "%s is %d, it should be greater than or equal to 0.", KV_HEADS_NUM_NAME.c_str(), kvHeadNums);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, KV_HEADS_NUM_NAME.c_str, std::to_string(kvHeadNums).c_str(),
+            "The value of num_key_value_heads must be greater than or equal to 0.");
         return ge::GRAPH_FAILED;
     }
     n2Size_ = (kvHeadNums == 0) ? n1Size_ : static_cast<uint32_t>(kvHeadNums);
@@ -1073,7 +1076,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
                 attenMaskBatchStride_ = 0;
             }
         } else {
-            OP_LOGE(opName_, "mask matrix dim only support 2/3/4.");
+            std::string reason = "The shape dim of atten_mask must be within the range 2/3/4.";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "atten_mask",
+                std::to_string(maskDimNum).c_str(), reason.c_str());
         }
         if (*opParamInfo_.sparseMode == 0U || *opParamInfo_.sparseMode == 1U) {
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
@@ -1126,9 +1131,11 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     const gert::StorageShape *pseShiftShape = context_->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
-        OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
-                    OP_LOGE(opName_, "PseType(%ld) is not supported, pseType must be 0.", pseType_),
-                    return ge::GRAPH_FAILED);
+        if (pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "pse_type", std::to_string(pseType_).c_str(),
+                "The value of pse_type must be 0.");
+            return ge::GRAPH_FAILED;
+        }
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
         pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {

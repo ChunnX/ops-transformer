@@ -29,6 +29,7 @@ using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
+using namespace Ops::Base;
 
 constexpr int32_t PSE_SHIFT_MAX = 1048576;  // 2^20
 constexpr int32_t PSE_SHIFT_MIN = -1048576; // -2^20
@@ -48,9 +49,11 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
     }
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
     // pseType支持范围为0
-    OP_CHECK_IF((pseType != PSE_OUTER_MUL_ADD_TYPE),
-                OP_LOGE(fiaInfo.opName, "pseType(%ld) is not supported. pseType must be 0.", pseType),
-                return ge::GRAPH_FAILED);
+    if (pseType != PSE_OUTER_MUL_ADD_TYPE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type",
+            std::to_string(pseType).c_str(), "The value of pse_type must be 0.");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -111,12 +114,12 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         // pseType为2或3时，使能alibi，pseShist的shape应为(N)
         uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
         gert::Shape expectedShapeN = gert::Shape({numHeads});
-        OP_CHECK_IF((pseShiftShape != expectedShapeN),
-                    OP_LOGE(fiaInfo.opName,
-                            "The shape of pseShift is not supported. The shape of pseShift must be [N]([%u]) when "
-                            "pseType is 2 or 3.",
-                            numHeads),
-                    return ge::GRAPH_FAILED);
+        if (pseShiftShape != expectedShapeN) {
+            std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +"]) when pse_type is 2 or 3.";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
+                                                  reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
         uint32_t batchSize = fiaInfo.bSize;
         uint32_t n1Size = fiaInfo.n1Size;
@@ -143,24 +146,24 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         }
         if (pseShiftS1 > 1) {
             // P_S1 > 1分支
-            OP_CHECK_IF((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
-                            (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen),
-                        OP_LOGE(fiaInfo.opName,
-                                "pseShift shape must be [1 or %u,%u,>=%u,>=%u], "
-                                "but now is [%u,%u,%u,%u].",
-                                batchSize, n1Size, s1Size, s2Size + actualSharedPrefixLen, pseShiftBatch, pseShiftN,
-                                pseShiftS1, pseShiftS2),
-                        return ge::GRAPH_FAILED);
+            if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
+                (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
+                std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
+                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" + std::to_string(S2 + actualSharedPrefixLen) + "].";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
+                                                      reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
         } else {
             // P_S1 = 1分支
-            OP_CHECK_IF((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
-                            (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen),
-                        OP_LOGE(fiaInfo.opName,
-                                "The shape of pseShift must be [1 or %u,%u,1,>=%u], "
-                                "but now is [%u,%u,%u,%u].",
-                                batchSize, n1Size, s2Size + actualSharedPrefixLen, pseShiftBatch, pseShiftN, pseShiftS1,
-                                pseShiftS2),
-                        return ge::GRAPH_FAILED);
+            if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
+                (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
+                std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
+                    std::to_string(n1Size) + ", 1, >=" + std::to_string(S2+actualSharedPrefixLen) + "].";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
+                                                      reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -256,12 +259,12 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         const int64_t *qStartIdxs = qStartIdxTensor->GetData<int64_t>();
         if (qStartIdxs != nullptr) {
             qStartIdx = qStartIdxs[0];
-            OP_CHECK_IF(qStartIdx > INT32_MAX || qStartIdx < INT32_MIN,
-                        OP_LOGE(fiaInfo.opName,
-                                "qStartIdx(%ld) is not supported. "
-                                "qStartIdx should belongs to [-2147483648, 2147483647].",
-                                qStartIdx),
-                        return ge::GRAPH_FAILED);
+            if (qStartIdx > INT32_MAX || qStartIdx < INT32_MIN) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "q_start_idx",
+                    std::to_string(qStartIdx).c_str(),
+                    "The value of q_start_idx must be [-2147483648, 2147483647].");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     // kvStartIdx的取值范围应满足[-2147483648, 2147483647]
@@ -269,21 +272,21 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
         const int64_t *kvStartIdxs = kvStartIdxTensor->GetData<int64_t>();
         if (kvStartIdxs != nullptr) {
             kvStartIdx = kvStartIdxs[0];
-            OP_CHECK_IF(kvStartIdx > INT32_MAX || kvStartIdx < INT32_MIN,
-                        OP_LOGE(fiaInfo.opName,
-                                "kvStartIdx(%ld) is not supported. "
-                                "kvStartIdx should belongs to [-2147483648, 2147483647].",
-                                kvStartIdx),
-                        return ge::GRAPH_FAILED);
+            if (kvStartIdx > INT32_MAX || kvStartIdx < INT32_MIN) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "kv_start_idx",
+                    std::to_string(kvStartIdx).c_str(),
+                    "The value of kv_start_idx must be [-2147483648, 2147483647].");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     // kvStartIdx - qStartIdx的取值范围应满足[-1048576, 1048576]
-    OP_CHECK_IF((kvStartIdx - qStartIdx > PSE_SHIFT_MAX) || (kvStartIdx - qStartIdx) < PSE_SHIFT_MIN,
-                OP_LOGE(fiaInfo.opName,
-                        "kvStartIdx - qStartIdx(%ld) is not supported. "
-                        "kvStartIdx - qStartIdx should belongs to [-1048576, 1048576].",
-                        kvStartIdx - qStartIdx),
-                return ge::GRAPH_FAILED);
+    if ((kvStartIdx - qStartIdx > PSE_SHIFT_MAX) || (kvStartIdx - qStartIdx) < PSE_SHIFT_MIN) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "kv_start_idx - q_start_idx",
+            std::to_string(kvStartIdx - qStartIdx).c_str(),
+            "The value of kv_start_idx - q_start_idx must be [-1048576, 1048576].");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
