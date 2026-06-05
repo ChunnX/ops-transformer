@@ -40,9 +40,9 @@
 #endif
 
 #else
-#ifdef NOT_DYNAMIC_COMPILE
-#include "../incre_flash_attention/incre_flash_attention.cpp"
-#include "../prompt_flash_attention/prompt_flash_attention.cpp"
+#ifdef __has_include("../../incre_flash_attention/op_kernel/incre_flash_attention_arch22.h")
+#include "../../incre_flash_attention/op_kernel/incre_flash_attention_arch22.h"
+#include "../../prompt_flash_attention/op_kernel/prompt_flash_attention_arch22.h"
 #else
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
