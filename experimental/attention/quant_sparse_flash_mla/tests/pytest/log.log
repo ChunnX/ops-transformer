@@ -1,0 +1,153 @@
+===== 执行单用例算子调测 =====
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0 -- /root/miniconda3/envs/cyp/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/c00951894/source/ops-transformer/attention/quant_sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+collecting ... ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+collected 1 item
+
+test_quant_sparse_flash_mla_single.py::test_quant_sparse_flash_mla[SCFA_decode_TND_FP16_PA_BBND_HIF8_B1_S11_S28192_D512_K128_000000] cpu执行中...
+template_run_mode = SCFA
+i_B = 0/1
+    i_N2 = 0/1
+      进度：0.0% | 步数：                           0/1
+mode:%s
+ SCFA
+test_data: {'Testcase_Name': 'quantSparseFlashMla_SCFA_decode_TND_FP16_PA_BBND_HIF8_1_64_1_1_8192_512_128_000000', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.uint8, 'ori_kv_type': torch.uint8, 'cmp_kv_type': torch.uint8, 'B': 1, 'S1': 1, 'S2': 8192, 'T1': 1, 'N1': 64, 'N2': 1, 'D': 512, 'K': 128, 'block_num1': 64, 'block_num2': 16, 'block_size1': 128, 'block_size2': 128, 'seqused_q': [1], 'cu_seqlens_q': [0, 1], 'seqused_ori_kv': [8192], 'seqused_cmp_kv': [2048], 'cu_seqlens_ori_kv': [0, 8192], 'cu_seqlens_cmp_kv': [0, 2048], 'cmp_residual_kv': [0], 'softmax_scale': 0.04419417, 'cmp_ratio': 4, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'qkv_quant_mode': 1, 'template_run_mode': 'SCFA', 'topk_value_mode': 1, 'return_softmax_lse': False, 'isSink': True}
+npu_quant_sparse_flash_mla_metadata...
+npu_quant_sparse_flash_mla...
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0154 - split_count:32768.0; max_diff_hd:10;
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0054 - ---------------------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0060 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0061 - ---------------------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000001 	 0.1829903 	 0.1132812 	 0.0697091 	 0.3809440
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000002 	 1.3101133 	 0.6718750 	 0.6382383 	 0.4871627
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000003 	 -0.7032760 	 -0.3046875 	 0.3985885 	 0.5667597
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000004 	 1.1749059 	 0.5898438 	 0.5850621 	 0.4979651
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000005 	 -1.6460272 	 -0.7812500 	 0.8647772 	 0.5253724
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000006 	 -3.1806254 	 -1.5312500 	 1.6493754 	 0.5185695
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000007 	 -2.6863112 	 -1.4140625 	 1.2722487 	 0.4736044
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000008 	 1.6556975 	 0.8164062 	 0.8392912 	 0.5069110
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000009 	 -1.1000564 	 -0.5351562 	 0.5649002 	 0.5135193
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00000010 	 1.4787213 	 0.7382812 	 0.7404400 	 0.5007299
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0070 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032759 	 -0.5432163 	 0.0869141 	 0.6301304 	 1.1599990
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032760 	 0.6530871 	 0.4375000 	 0.2155871 	 0.3301047
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032761 	 2.1740825 	 1.6640625 	 0.5100200 	 0.2345909
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032762 	 0.9097698 	 0.9882812 	 0.0785115 	 0.0862982
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032763 	 -1.4191495 	 -0.8242188 	 0.5949308 	 0.4192164
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032764 	 -2.0811310 	 -1.2343750 	 0.8467560 	 0.4068730
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032765 	 1.4218638 	 0.9062500 	 0.5156138 	 0.3626323
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032766 	 -1.1189133 	 -0.7578125 	 0.3611008 	 0.3227246
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032767 	 -0.7183294 	 -0.0361328 	 0.6821966 	 0.9496988
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0051 - 00032768 	 0.1845405 	 0.2226562 	 0.0381158 	 0.2065442
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0221 - ---------------------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0223 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0224 - ---------------------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0226 - 0.0078    	 0.000100  	 99.50%   	 4.626465%   	 Failed
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0229 - Max-RelativeError is: 1.999416. Threshold is: 10.
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0080 - Error Line-----------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0082 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0083 - ---------------------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000000 	 0.1829903 	 0.1132812 	 0.0697091 	 0.3809440
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000001 	 1.3101133 	 0.6718750 	 0.6382383 	 0.4871627
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000002 	 -0.7032760 	 -0.3046875 	 0.3985885 	 0.5667597
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000003 	 1.1749059 	 0.5898438 	 0.5850621 	 0.4979651
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000004 	 -1.6460272 	 -0.7812500 	 0.8647772 	 0.5253724
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000005 	 -3.1806254 	 -1.5312500 	 1.6493754 	 0.5185695
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000006 	 -2.6863112 	 -1.4140625 	 1.2722487 	 0.4736044
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000007 	 1.6556975 	 0.8164062 	 0.8392912 	 0.5069110
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000008 	 -1.1000564 	 -0.5351562 	 0.5649002 	 0.5135193
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0096 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000090 	 0.5788823 	 0.3496094 	 0.2292730 	 0.3960614
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000091 	 0.3483911 	 0.1630859 	 0.1853052 	 0.5318884
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000092 	 2.2541625 	 1.0937500 	 1.1604125 	 0.5147865
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000093 	 -1.1958258 	 -0.5390625 	 0.6567633 	 0.5492132
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000094 	 1.2789711 	 0.6250000 	 0.6539711 	 0.5113260
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000095 	 1.4171565 	 0.7187500 	 0.6984065 	 0.4928224
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000096 	 -1.9881569 	 -0.9921875 	 0.9959694 	 0.5009511
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000097 	 -3.3749955 	 -1.7109375 	 1.6640580 	 0.4930549
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0090 - 00000098 	 -1.9810777 	 -0.9453125 	 1.0357652 	 0.5228292
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0096 -      ... 	     ... 	     ... 	     ... 	     ...
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0101 - Max-RE line:---------------------------------------------------------------------------
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0109 - 00003570 	 -0.1397300 	 0.1396484 	 0.2793785 	 1.9994160
+[2026/06/05 08:22:11] [INFO]-result_compare_method.py:0116 - ---------------------------------------------------------------------------------------
+FAILED
+
+=================================== FAILURES ===================================
+_ test_quant_sparse_flash_mla[SCFA_decode_TND_FP16_PA_BBND_HIF8_B1_S11_S28192_D512_K128_000000] _
+
+param_combinations = {'B': 1, 'D': 512, 'K': 128, 'N1': 64, ...}
+
+    @pytest.mark.ci
+    @pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
+    def test_quant_sparse_flash_mla(param_combinations):
+>       qsmla(param_combinations)
+
+test_quant_sparse_flash_mla_single.py:134: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+param_combinations = {'B': 1, 'D': 512, 'K': 128, 'N1': 64, ...}
+
+    def qsmla(param_combinations):
+        global case_id
+    
+        # 填充None参数的默认值
+        params = utils.fill_none_params(param_combinations)
+    
+        # 生成测试用例名称
+        Testcase_Name = params['Testcase_Name']
+        if Testcase_Name is None:
+            ops_mode = 'prefill' if params['S1'] > 4 else "decode"
+            q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
+            kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+            Testcase_Name = f"quantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{case_id:06d}"
+            params['Testcase_Name'] = Testcase_Name
+    
+        # 输入参数的合法性校验
+        try:
+            check_valid_param.check_valid_param(params)
+        except ValueError as e:
+           pytest.skip(f"输入参数校验失败:{e}")
+    
+        # 生成测试数据及golden
+        test_data = quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=save_pt, save_path=pt_save_path)
+    
+        # 获得cpu结果(真值)和算子结果（测试值）
+        try:
+            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+                test_data, device_id=device_id)
+            result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        except Exception as e:
+            logging.exception(e)
+            result = "NPU ERROR"
+            fulfill_percent = 0
+    
+        case_id += 1
+    
+        utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    
+        if result in ("NPU ERROR", "Failed"):
+>           pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+E           Failed: 用例执行失败:quantSparseFlashMla_SCFA_decode_TND_FP16_PA_BBND_HIF8_1_64_1_1_8192_512_128_000000 精度:4.63%
+
+test_quant_sparse_flash_mla_single.py:118: Failed
+=========================== short test summary info ============================
+FAILED test_quant_sparse_flash_mla_single.py::test_quant_sparse_flash_mla[SCFA_decode_TND_FP16_PA_BBND_HIF8_B1_S11_S28192_D512_K128_000000]
+============================== 1 failed in 8.32s ===============================
