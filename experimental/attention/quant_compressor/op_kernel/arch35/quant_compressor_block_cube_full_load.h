@@ -241,7 +241,7 @@ __aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::CopyXGmToL1(Local
     uint32_t nValue = copySeqCnt;
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = Align(copySeqCnt, 16);    // 1行变2行的行方向的偏移，需要16对齐
+    uint32_t dstNzC0Stride = Align(copySeqCnt, 16U);    // 1行变2行的行方向的偏移，需要16对齐
     CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
@@ -255,7 +255,7 @@ __aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::CopyWeightGmToL1(
     uint32_t nValue = constInfo_.dBaseSize;
     uint32_t dValue = kBase;
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = Align(2 * constInfo_.dBaseSize, 16); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+    uint32_t dstNzC0Stride = Align(2 * constInfo_.dBaseSize, 16U); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
     CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
     CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset],  nValue, dValue, srcDValue, dstNzC0Stride);
 }
