@@ -6594,17 +6594,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                     k_cache = torch.from_numpy(k_cache.astype(kv_dtype))
                     v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
 
-                # tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
-                #                               mode='rewrite',
-                #                               tensors=[k_cache],
-                #                               params=params,
-                #                               data_dtype=params['dtype_input'][1])
-                # tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
-                #                               mode='rewrite',
-                #                               tensors=[v_cache],
-                #                               params=params,
-                #                               data_dtype=params['dtype_input'][2])
-
     if flagList[15]:
         pfa_param['queryPaddingSize'] = torch_tensor_list[v_end_index + 11]
     if flagList[16]:
@@ -8504,9 +8493,6 @@ class FiaOpPreprocess():
             if self.op_params.is_mask_bs:
                 npu_m_tensor = npu_m_tensor.reshape(self.op_params.atten_mask.shape)
             atten_mask_index = FiaOpParam.get_param_index("atten_mask")
-            # tools.modify_alcnn_input_file(ids=atten_mask_index, origin_index=[atten_mask_index],
-            #                               type='tensor', mode='rewrite', tensors=torch.from_numpy(npu_m_tensor),
-            #                               params=self.params)
 
             if (sparse_mode == 0 or sparse_mode == 1) and (not self.op_params.is_mask_bs):
                 m_tensor = _np_broadcast_mask_n(cpu_m_tensor, self.op_params.atten_mask.shape, cpu_m_shape,
