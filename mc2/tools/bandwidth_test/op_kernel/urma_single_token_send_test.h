@@ -83,22 +83,20 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
     
                                        
+    __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
+    {
+        uint32_t index = rankId > epRankId_ ? rankId - 1 : rankId;
+        return context_->hcommHandle_[index];
+    }
+
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
-        if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
-        }
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
+         return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        if (rankId == epRankId_) {
-            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
-        }
-        uint32_t currRankId = rankId > epRankId_? rankId - 1 : rankId;
-        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)context_->epHcclBuffer_[rankId];
     }
 
         // 获取指定 rank 的通信窗口数据区地址
@@ -148,7 +146,6 @@ private:
 
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
-    __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
 
     uint32_t axisBS_{0};       // batch size (token数量)
@@ -355,8 +352,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
         //printf("START WRITR TOKEN");
-        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, urmaLocaLAddr, hAlignSize_);
     }
 }
 
@@ -463,10 +459,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
-        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        hcomm_.Drain(context_->hcommHandle_[currRankId]);
+        hcomm_.Drain(GetCommHandle(dstRankId));
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), dstRankGM, srcRankGM, UB_ALIGN);
     }
 }
 
