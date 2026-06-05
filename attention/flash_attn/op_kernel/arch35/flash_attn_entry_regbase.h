@@ -93,8 +93,8 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                               dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
                               bmm2Write2Ub, splitD>;
     using CubeBlockDummy =
-        BaseApi::CubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                               dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FANoQuantGqaBlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                            dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
     using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlock, VecBlockDummy, VecBlockDummy>;
