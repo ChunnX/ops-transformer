@@ -100,7 +100,7 @@ static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext *ho
     para.bias = host_api_ctx->GetOptionalInputTensor(INDEX_IN_BIAS);
 
     para.x1Acl = ConvertMmType(x1, false);
-    OPS_CHECK(para.x1Acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1Acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x1Acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1Acl"), return ge::GRAPH_FAILED);
 
     // 获取x1_quant_mode和x2_quant_mode
     const int64_t *x1QuantModePtr = attrs->GetInt(INDEX_ATTR_X1_QUANT_MODE);
@@ -119,7 +119,7 @@ static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext *ho
         const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
         para.x2Acl = ConvertMmType(x2, transX2);
     }
-    OPS_CHECK(para.x2Acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2Acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x2Acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2Acl"), return ge::GRAPH_FAILED);
 
     return ge::SUCCESS;
 }

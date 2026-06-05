@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -25,5 +25,13 @@ if (BUILD_OPS_RTY_KERNEL)
     )
 else()
     add_modules_sources(OPTYPE block_sparse_attention_grad ACLNNTYPE aclnn_exclude)
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ./arch22/block_sparse_attention_grad_tiling_arch22.cpp
+        ./arch35/block_sparse_attention_grad_tiling_arch35.cpp
+    )
 endif()
 

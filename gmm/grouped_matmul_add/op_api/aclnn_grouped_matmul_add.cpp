@@ -225,7 +225,7 @@ static aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSizeCommon(gmm_add_advanced:
     auto executorPtr = uniqueExecutor.get();
     // 固定写法，参数检查
     auto ret = CheckParams(params, opName);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // any axis is zero return empty tensor
     if (CheckZeroShape(params) != ACLNN_SUCCESS) {

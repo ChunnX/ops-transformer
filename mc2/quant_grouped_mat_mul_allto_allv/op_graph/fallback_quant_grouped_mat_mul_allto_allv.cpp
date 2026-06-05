@@ -224,7 +224,7 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
 static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
     OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Start QuantGroupedMatMulAlltoAllvFallback.");
-    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "host_api_ctx is null"),
+    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "host_api_ctx"),
                return ge::GRAPH_FAILED);
 
     QuantGroupedMatMulAlltoAllvInputs inputs;
@@ -234,7 +234,7 @@ static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteCon
     }
 
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr, OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "attrs is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "attrs"), return ge::GRAPH_FAILED);
 
     QuantGroupedMatMulAlltoAllvAttrs attrsData;
     ret = GetAttrs(attrs, attrsData);
