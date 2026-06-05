@@ -92,6 +92,9 @@ public:
                 tilingData_->taskTilingInfo.combineExpertSize * tilingData_->taskTilingInfo.epWorldSize;
             yOffsetListGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += yOffsetListSize;
+            if (tilingData_->isPermuteOut) {
+                commOp.InitOutputPermuteBuffer(commOutGm_, permuteOutOptionalGM);
+            }
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
@@ -171,6 +174,7 @@ private:
     {
         uint32_t commTurn = tilingData_->taskTilingInfo.commTurn;
         uint32_t combineExpertSize = tilingData_->taskTilingInfo.combineExpertSize;
+        bool isPermuteOut = tilingData_->isPermuteOut;
 
         for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
             uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
@@ -188,6 +192,18 @@ private:
             SyncAll<false>();
 
             computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
+
+            if (isPermuteOut) {
+                uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
+
+                if ASCEND_IS_AIC {
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
+                }
+                if ASCEND_IS_AIV {
+                    CrossCoreWaitFlag(notifyFlagId);
+                    commOp.PermuteOutput(turnIdx, realCombineSize);
+                }
+            }
         }
     }
 
