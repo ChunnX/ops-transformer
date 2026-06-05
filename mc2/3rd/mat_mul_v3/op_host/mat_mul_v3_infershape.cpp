@@ -84,7 +84,7 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
                 shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "bias",
                     (std::to_string(shape_bias_new.GetDim(bias_dim - 1))).c_str(),
-                    "The last dimension of bias must be the same as the n dimension of output."),
+                    "The shape dim of bias must be the same as the n dimension of output."),
                 return false);
         }
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) == UNKNOWN_DIM) {

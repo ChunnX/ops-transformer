@@ -86,12 +86,12 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     OP_TILING_CHECK((x1Dtype != x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1,x2",
                         (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "x1 and x2 dtype must be same"),
+                        "The dtype of x1 and x2 must be the same"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1,x2",
                         (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "dtype must be in non-quant range (float16/bf16)"),
+                        "The dtype of x1 and x2 must be in the non-quant range (float16/bf16)"),
                     return ge::GRAPH_FAILED);
     // 校验 bias 数据类型（如果存在
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
@@ -100,16 +100,16 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
         if (x1Dtype == ge::DT_BF16) {
             OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
                             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
-                                "when x1 is BF16, bias dtype must be FLOAT32"),
+                                "The dtype of bias must be FLOAT32 when x1 is BF16"),
                             return ge::GRAPH_FAILED);
         } else if (x1Dtype == ge::DT_FLOAT16) {
             OP_TILING_CHECK((x1Dtype != biasDtype),
                             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
-                                "when x1 is FLOAT16, bias dtype should be same as x1"),
+                                "The dtype of bias must be the same as that of x1 when x1 is FLOAT16"),
                             return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
-                    "non-quantized scene bias dtype only supports FLOAT16 and BF16");
+                    "The dtype of bias must be FLOAT16 or BF16 in non-quantized scene");
             return ge::GRAPH_FAILED;
         }
     }
@@ -117,14 +117,14 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null", "x1Scale and x2Scale must be nullptr in non-quant mode"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null", "The value of x1Scale and x2Scale must be nullptr in non-quant mode"), return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK((yDtype != x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
-                        "output y dtype should be same as input x dtype"),
+                        "The dtype of y must be the same as that of x"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

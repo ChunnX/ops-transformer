@@ -181,7 +181,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
     if (!compileInfo_.supportL0c2Out) {
         OP_TILING_CHECK(
             trans != Mc2QuantBatchMatmulV3Trans::B_TRANS,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", inputParams_.transA ? "true" : "false", "The value of x1 and x2 transpose must be [false, true]"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", inputParams_.transA ? "true" : "false", "The value of x1 and x2 transpose must be [false, true]."),
             return false);
     }
     return true;
@@ -287,13 +287,13 @@ void Mc2QuantBatchMatmulV3TilingBase::DoBatchFusion(uint64_t fusedDimValue)
 bool Mc2QuantBatchMatmulV3TilingBase::CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const
 {
     OP_TILING_CHECK(x1ShapeLen < MIN_DIM_NUM_ND || x2ShapeLen < MIN_DIM_NUM_ND,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be greater than 1"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be greater than 1."), return false);
     OP_TILING_CHECK(x1ShapeLen > MAX_DIM_NUM_ND || x2ShapeLen > MAX_DIM_NUM_ND,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be less than 7"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be less than 7."), return false);
 
     if (inputParams_.aDtype == ge::DT_INT4 && !inputParams_.isPertoken) {
         OP_TILING_CHECK(x2ShapeLen != A4W4_X2_LEN,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x2", std::to_string(x2ShapeLen).c_str(), "When the dtype of input is int4 without pertokenScale, the shape dim of x2 must be 2"), return false);
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x2", std::to_string(x2ShapeLen).c_str(), "When the dtype of input is int4 without pertokenScale, the shape dim of x2 must be 2."), return false);
     }
     return true;
 }
@@ -452,7 +452,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     inputParams_.batchB = GetBatchSize(x2Shape);
     AnalyzeBatchInfo(context_->GetInputShape(0)->GetOriginShape(), context_->GetInputShape(1)->GetOriginShape());
     OP_TILING_CHECK(!InferOutBatchDim(x1Shape, x2Shape),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", "", "The batch dimension cannot be broadcasted"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", "", "The batch dimension cannot be broadcasted."), return false);
     if (!SetQuantMode(scaleShape, pertokenShape)) {
         return false;
     }
@@ -462,14 +462,14 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     OP_TILING_CHECK(!CheckOutputShapeAvailable(),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "output",
                         (std::to_string(inputParams_.mSize) + "x" + std::to_string(inputParams_.nSize) + "x" + std::to_string(inputParams_.batchC)).c_str(),
-                        "The product of output shape dimensions must be within the boundary of INT64_MAX"),
+                        "The product of output shape dimensions must be within the boundary of INT64_MAX."),
                                           return false);
     uint64_t fusedDimValue = inputParams_.mSize * inputParams_.batchA;
     int8_t resultCheckFusionBatchA = CheckFusionBatchA(x1Shape, x2Shape, biasShape->GetStorageShape(), fusedDimValue);
     OP_TILING_CHECK(resultCheckFusionBatchA == OUTPUT_INFER_FAIL,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "M",
                         std::to_string(fusedDimValue).c_str(),
-                        "The fused M should not exceed INT32_MAX in a4w4 case."), return false);
+                        "The fused M must not exceed INT32_MAX in a4w4 case."), return false);
     if (resultCheckFusionBatchA == OUTPUT_INFER_SUCCESS) {
         DoBatchFusion(fusedDimValue);
     }
@@ -523,10 +523,10 @@ bool Mc2QuantBatchMatmulV3TilingBase::ReCalcGroupSize(uint64_t &groupSize, uint6
             scaleName =  "scale";
         }
         OP_TILING_CHECK(scaleSize == 0ULL,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", std::to_string(scaleSize).c_str(), "The shape dimension of input cannot be 0"),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", std::to_string(scaleSize).c_str(), "The shape dimension of input cannot be 0."),
             return false);
         OP_TILING_CHECK(inputSize % scaleSize != 0ULL,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The group_size in the dimension cannot be inferred"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The group_size in the dimension cannot be inferred."),
             return false);
         groupSize = inputSize / scaleSize;
     }

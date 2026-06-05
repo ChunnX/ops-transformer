@@ -586,7 +586,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecon
     auto xOutDesc = context_->GetOutputDesc(X_OUT_INDEX);
     OP_TILING_CHECK(xOutDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "xOutDesc"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((xOutDesc->GetDataType() != expandXDesc->GetDataType()),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "xOut", Ops::Base::ToString(xOutDesc->GetDataType()).c_str(), (std::string("should be equal to expandX dataType ") + Ops::Base::ToString(expandXDesc->GetDataType())).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "xOut", Ops::Base::ToString(xOutDesc->GetDataType()).c_str(), "The dtype of xOut must be the same as that of expandX."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

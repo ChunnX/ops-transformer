@@ -96,7 +96,7 @@ bool QuantBmmReduceScatterTiling::CommonParamCheck() const
     auto quantscale = context_->GetOptionalInputShape(QUANTSCALE_INDEX);
     OP_TILING_CHECK(
         quantscale != nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantscale", "not nullptr", "quantscale must be nullptr"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantscale", "not nullptr", "The value of quantscale must be nullptr"),
         return false);
 
     auto amaxShape = context_->GetOutputShape(AMAX_INDEX);
@@ -105,7 +105,7 @@ bool QuantBmmReduceScatterTiling::CommonParamCheck() const
     }
     OP_TILING_CHECK((amaxShape != nullptr) && (amaxShape->GetStorageShape().GetDim(0) != 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "amax", std::to_string(amaxShape->GetStorageShape().GetDim(0)).c_str(),
-                              "amax must be nullptr or empty tensor"),
+                              "The value of amax must be nullptr or empty tensor"),
         return false);
     return true;
 }
@@ -155,7 +155,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
                 "The value of groupSize must be [128, 128, 128] in perblock scene"),
             return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "unknown", "must be pertensor or perblock or mxfp");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMode", "unknown", "The value of quantMode must be pertensor, perblock or mxfp");
         return ge::GRAPH_FAILED;
     }
 
@@ -244,7 +244,7 @@ bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageSha
                                                           const gert::StorageShape* x2ScaleShape) const
 {
     auto biasDesc = context_->GetOptionalInputShape(static_cast<size_t>(BIAS_INDEX));
-    OP_TILING_CHECK(biasDesc != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "bias", "not nullptr", "bias must be nullptr in perblock scene"),
+    OP_TILING_CHECK(biasDesc != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "bias", "not nullptr", "The value of bias must be nullptr in perblock scene"),
                     return false);
 
     auto x1shape = context_->GetInputShape(X1_INDEX);

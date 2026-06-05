@@ -104,7 +104,7 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
     } else if (strcmp(context_->GetNodeType(), IMRN) == 0) {
         MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "nodeType", context_->GetNodeType(), "unsupported node type");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "nodeType", context_->GetNodeType(), "The value of nodeType must be MRN or IMRN");
         return ge::GRAPH_FAILED;
     }
     MC2_CHECK_NOTNULL_RET(context_->GetNodeName(), helper_);

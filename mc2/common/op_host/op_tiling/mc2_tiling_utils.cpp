@@ -179,13 +179,13 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
   if (rankDim == 2) {  // 如果是2p
     if ((debugCommAlg != 0) && (debugCommAlg != COMM_ALG_FULL_MESH)) {
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "must be 0 or COMM_ALG_FULL_MESH when rankDim is 2");
+          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be 0 or COMM_ALG_FULL_MESH when rankDim is 2");
       return COMM_ALG_DEFAULT;
     }
     return COMM_ALG_FULL_MESH;
   } else if (rankDim <= 0) {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "rankDim",
-        std::to_string(rankDim).c_str(), "rank dimension must be positive");
+          std::to_string(rankDim).c_str(), "The value of rankDim must be positive");
     return COMM_ALG_DEFAULT;
   }
 
@@ -203,7 +203,7 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     if ((debugCommAlg != 0) &&
         (debugCommAlg != COMM_ALG_FULL_MESH)) {  // 环境变量设置非fullmesh
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "must be 0 or COMM_ALG_FULL_MESH when commSets is COMM_MESH");
+          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be 0 or COMM_ALG_FULL_MESH when commSets is COMM_MESH");
       return COMM_ALG_DEFAULT;
     }
     return COMM_ALG_FULL_MESH;
@@ -214,7 +214,7 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     if ((debugCommAlg != COMM_ALG_DOUBLE_RING) &&
         (debugCommAlg != COMM_ALG_SWITCH_WING)) {
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "must be COMM_ALG_DOUBLE_RING or COMM_ALG_SWITCH_WING");
+          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be COMM_ALG_DOUBLE_RING or COMM_ALG_SWITCH_WING");
       return COMM_ALG_DEFAULT;
     }
     return debugCommAlg;
@@ -281,7 +281,7 @@ ge::graphStatus GetMatmulV3PriorityPolicy(
 
   if (priorities.empty()) {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "npuArch",
-        std::to_string(static_cast<uint32_t>(npuArch)).c_str(), "can't find suitable matmul priorities");
+        std::to_string(static_cast<uint32_t>(npuArch)).c_str(), "The value of npuArch is not supported");
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;

@@ -208,13 +208,13 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
     // 如果1行数据就超通信数据量限制，那么任何M切分方式都无法满足
     uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul output size", std::to_string(sizeOfSingleM).c_str(), "should not exceed 256MB"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul output size", std::to_string(sizeOfSingleM).c_str(), "The value of matmul output size must not exceed 256MB"),
         return ge::GRAPH_FAILED);
     // 如果按通信最大次数切分，能够满足通信数据量限制，那么继续做tiling
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM),
         mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size", std::to_string(sizeOfSplitM).c_str(), "should not exceed 256MB"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size", std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -552,7 +552,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckAxisSize()
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             context_->GetNodeName(), "x2",
             ("[first=" + std::to_string(x2FirstDim) + ", last=" + std::to_string(x2LastDim) + "]").c_str(),
-            "exceeds upper limit"),
+            "The shape of x2 must not exceed upper limit"),
         return ge::GRAPH_FAILED);
 
     return CheckQuantEmptyTensor();

@@ -493,7 +493,7 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext* context)
     OP_TILING_CHECK(neededSize > viableWindowSize,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "neededSize",
             (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
-            "needed size should not be greater than viable window size"),
+            "The value of neededSize must not be greater than viable window size"),
         return ge::GRAPH_FAILED);
  
     // Set WorkSpace

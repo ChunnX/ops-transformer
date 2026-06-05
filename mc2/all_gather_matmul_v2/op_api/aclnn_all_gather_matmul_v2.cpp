@@ -205,7 +205,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     const auto kValX2 = x2->GetViewShape().GetDim(0);
     if (kValX1 != kValX2) {
         std::string shapeMsg = std::to_string(kValX1) + " and " + std::to_string(kValX2);
-        std::string reasonMsg = "The k-axis of x1 should be the same as x2";
+        std::string reasonMsg = "The k-axis of x1 and x2 must be the same";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnAllGatherMatmulV2", "x1 and x2",
             shapeMsg.c_str(), reasonMsg.c_str());
         return false;
@@ -213,7 +213,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
     if ((kValX1 < KVALUE_MIN) || (kValX1 >= KVALUE_MAX)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
-            std::to_string(kValX1).c_str(), "The k-axis should be in range [256, 65535)");
+            std::to_string(kValX1).c_str(), "The value of x1 k-axis must be in the range [256, 65535)");
         return false;
     }
 
@@ -221,7 +221,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     const auto nVal2 = output->GetViewShape().GetDim(1);
     if (nVal1 != nVal2) {
         std::string nAxisMsg = std::to_string(nVal1) + " and " + std::to_string(nVal2);
-        std::string nReasonMsg = "The n-axis of x2 should be the same as output";
+        std::string nReasonMsg = "The n-axis of x2 and output must be the same";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnAllGatherMatmulV2", "x2 and output",
             nAxisMsg.c_str(), nReasonMsg.c_str());
         return false;
@@ -264,7 +264,7 @@ static aclnnStatus CheckParamsAndShapeForAIVMode(const aclTensor *x1, const aclT
     const auto kValX2 = x2->GetViewShape().GetDim(isViewTransB ? 1 : 0);
     if (kValX1 != kValX2) {
         std::string shapeMsg = std::to_string(kValX1) + " and " + std::to_string(kValX2);
-        std::string reasonMsg = "The k-axis of x1 should be the same as x2";
+        std::string reasonMsg = "The k-axis of x1 and x2 must be the same";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnAllGatherMatmulV2", "x1 and x2",
             shapeMsg.c_str(), reasonMsg.c_str());
         return ACLNN_ERR_PARAM_INVALID;
@@ -274,7 +274,7 @@ static aclnnStatus CheckParamsAndShapeForAIVMode(const aclTensor *x1, const aclT
         const auto kVal = gatherOut->GetViewShape().GetDim(1);
         if (kValX1 != kVal) {
             std::string kMsg = std::to_string(kValX1) + " and " + std::to_string(kVal);
-            std::string kReason = "The k-axis of x1 should be the same as gatherOut";
+            std::string kReason = "The k-axis of x1 and gatherOut must be the same";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnAllGatherMatmulV2", "x1 and gatherOut",
                 kMsg.c_str(), kReason.c_str());
             return ACLNN_ERR_PARAM_INVALID;
@@ -285,7 +285,7 @@ static aclnnStatus CheckParamsAndShapeForAIVMode(const aclTensor *x1, const aclT
     const auto nVal2 = output->GetViewShape().GetDim(1);
     if (nVal1 != nVal2) {
         std::string nMsg = std::to_string(nVal1) + " and " + std::to_string(nVal2);
-        std::string nReason = "The n-axis of x2 should be the same as output";
+        std::string nReason = "The n-axis of x2 and output must be the same";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnAllGatherMatmulV2", "x2 and output",
             nMsg.c_str(), nReason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
@@ -347,7 +347,7 @@ static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
     if (IsFp16orBf16Input(x1)) {
         if (amaxOut != nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "amaxOut",
-                "non-null", "amaxOut is not supported when input datatype is fp16/bf16");
+                "non-null", "The value of amaxOut must be nullptr when the dtype of input is fp16/bf16");
             return false;
         }
     }
@@ -415,7 +415,7 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
     } else {
         // k will be checked again in following CheckShape()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
-            "0", "k-axis should not be 0");
+            "0", "The value of x1 k-axis must not be 0");
     }
     return false;
 }
@@ -539,7 +539,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
-                "non-contiguous", "x2 must be contiguous when not transposed");
+                "non-contiguous", "The value of x2 must be contiguous when not transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -573,7 +573,7 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const ac
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulV2", "npuArch",
             std::to_string(static_cast<int>(GetCurrentPlatformInfo().GetCurNpuArch())).c_str(),
-            "DAV_3510 or DAV_2201");
+            "The value of npuArch must be DAV_3510 or DAV_2201");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ret;

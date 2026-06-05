@@ -73,7 +73,7 @@ bool Mc2WeightQuantBatchMatmulV2RegBase::IsCapable()
         matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "antiQuantScaleDtype",
             ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->antiQuantScaleDtype).GetString(),
-            "does not support antiQuantScaleDtype is uint64"),
+            "The value of antiQuantScaleDtype is not supported as uint64."),
         return false);
     return true;
 }

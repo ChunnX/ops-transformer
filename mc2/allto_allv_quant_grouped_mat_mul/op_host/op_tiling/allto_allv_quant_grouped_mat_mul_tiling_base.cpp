@@ -570,7 +570,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
         !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr) &&
         (outputMmYStorageShape != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != DIM_ZERO))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "mmX/mmWeight/mmY",
-            "inconsistent", "should all be nullptr or all be not nullptr");
+            "inconsistent", "The values of mmX/mmWeight/mmY must be the same.");
         return ge::GRAPH_FAILED;
     }
     if (context_->GetOutputShape(OUTPUT_MM_Y_INDEX) != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != DIM_ZERO) {
@@ -613,7 +613,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
     if (!permuteOutFlag_) {
         if (context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) != nullptr &&
             context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum() != DIM_ZERO) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "permuteOut", "present", "should be null");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "permuteOut", "present", "The value of permuteOut must be nullptr.");
             return ge::GRAPH_FAILED;
         }
         OP_LOGD(context_->GetNodeName(), "end CheckPermuteOutShapeInfo.");

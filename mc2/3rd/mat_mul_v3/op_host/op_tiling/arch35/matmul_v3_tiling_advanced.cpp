@@ -84,7 +84,7 @@ ge::graphStatus GetInputDims(const gert::Shape& storageShape, const gert::Shape&
             ops::CeilAlign(dims[1], static_cast<int64_t>(BLOCK_BYTE_SIZE / dtypeSize)) != storageShape1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("Mc2MatMulV3", "x1 and x2",
                 (std::to_string(dims[0]) + " and " + std::to_string(dims[1])).c_str(),
-                "NZ aligned original shape is not equal to storage shape.");
+                "The shape of x1 and x2 must be equal to storage shape after NZ alignment.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -114,12 +114,12 @@ ge::graphStatus IsValidDtype(const Mc2MatMulV3Args &args)
     if (args.hasBias) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(args.opName, "x1, x2, output and bias",
             Ops::Base::ToString(args.aType).c_str(),
-            "Unsupported data type combination.");
+            "The dtype of x1, x2, output and bias is not supported.");
         return ge::GRAPH_FAILED;
     } else {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(args.opName, "x1, x2 and output",
             Ops::Base::ToString(args.aType).c_str(),
-            "Unsupported data type combination.");
+            "The dtype of x1, x2 and output is not supported.");
         return ge::GRAPH_FAILED;
     }
 }
@@ -140,7 +140,7 @@ ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const Mc2Mat
             !isMatrix(context.GetInputShape(1)->GetOriginShape())) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(args.opName, "x1 and x2",
                 std::to_string(context.GetInputShape(0)->GetOriginShape().GetDimNum()).c_str(),
-                "Both inputs should be 2D matrices.");
+                "The shape dim of x1 and x2 must be 2D.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -154,7 +154,7 @@ ge::graphStatus OpSpecificCheck(const gert::TilingContext &context, const Mc2Mat
         if (biasValue != nOriValue) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "bias",
                 std::to_string(biasValue).c_str(),
-                "The last dimension of bias should be equal to the n dimension of output.");
+                "The shape dim of bias must be equal to the n dimension of output.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -178,7 +178,7 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
                       args.bDtypeSize, args.bFormat, knDims) != ge::GRAPH_SUCCESS)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(args.opName, "x1 and x2",
             std::to_string(context.GetInputShape(0)->GetStorageShape().GetDimNum()).c_str(),
-            "Input dims too small for given format.");
+            "The shape dim of x1 and x2 is too small for given format.");
         return ge::GRAPH_FAILED;
     }
     uint64_t kIdxA = args.isATrans ? 0ULL : 1ULL;
@@ -187,7 +187,7 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
     if (k != knDims[kIdxB]) {
       OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(args.opName, "x1 and x2",
           (std::to_string(k) + " and " + std::to_string(knDims[kIdxB])).c_str(),
-          "The k dimension of x1 and x2 should be the same.");
+          "The shape of x1 and x2 must be the same at the k dimension.");
       return ge::GRAPH_FAILED;
     }
     uint64_t mIdx = args.isATrans ? 1ULL : 0ULL;
@@ -203,7 +203,7 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
     if (!isValidDimValue(args.mValue) || !isValidDimValue(args.kValue) || !isValidDimValue(args.nValue)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "m, k and n",
             (std::to_string(args.mValue) + ", " + std::to_string(args.kValue) + " and " + std::to_string(args.nValue)).c_str(),
-            "M, K, N values should be positive and not exceed INT32_MAX.");
+            "The value of m, k and n must be positive and not exceed INT32_MAX.");
         return ge::GRAPH_FAILED;
     }
     // check output dim num
@@ -212,7 +212,7 @@ ge::graphStatus GetShape(const gert::TilingContext &context, Mc2MatMulV3Args &ar
     if (cDimNum < TWO_BATCH_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(args.opName, "output",
             (std::to_string(cDimNum) + "D").c_str(),
-            "Output should have at least 2 dims.");
+            "The shape dim of output must be at least 2D.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -112,12 +112,12 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     OP_CHECK_NULL(expertIds, return ACLNN_ERR_PARAM_NULLPTR);
     if (x->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeDispatchSetup", "x",
-            "dim=" + std::to_string(x->GetViewShape().GetDimNum()), "expected 2D");
+            "dim=" + std::to_string(x->GetViewShape().GetDimNum()), "The shape dim of x must be 2D.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (expertIds->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeDispatchSetup", "expertIds",
-            "dim=" + std::to_string(expertIds->GetViewShape().GetDimNum()), "expected 2D");
+            "dim=" + std::to_string(expertIds->GetViewShape().GetDimNum()), "The shape dim of expertIds must be 2D.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t bs = x->GetViewShape().GetDim(0);

@@ -112,14 +112,14 @@ static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
     auto x1ScaleDim = x1Scale->GetViewShape().GetDim(0);
     if (x1ScaleDim != mVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim0",
-            std::to_string(x1ScaleDim).c_str(), "must equal x1 dim0");
+            std::to_string(x1ScaleDim).c_str(), "The value of x1Scale.dim0 must equal x1 dim0");
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim0",
-            std::to_string(x2ScaleDim).c_str(), "must equal x2 dimN");
+            std::to_string(x2ScaleDim).c_str(), "The value of x2Scale.dim0 must equal x2 dimN");
         return false;
     }
     return true;
@@ -142,19 +142,19 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
     if (x1ScaleMVal != mVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim0",
                                         std::to_string(x1ScaleMVal).c_str(),
-                                        ("should equal x1.dimM " + std::to_string(mVal)).c_str());
+                                        ("The value of x1Scale.dim0 must equal x1.dimM " + std::to_string(mVal)).c_str());
         return false;
     }
     if (x2ScaleNVal != nVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim0",
                                         std::to_string(x2ScaleNVal).c_str(),
-                                        ("should equal x2.n-axis " + std::to_string(nVal)).c_str());
+                                        ("The value of x2Scale.dim0 must equal x2.n-axis " + std::to_string(nVal)).c_str());
         return false;
     }
     if (x1ScaleKVal != x2ScaleKVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dimK",
                                         std::to_string(x1ScaleKVal).c_str(),
-                                        ("should equal x2Scale.dimK " + std::to_string(x2ScaleKVal)).c_str());
+                                        ("The value of x1Scale.dimK must equal x2Scale.dimK " + std::to_string(x2ScaleKVal)).c_str());
         return false;
     }
     if (x1ScaleLastDim != TWO) {
@@ -263,7 +263,7 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
                                         "x1,x2",
                                         (std::string(op::ToString(x1->GetDataType()).GetString()) + "," + op::ToString(x2->GetDataType()).GetString()).c_str(),
-                                        "in mxquant scenario, must be same dtype when one is fp4_e2m1");
+                                        "The dtypes of x1 and x2 must be the same when one is fp4_e2m1 in mxquant scenario");
         return false;
     }
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
@@ -296,7 +296,7 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
                                         "x1QuantMode,x2QuantMode",
                                         (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
-                                        "no matching quantization scenario");
+                                        "The values of x1QuantMode and x2QuantMode must match a valid quantization scenario");
     }
     return isAllDtypesValid;
 }

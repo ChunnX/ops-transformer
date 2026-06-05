@@ -157,7 +157,7 @@ ge::graphStatus CheckAddRmsNormInputShape(
             context->GetNodeName(), "residual",
             (std::to_string(x2Shape->GetStorageShape().GetDim(2)) + " vs " +
              std::to_string(gammaShape->GetStorageShape().GetDim(0))).c_str(),
-            "The n dimension of residual should be the same as the n dimension of gamma"),
+            "The shape of residual n dimension must be the same as the n dimension of gamma"),
         return ge::GRAPH_FAILED);
     // residual和y，normOut的shape
     OP_TILING_CHECK(

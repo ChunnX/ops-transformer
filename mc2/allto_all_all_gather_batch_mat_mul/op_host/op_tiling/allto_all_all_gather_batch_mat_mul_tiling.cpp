@@ -623,7 +623,7 @@ static bool ActTypeCheck(const char *nodeName, const int64_t actType, const bool
         (actType == static_cast<int64_t>(
                         ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType", "none",
-            "actType should be non-none when need_activation_feature is true");
+            "The value of actType must be non-none when need_activation_feature is true");
         return false;
     }
 
@@ -674,7 +674,7 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
     if (weightShape->GetDim(DIM_E) * epSize != xShape->GetDim(DIM_E)) {
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "x and weight",
             (std::to_string(xShape->GetDim(DIM_E)) + " and " + std::to_string(weightShape->GetDim(DIM_E))).c_str(),
-            "x[0] should equal weight[0] * epSize");
+            "The shape of x[0] must equal weight[0] * epSize");
         return false;
     }
 
@@ -690,7 +690,7 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
         if (xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
                 std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
-                "x[H] * tp should equal weight[H]");
+                "The shape of x[H] * tp must equal weight[H]");
             return false;
         }
     } else if (xShard == 1) {
@@ -705,7 +705,7 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
         if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
                 std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
-                "x[H] should equal weight[H]");
+                "The shape of x[H] must equal weight[H]");
             return false;
         }
     }
@@ -727,7 +727,7 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
     if (biasShape->GetDim(0) != weightShape->GetDim(0)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
             std::to_string(biasShape->GetDim(0)).c_str(),
-            "bias[0] should equal weight[0]");
+            "The shape of bias[0] must equal weight[0]");
         return false;
     }
 
@@ -745,7 +745,7 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
     if (biasShape->GetDim(biasLastDimIdx) != weightShape->GetDim(wDimM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
             std::to_string(biasShape->GetDim(biasLastDimIdx)).c_str(),
-            "bias last dim should equal weight corresponding dim");
+            "The last dim of bias must equal the corresponding dim of weight");
         return false;
     }
 
@@ -763,20 +763,20 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
     if (!DimNumCheck(nodeName, xShape, weightShape)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "x and weight",
             (std::to_string(xShape->GetDimNum()) + "D and " + std::to_string(weightShape->GetDimNum()) + "D").c_str(),
-            "Dim num check failed");
+            "The shape dims of x and weight must be valid");
         return false;
     }
 
     if (!CommonCheckTensorShape(nodeName, xShape, weightShape, wDimH)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-            "common", "common tensor shape check failed");
+            "common", "The shapes of x and weight must be valid");
         return false;
     }
 
     if (xShard == 0 || xShard == 1) {
         if (!XShardCheckTensorShape(nodeName, xShard, xShape, weightShape, epSize, tpSize, wDimH, wDimM)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-                std::to_string(xShard).c_str(), "xShard tensor shape check failed");
+                std::to_string(xShard).c_str(), "The shapes of x and weight must be valid for xShard");
             return false;
         }
     }
@@ -784,7 +784,7 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
     if (biasShape != nullptr) {
         if (!(CheckBiasShape(nodeName, weightShape, biasShape, wDimM))) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
-                "bias", "Bias shape check failed");
+                "bias", "The shape of bias must be valid");
             return false;
         }
     }
@@ -857,7 +857,7 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
     }
     if (!ActTypeCheck(nodeName, actType, y3Flag)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType",
-            std::to_string(actType).c_str(), "actType check failed");
+            std::to_string(actType).c_str(), "The value of actType must be valid");
         return false;
     }
     OP_LOGI(nodeName, "attrs info: groupEp %s, groupTp %s, tpSize %ld, epSize %ld, xShard %ld, y2Flag %d, y3Flag %d.",
@@ -923,7 +923,7 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
     // tensor shape 检查
     if (!CheckTensorShape(nodeName, xShape, weightShape, biasShape, epSize, tpSize, wDimH, wDimM, xShard)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x, weight and bias",
-            "invalid", "tensor shape check failed");
+            "invalid", "The shapes of x, weight and bias must be valid");
         return ge::GRAPH_FAILED;
     }
 

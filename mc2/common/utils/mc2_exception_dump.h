@@ -212,7 +212,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
     auto is_support_op = MC2_OP_CONTEXT.find(op);
     if (is_support_op == MC2_OP_CONTEXT.end()) {
         // 不支持的算子
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "op", op, "operator not supported");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "op", op, "The value of op is not supported");
         return -1;
     }
     const std::string& context_type = is_support_op->second;
@@ -233,7 +233,7 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
         OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
         if (winContext->rankId >= HCCL_MTE_MAX_RANK_NUM) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "rankId",
-                std::to_string(winContext->rankId).c_str(), "must be less than HCCL_MTE_MAX_RANK_NUM");
+                std::to_string(winContext->rankId).c_str(), "The value of rankId must be less than HCCL_MTE_MAX_RANK_NUM");
             return -1;
         }
         winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
@@ -254,12 +254,12 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
         OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u", winContext->epRankId);
         if (winContext->epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "epRankId",
-                std::to_string(winContext->epRankId).c_str(), "must be less than HCCL_MAX_RANK_SIZE");
+                std::to_string(winContext->epRankId).c_str(), "The value of epRankId must be less than HCCL_MAX_RANK_SIZE");
             return -1;
         }
         winAddr = reinterpret_cast<void *>(winContext->epHcclBuffer_[winContext->epRankId]);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "context_type", context_type.c_str(), "unknown context type");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "context_type", context_type.c_str(), "The value of context_type is not supported");
         return -1;
     }
     if (winAddr == nullptr) {
@@ -311,7 +311,7 @@ inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
 {
     if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
         strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupName", groupName, "groupName is invalid");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupName", groupName, "The value of groupName is not supported");
         return -1;
     }
     uint64_t size;

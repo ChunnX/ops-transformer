@@ -88,7 +88,7 @@ bool AllGatherQuantBmmTiling::IsCapable()
         return true;
     }
     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2 dtype",
-        Ops::Base::ToString(args_.geAType).c_str(), "fp8 dtype not supported");
+        Ops::Base::ToString(args_.geAType).c_str(), "The dtype of x1/x2 must be within the supported fp8 range");
     return false;
 }
 
@@ -307,7 +307,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
         quantMmMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scaleInv1/scaleInv2 dtype",
             Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
-            "must be pertensor or mxfp or perblock");
+            "The dtype of scaleInv1/scaleInv2 must be within the range {pertensor, mxfp, perblock}");
     }
 
     return ge::GRAPH_FAILED;
@@ -392,7 +392,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckBiasInput()
 {
     auto biasShape = context_->GetOptionalInputShape(BIAS);
     OP_TILING_CHECK((quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (biasShape != nullptr),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "bias", "not nullptr", "bias must be nullptr in perblock scene"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "bias", "not nullptr", "The value of bias must be nullptr in perblock scene"),
         return ge::GRAPH_FAILED);
     auto biasDesc = context_->GetOptionalInputDesc(BIAS);
     OP_TILING_CHECK((biasDesc != nullptr) && (biasDesc->GetDataType() != ge::DataType::DT_FLOAT),

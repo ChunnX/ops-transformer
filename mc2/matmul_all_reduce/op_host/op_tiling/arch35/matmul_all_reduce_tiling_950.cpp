@@ -375,7 +375,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 context_->GetNodeName(), "x3",
                 (std::to_string(x3DimNum) + "D").c_str(),
-                "should be same as output"),
+                "The shape dim of x3 must be the same as that of output"),
             return ge::GRAPH_FAILED);
         for (size_t i = 0U; i < outputDimNum; i++) {
             auto outputDimValue = mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i);

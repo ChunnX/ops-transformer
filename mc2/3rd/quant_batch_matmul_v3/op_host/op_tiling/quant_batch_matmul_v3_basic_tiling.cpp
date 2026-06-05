@@ -301,7 +301,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
             inputParams_.mSizePerNpu > inputParams_.mSize,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "mSizePerNpu",
                 std::to_string(inputParams_.mSizePerNpu).c_str(),
-                "M in each Npu should not be bigger than total M."),
+                "M in each Npu must not be bigger than total M."),
             return false);
 
         OP_TILING_CHECK(inputParams_.transA,
@@ -354,7 +354,7 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t 
         baseM < BLOCK_CUBE || baseN < BLOCK_CUBE,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseM and baseN",
             (std::to_string(baseM) + " and " + std::to_string(baseN)).c_str(),
-            "baseM and baseN should be at least 16."),
+            "baseM and baseN must be at least 16."),
         return 1UL);
     uint64_t mCnt = inputParams_.GetTotalBaseMCnt(baseM);     // m方向需要的轮数
     uint64_t nCnt = ops::CeilDiv(inputParams_.nSize, baseN);  // n方向需要的轮数
@@ -765,7 +765,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
     OP_TILING_CHECK(basicTiling_.usedCoreNum <= 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "usedCoreNum",
                         std::to_string(basicTiling_.usedCoreNum).c_str(),
-                        "usedCoreNum should be greater than 0."),
+                        "usedCoreNum must be greater than 0."),
                     return false);
     OP_TILING_CHECK(!GetBaseK(basicTiling_.baseM, basicTiling_.baseN),
                     OP_LOGE(inputParams_.opName, "GetBaseK failed"), return false);
@@ -969,7 +969,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &step
     OP_TILING_CHECK(stepKa == 0 || stepKb == 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "stepKa and stepKb",
                         (std::to_string(stepKa) + " and " + std::to_string(stepKb)).c_str(),
-                        "stepKa and stepKb should not be 0."),
+                        "stepKa and stepKb must not be 0."),
                     return false);
     uint64_t kL1 = GetSizeWithDataType(std::min(stepKa, stepKb) * basicTiling_.baseK, inputParams_.aDtype);
     // 小k极其容易全载，导致MTE2与（MTE1/MMAD）串行，考虑拆分DB加载
