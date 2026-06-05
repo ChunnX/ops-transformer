@@ -354,7 +354,11 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
     }
     if (IsFormatNZ(x2) && isMxQuantMode) {
         OP_LOGI("QuantMatmulAlltoAll, x2 format is FRACTAL_NZ in MX quant mode, skip ReFormat.");
-        const_cast<aclTensor *>(x2)->SetOriginalShape(x2->GetViewShape());
+        auto x2NZ = const_cast<aclTensor *>(x2);
+        x2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+        x2NZ->SetViewFormat(op::Format::FORMAT_ND);
+        x2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
+        x2NZ->SetOriginalShape(x2->GetViewShape());
     } else if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
         x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
@@ -478,8 +482,12 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
                         "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            const_cast<aclTensor *>(transX2)->SetOriginalShape(transX2->GetViewShape());
-            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, original shape set.");
+            auto transX2NZ = const_cast<aclTensor *>(transX2);
+            transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+            transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
+            transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
+            transX2NZ->SetOriginalShape(transX2->GetViewShape());
+            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, format and shape attributes set.");
         }
     } else {
         // 对于 A2 和 A3，非连续则报错

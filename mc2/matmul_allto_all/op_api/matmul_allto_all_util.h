@@ -14,6 +14,7 @@
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "hccl/hccl_types.h"
+#include "opdev/common_types.h"
 
 // 量化与非量化共用的方法和常量、枚举值
 namespace matmul_allto_all_check {

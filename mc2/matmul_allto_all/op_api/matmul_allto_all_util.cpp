@@ -354,21 +354,25 @@ aclTensor *TransX2TensorNZ(const aclTensor *x2)
     for (uint64_t i = 0; i < storageShapeDimNum; i++) {
         storageDim[i] = x2->GetStorageShape().GetDim(i);
     }
-    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim(viewShapeDimNum);
-    viewDim[0] = x2->GetViewShape().GetDim(1);
-    viewDim[1] = x2->GetViewShape().GetDim(0);
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
-    stride[0] = viewDim[1];
-    stride[1] = 1;
+    std::vector<int64_t> stride(storageShapeDimNum, 1);
+    for (int64_t i = static_cast<int64_t>(storageShapeDimNum - 2); i >= 0; i--) {
+        stride[i] = storageDim[i + 1] * stride[i + 1];
+    }
     auto offset = x2->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
-    auto newTensor = aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format,
+    auto newTensor = aclCreateTensor(storageDim.data(), storageShapeDimNum, dataType, stride.data(), offset, format,
                                       storageDim.data(), storageShapeDimNum, x2->GetTensor()->GetAddr());
     if (newTensor != nullptr) {
+        op::Shape transViewShape;
+        transViewShape.AppendDim(x2->GetViewShape().GetDim(1));
+        transViewShape.AppendDim(x2->GetViewShape().GetDim(0));
+        newTensor->SetViewShape(transViewShape);
+        newTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+        newTensor->SetViewFormat(op::Format::FORMAT_ND);
         newTensor->SetOriginalFormat(op::Format::FORMAT_ND);
+        newTensor->SetOriginalShape(transViewShape);
     }
     return newTensor;
 }
