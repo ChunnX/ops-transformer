@@ -451,7 +451,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
 
 ## 约束说明
 
-* 默认支持确定性计算。
+* aclnnAlltoAllQuantMatmul默认支持确定性计算。
 * NPU卡数（rankSize），根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
