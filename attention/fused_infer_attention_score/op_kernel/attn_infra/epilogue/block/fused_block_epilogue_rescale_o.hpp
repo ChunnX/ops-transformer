@@ -224,12 +224,15 @@ public:
     {
         uint32_t innerOGmOffset = 0;
         uint32_t innerGOUbOffset = 0;
+        uint32_t blockLen = embedV * sizeof(float);
+        uint32_t blockLenAligned = (blockLen + 31) / 32 * 32;
+        uint32_t srcStride = (embedRoundV * sizeof(float) - blockLenAligned) / 32;
         if (proTokenNum != 0U) {
             AscendC::DataCopyPad(
                 gOutput[innerOGmOffset + proTokenIdx * oHiddenSize],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    proTokenNum, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    proTokenNum, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
             innerOGmOffset += embedV;
             innerGOUbOffset += proTokenNum * embedRoundV;
         }
@@ -238,7 +241,7 @@ public:
                 gOutput[innerOGmOffset],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    qSThisSubBlock, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    qSThisSubBlock, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
             innerOGmOffset += embedV;
             innerGOUbOffset += qSThisSubBlock * embedRoundV;
         }
@@ -247,7 +250,7 @@ public:
                 gOutput[innerOGmOffset],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    epiTokenNum, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    epiTokenNum, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
         }
     }
 
