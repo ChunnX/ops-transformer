@@ -118,6 +118,7 @@ __aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling *__restrict &til
         params_.m = tilingData_->M;                  // mm可以直接从tilingData里取值
         params_.n = tilingData_->N;
         params_.k = tilingData_->Ka;
+        yOffsetListPtr_ = nullptr;
         UpdateGroupParams<false>();
     }
 }

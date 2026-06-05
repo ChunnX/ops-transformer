@@ -129,10 +129,8 @@ public:
                 groupIdx++;
             }
         }
-        for (uint32_t i = 0U; i < groupIdx; i++) {
-            AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(combinedGroupListBuffer[i]);
-        }
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(combinedGroupListBuffer);
 
         GlobalTensor<int64_t> yOffsetListBuffer;
         yOffsetListBuffer.SetGlobalBuffer((__gm__ int64_t *)yOffsetListGm);
@@ -144,10 +142,8 @@ public:
                 expertFirstOffset += static_cast<uint64_t>(recvCnt[startExpertIdx + localIdx + rankIdx * expertNumInOneRank_]) * n1_;
             }
         }
-        for (uint32_t i = 0U; i < groupIdx; i++) {
-            AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(yOffsetListBuffer[i]);
-        }
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(yOffsetListBuffer);
 
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(combinedTokenOffset_ * h1_);
         wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(startExpertIdx * h1_ * n1_);

@@ -62,7 +62,6 @@ public:
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
-        // Initialize hcclDataType_ early so AIC can use it in combined mode
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
         } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
@@ -287,30 +286,30 @@ public:
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         for (uint64_t i = 0UL; i < rankDim_; i++) {
-            combinedSendCnt[i] = 0UL;
-            combinedRecvCnt[i] = 0UL;
+            alltoAllvSendCnt[i] = 0UL;
+            alltoAllvRecvCnt[i] = 0UL;
             for (uint64_t j = 0UL; j < realCombineSize; j++) {
-                combinedSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * axis;
-                combinedRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * axis;
+                alltoAllvSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * axis;
+                alltoAllvRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * axis;
             }
         }
-        combinedSendOffset[0] = 0UL;
+        alltoAllvSendOffset[0] = 0UL;
         for (uint32_t j = 0U; j < startExpertIdx; j++) {
-            combinedSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * axis;
+            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * axis;
         }
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            combinedSendOffset[i] = combinedSendOffset[i - 1U];
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
-                combinedSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * axis;
+                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * axis;
             }
         }
         for (uint32_t i = 0U; i < rankDim_; i++) {
-            combinedRecvOffset[i] = combinedRecvOffsetLastSum;
-            combinedRecvOffsetLastSum += combinedRecvCnt[i];
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffsetLastSum;
+            alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
         }
-        combinedHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
-            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), combinedSendCnt, combinedSendOffset, hcclDataType_,
-            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), combinedRecvCnt, combinedRecvOffset, hcclDataType_);
+        alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
     __aicore__ inline void WaitCombinedAic(uint32_t turnIdx)
@@ -323,7 +322,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(combinedHandleId_[turnIdx]);
+        hccl_.Wait(alltoAllvHandleId_[turnIdx]);
     }
 
     __aicore__ inline void LaunchScaleCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
@@ -340,31 +339,31 @@ public:
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         uint64_t scaleAxis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
-            combinedScaleSendCnt[i] = 0UL;
-            combinedScaleRecvCnt[i] = 0UL;
+            alltoAllvScaleSendCnt[i] = 0UL;
+            alltoAllvScaleRecvCnt[i] = 0UL;
             for (uint64_t j = 0UL; j < realCombineSize; j++) {
-                combinedScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * scaleAxis;
-                combinedScaleRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * scaleAxis;
+                alltoAllvScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * scaleAxis;
+                alltoAllvScaleRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * scaleAxis;
             }
         }
-        combinedScaleSendOffset[0] = 0UL;
+        alltoAllvScaleSendOffset[0] = 0UL;
         for (uint32_t j = 0U; j < startExpertIdx; j++) {
-            combinedScaleSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * scaleAxis;
+            alltoAllvScaleSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * scaleAxis;
         }
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            combinedScaleSendOffset[i] = combinedScaleSendOffset[i - 1U];
+            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
-                combinedScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * scaleAxis;
+                alltoAllvScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * scaleAxis;
             }
         }
         for (uint32_t i = 0U; i < rankDim_; i++) {
-            combinedScaleRecvOffset[i] = combinedScaleRecvOffsetLastSum;
-            combinedScaleRecvOffsetLastSum += combinedScaleRecvCnt[i];
+            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffsetLastSum;
+            alltoAllvScaleRecvOffsetLastSum += alltoAllvScaleRecvCnt[i];
         }
-        combinedScaleHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
-            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), combinedScaleSendCnt, combinedScaleSendOffset,
+        alltoAllvScaleHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0,
-            (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), combinedScaleRecvCnt, combinedScaleRecvOffset,
+            (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt, alltoAllvScaleRecvOffset,
             HCCL_DATA_TYPE_FP8E8M0);
     }
 
@@ -378,7 +377,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(combinedScaleHandleId_[turnIdx]);
+        hccl_.Wait(alltoAllvScaleHandleId_[turnIdx]);
     }
 
     __aicore__ inline void End()
@@ -507,22 +506,6 @@ private:
 
     // recvCounts
     uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
-
-    // combined expert mode gmmX communication (AIC block 0 only)
-    HcclHandle combinedHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
-    uint64_t combinedSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedRecvOffsetLastSum = 0UL;
-
-    // combined expert mode scale communication (AIC block 0 only, MX quant)
-    HcclHandle combinedScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
-    uint64_t combinedScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t combinedScaleRecvOffsetLastSum = 0UL;
 };
 }; // namespace MC2KernelTemplate
 

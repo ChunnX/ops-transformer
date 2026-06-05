@@ -96,7 +96,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
 uint64_t AlltoAllvQuantGmmTilingCommon::GetCommOutSize() const
 {
     uint64_t packFactor = (gmmXDataType_ == ge::DataType::DT_FLOAT4_E2M1) ? MXFP4_PACK_FACTOR : 1U;
-    uint64_t xTypeSize = (gmmXDataType_ == ge::DataType::DT_FLOAT16 || gmmXDataType_ == ge::DataType::DT_BF16) ? 2U : 1U;
+    uint64_t xTypeSize = ge::GetSizeByDataType(gmmXDataType_);
     uint64_t commOutLen = Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(a_ * h1_, packFactor) * xTypeSize,
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
@@ -194,20 +194,16 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
     }
     // combined expert mode: reduce AlltoAllV calls
-    bool isMxQuant = (gmmXQuantModePtr_ != nullptr && *gmmXQuantModePtr_ == static_cast<int64_t>(MX_QUANT_MODE));
+    bool isMxQuant = (gmmXQuantMode_ == static_cast<int64_t>(MX_QUANT_MODE));
     uint32_t callsPerTurn = isMxQuant ? 2U : 1U;
-    combineExpertSize_ = 1U;
-    commTurn_ = static_cast<uint32_t>(e_);
-    if (e_ * callsPerTurn > MAX_COMM_CALLS) {
-        for (combineExpertSize_ = 2U; ; combineExpertSize_++) {
-            commTurn_ = static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(combineExpertSize_)));
-            if (static_cast<uint64_t>(commTurn_) * callsPerTurn <= MAX_COMM_CALLS) {
-                break;
-            }
-        }
-    }
+    uint32_t maxCommTurn = MAX_COMM_CALLS / callsPerTurn;
+    combineExpertSize_ = static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(maxCommTurn)));
+    commTurn_ = static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(combineExpertSize_)));
     tilingData->taskTilingInfo.combineExpertSize = combineExpertSize_;
     tilingData->taskTilingInfo.commTurn = commTurn_;
+    if (combineExpertSize_ > 1U) {
+        tilingData->gmmQuantTilingData.gmmQuantParams.groupNum = combineExpertSize_ * static_cast<uint32_t>(epWorldSize_);
+    }
     PrintTaskTilingInfo(tilingData->taskTilingInfo);
     OP_LOGD(context_->GetNodeName(), "end PostTiling.");
     return ge::GRAPH_SUCCESS;
