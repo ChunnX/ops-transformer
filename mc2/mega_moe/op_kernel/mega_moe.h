@@ -597,7 +597,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             int32_t rowEnd = rowDstOffsetPerCore + rowsThisCore;
             int32_t waveLo = rowDstOffsetPerCore / L1_TILE_M_I32;
             int32_t waveHi = (rowEnd - 1) / L1_TILE_M_I32;
-            __gm__ int32_t* flagBase = (__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr());
+            __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
             for (int32_t w = waveLo; w <= waveHi; ++w) {
                 int32_t waveStartRow = w * L1_TILE_M_I32;
                 int32_t waveEndRow = waveStartRow + L1_TILE_M_I32;
