@@ -14,6 +14,7 @@
  */
 
 #include <vector>
+#include <string>
 #include "util/platform_util.h"
 #include "util/shape_util.h"
 #include "platform/platform_info.h"
