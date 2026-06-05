@@ -1,0 +1,504 @@
+================================================================================
+  Pad 模式 tokenGrad 按 numOutTokens 分核方案设计
+================================================================================
+
+算子: moe_token_permute_with_routing_map_grad
+模式: padded_mode = true (pad 模式)
+文档目的: 总结将 tokenGrad 从按 tokens_num 分核改为按 numOutTokens 分核的可行方案
+
+
+================================================================================
+1. 背景
+================================================================================
+
+在 pad 模式下，tokensGradOut 的计算本质是 scatter-add 反向:
+
+    tokensGradOut[sortedIndices[i], :] += permutedTokenGrad[i, :]
+    其中 i ∈ [0, numOutTokens)
+
+关键参数:
+  - numOutTokens = capacity × num_expert   (permuted 输出序列长度)
+  - tokens_num                              (原始 token 数量)
+  - 同一 token_id 可能对应多个不同的 i (多 expert 路由)，因此必须累加而非覆盖
+
+当前实现:
+  - 文件: op_kernel/moe_token_permute_drop_pad_grad.h
+  - tokenGrad: 按 tokens_num 分核
+  - probsGrad: 按 numOutTokens 分核
+
+本文档总结 tokenGrad 改为按 numOutTokens 分核的设计方案。
+
+
+================================================================================
+2. 当前实现 (按 token 分核)
+================================================================================
+
+2.1 分核策略
+--------------------------------------------------------------------------------
+
+  计算        分核维度        用核数                              blockDim
+  --------    ------------    --------------------------------    ---------------------------
+  tokenGrad   tokens_num      min(tokens_num, maxCoreNum)         max(tokenUsedCoreNum,
+  probsGrad   numOutTokens    numOutTokens>maxCoreNum             probsUsedCoreNum)
+                              ? maxCoreNum : 1
+
+Tiling 逻辑: op_host/moe_token_permute_with_routing_map_grad_tiling.cpp
+             函数 TilingComputeDropPad()
+
+
+2.2 tokenGrad 计算流程
+--------------------------------------------------------------------------------
+
+每个核 c 负责一段连续的 token id 范围 [tokenStart, tokenStart + tokensCoreLength):
+
+  步骤1: 对负责的每个 token_id，扫描全部 numOutTokens 条 sortedIndices
+  步骤2: 找出 sortedIndices[i] == token_id 的所有 i
+  步骤3: 在 UB 上将对应的 permutedTokenGrad[i, :] 累加
+  步骤4: 将结果写回 tokensGradOut[token_id, :]
+
+
+2.3 优点
+--------------------------------------------------------------------------------
+
+  (1) 无跨核写冲突: 每个 tokensGradOut[token_id, :] 仅由一个核写入
+  (2) 实现简单，无需额外 workspace 中间缓冲
+  (3) hidden 维在核内按 UB 大小切块 (hiddenSplitedLength)，与现有 tiling 兼容
+
+
+2.4 缺点
+--------------------------------------------------------------------------------
+
+  (1) 每个核需扫描全量 numOutTokens
+      复杂度约 O(tokens_per_core × numOutTokens)
+
+  (2) 当 tokens_num << numOutTokens 且 tokens_num < maxCoreNum 时，核利用率不足
+      例: tokens_num=64, numOutTokens=1024, maxCoreNum=48
+          → 用 48 核，但每核仍扫描 1024 条记录
+
+
+================================================================================
+3. 目标方案 (按 numOutTokens 分核)
+================================================================================
+
+3.1 基本思路
+--------------------------------------------------------------------------------
+
+将 permuted 下标 i 均匀切分给各核，每个核只处理自己负责的 i 区间:
+
+    核 c 负责: i ∈ [start_c, end_c)
+
+对每个 i，将梯度散射累加到目标 token:
+
+    tokensGradOut[sortedIndices[i], :] += permutedTokenGrad[i, :]
+
+
+3.2 与 probsGrad 的对比
+--------------------------------------------------------------------------------
+
+probsGrad 已按 numOutTokens 分核，逻辑为:
+
+    probsGradOut[sortedIndices[i], i/capacity] = permutedProbsGrad[i]
+
+两者分核维度一致，但操作语义不同:
+
+  对比项        tokenGrad                           probsGrad
+  --------      --------------------------------    --------------------------------
+  写操作        累加 (scatter-add)                  赋值 (scatter)
+  输出位置      tokensGradOut[token_id, :]          probsGradOut[token_id, expert_id]
+                (同一 token 可重复)                  (每个 i 唯一)
+  跨核冲突      存在                                不存在
+
+结论: tokenGrad 不能直接照搬 probsGrad 的单阶段实现。
+
+
+================================================================================
+4. 核心问题: scatter-add 写冲突
+================================================================================
+
+4.1 冲突示例
+--------------------------------------------------------------------------------
+
+  sortedIndices = [5, 12, 5, 8, ...]
+
+  核0 处理 i=0: tokensGradOut[5] += grad[0]
+  核1 处理 i=2: tokensGradOut[5] += grad[2]    ← 两个核同时写同一地址
+
+同一 token_id 可能出现在不同核处理的 i 中，直接并行 scatter-add 会导致 GM 数据竞争。
+
+
+4.2 为什么不能使用原子加
+--------------------------------------------------------------------------------
+
+  - Ascend AI Core 对 GM 上的向量级原子加支持有限
+  - 性能远低于核内 UB 向量运算
+  - 对 hidden_size 维 (如 7168) 的浮点向量做原子加，工程上不可行
+
+
+================================================================================
+5. 推荐方案: 两阶段归约
+================================================================================
+
+核心原则: 第一阶段消除写冲突，第二阶段按 token 合并。
+
+
+5.1 整体流程
+--------------------------------------------------------------------------------
+
+  +---------------------------------------------------------------+
+  | Phase 1: LocalAccumulate (按 numOutTokens 分核)               |
+  |                                                               |
+  |   permutedTokenGrad[i] + sortedIndices[i]                     |
+  |          |                                                    |
+  |          v                                                    |
+  |   partial[c, token_id, :] += grad[i]   ← 核 c 只写第 c 层    |
+  +---------------------------------------------------------------+
+                              |
+                              v
+  +---------------------------------------------------------------+
+  | Phase 2: ReduceByToken (按 tokens_num 分核)                   |
+  |                                                               |
+  |   tokensGradOut[t, :] = sum over c of partial[c, t, :]      |
+  |                           ← 每个 token 独占写出                |
+  +---------------------------------------------------------------+
+
+
+5.2 Phase 1: 局部累加
+--------------------------------------------------------------------------------
+
+分核维度: numOutTokens
+
+数据结构: workspace 中分配稠密中间缓冲
+
+    partial[C, T, H]
+      C = phase1 用核数 = min(numOutTokens, maxCoreNum)
+      T = tokens_num
+      H = hidden_size
+
+核 c 伪代码:
+
+    // 核 c 负责 i ∈ [start_c, end_c)
+    for (int64_t i = start_c; i < end_c; ++i) {
+        int64_t t = sortedIndices[i];
+        // partial[c, t, :] += permutedTokenGrad[i, :]
+        // 在 UB 上分块处理 hidden 维，累加结果写回 partial 对应位置
+    }
+
+无冲突原因: 核 c 只写入 partial[c, :, :]，不同核写入不同层。
+
+
+5.3 Phase 2: 按 token 归约
+--------------------------------------------------------------------------------
+
+分核维度: tokens_num
+
+核 t 伪代码:
+
+    // 核 t 负责 token_id ∈ [token_start, token_end)
+    for (int64_t token_id = token_start; token_id < token_end; ++token_id) {
+        acc = zeros(H);  // UB 上初始化
+        for (int64_t c = 0; c < C; ++c) {
+            acc += partial[c, token_id, :];  // 跨核归约
+        }
+        tokensGradOut[token_id, :] = acc;
+    }
+
+无冲突原因: 每个 token_id 的输出行只由一个核写入。
+
+
+5.4 数值示例
+--------------------------------------------------------------------------------
+
+输入:
+  i=0, sortedIndices[0]=5,  grad_0
+  i=1, sortedIndices[1]=12, grad_1
+  i=2, sortedIndices[2]=5,  grad_2
+  i=3, sortedIndices[3]=8,  grad_3
+
+Phase 1 (2 核，i 对半切):
+  核0 处理 i=0,1:
+    partial[0, 5]  += grad_0
+    partial[0, 12] += grad_1
+  核1 处理 i=2,3:
+    partial[1, 5]  += grad_2
+    partial[1, 8]  += grad_3
+
+Phase 2 (按 token 归约):
+  tokensGradOut[5]  = partial[0,5] + partial[1,5] = grad_0 + grad_2
+  tokensGradOut[12] = partial[0,12]                = grad_1
+  tokensGradOut[8]  = partial[1,8]               = grad_3
+
+
+================================================================================
+6. 内存与硬件
+================================================================================
+
+6.1 存储层次
+--------------------------------------------------------------------------------
+
+  存储              硬件位置              容量              用途
+  ----------------  ------------------  ----------------  --------------------------
+  UB                AI Core 片上 SRAM   ~192KB~512KB      向量运算工作台，hidden切块
+  GM (workspace)    片外 HBM/DDR        GB 级             partial[C,T,H] 中间缓冲
+  GM (tensor)       片外 HBM/DDR        GB 级             输入/输出 tensor
+
+
+6.2 workspace 大小估算
+--------------------------------------------------------------------------------
+
+  workspace_size = C × T × H × sizeof(token_dtype)
+
+典型参数 (bf16, C=48, T=512, H=7168):
+
+  48 × 512 × 7168 × 2 bytes ≈ 352 MB
+
+当前算子 tiling 固定申请 16MB 系统 workspace，不足以承载上述中间缓冲。
+若采用本方案，需在 tiling 中动态计算并上报 workspace 大小。
+
+
+6.3 UB 使用
+--------------------------------------------------------------------------------
+
+两阶段中 hidden 维仍需按 UB 容量切块:
+
+  Phase 1: 从 GM 读 permutedTokenGrad[i, h_offset:h_offset+split]
+           在 UB 累加后写 partial[c, t, h_offset:...]
+
+  Phase 2: 从 GM 读 partial[c, t, h_offset:...]
+           在 UB 归约后写 tokensGradOut[t, h_offset:...]
+
+tiling 中 hiddenSplitedLength 的计算可复用现有 ComputeMaxHiddenSize()。
+
+
+================================================================================
+7. Tiling 设计草案
+================================================================================
+
+7.1 新增 tiling 字段
+--------------------------------------------------------------------------------
+
+  // Phase 1 分核参数
+  TILING_DATA_FIELD_DEF(int64_t, phase1UsedCoreNum);
+  TILING_DATA_FIELD_DEF(int64_t, phase1SingleCoreLen);
+  TILING_DATA_FIELD_DEF(int64_t, phase1LastCoreLen);
+
+  // Phase 2 分核参数
+  TILING_DATA_FIELD_DEF(int64_t, phase2UsedCoreNum);
+  TILING_DATA_FIELD_DEF(int64_t, phase2TokensCoreLength);
+  TILING_DATA_FIELD_DEF(int64_t, phase2TokensCoreRemain);
+
+  // workspace 布局
+  TILING_DATA_FIELD_DEF(int64_t, partialStride);    // T * H
+  TILING_DATA_FIELD_DEF(int64_t, partialLayerSize); // partialStride * sizeof(dtype)
+
+
+7.2 分核计算
+--------------------------------------------------------------------------------
+
+  // Phase 1
+  phase1CoreNum       = min(numOutTokens, maxCoreNum)
+  phase1SingleCoreLen = numOutTokens / phase1CoreNum
+  phase1LastCoreLen   = numOutTokens - phase1SingleCoreLen * (phase1CoreNum - 1)
+
+  // Phase 2
+  phase2CoreNum            = min(tokens_num, maxCoreNum)
+  phase2TokensCoreLength   = tokens_num / phase2CoreNum
+  phase2TokensCoreRemain   = tokens_num % phase2CoreNum
+
+  // workspace
+  partialSize = phase1CoreNum * tokens_num * hiddenSize * dtypeSize
+
+
+7.3 启动方式
+--------------------------------------------------------------------------------
+
+方案 A: 两次 kernel 启动
+  - Kernel 1 LocalAccumulate:  blockDim = phase1CoreNum
+  - Kernel 2 ReduceByToken:      blockDim = phase2CoreNum
+  - 优点: 逻辑清晰，phase 间通过 workspace 同步
+  - 缺点: 多一次 kernel launch 开销
+
+方案 B: 单次 kernel 内串行两阶段
+  - blockDim = max(phase1CoreNum, phase2CoreNum)
+  - 所有核先执行 Phase 1，再执行 Phase 2 (核间 barrier)
+  - 优点: 一次 launch
+  - 缺点: 核利用率不均衡，需全局同步
+
+
+================================================================================
+8. 备选方案
+================================================================================
+
+8.1 稀疏中间结果 (省内存)
+--------------------------------------------------------------------------------
+
+Phase 1 不做累加，仅按 numOutTokens 分核搬运;
+Phase 2 通过倒排索引表按 token 归约:
+
+    token_to_indices[token_id] = [i0, i1, ...]
+
+  - workspace 仅需倒排表 + 索引数组，远小于 C×T×H
+  - 倒排表可在 host 预构建，或 device 上额外 kernel 构建
+  - Phase 2 只扫描该 token 对应的 i 列表，避免全量扫描
+
+
+8.2 树形归约 (降低峰值内存)
+--------------------------------------------------------------------------------
+
+将 Phase 1 的 C 层 partial 两两合并，多轮 kernel 直到剩一层:
+
+  Round 0: 48 层 partial
+  Round 1: 24 层 (两两相加)
+  Round 2: 12 层
+  ...
+  Round 5: 1 层 → tokensGradOut
+
+  - 峰值 workspace 可减半，但 kernel 启动次数增加
+
+
+8.3 预索引 + 按 token 分核 (优化当前方案)
+--------------------------------------------------------------------------------
+
+保持按 tokens_num 分核不变，但预构建倒排表，
+使每个核只扫描属于自己 token 的 permuted 下标，
+避免全量 O(numOutTokens) 扫描。
+
+  - 改动最小，无额外 workspace
+  - 预处理有成本
+
+
+================================================================================
+9. 方案对比
+================================================================================
+
+  方案                  分核维度                    写冲突  额外内存          kernel次数  适用场景
+  --------------------  --------------------------  ------  ----------------  ----------  -------------------------
+  当前:按token分核       tokens_num                  无      无                1           tokens_num接近maxCoreNum
+  两阶段稠密partial     P1:numOutTokens             无      C×T×H(数百MB)     1~2         tokens_num小、numOutTokens大
+                        P2:tokens_num
+  稀疏倒排索引          P1:numOutTokens             无      索引表(较小)      2~3         内存敏感场景
+                        P2:tokens_num
+  树形归约              同两阶段                    无      C×T×H/2^k         多轮        内存中等、可容忍多launch
+  预索引优化当前方案    tokens_num                  无      索引表            1~2         改动最小、渐进优化
+
+
+================================================================================
+10. 适用性分析
+================================================================================
+
+10.1 建议使用 numOutTokens 分核的场景
+--------------------------------------------------------------------------------
+
+  - tokens_num 远小于 maxCoreNum (如 < 64)，当前方案核利用率低
+  - numOutTokens 远大于 tokens_num (如 8 倍以上)
+  - 可接受额外 workspace (数百 MB 级) 或倒排索引预处理
+
+
+10.2 建议保持当前方案的场景
+--------------------------------------------------------------------------------
+
+  - tokens_num 已接近或超过 maxCoreNum (如 512 / 48 核)
+  - workspace 预算紧张 (当前仅 16MB 系统 workspace)
+  - 实现复杂度需最小化
+
+
+10.3 典型参数下的核利用率对比
+--------------------------------------------------------------------------------
+
+  tokens_num  numOutTokens  maxCoreNum  当前tokenGrad用核       numOutTokens分核用核
+  ----------  ------------  ----------  --------------------  ------------------------
+  512         1024          48          48                    48
+  64          1024          48          48 (每核扫1024)       48 (每核处理约21条)
+  8           1024          48          8                     48
+  512         256           48          48                    48 (无优势)
+
+当 tokens_num=8 时，numOutTokens 分核可将核利用率从 8/48 提升至 48/48，优势最明显。
+
+
+================================================================================
+11. 与 probsGrad 整合
+================================================================================
+
+当前 pad 模式将 tokenGrad 与 probsGrad 整合为一次 kernel 启动
+(KernelMoeTokenPermuteDropPadGrad)，串行执行:
+  ProcessTokenGrad() → ProcessProbsGrad()
+
+若 tokenGrad 改为两阶段方案，可选整合方式:
+
+  整合方式        说明
+  --------------  ------------------------------------------------------------
+  完全拆分        tokenGrad 两阶段独立 kernel，probsGrad 保持单阶段; 共3次launch
+  Phase1合并      Phase1 同时做 tokenGrad 局部累加和 probsGrad 赋值
+                  (分核维度均为 numOutTokens); Phase2 仅做 token 归约
+  保持独立        tokenGrad 和 probsGrad 各自独立 kernel，便于分别优化
+
+推荐 Phase1 合并: 两者分核维度一致，可在同一轮按 numOutTokens 分核中同时完成，
+减少 launch 次数。
+
+
+================================================================================
+12. 实施路径建议
+================================================================================
+
+阶段一: 低风险优化 (预索引)
+--------------------------------------------------------------------------------
+
+  1. 在 host 或 device 上为每个 token_id 构建 permuted 下标列表
+  2. 保持按 tokens_num 分核，核内扫描从 O(numOutTokens) 降为 O(该token的路由数)
+  3. 无需改动 workspace 大小，改动量最小
+
+
+阶段二: 完整两阶段 (按需)
+--------------------------------------------------------------------------------
+
+  1. 扩展 tiling: 新增 Phase1/Phase2 分核参数，动态计算 workspace 大小
+  2. 实现 LocalAccumulate kernel (按 numOutTokens 分核)
+  3. 实现 ReduceByToken kernel (按 tokens_num 分核)
+  4. 与 probsGrad 整合或独立 launch
+  5. 补充 UT: 验证 workspace 布局、多核归约正确性、边界 case
+     (tokens_num=1, numOutTokens < maxCoreNum)
+
+
+================================================================================
+13. 相关文件
+================================================================================
+
+  文件                                                          说明
+  ------------------------------------------------------------  ------------------
+  op_kernel/moe_token_permute_drop_pad_grad.h                   当前pad模式整合内核
+  op_host/moe_token_permute_with_routing_map_grad_tiling.cpp    TilingComputeDropPad分核逻辑
+  op_host/moe_token_permute_with_routing_map_grad_tiling.h      TilingData结构定义
+  op_kernel/moe_token_permute_with_routing_map_grad.cpp         内核入口(tiling key分发)
+
+
+================================================================================
+14. 总结
+================================================================================
+
+按 numOutTokens 分核计算 tokenGrad 在算法上是正确的 scatter-add 反向，
+但因同一 token_id 可能被多个 permuted 下标引用，
+不能直接单阶段并行写 tokensGradOut。
+
+推荐通过两阶段归约规避写冲突:
+
+  Phase 1 (按 numOutTokens 分核):
+    各核将梯度累加到私有的 partial[c, token_id, :] 层
+
+  Phase 2 (按 tokens_num 分核):
+    各核将 C 层 partial 归约为最终 tokensGradOut
+
+主要代价:
+  - 额外 workspace (C × T × H，典型约 352MB)
+  - 可能的多次 kernel 启动
+
+收益最大的场景:
+  - tokens_num 较小，核利用率不足
+
+保持当前方案更合适的场景:
+  - tokens_num 已接近 maxCoreNum
+
+若以最小改动获得性能提升，可优先实施预索引优化，
+避免全量扫描 numOutTokens，无需大幅增加 workspace。
+
+================================================================================
+文档结束
+================================================================================

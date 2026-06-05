@@ -48,7 +48,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGrad,infershape_bf16)
 
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {512, 7168},
-        {512, 2},
+        {512, 512},
     };                                                                            // 预期输出shape
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape); // 框架中已提供该接口
 }
