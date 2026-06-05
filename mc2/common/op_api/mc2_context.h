@@ -63,7 +63,7 @@ private:
                                 uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
-    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum, CommProtocol &protocol);
+    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum, const CommProtocol &protocol);
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol protocol);

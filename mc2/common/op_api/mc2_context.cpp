@@ -387,7 +387,7 @@ aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList, Co
     return isFoundUbMemProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum, CommProtocol protocol)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum, const CommProtocol& protocol)
 {
     uint32_t srcRankId = 0;
     uint32_t dstRankId = 0;
