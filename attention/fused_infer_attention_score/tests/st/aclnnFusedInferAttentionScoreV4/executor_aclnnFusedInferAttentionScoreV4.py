@@ -9065,51 +9065,6 @@ class FiaOpForward():
 
 # SplitFuse
 
-def inspect_kwargs(kwargs):
-    """
-    遍历打印 kwargs 中的 key 和 value。
-    如果是 Tensor/Array，只打印 shape 和 dtype。
-    如果是标量或普通列表，打印具体值。
-    """
-    print(f"\n{'='*20} DEBUG: Inspect Kwargs {'='*20}")
-    
-    if not isinstance(kwargs, dict):
-        print(f"Error: Expected dict, got {type(kwargs)}")
-        return
-
-    for key, value in kwargs.items():
-        # 尝试获取类型名称
-        type_name = type(value).__name__
-        
-        # 1. 处理 PyTorch Tensor
-        if isinstance(value, torch.Tensor):
-            print(f"[Tensor]  Key: {key:<25} | Shape: {list(value.shape)} | Dtype: {value.dtype} | Device: {value.device}")
-            
-        # 2. 处理 Numpy Array
-        elif isinstance(value, np.ndarray):
-            print(f"[Numpy]   Key: {key:<25} | Shape: {value.shape} | Dtype: {value.dtype}")
-            
-        # 3. 处理包含 Tensor 的列表 (常见于 List[Tensor])
-        elif isinstance(value, (list, tuple)) and len(value) > 0 and (isinstance(value[0], torch.Tensor) or isinstance(value[0], np.ndarray)):
-            shape_info = list(value[0].shape) if hasattr(value[0], 'shape') else "N/A"
-            print(f"[List_T]  Key: {key:<25} | Len: {len(value)} | Item0_Shape: {shape_info}")
-            
-        # 4. 处理自定义对象 (如果有 shape 属性)
-        elif hasattr(value, 'shape') and hasattr(value, 'dtype'):
-             print(f"[Custom]  Key: {key:<25} | Shape: {value.shape} | Dtype: {value.dtype}")
-
-        # 5. 其他标量或普通对象，直接打印值
-        else:
-            # 如果值太长，截断一下
-            str_val = str(value)
-            if len(str_val) > 100:
-                str_val = str_val[:100] + "..."
-            print(f"[Scalar]  Key: {key:<25} | Value: {str_val}")
-
-    print(f"{'='*62}\n")
-
-
-# np.random.seed(44)
 IS_INF_FLAG=False
 SPARSE_MODE_INT_MAX = 2147483647
 
@@ -10350,7 +10305,6 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
                 mask_dim_num = len(input_data.kwargs["attenMaskOptional"].shape)
                 mask_dtype = input_data.kwargs["attenMaskOptional"].dtype
                 input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(mask_dim_num, mask_dtype).npu()
-            # inspect_kwargs(input_data.kwargs)
 
         input_args = []  # 算子的入参列表
         if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] is not None: 
