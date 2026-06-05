@@ -240,14 +240,18 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", std::string(opParamInfo_.layOut), "BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
  	                *opParamInfo_.sparseCount % 1024 != 0),
- 	                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 8192. And when sparse_count > 2048, sparse_count must be an interger multiple of 1024."),
+ 	                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_count",
+                    std::to_string(*opParamInfo_.sparseCount), "sparse_count must > 0 and <= 2048."),
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
-               OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
+                    std::to_string(*opParamInfo_.sparseMode), "sparse_count must be 0 or 3."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.preTokens != INT64_MAX,
-               OP_LOGE(opName_, "input attr pre_tokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "preTokens",
+                    std::to_string(*opParamInfo_.preTokens), "preTokens must be INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
-               OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nextTokens",
+                    std::to_string(*opParamInfo_.nextTokens), "nextTokens must be INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.returnValue && std::string(opParamInfo_.layOutKey) == "PA_BSND",
                OP_LOGE_FOR_INVALID_FORMAT(opName_, "key", std::string(opParamInfo_.layOutKey), "PA_BSND"), return ge::GRAPH_FAILED);
 

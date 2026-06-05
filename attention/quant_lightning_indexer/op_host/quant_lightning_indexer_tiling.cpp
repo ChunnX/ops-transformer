@@ -265,34 +265,37 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
             layout_key + " and " + layout_query,
             "When layOutKey is not PA_BSND, layout_query and layout_key must be same."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
-                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 2048, but now sparse_count is %u",
-                       *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_count",
+                    std::to_string(*opParamInfo_.sparseCount), "sparse_count must > 0 and <= 2048."),
+                return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         auto queryType = opParamInfo_.query.desc->GetDataType();
         OP_CHECK_IF((queryType == ge::DT_HIFLOAT8) && (*opParamInfo_.sparseCount != SPARSE_LIMIT),
-                OP_LOGE(opName_, "When query type is hifloat8, sparse_count must be 2048, but now sparse_count is %u",
-                        *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_count",
+                    std::to_string(*opParamInfo_.sparseCount), "When query type is hifloat8, sparse_count must be 2048."), return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
-                OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3, but now sparseMode is %u.",
-                       *opParamInfo_.sparseMode), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
+                    std::to_string(*opParamInfo_.sparseMode), "sparse_count must be 0 or 3."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.preTokens != 9223372036854775807,
-                OP_LOGE(opName_, "input attr preTokens only supported 9223372036854775807, but now preTokens is %ld.",
-                *opParamInfo_.preTokens), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "preTokens",
+                    std::to_string(*opParamInfo_.preTokens), "preTokens must be 9223372036854775807."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != 9223372036854775807,
-                OP_LOGE(opName_, "input attr nextTokens only supported 9223372036854775807, but now nextTokens is %ld.",
-                *opParamInfo_.nextTokens), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nextTokens",
+                    std::to_string(*opParamInfo_.nextTokens), "nextTokens must be 9223372036854775807."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((opParamInfo_.keyStride0 < 0) && (opParamInfo_.keyStride0 != -1)),
-                OP_LOGE(opName_, "input attr key_stride0 must >= 0, but key_stride0 is %u",
-                       opParamInfo_.keyStride0), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_stride0",
+                    std::to_string(*opParamInfo_.keyStride0), "key_stride0 must > 0."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((opParamInfo_.keyDequantScaleStride0 < 0) && (opParamInfo_.keyDequantScaleStride0 != -1)),
-                OP_LOGE(opName_, "input attr key_dequant_scale_stride0 must >= 0, but key_dequant_scale_stride0 is %u",
-                opParamInfo_.keyDequantScaleStride0), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_dequant_scale_stride0",
+                    std::to_string(*opParamInfo_.keyDequantScaleStride0), "key_dequant_scale_stride0 must >= 0."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*opParamInfo_.queryQuantMode != 0, OP_LOGE(opName_, "input attr query_quant_mode only supported 0."),
+    OP_CHECK_IF(*opParamInfo_.queryQuantMode != 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "query_quant_mode",
+                    std::to_string(*opParamInfo_.queryQuantMode), "query_quant_mode must be 0."), 
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(*opParamInfo_.keyQuantMode != 0, OP_LOGE(opName_, "input attr key_quant_mode only supported 0."),
+    OP_CHECK_IF(*opParamInfo_.keyQuantMode != 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode",
+                    std::to_string(*opParamInfo_.keyQuantMode), "key_quant_mode must be 0."), 
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
