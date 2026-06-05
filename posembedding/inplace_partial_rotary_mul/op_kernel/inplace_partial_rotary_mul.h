@@ -41,8 +41,8 @@ private:
     // 需要的tilingdata
     int64_t halfNumx_ = 0;
     int64_t halfNumr1_ = 0;
-    int64_t xNum_= 0;
-    int64_t r1Num_= 0;
+    int64_t xNum_ = 0;
+    int64_t r1Num_ = 0;
     int64_t count_ = 0;
 
     static constexpr int32_t ONE_BLOCK_SIZE = 32;
@@ -197,7 +197,7 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::InterleavedInversio
     int64_t fp32Mask = 64;
     int64_t repeatTimes = count / 64;
     int64_t remain = count % 64;
-    uint64_t fullMask = 0x5555555555555555; //0101010101010101
+    uint64_t fullMask = 0x5555555555555555; // 0101010101010101
     uint64_t tailMask = 0x55;
     SetVectorMask<float, MaskMode::NORMAL>(0, fullMask);
     Muls<float, false>(ub, ub, -1.0f, MASK_PLACEHOLDER, repeatTimes, {1, 1, 8, 8});
@@ -241,16 +241,16 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Process()
         LocalTensor<T> xUb = xQue_.AllocTensor<T>();
         int64_t gmOffset = blockIdx_ * blockFactor_ * ysCount + i * ubFactor_ * ysCount + start_;
         int64_t blockCout = ubSize * numHead_;
-        CopyInData(xUb, xGm_, blockCout , headDim_, gmOffset, halfNumx_);
+        CopyInData(xUb, xGm_, blockCout, headDim_, gmOffset, halfNumx_);
         xQue_.EnQue<T>(xUb);
 
         LocalTensor<T> r1Ub = r1Que_.AllocTensor<T>();
         int64_t r1Offset = blockIdx_ * blockFactor_ * headDim_ + i * ubFactor_ * headDim_;
-        CopyInDataR(r1Ub, r1Gm_, ubSize , headDim_, r1Offset, halfNumr1_);
+        CopyInDataR(r1Ub, r1Gm_, ubSize, headDim_, r1Offset, halfNumr1_);
         r1Que_.EnQue<T>(r1Ub);
 
         LocalTensor<T> r2Ub = r2Que_.AllocTensor<T>();
-        CopyInDataR(r2Ub, r2Gm_, ubSize , headDim_, r1Offset, halfNumr1_);
+        CopyInDataR(r2Ub, r2Gm_, ubSize, headDim_, r1Offset, halfNumr1_);
         r2Que_.EnQue<T>(r2Ub);
 
         xUb = xQue_.DeQue<T>();
@@ -268,13 +268,13 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Process()
         PipeBarrier<PIPE_V>();
         LocalTensor<T> yUb = yQue_.AllocTensor<T>();
         LocalTensor<float> yUbFp32 = yUb.template ReinterpretCast<float>();
-        ComputeMul(yUbFp32 , xUbFp32, r1UbFp32, ubSize, numHead_, headDim_);
+        ComputeMul(yUbFp32, xUbFp32, r1UbFp32, ubSize, numHead_, headDim_);
         // 开始做选择的取数，基偶取数
         for (int64_t k = 0; k < ubSize; k++) {
-            Gather(xUbFp32[k*count], xUbFp32[k*count], idsUbUint32, uint32_t(0), uint32_t(count)); //奇偶交换完成
+            Gather(xUbFp32[k*count], xUbFp32[k*count], idsUbUint32, uint32_t(0), uint32_t(count)); // 奇偶交换完成
         }
         PipeBarrier<PIPE_V>();
-        ComputeMul(xUbFp32 , xUbFp32, r2UbFp32, ubSize, numHead_, headDim_);
+        ComputeMul(xUbFp32, xUbFp32, r2UbFp32, ubSize, numHead_, headDim_);
         r1Que_.FreeTensor(r1Ub);
         r2Que_.FreeTensor(r2Ub);
         InterleavedInversion(xtotalNum, xUbFp32);
