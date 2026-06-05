@@ -29,6 +29,8 @@ private:
     int32_t head_dim_;
     int32_t head_dim_align_;
     int32_t event_ping_pong_flag{0};
+    uint32_t q_stride_;
+    uint32_t kv_stride_;
     // l1_tensor
     LocalTensor<INPUT_TYPE> query_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> query_l1_tensor_pong_;
@@ -68,13 +70,23 @@ public:
         this->head_dim_align_ = RoundUp(head_dim_, 16);
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
+        if constexpr (INPUT_LAYOUT == BSND) {
+            q_stride_ = q_head_num_ * head_dim_;
+            kv_stride_ = kv_head_num_ * head_dim_;
+        } else if constexpr (INPUT_LAYOUT == BNSD) {
+            q_stride_ = head_dim_;
+            kv_stride_ = head_dim_;
+        } else if constexpr (INPUT_LAYOUT == TND) {
+            q_stride_ = q_head_num_ * head_dim_;
+            kv_stride_ = kv_head_num_ * head_dim_;
+        }
+
         TBuf<TPosition::A2> l0_a_buffer_;
         TBuf<TPosition::B2> l0_b_buffer_;
         TBuf<TPosition::CO1> l0_c_buffer_;
         tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_c_buffer_, L0_C_SIZE);
-
         // query_l1
         query_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
@@ -176,24 +188,12 @@ private:
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
-        uint32_t src_q_stride;
-        uint32_t src_k_stride;
-        if constexpr (INPUT_LAYOUT == BSND) {
-            src_q_stride = q_head_num_ * head_dim_;
-            src_k_stride = kv_head_num_ * head_dim_;
-        } else if (INPUT_LAYOUT == BNSD) {
-            src_q_stride = head_dim_;
-            src_k_stride = head_dim_;
-        } else if (INPUT_LAYOUT == TND) {
-            src_q_stride = q_head_num_ * head_dim_;
-            src_k_stride = kv_head_num_ * head_dim_;
-        }
 
         WAIT_FLAG(M, MTE1, evnet_id);
         load_data_gm_2_l0<true>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_,
-                                src_q_stride);
+                                q_stride_);
         load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
-                                       head_dim_align_, src_k_stride);
+                                       head_dim_align_, kv_stride_);
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
@@ -232,14 +232,6 @@ private:
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
-        uint32_t dst_kv_stride;
-        if constexpr (INPUT_LAYOUT == BSND) {
-            dst_kv_stride = kv_head_num_ * head_dim_;
-        } else if (INPUT_LAYOUT == BNSD) {
-            dst_kv_stride = head_dim_;
-        } else if (INPUT_LAYOUT == TND) {
-            dst_kv_stride = kv_head_num_ * head_dim_;
-        }
 
         WAIT_FLAG(M, MTE1, evnet_id);
         load_data_l1_2_l0_zn(l0_a_tensor, l1_a_tensor, mProcessAlign, nProcessAlign);
@@ -262,7 +254,7 @@ private:
         fixpipeParamsV220.mSize = nProcess;
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = nProcessAlign;
-        fixpipeParamsV220.dstStride = dst_kv_stride;
+        fixpipeParamsV220.dstStride = kv_stride_;
         fixpipeParamsV220.unitFlag = 3;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         SET_FLAG(FIX, M, evnet_id);
@@ -280,14 +272,6 @@ private:
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
-        uint32_t dst_q_stride;
-        if constexpr (INPUT_LAYOUT == BSND) {
-            dst_q_stride = q_head_num_ * head_dim_;
-        } else if (INPUT_LAYOUT == BNSD) {
-            dst_q_stride = head_dim_;
-        } else if (INPUT_LAYOUT == TND) {
-            dst_q_stride = q_head_num_ * head_dim_;
-        }
 
         WAIT_FLAG(M, MTE1, evnet_id);
         load_data_l1_2_l0_nz(l0_a_tensor, l1_a_tensor, mProcessAlign, nProcessAlign);
@@ -310,7 +294,7 @@ private:
         fixpipeParamsV220.mSize = mProcess;
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = mProcessAlign;
-        fixpipeParamsV220.dstStride = dst_q_stride;
+        fixpipeParamsV220.dstStride = q_stride_;
         fixpipeParamsV220.unitFlag = 3;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         SET_FLAG(FIX, M, evnet_id);
