@@ -319,7 +319,7 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
              OP_TILING_CHECK((*groupSizePtr != 0), 
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "should be nullptr or 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "groupSize must be nullptr or 0"),
                 return false);
         }
     }
@@ -355,7 +355,7 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         OP_TILING_CHECK(
             (kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName_, "kValue", std::to_string(kValue).c_str(), "should be in range [256, 65535)"),
+                opName_, "kValue", std::to_string(kValue).c_str(), "The value of kValue must be in the range [256, 65535)"),
             return false);
     }
     auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
@@ -418,13 +418,13 @@ bool MatmulReduceScatterTilingBase::ReduceScatterCheckShapeInfo()
     uint64_t x2Dim0 = bShape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = bShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
-        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
+        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 of x1 must not be 0"), return false);
     OP_TILING_CHECK(
-        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
+        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 of x1 must not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
+        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 of x2 must not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
+        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 of x2 must not be 0"), return false);
 
     return CheckAttrInfoValid(x1Dim1);
 }
@@ -539,7 +539,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     // 为通信而进行调整搬运
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "must be positive and divisible by orgMValue"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "The value of rankDim must be positive and divisible by orgMValue"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 };

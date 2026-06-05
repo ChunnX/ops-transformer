@@ -138,7 +138,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
     size_t groupLen = strlen(group);
     OP_TILING_CHECK(groupLen > MAX_GROUP_NAME_LEN,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "group", std::to_string(groupLen).c_str(),
-                        "length must not exceed 127"),
+                        "The value of group length must not exceed 127"),
                     return ge::GRAPH_FAILED);
     // 通路输入world_size为可选，如果默认值不为-1，则调用mc2tiling的获取rankSize的方法
     int64_t rankDim = 0;
@@ -237,12 +237,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert
     OP_TILING_CHECK((x1Dtype != x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1,x2",
                         (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "x1 and x2 dtype must be same"),
+                        "The dtype of x1 and x2 must be the same"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x",
                         (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "dtype must be in non-quant range (float16/bf16)"),
+                        "The dtype of x must be float16 or bf16"),
                     return ge::GRAPH_FAILED);
 
     // 校验 bias 数据类型（如果存在）
@@ -260,7 +260,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale/x2Scale", "non-null",
-                        "scale tensors must be null in non-quant mode"), return ge::GRAPH_FAILED);
+                        "x1Scale and x2Scale must be nullptr in non-quant mode"), return ge::GRAPH_FAILED);
 
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
@@ -297,11 +297,11 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert:
     OP_TILING_CHECK(!IsContains(KC_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1",
                         Ops::Base::ToString(x1Dtype).c_str(),
-                        "dtype must be in kc-quant range (float8_e4m3fn/float8_e5m2)"), return ge::GRAPH_FAILED);
+                        "The dtype of x1 must be float8_e4m3fn or float8_e5m2"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(KC_QUANT_X_DTYPE_LIST, x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2",
                         Ops::Base::ToString(x2Dtype).c_str(),
-                        "dtype must be in kc-quant range (float8_e4m3fn/float8_e5m2)"), return ge::GRAPH_FAILED);
+                        "The dtype of x2 must be float8_e4m3fn or float8_e5m2"), return ge::GRAPH_FAILED);
     // 校验 bias 数据类型（如果存在）
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     QuantMode mode = MatmulAlltoAllTilingUtil::GetQuantMode(context, opName);
@@ -334,7 +334,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert:
     OP_TILING_CHECK(!IsContains(KC_QUANT_Y_DTYPE_LIST, yDtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y",
                         Ops::Base::ToString(yDtype).c_str(),
-                        "dtype must be float16, bfloat16 or float"),
+                        "The dtype of y must be float16, bfloat16 or float"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -474,21 +474,21 @@ static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, co
     uint64_t kAxis = (x2TransFlag) ? x2Dim1 : x2Dim0;
     // 校验M,当前M为0的话，走公式化tiling切分实际是不支持的,后面可去除
     OP_TILING_CHECK(x1Dim0 == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1", std::to_string(x1Dim0).c_str(),
-                    "dim 0(m) cannot be 0"), return ge::GRAPH_FAILED);
+                    "The value of dim 0 (m) of x1 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验M不能大于int32的最大值
     OP_TILING_CHECK(x1Dim0 > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1",
-                    std::to_string(x1Dim0).c_str(), "dim 0(m) must not exceed INT32_MAX"),
+                    std::to_string(x1Dim0).c_str(), "The value of dim 0 (m) of x1 must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
     // 校验K,K的范围应该在[1, 65535]
     OP_TILING_CHECK(kAxis > K_MAX_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "k",
-                    std::to_string(kAxis).c_str(), "k dim must not exceed 65535"),
+                    std::to_string(kAxis).c_str(), "The value of k must not exceed 65535"),
                     return ge::GRAPH_FAILED);
     // 校验N, N不为空
     OP_TILING_CHECK(nAxis == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2", std::to_string(nAxis).c_str(),
-                    "N cannot be 0"), return ge::GRAPH_FAILED);
+                    "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
     // 校验N不能大于int32的
     OP_TILING_CHECK(nAxis > MAX_INT32_VALUE, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2",
-                    std::to_string(nAxis).c_str(), "N axis must not exceed INT32_MAX"),
+                    std::to_string(nAxis).c_str(), "The value of N of x2 must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

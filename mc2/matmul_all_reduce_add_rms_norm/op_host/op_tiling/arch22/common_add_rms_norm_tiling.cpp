@@ -99,21 +99,21 @@ ge::graphStatus CheckAddRmsNormInputDtype(
         x2Type != gammaType,
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and gamma",
             (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(gammaType)).c_str(),
-            "The dtype of residual should be the same as the dtype of gamma"),
+            "The dtypes of residual and gamma must be the same"),
         return ge::GRAPH_FAILED);
     // residual和normOut数据类型相同
     OP_TILING_CHECK(
         x2Type != yType,
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and normOut",
             (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(yType)).c_str(),
-            "The dtype of residual should be the same as the dtype of normOut"),
+            "The dtypes of residual and normOut must be the same"),
         return ge::GRAPH_FAILED);
     // residual和输出y数据类型相同
     OP_TILING_CHECK(
         x2Type != xType,
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and y",
             (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(xType)).c_str(),
-            "The dtype of residual should be the same as the dtype of y"),
+            "The dtypes of residual and y must be the same"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -166,7 +166,7 @@ ge::graphStatus CheckAddRmsNormInputShape(
             context->GetNodeName(), "residual and normOut",
             (Ops::Base::ToString(x2Shape->GetStorageShape()) + " and " +
              Ops::Base::ToString(yShape->GetStorageShape())).c_str(),
-            "The shape of residual should be the same as the shape of normOut"),
+            "The shapes of residual and normOut must be the same"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         x2Shape->GetStorageShape() != xShape->GetStorageShape(),
@@ -174,7 +174,7 @@ ge::graphStatus CheckAddRmsNormInputShape(
             context->GetNodeName(), "residual and y",
             (Ops::Base::ToString(x2Shape->GetStorageShape()) + " and " +
              Ops::Base::ToString(xShape->GetStorageShape())).c_str(),
-            "The shape of residual should be the same as the shape of y"),
+            "The shapes of residual and y must be the same"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

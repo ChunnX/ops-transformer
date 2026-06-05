@@ -43,7 +43,7 @@ namespace optiling {
                         VALID_RANK.at(0).end(), rankSize);
     OP_TILING_CHECK(
         it == VALID_RANK.at(0).end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(), "illegal value"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(), "The value of world_size is illegal"),
         return ge::GRAPH_FAILED);
 
         return ge::GRAPH_SUCCESS;

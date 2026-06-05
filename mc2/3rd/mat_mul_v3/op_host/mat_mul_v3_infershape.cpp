@@ -179,7 +179,7 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "x1 and x2",
                 (std::to_string(shape_x1_new.GetDim(idx_k_a)) + " and " +
                  std::to_string(shape_x2_new.GetDim(idx_k_b))).c_str(),
-                "The k dimension of input x1 and x2 should be the same"),
+                "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
     }
 

@@ -102,7 +102,7 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x1 and x2",
                 (std::to_string(shape.k) + " and " +
                  std::to_string(shape_x2->GetDim(shapeX2KIndex))).c_str(),
-                "The k dimension of input x1 and x2 should be equal"),
+                "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
         const size_t scale_idx =
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);

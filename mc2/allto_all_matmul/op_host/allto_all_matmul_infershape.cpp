@@ -94,7 +94,7 @@ static ge::graphStatus CheckAllToAllAxesShapeForAlltoAllMatmul(const gert::Infer
             "[" + std::to_string(alltoAllAxes[0]) + ", " + std::to_string(alltoAllAxes[1]) + "]";
         OPS_CHECK((alltoAllAxes[0] != NUM_MINUS_TWO || alltoAllAxes[1] != NUM_MINUS_ONE),
                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "alltoAllAxes", axesVal.c_str(),
-                  "alltoAllAxes should be [-2, -1]"),
+                  "The value of alltoAllAxes must be [-2, -1]"),
                   return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -112,7 +112,7 @@ static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeCo
     OPS_CHECK(shape.k1 > AXIS_K_UPPER_LIMIT || shape.k2 > AXIS_K_UPPER_LIMIT,
               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
               (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-              "axis k cannot exceed " + std::to_string(AXIS_K_UPPER_LIMIT)),
+              "The value of axis k must not exceed the upper limit"),
               return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2 / shape.rankNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x1 and x2",

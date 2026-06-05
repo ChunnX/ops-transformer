@@ -109,7 +109,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "gmmWeight", Ops::Base::ToString(localParams_.gmmWeightDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.gmmWeightDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "should be equal to gmmWeight dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "The dtype of gmmX must be the same as that of gmmWeight"),
                     return ge::GRAPH_FAILED);
 
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
@@ -119,7 +119,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "y", Ops::Base::ToString(localParams_.yDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.yDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "should be equal to y dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "The dtype of gmmX must be the same as that of y"),
                     return ge::GRAPH_FAILED);
     localParams_.gmmYDtype = localParams_.yDtype;
 
@@ -166,10 +166,10 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmXDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX", Ops::Base::ToString(localParams_.mmXDtype).c_str(), "should equal gmmX dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX", Ops::Base::ToString(localParams_.mmXDtype).c_str(), "The dtype of mmX must be the same as that of gmmX"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmWeightDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "should equal gmmX dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "The dtype of mmWeight must be the same as that of gmmX"),
                     return ge::GRAPH_FAILED);
     auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
     OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmY"), return ge::GRAPH_FAILED);

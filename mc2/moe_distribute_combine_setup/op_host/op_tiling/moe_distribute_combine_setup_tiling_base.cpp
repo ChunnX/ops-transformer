@@ -388,7 +388,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeRelation()
              std::to_string(expandXStorageShape->GetStorageShape().GetDim(0)) +
              ", quantExpandXOut dim0=" +
              std::to_string(quantExpandXOutStorageShape->GetStorageShape().GetDim(0))).c_str(),
-            "expandX dim0 must equal quantExpandXOut dim0"),
+            "Dim0 of expandX must be equal to dim0 of quantExpandXOut"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -531,7 +531,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
         assistInfoForCombineOutSize != assistInfoForCombineOutSizeGolden,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "assistInfoForCombine",
             (std::string("dim0=") + std::to_string(assistInfoForCombineOutSize)).c_str(),
-            (std::string("A * 128 = ") + std::to_string(assistInfoForCombineOutSizeGolden)).c_str()),
+            "Dim0 of assistInfoForCombine must be equal to A * 128"),
         return ge::GRAPH_FAILED);
 
     int64_t tokenMsgSizeGolden = ops::CeilAlign(
@@ -540,15 +540,14 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
     OP_TILING_CHECK(tokenMsgSize != tokenMsgSizeGolden,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "quantExpandXOut",
                         (std::string("dim1=") + std::to_string(tokenMsgSize)).c_str(),
-                        (std::string("tokenMsgSize=") + std::to_string(tokenMsgSizeGolden)).c_str()),
+                        "Dim1 of quantExpandXOut must be equal to tokenMsgSize"),
                     return ge::GRAPH_FAILED);
 
     int64_t commCmdInfoOutSizeGolden = (A + epWorldSize) * COMM_CMD_INFO_SIZE;
     OP_TILING_CHECK(commCmdInfoOutSize != commCmdInfoOutSizeGolden,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfoOut",
                         (std::string("dim0=") + std::to_string(commCmdInfoOutSize)).c_str(),
-                        (std::string("(A + epWorldSize) * 16 = ") +
-                         std::to_string(commCmdInfoOutSizeGolden)).c_str()),
+                        "Dim0 of commCmdInfoOut must be equal to (A + epWorldSize) * 16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
