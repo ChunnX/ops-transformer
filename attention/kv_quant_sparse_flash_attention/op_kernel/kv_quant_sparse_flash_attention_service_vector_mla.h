@@ -63,8 +63,19 @@ public:
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void RowMulsNarrowPath(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
+                                             uint32_t dealRowCount, uint32_t columnCount,
+                                             uint32_t qsfaDLoop, uint32_t qsfaDRemain,
+                                             uint32_t qsfaRepeatElementNum, uint32_t qsfaBlockElementNum);
     // ================================Vector0==========================================
     __aicore__ inline void MergeKv(const RunInfo &runInfo);
+    __aicore__ inline void FillTailZeroKv(int64_t qsfaS2GmStartOffset, int64_t qsfaS2GmLimit,
+                                          int64_t qsfaMte2Size, int64_t &qsfaMergeMte3Idx,
+                                          const RunInfo &runInfo);
+    __aicore__ inline void MergeKvMainLoop(int64_t qsfaS2GmStartOffset, int64_t qsfaS2GmLimit,
+                                           int64_t &qsfaMergeMte3Idx, int64_t &qsfaMte2Size,
+                                           int64_t &qsfaMte3Size, int64_t topkGmBaseOffset,
+                                           const RunInfo &runInfo);
     __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
     __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
                                         const RunInfo &runInfo);
@@ -72,6 +83,18 @@ public:
                                     int64_t realS2Idx2, const RunInfo &runInfo);
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
                                              int64_t mergeMte3Idx, const RunInfo &runInfo);
+    __aicore__ inline void CastAndDequantSetup(LocalTensor<half> &kvTensorAsFp16,
+                                               LocalTensor<KV_T> &srcTensor,
+                                               uint64_t mask, int32_t dealRow,
+                                               LocalTensor<T> &antiQuantScale);
+    __aicore__ inline void CopyOutDequantLoop(LocalTensor<T> &kvTensorAsFp32,
+                                              LocalTensor<half> &kvTensorAsFp16,
+                                              LocalTensor<T> &antiQuantScale,
+                                              LocalTensor<K_ROPE_T> &antiKvTensorAsB16,
+                                              int32_t dealRow, uint32_t dealLoop, uint32_t element);
+    __aicore__ inline void CopyOutRopeTail(LocalTensor<KV_T> &srcTensor, int32_t dealRow,
+                                           const RunInfo &runInfo, int64_t s2StartGmOffset,
+                                           int64_t mte3Size);
     __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                        uint64_t startId, uint64_t endId);
     __aicore__ inline void SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
@@ -95,6 +118,10 @@ public:
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
+    __aicore__ inline void DealBmm2FlashUpdate(const RunInfo &info, const MSplitInfo &mSplitInfo,
+                                               LocalTensor<T> &bmm2ResUb, uint64_t inOutBaseOffset,
+                                               uint32_t dealRowCount, uint32_t columnCount,
+                                               uint32_t actualColumnCount, uint32_t baseOffset);
     __aicore__ inline void ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t mStartRow,
                                             uint32_t mDealSize);
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
@@ -593,13 +620,84 @@ __aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t real
 }
 
 template <typename QSFAT>
-__aicore__ inline void
-QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                         int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::RowMulsNarrowPath(
+    LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
+    uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t qsfaDLoop, uint32_t qsfaDRemain,
+    uint32_t qsfaRepeatElementNum, uint32_t qsfaBlockElementNum)
 {
-    if (keyBNBOffset < 0) {
-        return;
+    BinaryRepeatParams qsfaRepeatParams;
+    qsfaRepeatParams.src0BlkStride = 1;
+    qsfaRepeatParams.src1BlkStride = 0;
+    qsfaRepeatParams.dstBlkStride = 1;
+    qsfaRepeatParams.src0RepStride = columnCount / qsfaBlockElementNum;
+    qsfaRepeatParams.src1RepStride = 1;
+    qsfaRepeatParams.dstRepStride = columnCount / qsfaBlockElementNum;
+
+    if (qsfaDLoop <= dealRowCount) {
+        uint32_t qsfaOffset = 0;
+        for (uint32_t qsfaI = 0; qsfaI < qsfaDLoop; qsfaI++) {
+            Mul(dstUb[qsfaOffset], src0Ub[qsfaOffset], src1Ub, qsfaRepeatElementNum, dealRowCount,
+                qsfaRepeatParams);
+            qsfaOffset += qsfaRepeatElementNum;
+        }
+    } else {
+        BinaryRepeatParams qsfaColumnRepeatParams;
+        qsfaColumnRepeatParams.src0BlkStride = 1;
+        qsfaColumnRepeatParams.src1BlkStride = 0;
+        qsfaColumnRepeatParams.dstBlkStride = 1;
+        qsfaColumnRepeatParams.src0RepStride = 8;
+        qsfaColumnRepeatParams.src1RepStride = 0;
+        qsfaColumnRepeatParams.dstRepStride = 8;
+        for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
+            Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
+                qsfaRepeatElementNum, qsfaDLoop, qsfaColumnRepeatParams);
+        }
     }
+
+    if (qsfaDRemain > 0) {
+        Mul(dstUb[qsfaDLoop * qsfaRepeatElementNum], src0Ub[qsfaDLoop * qsfaRepeatElementNum], src1Ub,
+            qsfaDRemain, dealRowCount, qsfaRepeatParams);
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void
+QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
+                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+{
+    uint32_t qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM;
+    uint32_t qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM;
+
+    if constexpr (std::is_same<T, half>::value) {
+        qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2;
+        qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
+    }
+
+    uint32_t qsfaDLoop = actualColumnCount / qsfaRepeatElementNum;
+    uint32_t qsfaDRemain = actualColumnCount % qsfaRepeatElementNum;
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * qsfaBlockElementNum) {
+        RowMulsNarrowPath(dstUb, src0Ub, src1Ub, dealRowCount, columnCount,
+                          qsfaDLoop, qsfaDRemain, qsfaRepeatElementNum, qsfaBlockElementNum);
+    } else {
+        BinaryRepeatParams qsfaRepeatParams;
+        qsfaRepeatParams.src0RepStride = 8;
+        qsfaRepeatParams.src0BlkStride = 1;
+        qsfaRepeatParams.src1RepStride = 0;
+        qsfaRepeatParams.src1BlkStride = 0;
+        qsfaRepeatParams.dstRepStride = 8;
+        qsfaRepeatParams.dstBlkStride = 1;
+        for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
+            Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
+                qsfaRepeatElementNum, qsfaDLoop, qsfaRepeatParams);
+            if (qsfaDRemain > 0) {
+                Mul(dstUb[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],
+                    src0Ub[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],
+                    src1Ub[qsfaI * qsfaBlockElementNum], qsfaDRemain, 1, qsfaRepeatParams);
+            }
+        }
+    }
+}
     int64_t validS2Count =
         (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams;
@@ -684,51 +782,14 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                                   int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                                   const RunInfo &runInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyOutDequantLoop(
+    LocalTensor<T> &kvTensorAsFp32,
+    LocalTensor<half> &kvTensorAsFp16,
+    LocalTensor<T> &antiQuantScale,
+    LocalTensor<K_ROPE_T> &antiKvTensorAsB16,
+    int32_t dealRow, uint32_t dealLoop, uint32_t element)
 {
-    if (mte2Size <= mte3Size) {
-        return;
-    }
-    int32_t dealRow = mte2Size - mte3Size;
-    SetFlag<AscendC::HardEvent::MTE2_V>(0);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-    LocalTensor<half> kvTensorAsFp16 = tmpBuff1.Get<half>();
-    uint64_t mask = ConstInfo::BUFFER_SIZE_BYTE_256B / sizeof(half);
-    LocalTensor<KV_T> srcTensor = kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)];
-    if (dealRow == 1) {
-        Cast(kvTensorAsFp16, srcTensor, RoundMode::CAST_NONE, mask, 4, {1, 1, 8, 4});
-    } else {
-        uint8_t repeatTimes = static_cast<uint8_t>(dealRow);
-        Cast(kvTensorAsFp16, srcTensor, RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21}); // 21=(512+64*2+32)/32
-        Cast(kvTensorAsFp16[128], srcTensor[128], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
-        Cast(kvTensorAsFp16[256], srcTensor[256], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
-        Cast(kvTensorAsFp16[384], srcTensor[384], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
-    }
-    PipeBarrier<PIPE_V>();
-    LocalTensor<T> antiQuantScale = tmpBuff2.Get<T>();
-    LocalTensor<T> oriQuantScaleTensor = srcTensor[640].template ReinterpretCast<T>();
-    if (dealRow == 1) {
-        Brcb(antiQuantScale, oriQuantScaleTensor, 1, {1, 4});
-    } else {
-        DataCopyParams params;
-        params.blockCount = dealRow;
-        params.blockLen = 1;
-        params.srcStride = (constInfo.headDim * sizeof(KV_T) + constInfo.headDimRope * sizeof(K_ROPE_T)) /
-            ConstInfo::BUFFER_SIZE_BYTE_32B;
-        params.dstStride = 0;
-        LocalTensor<T> tmpAntiQuantScale = antiQuantScale[ConstInfo::BUFFER_SIZE_BYTE_1K];
-        DataCopy(tmpAntiQuantScale, oriQuantScaleTensor, params);
-        PipeBarrier<PIPE_V>();
-        Brcb(antiQuantScale, tmpAntiQuantScale, dealRow, {1, 4});
-    }
-    PipeBarrier<PIPE_V>();
-    uint32_t dealLoop = CeilDiv(dealRow, LIMIT_DEAL_ROW);
     uint32_t dealRowFp32 = LIMIT_DEAL_ROW;
-    uint32_t element = LIMIT_DEAL_ROW * constInfo.headDim;
-    LocalTensor<T> kvTensorAsFp32 = inputBuff2.Get<T>();
-    LocalTensor<K_ROPE_T> antiKvTensorAsB16 = tmpBuff1.Get<K_ROPE_T>();
     for (uint32_t i = 0; i < dealLoop; i++) {
         if (i == dealLoop - 1) {
             dealRowFp32 = dealRow - i * LIMIT_DEAL_ROW;
@@ -742,7 +803,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
                 FP32_REPEAT_ELEMENT_NUM, 4 * dealRowFp32, {1, 1, 0, 16, 16, 1});
         }
         PipeBarrier<PIPE_V>();
-        if constexpr (IsSameType<K_ROPE_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+        if constexpr (IsSameType<K_ROPE_T, bfloat16_t>::value) {
             Cast(antiKvTensorAsB16[i * element], kvTensorAsFp32, RoundMode::CAST_RINT,
                 static_cast<uint32_t>(dealRowFp32 * constInfo.headDim));
         } else {
@@ -751,6 +812,90 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
         }
         PipeBarrier<PIPE_V>();
     }
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyOutRopeTail(
+    LocalTensor<KV_T> &srcTensor, int32_t dealRow,
+    const RunInfo &runInfo, int64_t s2StartGmOffset, int64_t mte3Size)
+{
+    uint64_t blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
+    LocalTensor<K_ROPE_T> kRopeUb = srcTensor[512].template ReinterpretCast<K_ROPE_T>();
+    LocalTensor<K_ROPE_T> kRopeUbNz = outputBuff2.Get<K_ROPE_T>();
+    WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    Copy(kRopeUbNz, kRopeUb, constInfo.headDimRope, static_cast<uint8_t>(dealRow), {static_cast<uint16_t>(dealRow), 1,
+        1, 21});
+    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
+    dataCopyParams.blockLen = dealRow * blockElementNum * sizeof(K_ROPE_T);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = (constInfo.s2BaseSize - dealRow) * blockElementNum * sizeof(K_ROPE_T);
+    DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * 512 + (s2StartGmOffset +
+        mte3Size) * blockElementNum], kRopeUbNz, dataCopyParams);
+    SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::CastAndDequantSetup(
+    LocalTensor<half> &kvTensorAsFp16,
+    LocalTensor<KV_T> &srcTensor,
+    uint64_t mask, int32_t dealRow,
+    LocalTensor<T> &antiQuantScale)
+{
+    if (dealRow == 1) {
+        Cast(kvTensorAsFp16, srcTensor, RoundMode::CAST_NONE, mask, 4, {1, 1, 8, 4});
+    } else {
+        uint8_t repeatTimes = static_cast<uint8_t>(dealRow);
+        Cast(kvTensorAsFp16, srcTensor, RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[128], srcTensor[128], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[256], srcTensor[256], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
+        Cast(kvTensorAsFp16[384], srcTensor[384], RoundMode::CAST_NONE, mask, repeatTimes, {1, 1, 32, 21});
+    }
+    PipeBarrier<PIPE_V>();
+    LocalTensor<T> antiQuantScaleLocal = tmpBuff2.Get<T>();
+    LocalTensor<T> oriQuantScaleTensor = srcTensor[640].template ReinterpretCast<T>();
+    if (dealRow == 1) {
+        Brcb(antiQuantScaleLocal, oriQuantScaleTensor, 1, {1, 4});
+    } else {
+        DataCopyParams params;
+        params.blockCount = dealRow;
+        params.blockLen = 1;
+        params.srcStride = (constInfo.headDim * sizeof(KV_T) + constInfo.headDimRope * sizeof(K_ROPE_T)) /
+            ConstInfo::BUFFER_SIZE_BYTE_32B;
+        params.dstStride = 0;
+        LocalTensor<T> tmpAntiQuantScale = antiQuantScaleLocal[ConstInfo::BUFFER_SIZE_BYTE_1K];
+        DataCopy(tmpAntiQuantScale, oriQuantScaleTensor, params);
+        PipeBarrier<PIPE_V>();
+        Brcb(antiQuantScaleLocal, tmpAntiQuantScale, dealRow, {1, 4});
+    }
+    PipeBarrier<PIPE_V>();
+    antiQuantScale = antiQuantScaleLocal;
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
+                                                                   int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+                                                                   const RunInfo &runInfo)
+{
+    if (mte2Size <= mte3Size) {
+        return;
+    }
+    int32_t dealRow = mte2Size - mte3Size;
+    SetFlag<AscendC::HardEvent::MTE2_V>(0);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+    LocalTensor<half> kvTensorAsFp16 = tmpBuff1.Get<half>();
+    uint64_t mask = ConstInfo::BUFFER_SIZE_BYTE_256B / sizeof(half);
+    LocalTensor<KV_T> srcTensor = kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)];
+    LocalTensor<T> antiQuantScale;
+    CastAndDequantSetup(kvTensorAsFp16, srcTensor, mask, dealRow, antiQuantScale);
+    PipeBarrier<PIPE_V>();
+    uint32_t dealLoop = CeilDiv(dealRow, LIMIT_DEAL_ROW);
+    uint32_t element = LIMIT_DEAL_ROW * constInfo.headDim;
+    LocalTensor<T> kvTensorAsFp32 = inputBuff2.Get<T>();
+    LocalTensor<K_ROPE_T> antiKvTensorAsB16 = tmpBuff1.Get<K_ROPE_T>();
+    CopyOutDequantLoop(kvTensorAsFp32, kvTensorAsFp16, antiQuantScale, antiKvTensorAsB16, dealRow, dealLoop, element);
 
     LocalTensor<K_ROPE_T> antiKvTensorAsB16Nz = outputBuff1.Get<K_ROPE_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -776,48 +921,83 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
         blockElementNum], antiKvTensorAsB16Nz, dataCopyParams);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 
-    LocalTensor<K_ROPE_T> kRopeUb = srcTensor[512].template ReinterpretCast<K_ROPE_T>();
-    LocalTensor<K_ROPE_T> kRopeUbNz = outputBuff2.Get<K_ROPE_T>();
-    WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
-    Copy(kRopeUbNz, kRopeUb, constInfo.headDimRope, static_cast<uint8_t>(dealRow), {static_cast<uint16_t>(dealRow), 1,
-        1, 21});
-    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-    WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
-    dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
-    DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * 512 + (s2GmStartOffset +
-        mte3Size) * blockElementNum], kRopeUbNz, dataCopyParams);
-    SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    CopyOutRopeTail(srcTensor, dealRow, runInfo, s2GmStartOffset, mte3Size);
 }
 
 // b s1 k
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::FillTailZeroKv(
+    int64_t qsfaS2GmStartOffset, int64_t qsfaS2GmLimit,
+    int64_t qsfaMte2Size, int64_t &qsfaMergeMte3Idx,
+    const RunInfo &runInfo)
 {
-    int64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
-    int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
-    int64_t topkGmBaseOffset = 0;
+    if (unlikely(qsfaS2GmStartOffset + qsfaMte2Size < qsfaS2GmLimit)) {
+        uint64_t blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
+        SetFlag<AscendC::HardEvent::MTE3_V>(0);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
+        LocalTensor<K_ROPE_T> mergeUb = kvMergUb_.template ReinterpretCast<K_ROPE_T>();
+        Duplicate(mergeUb, static_cast<K_ROPE_T>(0.0), constInfo.headDim);
+        SetFlag<AscendC::HardEvent::V_MTE3>(0);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(0);
 
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        uint64_t qsfaActualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(runInfo.bIdx - 1);
-        topkGmBaseOffset += (qsfaActualSeqQPrefixSum + runInfo.gS1Idx / constInfo.gSize) * constInfo.kvHeadNum *
-                            constInfo.sparseBlockCount + runInfo.n2Idx * constInfo.sparseBlockCount;
-    } else {
-        topkGmBaseOffset += runInfo.bIdx * constInfo.qSeqSize * constInfo.sparseBlockCount +
-                            runInfo.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = constInfo.headDim / blockElementNum;
+        dataCopyParams.blockLen = blockElementNum * sizeof(K_ROPE_T);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = (constInfo.s2BaseSize - 1) * blockElementNum * sizeof(K_ROPE_T);
+        for (int64_t s = qsfaS2GmStartOffset + qsfaMte2Size; s < qsfaS2GmLimit; s++) {
+            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s * blockElementNum],
+                        mergeUb, dataCopyParams);
+        }
+        dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
+        for (int64_t s = qsfaS2GmStartOffset + qsfaMte2Size; s < qsfaS2GmLimit; s++) {
+            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * constInfo.headDim +
+                                   s * blockElementNum],
+                        mergeUb, dataCopyParams);
+        }
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
+        qsfaMergeMte3Idx++;
     }
-    int64_t qsfaMergeMte3Idx = 0;
-    int64_t qsfaMte2Size = 0;
-    int64_t qsfaMte3Size = 0;
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2FlashUpdate(
+    const RunInfo &info, const MSplitInfo &mSplitInfo,
+    LocalTensor<T> &bmm2ResUb, uint64_t inOutBaseOffset,
+    uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount, uint32_t baseOffset)
+{
+    event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+    LocalTensor<T> bmm2ResPreUb = inputBuff2.Get<T>();
+    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
+    uint64_t vecPre2ResGmOffset = ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize +
+        inOutBaseOffset;
+    DataCopy(bmm2ResPreUb, vec2ResGm[vecPre2ResGmOffset], dealRowCount * columnCount);
+    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
+    LocalTensor<T> softmaxExpBrcb =  tmpBuff2.Get<T>();
+    Brcb(softmaxExpBrcb, softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
+        (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+    PipeBarrier<PIPE_V>();
+    RowMuls(bmm2ResPreUb, bmm2ResPreUb, softmaxExpBrcb, dealRowCount, columnCount, actualColumnCount);
+    PipeBarrier<PIPE_V>();
+    Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, dealRowCount * columnCount);
+    SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::MergeKvMainLoop(
+    int64_t qsfaS2GmStartOffset, int64_t qsfaS2GmLimit,
+    int64_t &qsfaMergeMte3Idx, int64_t &qsfaMte2Size,
+    int64_t &qsfaMte3Size, int64_t topkGmBaseOffset,
+    const RunInfo &runInfo)
+{
     int64_t qsfaS2IdxArray0 = -1;
     int64_t qsfaS2IdxArray1 = -1;
     bool qsfaNeedWaitMte3ToMte2 = true;
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: s2ProcessSize;
-    if (qsfaS2GmLimit > s2ProcessSize) {
-        qsfaS2GmLimit = s2ProcessSize;
-    }
     for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit; s2GmOffsetArray += 2 *
         constInfo.sparseBlockSize) {
         if (qsfaNeedWaitMte3ToMte2) {
@@ -842,35 +1022,37 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
             qsfaNeedWaitMte3ToMte2 = true;
         }
     }
+}
 
-    if (unlikely(qsfaS2GmStartOffset + qsfaMte2Size < qsfaS2GmLimit)) {
-        uint64_t blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
-        SetFlag<AscendC::HardEvent::MTE3_V>(0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
-        LocalTensor<K_ROPE_T> mergeUb = kvMergUb_.template ReinterpretCast<K_ROPE_T>();
-        Duplicate(mergeUb, static_cast<K_ROPE_T>(0.0), constInfo.headDim);
-        SetFlag<AscendC::HardEvent::V_MTE3>(0);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
+{
+    int64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
+    int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
+    int64_t topkGmBaseOffset = 0;
 
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = constInfo.headDim / blockElementNum;
-        dataCopyParams.blockLen = blockElementNum * sizeof(K_ROPE_T);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (constInfo.s2BaseSize - 1) * blockElementNum * sizeof(K_ROPE_T);
-        for (int64_t s2GmOffset = qsfaS2GmStartOffset + qsfaMte2Size; s2GmOffset < qsfaS2GmLimit; s2GmOffset++) {
-            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s2GmOffset * blockElementNum],
-                        mergeUb, dataCopyParams);
-        }
-        dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
-        for (int64_t s2GmOffset = qsfaS2GmStartOffset + qsfaMte2Size; s2GmOffset < qsfaS2GmLimit; s2GmOffset++) {
-            DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * constInfo.headDim +
-                                   s2GmOffset * blockElementNum],
-                        mergeUb, dataCopyParams);
-        }
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx & 1);
-        qsfaMergeMte3Idx++;
+    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+        uint64_t qsfaActualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(runInfo.bIdx - 1);
+        topkGmBaseOffset += (qsfaActualSeqQPrefixSum + runInfo.gS1Idx / constInfo.gSize) * constInfo.kvHeadNum *
+                            constInfo.sparseBlockCount + runInfo.n2Idx * constInfo.sparseBlockCount;
+    } else {
+        topkGmBaseOffset += runInfo.bIdx * constInfo.qSeqSize * constInfo.sparseBlockCount +
+                            runInfo.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
     }
+    int64_t qsfaMergeMte3Idx = 0;
+    int64_t qsfaMte2Size = 0;
+    int64_t qsfaMte3Size = 0;
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
+    int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
+    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: s2ProcessSize;
+    if (qsfaS2GmLimit > s2ProcessSize) {
+        qsfaS2GmLimit = s2ProcessSize;
+    }
+    MergeKvMainLoop(qsfaS2GmStartOffset, qsfaS2GmLimit, qsfaMergeMte3Idx, qsfaMte2Size,
+                    qsfaMte3Size, topkGmBaseOffset, runInfo);
+
+    FillTailZeroKv(qsfaS2GmStartOffset, qsfaS2GmLimit, qsfaMte2Size, qsfaMergeMte3Idx, runInfo);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
     v0ValidSizeUb_.SetValue(runInfo.loop % MERGE_CACHE_GM_BUF_NUM, qsfaMte2Size);
@@ -979,24 +1161,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
 
     // 除第一个循环外，均需要更新中间计算结果
     if (info.s2Idx > 0) {
-        event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
-        LocalTensor<T> bmm2ResPreUb = inputBuff2.Get<T>();
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
-        uint64_t vecPre2ResGmOffset = ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize +
-            inOutBaseOffset;
-        DataCopy(bmm2ResPreUb, vec2ResGm[vecPre2ResGmOffset + batchBase], vec2ComputeSize);
-        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-        LocalTensor<T> softmaxExpBrcb =  tmpBuff2.Get<T>();
-        Brcb(softmaxExpBrcb, softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            (mSplitInfo.vecDealM + 7) / 8, {1, 8});
-        PipeBarrier<PIPE_V>();
-        RowMuls(bmm2ResPreUb, bmm2ResPreUb, softmaxExpBrcb, dealRowCount, columnCount, actualColumnCount);
-        PipeBarrier<PIPE_V>();
-        Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
+        DealBmm2FlashUpdate(info, mSplitInfo, bmm2ResUb, inOutBaseOffset,
+                            dealRowCount, columnCount, actualColumnCount, baseOffset);
     }
     // 最后一次输出计算结果，否则将中间结果暂存至workspace
     if (info.s2Idx + 1 == info.curSInnerLoopTimes) {
@@ -1219,29 +1385,19 @@ QSFAVectorService<QSFAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> s
 }
 
 template <typename QSFAT>
-__aicore__ inline void
-QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
+__aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
                                   uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    // muls by row, 每行的元素乘以相同的元素
-    // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
-    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
-    // columnCount]
-    // dealRowCount is repeat times, must be less 256
     uint32_t qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM;
 
     if constexpr (std::is_same<T, half>::value) {
-        // 此限制由于每个repeat至多连续读取256B数据
-        qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
-        qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;   // 32/4 * 2 = 16
+        qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2;
+        qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;
     }
 
-    // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
-    // 列方向分dLoop次，每次处理8列数据
     uint32_t qsfaDLoop = actualColumnCount / qsfaRepeatElementNum;
     uint32_t qsfaDRemain = actualColumnCount % qsfaRepeatElementNum;
-    // REPEATE_STRIDE_UP_BOUND=256， 此限制由于src0RepStride数据类型为uint8之多256个datablock间距
     if (columnCount < REPEATE_STRIDE_UP_BOUND * qsfaBlockElementNum) {
         BinaryRepeatParams qsfaRepeatParams;
         qsfaRepeatParams.src0BlkStride = 1;
@@ -1251,7 +1407,6 @@ QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, L
         qsfaRepeatParams.src1RepStride = 1;
         qsfaRepeatParams.dstRepStride = columnCount / qsfaBlockElementNum;
 
-        // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
         if (qsfaDLoop <= dealRowCount) {
             uint32_t qsfaOffset = 0;
             for (uint32_t qsfaI = 0; qsfaI < qsfaDLoop; qsfaI++) {
@@ -1264,34 +1419,30 @@ QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, L
             qsfaColumnRepeatParams.src0BlkStride = 1;
             qsfaColumnRepeatParams.src1BlkStride = 0;
             qsfaColumnRepeatParams.dstBlkStride = 1;
-            qsfaColumnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+            qsfaColumnRepeatParams.src0RepStride = 8;
             qsfaColumnRepeatParams.src1RepStride = 0;
-            qsfaColumnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+            qsfaColumnRepeatParams.dstRepStride = 8;
             for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
                 Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
                     qsfaRepeatElementNum, qsfaDLoop, qsfaColumnRepeatParams);
             }
         }
 
-        // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
         if (qsfaDRemain > 0) {
             Mul(dstUb[qsfaDLoop * qsfaRepeatElementNum], src0Ub[qsfaDLoop * qsfaRepeatElementNum], src1Ub,
                 qsfaDRemain, dealRowCount, qsfaRepeatParams);
         }
     } else {
         BinaryRepeatParams qsfaRepeatParams;
-        qsfaRepeatParams.src0RepStride = 8; // 每个repeat为256B数据，正好8个datablock
+        qsfaRepeatParams.src0RepStride = 8;
         qsfaRepeatParams.src0BlkStride = 1;
         qsfaRepeatParams.src1RepStride = 0;
         qsfaRepeatParams.src1BlkStride = 0;
         qsfaRepeatParams.dstRepStride = 8;
         qsfaRepeatParams.dstBlkStride = 1;
-        // 每次计算一行，共计算dealRowCount行
         for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
-            // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
             Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
                 qsfaRepeatElementNum, qsfaDLoop, qsfaRepeatParams);
-            //  计算一行中的尾块
             if (qsfaDRemain > 0) {
                 Mul(dstUb[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],
                     src0Ub[qsfaI * columnCount + qsfaDLoop * qsfaRepeatElementNum],

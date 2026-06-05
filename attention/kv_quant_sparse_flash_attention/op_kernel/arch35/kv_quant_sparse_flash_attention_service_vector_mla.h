@@ -88,6 +88,9 @@ public:
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1TailCopy(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+        int64_t stage1Offset, LocalTensor<Q_T> &stage1CastTensor, RunInfo &runInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
@@ -126,6 +129,7 @@ private:
         int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
+    __aicore__ inline void CheckNeedInitFlag(CVSharedParams &sharedParams);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
 
     TPipe *tPipe;
@@ -546,6 +550,27 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1TailCopy(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+    int64_t stage1Offset, LocalTensor<Q_T> &stage1CastTensor, RunInfo &runInfo)
+{
+    this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
+    this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
+
+    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeV);
+    if (likely(runInfo.halfMRealSize != 0)) {
+        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],
+            stage1CastTensor, {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize,
+            (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
+            (uint16_t)(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
+    }
+
+    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+
+    outputBuf.SetCrossCore();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
@@ -593,21 +618,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     }
     bmm1ResBuf.SetCrossCore();
 
-    // ===================DataCopy to L1 ====================
-    this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-    this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
-
-    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeV);
-    if (likely(runInfo.halfMRealSize != 0)) {
-        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],
-            stage1CastTensor, {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize,
-            (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
-            (uint16_t)(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
-    }
-
-    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-
-    outputBuf.SetCrossCore();
+    ProcessVec1TailCopy(outputBuf, stage1Offset, stage1CastTensor, runInfo);
     if (runInfo.s2LoopCount != 0) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, qsfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
@@ -774,31 +785,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSFA_LAYOUT LAYOUT_T, QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G>
+__aicore__ inline void QSFAVectorService<Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G>::CheckNeedInitFlag(
+    CVSharedParams &sharedParams)
 {
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
-    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
-    sharedParams.n2Size = 1;
-    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
-    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
-    sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
-    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
-    sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
-    sharedParams.dSizeRope = 64; // 64: 编码维度
-    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
-    sharedParams.dSize = 576; // 576: 模型特征维度(dSize)
-    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
-    sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
-    if constexpr (isPa) {
-        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
-        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
-    }
-
-    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
-    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
-
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
         int64_t s2Size;
@@ -827,6 +817,34 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
             break;
         }
     }
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
+    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+{
+    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
+    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
+    sharedParams.n2Size = 1;
+    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
+    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
+    sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
+    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
+    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
+    sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
+    sharedParams.dSizeRope = 64;
+    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
+    sharedParams.dSize = 576;
+    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
+    sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
+    if constexpr (isPa) {
+        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
+        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
+    }
+
+    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
+    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
+
+    CheckNeedInitFlag(sharedParams);
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
