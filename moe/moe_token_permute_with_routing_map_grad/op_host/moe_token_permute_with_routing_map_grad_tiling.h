@@ -30,12 +30,33 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(
     MoeTokenpermuteWithRoutingMapDropPadTilingDataOp, MoeTokenpermuteWithRoutingMapDropPadTilingData)
 
+BEGIN_TILING_DATA_DEF(MoeTokenpermuteWithRoutingMapDropPadTokenTilingData)
+TILING_DATA_FIELD_DEF(int64_t, capacity)
+TILING_DATA_FIELD_DEF(int64_t, expertNum)
+TILING_DATA_FIELD_DEF(int64_t, tokenNum)
+TILING_DATA_FIELD_DEF(int64_t, numOutTokens)
+TILING_DATA_FIELD_DEF(int64_t, hiddenSize)
+TILING_DATA_FIELD_DEF(int64_t, hiddenSplitedLength)
+TILING_DATA_FIELD_DEF(int64_t, hiddenSplitedNum)
+TILING_DATA_FIELD_DEF(int64_t, hiddenSplitedRemain)
+TILING_DATA_FIELD_DEF(int64_t, tokensCoreLength)
+TILING_DATA_FIELD_DEF(int64_t, tokensCoreRemain)
+TILING_DATA_FIELD_DEF(int64_t, bufferNum)
+TILING_DATA_FIELD_DEF(int64_t, haveProbs)
+TILING_DATA_FIELD_DEF(int64_t, tokenUsedCoreNum)
+TILING_DATA_FIELD_DEF(int64_t, probsUsedCoreNum)
+END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(
+    MoeTokenpermuteWithRoutingMapDropPadTokenTilingDataOp, MoeTokenpermuteWithRoutingMapDropPadTokenTilingData)
+
 REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingDataOp, MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
 
 BEGIN_TILING_DATA_DEF(MoeTokenPermuteWithRoutingMapGradTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData, moeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(
     MoeTokenpermuteWithRoutingMapDropPadTilingData, moeTokenpermuteWithRoutingMapDropPadTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(
+    MoeTokenpermuteWithRoutingMapDropPadTokenTilingData, moeTokenpermuteWithRoutingMapDropPadTokenTilingData)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGrad, MoeTokenPermuteWithRoutingMapGradTilingData)
