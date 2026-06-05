@@ -82,12 +82,12 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     OP_TILING_CHECK((x1Dtype != x2Dtype),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, "x1 and x2",
                         (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
-                        "x1 and x2 dtype should be same"),
+                        "The dtypes of x1 and x2 must be the same"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1 and x2",
                         Ops::Base::ToString(x1Dtype).c_str(),
-                        "x dtype should be in non-quant range (float16/bf16)"),
+                        "The dtype of x1 and x2 must be float16 or bf16 in non-quant range"),
                     return ge::GRAPH_FAILED);
 
     // 校验 bias 数据类型（如果存在）
@@ -104,12 +104,12 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
             OP_TILING_CHECK((x1Dtype != biasDtype),
                             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
                                 Ops::Base::ToString(biasDtype).c_str(),
-                                "When x1 is FLOAT16, bias dtype should be same as x dtype"),
+                                "When x1 is FLOAT16, the dtype of bias must be same as x"),
                             return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
                 Ops::Base::ToString(biasDtype).c_str(),
-                "Non-quantized bias dtype currently only supports FLOAT16 and BF16");
+                "The dtype of bias must be FLOAT16 or BF16 in non-quant mode");
             return ge::GRAPH_FAILED;
         }
     }
@@ -128,7 +128,7 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     OP_TILING_CHECK((yDtype != x1Dtype),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y",
                         Ops::Base::ToString(yDtype).c_str(),
-                        "Output y dtype should be same as input x dtype"),
+                        "The dtype of y must be same as input x"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

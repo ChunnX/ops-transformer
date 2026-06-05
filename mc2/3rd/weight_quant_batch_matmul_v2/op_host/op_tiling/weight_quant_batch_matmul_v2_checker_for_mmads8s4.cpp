@@ -163,19 +163,19 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckShape()
                         weightShape->GetStorageShape().GetShapeSize() == 0 ||
                         antiQuantScaleShape->GetStorageShape().GetShapeSize() == 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "inputs", "empty",
-                        "not yet support empty tensor"),
+                        "The value of inputs must not be an empty tensor."),
                     return false);
     // check x, weight
     inputParams_.aFormat = Mc2GetInputStorageFormat(context_, 0);
     inputParams_.bFormat = Mc2GetInputStorageFormat(context_, 1);
     OP_TILING_CHECK(!CheckInputShape(xShape, weightShape),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x/weight shape", "",
-                        "Check input x and weight shape failed"),
+                        "The shape of x/weight is invalid."),
                     return false);
     // check antiquant scale, antiquant offset
     OP_TILING_CHECK(!CheckAntiQuantShape(antiQuantScaleShape, antiQuantOffsetShape),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "antiquant shape", "",
-                        "Check antiquant shape failed"),
+                        "The shape of antiquant is invalid."),
                     return false);
     // check quant scale, quant offset
     OP_TILING_CHECK(quantScaleShape != nullptr,
@@ -192,20 +192,20 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckShape()
     OP_TILING_CHECK(inputParams_.kSize > MAX_SHAPE_DIM || inputParams_.nSize > MAX_SHAPE_DIM,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "k/n",
                         (std::to_string(inputParams_.kSize) + ", " + std::to_string(inputParams_.nSize)).c_str(),
-                        "dim of k or n should not be more than 65535"),
+                        "The value of k/n must not be more than 65535."),
                     return false);
     uint64_t batchMax = inputParams_.transA ? MAX_SHAPE_DIM : MAX_INT32;
     OP_TILING_CHECK(
         inputParams_.mSize > batchMax,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "m",
             std::to_string(inputParams_.mSize).c_str(),
-            (std::string("dim of m should not be more than ") + std::to_string(batchMax)).c_str()),
+            (std::string("The value of m must not be more than ") + std::to_string(batchMax)).c_str()),
         return false);
     OP_TILING_CHECK(inputParams_.groupSize >= inputParams_.kSize || inputParams_.groupSize % MIN_GROUP_SIZE != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "groupSize",
                         std::to_string(inputParams_.groupSize).c_str(),
-                        (std::string("groupSize should not be more than ") + std::to_string(inputParams_.kSize) +
-                         " and align to 32").c_str()),
+                        (std::string("The value of groupSize must not be more than ") + std::to_string(inputParams_.kSize) +
+                         " and align to 32.").c_str()),
                     return false);
     return true;
 }
@@ -231,23 +231,23 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::St
     OP_TILING_CHECK(
         xOriDimNum != MM_SHAPE_LEN_ND,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x original",
-            (std::to_string(xOriDimNum) + "D").c_str(), "original shape must be 2D"),
+            (std::to_string(xOriDimNum) + "D").c_str(), "The shape dim of x original must be 2D."),
         return false);
 
     OP_TILING_CHECK(weightOriDimNum != MM_SHAPE_LEN_ND,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "weight original",
-                        (std::to_string(weightOriDimNum) + "D").c_str(), "original shape must be 2D"),
+                        (std::to_string(weightOriDimNum) + "D").c_str(), "The shape dim of weight original must be 2D."),
                     return false);
 
     OP_TILING_CHECK(
         xDimNum != MM_SHAPE_LEN_ND,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x storage",
-            (std::to_string(xDimNum) + "D").c_str(), "storage shape must be 2D"),
+            (std::to_string(xDimNum) + "D").c_str(), "The shape dim of x storage must be 2D."),
         return false);
 
     OP_TILING_CHECK(weightDimNum != MM_SHAPE_LEN_ND,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "weight storage",
-                        (std::to_string(weightDimNum) + "D").c_str(), "storage shape must be 2D"),
+                        (std::to_string(weightDimNum) + "D").c_str(), "The shape dim of weight storage must be 2D."),
                     return false);
     uint64_t weightLastDim = weightShape->GetOriginShape().GetDim(1);
     inputParams_.mSize = static_cast<uint64_t>(inputParams_.transA ? xShape->GetOriginShape().GetDim(1)
@@ -260,7 +260,7 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::St
     OP_TILING_CHECK(inputParams_.kSize != kBSize,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "K dim",
                         (std::to_string(inputParams_.kSize) + " vs " + std::to_string(kBSize)).c_str(),
-                        "K dim of x and weight must equal"),
+                        "The value of K dim of x and weight must be equal."),
                     return false);
     return true;
 }
@@ -273,7 +273,7 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAntiQuantShape(const gert
     OP_TILING_CHECK(antiQuantScaleDimNum > MM_SHAPE_LEN_ND,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "antiquant scale",
                         (std::to_string(antiQuantScaleDimNum) + "D").c_str(),
-                        "antiquant scale shape should not be more than 2D"),
+                        "The shape dim of antiquant scale must not be more than 2D."),
                     return false);
     if (antiQuantScaleShapeSize != 1) {
         if (antiQuantScaleDimNum == MM_SHAPE_LEN_ND) {
@@ -297,8 +297,8 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAntiQuantShape(const gert
             OP_TILING_CHECK(antiQuantScaleShapeSize != inputParams_.nSize,
                             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "antiquant scale",
                                 Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
-                                (std::string("size should be ") + std::to_string(inputParams_.nSize) +
-                                 " when perchannel").c_str()),
+                                (std::string("The shape of antiquant scale must be ") + std::to_string(inputParams_.nSize) +
+                                 " when perchannel.").c_str()),
                             return false);
             inputParams_.antiQuantType = Mc2QuantType::PER_CHANNEL;
         }
@@ -321,17 +321,17 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::Check()
     // check the input and output dtype: x, weight, antiquant_scale, y.
     OP_TILING_CHECK(!CheckDtype(),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input dtype", "",
-                        "Check input dtype failed"),
+                        "The dtype of input is invalid."),
                     return ge::GRAPH_FAILED);
     // check attrs: transA, transB, group_size, dtype, innerPrecise
     OP_TILING_CHECK(!CheckAttr(),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "attr", "",
-                        "Check attr failed"),
+                        "The value of attr is invalid."),
                     return ge::GRAPH_FAILED);
     // check the input and output shape: all
     OP_TILING_CHECK(!CheckShape(),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "shape", "",
-                        "Check shape failed"),
+                        "The shape is invalid."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

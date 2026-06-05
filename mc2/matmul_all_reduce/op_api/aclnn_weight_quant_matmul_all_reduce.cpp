@@ -125,7 +125,7 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquan
         antiquantGroupSize > std::min(static_cast<int32_t>(kLen - 1), INT32_MAX)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "antiquantGroupSize",
             std::to_string(antiquantGroupSize).c_str(),
-            std::string("should be in range [" + std::to_string(ANTIQUANT_GROUP_SIZE_MIN_VALUE) +
+            std::string("The value of antiquantGroupSize must be in range [" + std::to_string(ANTIQUANT_GROUP_SIZE_MIN_VALUE) +
                 ", min(" + std::to_string(kLen - 1) + ", INT_MAX)]").c_str());
         return false;
     }
@@ -193,7 +193,7 @@ static bool CheckShape(
     if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
+            std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -279,12 +279,12 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
     }
     if (IsAffineInconsistent(scale, transposeX2)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "scale", "inconsistent",
-            "When x2 is contiguous or transpose, scale should be consistent with it");
+            "The value of scale must be consistent with x2 when x2 is contiguous or transpose");
         return false;
     }
     if (IsAffineInconsistent(offset, transposeX2)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "offset", "inconsistent",
-            "When x2 is contiguous or transpose, offset should be consistent with it");
+            "The value of offset must be consistent with x2 when x2 is contiguous or transpose");
         return false;
     }
     return true;

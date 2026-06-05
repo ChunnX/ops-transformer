@@ -117,7 +117,7 @@ static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeCo
     if (shape.k1 != shape.k2 / shape.rankNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x1 and x2",
             (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-            "x1.k must be equal to x2.k / rankSize");
+            "The shape of x1 and x2 must satisfy k1 equals k2 divided by rankSize");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -287,7 +287,7 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext* c
                && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "x1QuantMode and x2QuantMode",
                    (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
-                   "unsupported quant mode combination"),
+                   "The value of x1QuantMode and x2QuantMode is not supported"),
                return ge::GRAPH_FAILED);
 
     // 初始默认值

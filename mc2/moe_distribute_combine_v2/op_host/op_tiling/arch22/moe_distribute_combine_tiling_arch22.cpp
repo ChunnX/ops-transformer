@@ -344,7 +344,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
 
     OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(K_INNER_DEBUG, "expandX",
-        std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"),
+        std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of expandX must be 2D."),
     return GRAPH_FAILED);
     uint32_t h = expandXStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(h == 0 || h > MAX_HIDDEN_SIZE_A2 || h % BLOCK_SIZE_A2 != 0,
@@ -352,7 +352,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(K_INNER_DEBUG, "expertId",
-        std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"),
+        std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of expertId must be 2D."),
     return GRAPH_FAILED);
     uint32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
     uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
@@ -380,7 +380,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(K_INNER_DEBUG, "xActiveMask",
-        std::to_string(xActiveMaskDimNums).c_str(), "should be 1D or 2D"),
+        std::to_string(xActiveMaskDimNums).c_str(), "The shape dim of xActiveMask must be within the range {1D, 2D}."),
     return GRAPH_FAILED);
 
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
@@ -413,7 +413,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
             oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 K_INNER_DEBUG, "ori_x",
-                std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 2D"),
+                std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of ori_x must be 2D."),
             return GRAPH_FAILED);
 
         // shape为(bs, h)
@@ -437,7 +437,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
             constExpertAlpha1StorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 K_INNER_DEBUG, "const_expert_alpha_1",
-                std::to_string(constExpertAlpha1StorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"),
+                std::to_string(constExpertAlpha1StorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of const_expert_alpha_1 must be 1D."),
             return GRAPH_FAILED);
 
         // shape为(constExpertNum)
@@ -458,7 +458,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
             constExpertAlpha2StorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 K_INNER_DEBUG, "const_expert_alpha_2",
-                std::to_string(constExpertAlpha2StorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"),
+                std::to_string(constExpertAlpha2StorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of const_expert_alpha_2 must be 1D."),
             return GRAPH_FAILED);
 
         // shape为(constExpertNum)

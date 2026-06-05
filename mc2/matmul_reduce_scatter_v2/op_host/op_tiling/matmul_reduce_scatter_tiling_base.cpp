@@ -111,13 +111,13 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
     uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulOutputSize", std::to_string(sizeOfSingleM).c_str(),
-            "should not exceed 256MB after splitting into (1, n)"),
+            "The value of matmulOutputSize must not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
 
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
-            "should not exceed 256MB after splitting M into 16 parts"),
+            "The value of x1size must not exceed 256MB after splitting M into 16 parts"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -134,7 +134,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
 
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMmMode",
-            std::to_string(static_cast<int>(quantMmMode)).c_str(), "PERBLOCK_MODE when size exceeds 256MB after formulaic splitting"),
+            std::to_string(static_cast<int>(quantMmMode)).c_str(), "The value of quantMmMode must not be PERBLOCK_MODE when size exceeds 256MB after formulaic splitting"),
         return ge::GRAPH_FAILED);
 
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
@@ -319,7 +319,7 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
              OP_TILING_CHECK((*groupSizePtr != 0), 
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "groupSize must be nullptr or 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "The value of groupSize must be nullptr or 0"),
                 return false);
         }
     }

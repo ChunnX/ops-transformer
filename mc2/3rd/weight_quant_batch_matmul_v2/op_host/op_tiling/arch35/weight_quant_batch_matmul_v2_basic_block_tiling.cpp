@@ -185,7 +185,7 @@ bool Mc2WeightQuantBatchMatmulV2BasicBlockTiling::ValidateInputParam() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "shape size",
             (std::to_string(basicBlockParam_.mSize) + ", " + std::to_string(basicBlockParam_.nSize) + ", " +
              std::to_string(basicBlockParam_.kSize)).c_str(),
-            "shape size must be greater than 0"),
+            "The value of shape size must be greater than 0."),
         return false);
 
     OP_TILING_CHECK(
@@ -195,14 +195,14 @@ bool Mc2WeightQuantBatchMatmulV2BasicBlockTiling::ValidateInputParam() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "dtypeBits",
             (std::to_string(basicBlockParam_.aDtypeBits) + ", " + std::to_string(basicBlockParam_.bDtypeBits) + ", " +
              std::to_string(basicBlockParam_.biasDtypeBits)).c_str(),
-            "dtypeBits must be greater than 0"),
+            "The value of dtypeBits must be greater than 0."),
         return false);
 
     OP_TILING_CHECK(
         basicBlockParam_.groupSize < 0 || basicBlockParam_.groupSize >= basicBlockParam_.kSize,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
             std::to_string(basicBlockParam_.groupSize).c_str(),
-            (std::string("groupSize must be >= 0 and < K(") + std::to_string(basicBlockParam_.kSize) + ")").c_str()),
+            (std::string("The value of groupSize must be >= 0 and < K(") + std::to_string(basicBlockParam_.kSize) + ").").c_str()),
         return false);
 
     return true;
@@ -938,7 +938,7 @@ bool Mc2WeightQuantBatchMatmulV2BasicBlockTiling::GetBasicBlockTiling()
 {
     OP_TILING_CHECK(
         !ValidateInputParam(), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "input param", "",
-            "Invalid input param"), return false);
+            "The value of input param is invalid."), return false);
 
     Reset();
     std::unique_ptr<Mc2WeightQuantBatchMatmulV2BasicBlockTable> basicBlockTablePtr =

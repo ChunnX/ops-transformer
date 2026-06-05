@@ -407,7 +407,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     } else if (permuteOutFlagPtr != nullptr && !(*permuteOutFlagPtr)) {
         auto permuteOutStorageShape = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX);
         OP_TILING_CHECK(IsShapePresent(permuteOutStorageShape),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "permuteOut", "present", "should be null"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "permuteOut", "present", "The value of permuteOut must be nullptr."),
             return ge::GRAPH_FAILED);
     }
 
@@ -993,10 +993,10 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
     constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
     OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "sendCounts input", "present", "should be null"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "sendCounts input", "present", "The value of sendCounts input must be nullptr."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "recvCounts input", "present", "should be null"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "recvCounts input", "present", "The value of recvCounts input must be nullptr."),
         return ge::GRAPH_FAILED);
 
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);

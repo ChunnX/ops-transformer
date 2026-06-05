@@ -265,7 +265,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
         bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllMatmulGetWorkspaceSize", "x2", "non-contiguous",
-                "x2 is non-contiguous and transposeX2 is set simultaneously");
+                "The value of x2 must be contiguous when transposeX2 is set");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -282,7 +282,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllMatmulGetWorkspaceSize", "x2", "non-contiguous",
-            "x2 must be contiguous, but it is non-contiguous");
+            "The value of x2 must be contiguous");
         return ACLNN_ERR_PARAM_INVALID;});
     }
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output, alltoAllOutOptional);

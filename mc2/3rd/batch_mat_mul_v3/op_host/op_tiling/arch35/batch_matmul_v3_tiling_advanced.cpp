@@ -67,14 +67,14 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBmmBiasInfo(const gert::TilingContext
     if (biasShape[biasDims - FINAL_SHAPE_DIM] != outputShape[cDims - FINAL_SHAPE_DIM]) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "bias",
             std::to_string(biasShape[biasDims - FINAL_SHAPE_DIM]).c_str(),
-            "Last dim of bias must be equal to last dim of output.");
+            "The value of bias must be equal to last dim of output.");
         return ge::GRAPH_FAILED;
     }
     if (biasDims >= NUM_TWO) {
         if (biasShape[biasDims - NO_BATCH_SHAPE_DIM] != 1) { // bias的倒数第二维必须为1
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "bias M",
                 std::to_string(biasShape[biasDims - NO_BATCH_SHAPE_DIM]).c_str(),
-                "M of bias must be 1.");
+                "The value of bias M must be 1.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -84,7 +84,7 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBmmBiasInfo(const gert::TilingContext
             batchInfo.batchA2 != batchInfo.batchB2 || batchInfo.batchA3 != batchInfo.batchB3)  {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch dims",
                 std::to_string(batchInfo.batchA0).c_str(),
-                "In batch bias scene, the batch of A and B must be equal.");
+                "The value of batch dims must be equal in batch bias scene.");
             return ge::GRAPH_FAILED;
         }
         batchBias3 = biasDims > NO_BATCH_SHAPE_DIM ? biasShape.GetDim(biasDims - ONE_BATCH_SHAPE_DIM) : 1UL;
@@ -117,7 +117,7 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     if (aDims > BATCH_DIM_MAX || bDims > BATCH_DIM_MAX) {
       OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(args.opName, "x1 and x2",
           (std::to_string(aDims) + " and " + std::to_string(bDims)).c_str(),
-          "Dimensions must not be greater than 6.");
+          "The shape dim of x1 and x2 must not be greater than 6.");
       return ge::GRAPH_FAILED;
     }
     batchInfo.batchA3 = aDims > NO_BATCH_SHAPE_DIM ? aShape.GetDim(aDims - ONE_BATCH_SHAPE_DIM) : 1UL;
@@ -141,7 +141,7 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
     if (isBatchZero) {
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args.opName, "batch size",
           std::to_string(batchInfo.batchA).c_str(),
-          "One of the batch sizes is zero.");
+          "The value of batch size cannot be 0.");
       return ge::GRAPH_FAILED;
     }
 

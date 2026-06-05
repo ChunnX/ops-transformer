@@ -113,7 +113,7 @@ static bool  QuantAllReduceCheckAllDtypesValid(const aclTensor* x, const aclTens
             (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
              op::ToString(scales->GetDataType()).GetString() + "/" +
              op::ToString(output->GetDataType()).GetString()).c_str(),
-            "Input tensors dtypes are not simultaneously supported, please check the supported dtype list.");
+            "The dtypes of x, scales and output must be the same.");
     }
     return isAllDtypesValid;
 }

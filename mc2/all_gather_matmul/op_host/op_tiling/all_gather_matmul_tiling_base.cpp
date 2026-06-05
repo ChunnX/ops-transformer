@@ -164,7 +164,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "shape dim",
             (std::string("dim0=") + std::to_string(valueOne) + ", dim1=" + std::to_string(valueTwo)).c_str(),
-            "neither dimension can be 0"),
+            "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),

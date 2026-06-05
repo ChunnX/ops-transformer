@@ -44,7 +44,7 @@ bool IsTensorContiguous(const aclTensor *tensor)
     int dimNum = tensor->GetViewShape().GetDimNum();
     if (dimNum <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("IsTensorContiguous", "tensor",
-            std::to_string(dimNum).c_str(), "The dimension of tensor must be greater than 0");
+            std::to_string(dimNum).c_str(), "The shape dim of tensor must be greater than 0");
         return false;
     }
     

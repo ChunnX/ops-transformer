@@ -101,7 +101,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
   OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
-        "The x1 should not be transposed, but it is transposed.");
+        "The value of x1 must not be transposed.");
     return false;
   });
   auto kVal1 = x1->GetViewShape().GetDim(1);
@@ -199,7 +199,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
     OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x2",
-          "non-contiguous", "x2 without transpose must be contiguous.");
+          "non-contiguous", "The value of x2 must be contiguous when not transposed.");
       return ACLNN_ERR_PARAM_INVALID;});
   }
   bool isGatherOut = IsGatherOut(gatherOut);

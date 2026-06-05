@@ -468,7 +468,7 @@ bool InitializeRange(
         if (range.at(i).first < 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MatMulCommon", "range",
                 (std::to_string(range.at(i).first) + ", " + std::to_string(range.at(i).second)).c_str(),
-                "Range value is incorrect.");
+                "The value of range is incorrect.");
             return false;
         }
         if (range.at(i).second == INFINITE_RANGE) {
@@ -511,7 +511,7 @@ bool GetBatchIntersection(
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "batch range",
             (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
              std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
-            "Ranges don't have intersection.");
+            "The value of batch range is not supported.");
         return false;
     }
     return true;
@@ -529,7 +529,7 @@ bool GetKNIntersection(
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "KN range",
             (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
              std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
-            "Ranges don't have intersection.");
+            "The value of KN range is not supported.");
         return false;
     }
     return true;

@@ -1091,7 +1091,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         OP_TILING_CHECK(
             !CheckDtype_X2(context, info, cType),
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale",
-                Ops::Base::ToString(context->GetInputDesc(X2_SCALE_INDEX)->GetDataType()).c_str(), "float or int64"),
+                Ops::Base::ToString(context->GetInputDesc(X2_SCALE_INDEX)->GetDataType()).c_str(), "The dtype of x2Scale must be float or int64"),
             return ge::GRAPH_FAILED);
         info.dequant_type = DequantType::PER_CHANNEL;
         if (CheckDtype_X1(context)) {

@@ -50,7 +50,7 @@ protected:
         if (!isValidDimValue(args_.mValue) || !isValidDimValue(args_.kValue) || !isValidDimValue(args_.nValue)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "m, k and n",
                 (std::to_string(args_.mValue) + ", " + std::to_string(args_.kValue) + " and " + std::to_string(args_.nValue)).c_str(),
-                "M, K, N values should be positive and not exceed INT32_MAX.");
+                "The value of m, k and n must be positive and not exceed INT32_MAX.");
             return ge::GRAPH_FAILED;
         }
         if (compileInfo_.aicNum == 0UL) {

@@ -126,7 +126,7 @@ static bool Check1DScaleShape(const aclTensor* x2, const aclTensor* x2Scale, boo
     if (x2ScaleDim != nVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
             std::to_string(x2ScaleDim).c_str(),
-            ("should equal n-axis of x2, but x2's n-axis is " + std::to_string(nVal)).c_str());
+            ("The value of x2Scale must equal n-axis of x2, but x2's n-axis is " + std::to_string(nVal)).c_str());
         return false;
     }
     return true;
@@ -144,7 +144,7 @@ static bool Check3DScaleShape(const aclTensor* x2, const aclTensor* x1Scale,
     if (x2ScaleNVal != nVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
             std::to_string(x2ScaleNVal).c_str(),
-            ("should equal n-axis of x2, but x2's n-axis is " + std::to_string(nVal)).c_str());
+            ("The value of x2Scale must equal n-axis of x2, but x2's n-axis is " + std::to_string(nVal)).c_str());
         return false;
     }
     if (x1ScaleLastDim != TWO) {
@@ -272,7 +272,7 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2, 
         (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1/x2",
             op::ToString(x1->GetDataType()).GetString(),
-            ("x1 and x2 must have same dtype when one is fp4_e2m1, but x2 is " +
+            ("The dtypes of x1 and x2 must be the same when one is fp4_e2m1, but x2 is " +
              std::string(op::ToString(x2->GetDataType()).GetString())).c_str());
         return false;
     }
@@ -303,7 +303,7 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1QuantMode/x2QuantMode",
             (std::to_string(x1QuantMode) + "/" + std::to_string(x2QuantMode)).c_str(),
-            "do not match any supported quantization mode scenario");
+            "The value of x1QuantMode and x2QuantMode is not supported");
     }
     return isAllDtypesValid;
 }
@@ -490,7 +490,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
         if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmulGetWorkspaceSize", "x2", "non-contiguous",
-                "x2 is non-contiguous and transposeX2 is set simultaneously");
+                "The value of x2 must be contiguous when transposeX2 is set");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -507,7 +507,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllQuantMatmulGetWorkspaceSize", "x2", "non-contiguous",
-            "x2 must be contiguous, but it is non-contiguous");
+            "The value of x2 must be contiguous");
         return ACLNN_ERR_PARAM_INVALID;});
     }
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理

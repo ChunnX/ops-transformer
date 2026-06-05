@@ -322,14 +322,14 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     const auto bType = context->GetInputTensor(B_INDEX)->GetDataType();
     OP_TILING_CHECK(aType != bType,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1/x2",
-                        Ops::Base::ToString(aType).c_str(), "x1 and x2 must have the same data type"),
+                        Ops::Base::ToString(aType).c_str(), "The dtypes of x1 and x2 must be the same"),
                     return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
         OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K/N",
                             (std::string("K=") + std::to_string(K) + " N=" + std::to_string(N)).c_str(),
-                            "contiguous dimension must be divisible by 2 for int4"),
+                            "The value of K/N must be divisible by 2 for int4"),
                         return GRAPH_FAILED);
     }
 
@@ -348,7 +348,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     const gert::StorageShape *matrixBias = context->GetOptionalInputShape(BIAS_INDEX);
     OP_TILING_CHECK(matrixBias != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "bias",
-                        "not nullptr", "bias must be nullptr in AivMode"),
+                        "not nullptr", "The value of bias must be nullptr in AivMode"),
                     return GRAPH_FAILED);
 
     // shape相关校验与约束写在这里
@@ -597,7 +597,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
         OP_TILING_CHECK(
             !CheckDtypeX2(context, info, cType),
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x2Scale", "invalid dtype",
-                "AllGatherMatmulV2 AIV mode invalid x2Scale"),
+                "The dtype of x2Scale must be float or int64"),
             return ge::GRAPH_FAILED);
         info.dequantType = DequantType::PER_CHANNEL;
         if (CheckDtypeX1(context)) {
