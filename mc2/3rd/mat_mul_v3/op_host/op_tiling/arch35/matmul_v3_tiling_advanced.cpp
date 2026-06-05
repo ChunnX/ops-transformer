@@ -114,12 +114,12 @@ ge::graphStatus IsValidDtype(const Mc2MatMulV3Args &args)
     if (args.hasBias) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(args.opName, "x1, x2, output and bias",
             Ops::Base::ToString(args.aType).c_str(),
-            "The dtype of x1, x2, output and bias is not supported.");
+            "The dtypes of x1, x2, output and bias must be within the supported range.");
         return ge::GRAPH_FAILED;
     } else {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(args.opName, "x1, x2 and output",
             Ops::Base::ToString(args.aType).c_str(),
-            "The dtype of x1, x2 and output is not supported.");
+            "The dtypes of x1, x2 and output must be within the supported range.");
         return ge::GRAPH_FAILED;
     }
 }

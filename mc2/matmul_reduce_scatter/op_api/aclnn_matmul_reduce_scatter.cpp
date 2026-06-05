@@ -143,7 +143,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
   OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x1", "transposed",
-        "The x1 should not be transposed, but it is transposed.");
+        "The value of x1 must not be transposed.");
     return false;
   });
   auto kVal1 = x1->GetViewShape().GetDim(1);
