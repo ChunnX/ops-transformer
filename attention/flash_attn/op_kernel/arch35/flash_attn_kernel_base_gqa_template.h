@@ -744,35 +744,34 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint32_t s2LoopTimes = static_cast<uint32_t>((actSeqLensKv + s2BaseSize - 1) / s2BaseSize);
+        uint32_t gS1LoopTimes = static_cast<uint32_t>(
+            (actSeqLensQ * constInfo.gSize + mBaseSize - 1) / mBaseSize);
 
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
-            return;
-        }
+        uint32_t s2Next = s2Cur + 1;
+        uint32_t s2Underflow = (s2Next - s2LoopTimes) >> 31;
+        uint32_t s2Carry = 1 - s2Underflow;
+        s2Cur = s2Next * s2Underflow;
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            accGS1Loops++;
-        }
+        uint32_t gS1Next = gS1Cur + s2Carry;
+        uint32_t gS1Underflow = (gS1Next - gS1LoopTimes) >> 31;
+        uint32_t gS1Carry = 1 - gS1Underflow;
+        gS1Cur = gS1Next * gS1Underflow;
 
-        // 当前BN2未处理完
-        s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
-            gS1Cur++;
-            return;
-        }
+        bN2Cur += gS1Carry;
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            accGS1Loops++;
-        }
-
-        // 当前BN2已处理完
-        gS1Cur = 0;
-        bN2Cur++;
+        uint32_t modeVal = static_cast<uint32_t>(taskDealMode);
+        uint32_t addOnS2Carry = static_cast<uint32_t>(
+            modeVal == static_cast<uint32_t>(TASK_DEAL_MODE::CREATE_TASK)) |
+            static_cast<uint32_t>(
+            modeVal == static_cast<uint32_t>(TASK_DEAL_MODE::S2_END)) |
+            static_cast<uint32_t>(
+            modeVal == static_cast<uint32_t>(TASK_DEAL_MODE::SKIP_S1OUT));
+        uint32_t addOnG1Carry = static_cast<uint32_t>(
+            modeVal == static_cast<uint32_t>(TASK_DEAL_MODE::DEAL_ZERO)) |
+            static_cast<uint32_t>(
+            modeVal == static_cast<uint32_t>(TASK_DEAL_MODE::SKIP_ZERO));
+        accGS1Loops += (s2Carry & addOnS2Carry) | (gS1Carry & addOnG1Carry);
     }
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
