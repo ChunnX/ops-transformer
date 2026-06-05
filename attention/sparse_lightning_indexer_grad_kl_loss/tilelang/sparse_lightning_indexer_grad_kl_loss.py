@@ -83,10 +83,16 @@ def check_param_valid(
     sparse_mode: int = 3,
     layout_query: str = "BSND",
 ) -> SparseLightningIndexerGradKLLossTilingData:
-    assert query.dim() == 4, f"query dim must be 4 (BSND), got {query.dim()}"
-    assert key.dim() == 4, f"key dim must be 4 (BSND), got {key.dim()}"
-    assert query_index.dim() == 4, f"queryIndex dim must be 4, got {query_index.dim()}"
-    assert key_index.dim() == 4, f"keyIndex dim must be 4, got {key_index.dim()}"
+    if layout_query == "TND":
+        assert query.dim() == 3, f"query dim must be 3 (TND), got {query.dim()}"
+        assert key.dim() == 3, f"key dim must be 3 (TND), got {key.dim()}"
+        assert query_index.dim() == 3, f"queryIndex dim must be 3 (TND), got {query_index.dim()}"
+        assert key_index.dim() == 3, f"keyIndex dim must be 3 (TND), got {key_index.dim()}"
+    else:
+        assert query.dim() == 4, f"query dim must be 4 (BSND), got {query.dim()}"
+        assert key.dim() == 4, f"key dim must be 4 (BSND), got {key.dim()}"
+        assert query_index.dim() == 4, f"queryIndex dim must be 4, got {query_index.dim()}"
+        assert key_index.dim() == 4, f"keyIndex dim must be 4, got {key_index.dim()}"
     assert query.dtype in (torch.float16, torch.bfloat16), f"query dtype must be float16/bfloat16, got {query.dtype}"
     assert key.dtype == query.dtype, f"key dtype must match query, got {key.dtype}"
     assert query_index.dtype == query.dtype, f"queryIndex dtype must match query, got {query_index.dtype}"
@@ -96,10 +102,17 @@ def check_param_valid(
         assert weights.dtype == query.dtype, f"weights dtype must match query when not float32, got {weights.dtype}"
     assert sparse_mode == 3, f"sparse_mode must be 3, got {sparse_mode}"
 
-    B, S1, N1, DQuery = query.shape
-    _, S2, N2, _ = key.shape
-    _, _, Nidx1, DQueryIndex = query_index.shape
-    _, _, Nidx2, _ = key_index.shape
+    if layout_query == "TND":
+        S1, N1, DQuery = query.shape
+        S2, N2, _ = key.shape
+        _, Nidx1, DQueryIndex = query_index.shape
+        _, Nidx2, _ = key_index.shape
+        B = 1
+    else:
+        B, S1, N1, DQuery = query.shape
+        _, S2, N2, _ = key.shape
+        _, _, Nidx1, DQueryIndex = query_index.shape
+        _, _, Nidx2, _ = key_index.shape
     K = sparse_indices.shape[-1]
 
     assert N2 == 1, f"N2 must be 1 (MQA), got {N2}"
@@ -778,6 +791,17 @@ def sparse_lightning_indexer_grad_kl_loss(
         softmax_max, softmax_sum,
         sparse_mode=sparse_mode, layout_query=layout_query,
     )
+
+    if layout_query == "TND":
+        return sparse_lightning_indexer_grad_kl_loss_tnd(
+            query, key, query_index, key_index, weights, sparse_indices,
+            softmax_max, softmax_sum, scale_value,
+            query_rope=query_rope,
+            key_rope=key_rope,
+            actual_seq_lengths_query=actual_seq_lengths_query,
+            actual_seq_lengths_key=actual_seq_lengths_key,
+            sparse_mode=sparse_mode,
+        )
 
     B = tiling.B
     S1 = tiling.S1
