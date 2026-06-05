@@ -55,11 +55,12 @@ public:
         WaitMte1ToMmadRotationReady();
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile)
+    __aicore__ inline void ComputeTile(const TileParam &tile, uint32_t outBufferUseId)
     {
         const uint32_t dataBufferId = MakeDataBufferId(tile.bufferId);
+        const uint32_t outputBufferId = MakeOutputBufferId(outBufferUseId);
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[dataBufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(dataBufferId);
+        LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(outputBufferId);
         const uint32_t cubeTokenSize = MakeCubeTokenSize(tile);
         const uint32_t qRows = cubeTokenSize * tilingData_->numQHeads;
         const uint32_t kRows = cubeTokenSize * tilingData_->numKHeads;

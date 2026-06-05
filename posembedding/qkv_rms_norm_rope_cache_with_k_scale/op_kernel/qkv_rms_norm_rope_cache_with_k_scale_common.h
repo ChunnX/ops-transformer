@@ -215,6 +215,21 @@ __aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
     return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
 }
 
+__aicore__ inline uint32_t MakeOutputBufferId(uint32_t outBufferUseId)
+{
+    return outBufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+}
+
+__aicore__ inline uint32_t MakePreprocessOutUseId(uint32_t tileId)
+{
+    return tileId * 2U;
+}
+
+__aicore__ inline uint32_t MakeQkOutUseId(uint32_t tileId)
+{
+    return tileId * 2U + 1U;
+}
+
 __aicore__ inline uint32_t MakeCubeTokenSize(const TileParam &tile)
 {
     return AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);

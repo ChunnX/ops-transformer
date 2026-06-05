@@ -22,6 +22,11 @@ public:
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t cubeIndex)
     {
         aivTileCount_ = 0U;
+        pendingQkOutHead_ = 0U;
+        pendingQkOutCount_ = 0U;
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            pendingQkOutBufferIds_[i] = 0U;
+        }
         cube_.Init(cubeIndex, tilingData, tensors);
         cube_.InitIntraCoreEvents();
     }
@@ -37,11 +42,13 @@ public:
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
+        const uint32_t qkOutUseId = MakeQkOutUseId(tile.tileId);
+        WaitUntilQkOutBufferReusable(qkOutUseId);
         WaitAivMte3ToAicMte1AReady();
-        WaitAivMte3ToAicFixCConsumed();
-        cube_.ComputeTile(tile);
+        cube_.ComputeTile(tile, qkOutUseId);
         SetAicMte1ToAivMte3AConsumed();
         SetAicFixToAivVCReady();
+        PushPendingQkOutBuffer(qkOutUseId);
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
@@ -52,17 +59,21 @@ public:
 
     __aicore__ inline void ComputeTileAiv(const TileParam &tile, const TileParam &lastTile)
     {
+        const uint32_t preprocessOutUseId = MakePreprocessOutUseId(tile.tileId);
         WaitAicMte1ToAivMte3AConsumed();
         vec_.WaitVToMte2InputBufferReusable(tile);
-        vec_.WaitMte3ToVQkOutBufferReusable(tile);
-        vec_.ComputeTile(tile);
+        vec_.WaitMte3ToVQkOutBufferReusable(preprocessOutUseId);
+        vec_.ComputeTile(tile, preprocessOutUseId);
+        vec_.SetMte3ToVQkOutBufferReusable(preprocessOutUseId);
         SetAivMte3ToAicMte1AReady();
         vec_.PostprocessV(tile);
         vec_.SetVToMte2InputBufferReusable(tile);
         if (aivTileCount_ > 0U) {
+            const uint32_t lastQkOutUseId = MakeQkOutUseId(lastTile.tileId);
+            vec_.WaitMte3ToVQkOutBufferReusable(lastQkOutUseId);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile);
-            vec_.SetMte3ToVQkOutBufferReusable(lastTile);
+            vec_.PostprocessQk(lastTile, lastQkOutUseId);
+            vec_.SetMte3ToVQkOutBufferReusable(lastQkOutUseId);
             SetAivMte3ToAicFixCConsumed();
         }
         ++aivTileCount_;
@@ -70,16 +81,18 @@ public:
 
     __aicore__ inline void EndAic()
     {
-        DrainAivMte3ToAicFixCConsumedCredits();
+        DrainPendingCConsumed();
         cube_.EndIntraCoreEvents();
     }
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
         if (aivTileCount_ > 0U) {
+            const uint32_t lastQkOutUseId = MakeQkOutUseId(lastTile.tileId);
+            vec_.WaitMte3ToVQkOutBufferReusable(lastQkOutUseId);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile);
-            vec_.SetMte3ToVQkOutBufferReusable(lastTile);
+            vec_.PostprocessQk(lastTile, lastQkOutUseId);
+            vec_.SetMte3ToVQkOutBufferReusable(lastQkOutUseId);
             SetAivMte3ToAicFixCConsumed();
             aivTileCount_ = 0U;
         }
@@ -97,9 +110,6 @@ private:
 
     __aicore__ inline void SetInitialAivMte3ToAicFixCConsumedCredits()
     {
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            SetAivMte3ToAicFixCConsumed();
-        }
     }
 
     __aicore__ inline void DrainAicMte1ToAivMte3AConsumedCredits()
@@ -109,10 +119,47 @@ private:
         }
     }
 
-    __aicore__ inline void DrainAivMte3ToAicFixCConsumedCredits()
+    __aicore__ inline bool IsQkOutBufferPending(uint32_t outBufferId) const
     {
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            WaitAivMte3ToAicFixCConsumed();
+        for (uint32_t i = 0U; i < pendingQkOutCount_; ++i) {
+            const uint32_t index = (pendingQkOutHead_ + i) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+            if (pendingQkOutBufferIds_[index] == outBufferId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void WaitAndPopOldestPendingQkOutBuffer()
+    {
+        if (pendingQkOutCount_ == 0U) {
+            return;
+        }
+        WaitAivMte3ToAicFixCConsumed();
+        pendingQkOutHead_ = (pendingQkOutHead_ + 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+        --pendingQkOutCount_;
+    }
+
+    __aicore__ inline void WaitUntilQkOutBufferReusable(uint32_t outBufferUseId)
+    {
+        const uint32_t outBufferId = MakeOutputBufferId(outBufferUseId);
+        while (IsQkOutBufferPending(outBufferId)) {
+            WaitAndPopOldestPendingQkOutBuffer();
+        }
+    }
+
+    __aicore__ inline void PushPendingQkOutBuffer(uint32_t outBufferUseId)
+    {
+        const uint32_t outBufferId = MakeOutputBufferId(outBufferUseId);
+        const uint32_t index = (pendingQkOutHead_ + pendingQkOutCount_) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+        pendingQkOutBufferIds_[index] = outBufferId;
+        ++pendingQkOutCount_;
+    }
+
+    __aicore__ inline void DrainPendingCConsumed()
+    {
+        while (pendingQkOutCount_ > 0U) {
+            WaitAndPopOldestPendingQkOutBuffer();
         }
     }
 
@@ -157,6 +204,9 @@ private:
     }
 
     uint32_t aivTileCount_;
+    uint32_t pendingQkOutHead_;
+    uint32_t pendingQkOutCount_;
+    uint32_t pendingQkOutBufferIds_[QKV_RRC_DOUBLE_BUFFER_NUM];
     D128FastCube cube_;
     D128FastVec vec_;
 };
