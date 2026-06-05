@@ -15,9 +15,9 @@ import torch
 
 torch_npu = pytest.importorskip("torch_npu")
 
-import custom_ops  # noqa: F401
 import result_compare_method
 import stem_indexer_golden
+from npu_ops_transformer.ops import npu_stem_indexer
 from test_stem_indexer_paramset import ENABLED_PARAMS
 
 
@@ -32,7 +32,7 @@ def move_inputs_to_npu(inputs):
 def call_stem_indexer(case, inputs):
     npu_inputs = move_inputs_to_npu(inputs)
     attrs = stem_indexer_golden.get_call_attrs(case)
-    return torch.ops.custom.npu_stem_indexer(
+    return npu_stem_indexer(
         npu_inputs["qflat"],
         npu_inputs["kflat"],
         npu_inputs["vbias"],

@@ -5,7 +5,7 @@
 基于pytest测试框架，实现StemIndexer算子的功能验证：
 
 - CPU侧：按StemIndexer设计方案实现golden。
-- NPU侧：通过`torch_npu`直调`torch.ops.custom.npu_stem_indexer`获取实际结果。
+- NPU侧：通过`npu_ops_transformer.ops.npu_stem_indexer`获取实际结果。
 - 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
 
 ## 用例来源
@@ -40,6 +40,7 @@ test_stem_indexer_paramset.py        # single用例参数表
 stem_indexer_golden.py               # CPU侧golden实现
 result_compare_method.py             # sparse输出比较
 test_stem_indexer_single.py          # single主执行入口
+test_npu_stem_indexer.py             # 参考LI写法的普通单case脚本
 pytest.ini                           # pytest标记
 ```
 
@@ -52,3 +53,9 @@ bash test_run.sh single
 ```
 
 当前只保留`single`模式，完整白盒用例集都由该入口执行。
+
+普通单case脚本可直接执行：
+
+```bash
+python3 test_npu_stem_indexer.py
+```
