@@ -9,12 +9,40 @@
  */
 
 #include <iostream>
+#include <limits>
+#include <map>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_init_routing_v3_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "platform/platform_infos_def.h"
+#include "op_tiling_parse_context_builder.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+#include <nlohmann/json.hpp>
 
 using namespace std;
+
+namespace {
+void InitParsePlatformInfo(fe::PlatFormInfos &platformInfo)
+{
+    platformInfo.Init();
+    const char *compileJson =
+        R"({"hardware_info": {"UB_SIZE": 262144, "CORE_NUM": 64, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "BT_SIZE": 0, "load3d_constraints": "1", "socVersion":"Ascend910B"}})";
+    nlohmann::json compileInfoJson = nlohmann::json::parse(compileJson);
+    map<string, string> socInfos;
+    map<string, string> aicoreSpec;
+    socInfos["ai_core_cnt"] = to_string(compileInfoJson["hardware_info"]["CORE_NUM"].get<uint32_t>());
+    socInfos["l2_size"] = to_string(compileInfoJson["hardware_info"]["L2_SIZE"].get<uint32_t>());
+    socInfos["core_type_list"] = "AICore";
+    aicoreSpec["ub_size"] = to_string(compileInfoJson["hardware_info"]["UB_SIZE"].get<uint32_t>());
+    aicoreSpec["l1_size"] = to_string(compileInfoJson["hardware_info"]["L1_SIZE"].get<uint32_t>());
+    map<string, string> versions = {{"NpuArch", "2201"}, {"Short_SoC_version", "Ascend910B"}};
+    platformInfo.SetPlatformRes("SoCInfo", socInfos);
+    platformInfo.SetPlatformRes("AICoreSpec", aicoreSpec);
+    platformInfo.SetCoreNumByCoreType("AICore");
+    platformInfo.SetPlatformRes("version", versions);
+}
+} // namespace
 
 constexpr int64_t QUANT_MODE_NONE = -1;
 constexpr int64_t QUANT_MODE_STATIC = 0;
@@ -22,6 +50,121 @@ constexpr int64_t QUANT_MODE_DYNAMIC = 1;
 constexpr int64_t ROW_IDX_TYPE_DROPPAD = 0;
 constexpr int64_t ROW_IDX_TYPE_DROPLESS = 1;
 constexpr int64_t EXPERT_NUM = 256;
+constexpr uint64_t SKIP_TILING_KEY_VALIDATION = std::numeric_limits<uint64_t>::max();
+constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+constexpr size_t EMPTY_TENSOR_WORKSPACE = 16ULL * 1024ULL * 1024ULL;
+constexpr int64_t EXPERT_TOKENS_TYPE_COUNT = 1;
+constexpr int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2;
+
+gert::StorageShape MakeShape(const std::vector<int64_t> &dims)
+{
+    switch (dims.size()) {
+        case 0:
+            return gert::StorageShape({}, {});
+        case 1:
+            return gert::StorageShape({dims[0]}, {dims[0]});
+        case 2:
+            return gert::StorageShape({dims[0], dims[1]}, {dims[0], dims[1]});
+        case 3:
+            return gert::StorageShape({dims[0], dims[1], dims[2]}, {dims[0], dims[1], dims[2]});
+        default:
+            return gert::StorageShape({}, {});
+    }
+}
+
+gert::TilingContextPara MakeExtendedTilingContextPara(
+    const std::vector<gert::TilingContextPara::TensorDescription> &inputs,
+    const std::vector<gert::TilingContextPara::TensorDescription> &outputs,
+    const std::vector<gert::TilingContextPara::OpAttr> &attrs,
+    optiling::MoeInitRoutingV3CompileInfo *compileInfo)
+{
+    return gert::TilingContextPara("MoeInitRoutingV3", inputs, outputs, attrs, compileInfo);
+}
+
+void RunExtendedTilingCase(const gert::TilingContextPara &tilingContextPara,
+                           ge::graphStatus expectResult = ge::GRAPH_SUCCESS,
+                           uint64_t expectTilingKey = SKIP_TILING_KEY_VALIDATION,
+                           const std::vector<size_t> &expectWorkspaces = {})
+{
+    ExecuteTestCase(tilingContextPara, expectResult, expectTilingKey, "", expectWorkspaces);
+}
+
+ge::DataType GetLargeColsExpandedXDtype(int64_t quantMode, ge::DataType xDataType)
+{
+    if (quantMode == QUANT_MODE_NONE) {
+        return xDataType;
+    }
+    return ge::DT_INT8;
+}
+
+std::vector<int64_t> GetLargeColsExpertTokensShape(int64_t expertTokensNumType, int64_t expertNum, int64_t expertRange)
+{
+    if (expertTokensNumType == EXPERT_TOKENS_TYPE_KEY_VALUE) {
+        return {expertNum, 2};
+    }
+    return {expertRange};
+}
+
+std::vector<gert::TilingContextPara::TensorDescription> BuildLargeColsInputs(
+    int64_t n, int64_t h, int64_t k, ge::DataType xDataType,
+    const std::vector<gert::TilingContextPara::TensorDescription> &extraInputs)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.emplace_back(gert::StorageShape({n, h}, {n, h}), xDataType, ge::FORMAT_ND);
+    inputs.emplace_back(gert::StorageShape({n, k}, {n, k}), ge::DT_INT32, ge::FORMAT_ND);
+    inputs.insert(inputs.end(), extraInputs.begin(), extraInputs.end());
+    return inputs;
+}
+
+std::vector<gert::TilingContextPara::TensorDescription> BuildLargeColsOutputs(
+    int64_t totalLength, int64_t h, ge::DataType expandedXDtype, const std::vector<int64_t> &expertTokensShape,
+    const std::vector<gert::TilingContextPara::TensorDescription> &extraOutputs)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.emplace_back(gert::StorageShape({totalLength, h}, {totalLength, h}), expandedXDtype, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({totalLength}, {totalLength}), ge::DT_INT32, ge::FORMAT_ND);
+    outputs.emplace_back(MakeShape(expertTokensShape), ge::DT_INT64, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({totalLength}, {totalLength}), ge::DT_FLOAT, ge::FORMAT_ND);
+    outputs.insert(outputs.end(), extraOutputs.begin(), extraOutputs.end());
+    return outputs;
+}
+
+std::vector<gert::TilingContextPara::OpAttr> BuildLargeColsAttrs(
+    int64_t totalLength, int64_t dropPadMode, int64_t expertTokensNumType, bool expertTokensNumFlag, int64_t quantMode,
+    const std::vector<int64_t> &aciveExpertRange, int64_t rowIdxType)
+{
+    return {
+        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(totalLength)},
+        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_NUM)},
+        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dropPadMode)},
+        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertTokensNumType)},
+        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(expertTokensNumFlag)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(aciveExpertRange)},
+        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(rowIdxType)},
+    };
+}
+
+void RunLargeColsCase(int64_t N, int64_t H, int64_t K, int64_t quantMode, int64_t dropPadMode,
+                      int64_t expertTokensNumType, bool expertTokensNumFlag, ge::DataType xDataType,
+                      std::vector<int64_t> aciveExpertRange, int64_t rowIdxType, uint64_t ubSize,
+                      const std::vector<gert::TilingContextPara::TensorDescription> &extraInputs,
+                      const std::vector<gert::TilingContextPara::TensorDescription> &extraOutputs)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, ubSize};
+    int64_t expertNum = EXPERT_NUM;
+    int64_t expertRange = aciveExpertRange.empty() ? expertNum : (aciveExpertRange[1] - aciveExpertRange[0]);
+    int64_t totalLength = N * K;
+    ge::DataType expandedXDtype = GetLargeColsExpandedXDtype(quantMode, xDataType);
+    std::vector<int64_t> expertTokensShape =
+        GetLargeColsExpertTokensShape(expertTokensNumType, expertNum, expertRange);
+    auto inputs = BuildLargeColsInputs(N, H, K, xDataType, extraInputs);
+    auto outputs = BuildLargeColsOutputs(totalLength, H, expandedXDtype, expertTokensShape, extraOutputs);
+    auto attrs = BuildLargeColsAttrs(totalLength, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode,
+                                     aciveExpertRange, rowIdxType);
+    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo));
+}
 
 class MoeInitRoutingV3Tiling : public testing::Test {
 protected:
@@ -810,4 +953,157 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_41)
     std::vector<size_t> expectWorkspaces = {16957136};
     RunNormalCaseDynamicQuantEH(120, 1024, 4, 0, 480, 0, 1, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT, {180, 192}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 2312000, expectTilingData, expectWorkspaces);
+}
+
+// 空 tensor + count 模式
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_empty_tensor_count)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
+    int64_t expert_num = EXPERT_NUM;
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.emplace_back(gert::StorageShape({0, 128}, {0, 128}), ge::DT_FLOAT, ge::FORMAT_ND);
+    inputs.emplace_back(gert::StorageShape({0, 8}, {0, 8}), ge::DT_INT32, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.emplace_back(gert::StorageShape({0, 128}, {0, 128}), ge::DT_FLOAT, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_INT32, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({expert_num}, {expert_num}), ge::DT_INT64, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_FLOAT, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {
+        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expert_num)},
+        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_TOKENS_TYPE_COUNT)},
+        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_NONE)},
+        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{})},
+        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ROW_IDX_TYPE_DROPPAD)},
+    };
+    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo), ge::GRAPH_SUCCESS,
+                          EMPTY_TENSOR_TILINGKEY, {EMPTY_TENSOR_WORKSPACE});
+}
+
+// 空 tensor + key_value 模式
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_empty_tensor_keyvalue)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
+    int64_t expert_num = EXPERT_NUM;
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.emplace_back(gert::StorageShape({0, 64}, {0, 64}), ge::DT_FLOAT16, ge::FORMAT_ND);
+    inputs.emplace_back(gert::StorageShape({0, 4}, {0, 4}), ge::DT_INT32, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.emplace_back(gert::StorageShape({0, 64}, {0, 64}), ge::DT_FLOAT16, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_INT32, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({expert_num, 2}, {expert_num, 2}), ge::DT_INT64, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_FLOAT, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {
+        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1LL)},
+        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expert_num)},
+        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
+        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_TOKENS_TYPE_KEY_VALUE)},
+        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_NONE)},
+        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{})},
+        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ROW_IDX_TYPE_DROPLESS)},
+    };
+    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo), ge::GRAPH_SUCCESS,
+                          EMPTY_TENSOR_TILINGKEY, {EMPTY_TENSOR_WORKSPACE});
+}
+
+// 未指定 active_expert_range，默认 [0, expert_num)
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_default_expert_range)
+{
+    RunLargeColsCase(1, 128, 8, QUANT_MODE_NONE, 0, EXPERT_TOKENS_TYPE_COUNT, true, ge::DT_FLOAT, {}, ROW_IDX_TYPE_DROPPAD,
+                     65536, {}, {});
+}
+
+// 大 cols 触发 SrcToDstDropPad 切分（非 dynamic droppad）
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_large_cols_drop_pad_split)
+{
+    // ubSize must leave headroom after MAX_COLS_ONE_LOOP column buffer; 65536 makes basePerLoopMaxRows=0 (FPE).
+    RunLargeColsCase(4, 25000, 8, QUANT_MODE_NONE, 0, EXPERT_TOKENS_TYPE_COUNT, true, ge::DT_FLOAT, {0, 256},
+                     ROW_IDX_TYPE_DROPPAD, 262144, {}, {});
+}
+
+// 大 cols + dynamic droppad 触发 Dynamic 切分
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_large_cols_dynamic_droppad_split)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
+    int64_t N = 8;
+    int64_t H = 25000;
+    int64_t K = 4;
+    int64_t C = 8;
+    int64_t expert_num = EXPERT_NUM;
+    int64_t totalLength = N * K;
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.emplace_back(gert::StorageShape({N, H}, {N, H}), ge::DT_FLOAT, ge::FORMAT_ND);
+    inputs.emplace_back(gert::StorageShape({N, K}, {N, K}), ge::DT_INT32, ge::FORMAT_ND);
+    inputs.emplace_back(gert::StorageShape({expert_num, H}, {expert_num, H}), ge::DT_FLOAT, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.emplace_back(gert::StorageShape({expert_num, C, H}, {expert_num, C, H}), ge::DT_INT8, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({totalLength}, {totalLength}), ge::DT_INT32, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({expert_num}, {expert_num}), ge::DT_INT64, ge::FORMAT_ND);
+    outputs.emplace_back(gert::StorageShape({expert_num * C}, {expert_num * C}), ge::DT_FLOAT, ge::FORMAT_ND);
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {
+        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(totalLength)},
+        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(C)},
+        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expert_num)},
+        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1LL)},
+        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_TOKENS_TYPE_COUNT)},
+        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_DYNAMIC)},
+        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 256})},
+        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ROW_IDX_TYPE_DROPPAD)},
+    };
+    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo));
+}
+
+// 小 UB + 大 cols 触发 static quant gather 切分
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_small_ub_static_quant_split)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> extraInputs;
+    extraInputs.emplace_back(gert::StorageShape({1}, {1}), ge::DT_FLOAT, ge::FORMAT_ND);
+    extraInputs.emplace_back(gert::StorageShape({1}, {1}), ge::DT_FLOAT, ge::FORMAT_ND);
+    RunLargeColsCase(8, 18000, 4, QUANT_MODE_STATIC, 0, EXPERT_TOKENS_TYPE_COUNT, true, ge::DT_FLOAT, {0, 256},
+                     ROW_IDX_TYPE_DROPPAD, 8192, extraInputs, {});
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_parse_success)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {0, 0};
+    fe::PlatFormInfos platformInfo;
+    InitParsePlatformInfo(platformInfo);
+    const char *compileJson =
+        R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": 262144, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "CORE_NUM": 64, "socVersion":"Ascend910B"}})";
+
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.OpType(ge::AscendString("MoeInitRoutingV3"))
+                      .OpName(ge::AscendString("MoeInitRoutingV3"))
+                      .IOInstanceNum({1, 1, 1, 1}, {1, 1, 1, 1})
+                      .InputTensorDesc(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .InputTensorDesc(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .InputTensorDesc(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .InputTensorDesc(3, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .OutputTensorDesc(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .OutputTensorDesc(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .OutputTensorDesc(2, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .OutputTensorDesc(3, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .CompiledJson(compileJson)
+                      .CompiledInfo(&compileInfo)
+                      .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
+                      .Build();
+    auto *parseContext = holder.GetContext();
+    ASSERT_NE(parseContext, nullptr);
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeInitRoutingV3");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext *>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+    EXPECT_GT(compileInfo.aivNum, 0);
+    EXPECT_GT(compileInfo.ubSize, 0);
 }
