@@ -21,7 +21,7 @@
 using namespace AscendC;
 
 struct MegaMoeA2A3TilingData {
-    uint32_t M;
+    uint32_t bs;
     uint32_t K;
     uint32_t N;
     uint32_t expertPerRank;
@@ -29,7 +29,7 @@ struct MegaMoeA2A3TilingData {
     uint32_t totalUbSize;
     uint32_t topK;
     uint32_t worldSize;
-    uint32_t listLen;
+    uint32_t isWeightTensorList;
 
     uint32_t moeExpertNum;
     uint32_t epWorldSize;
