@@ -232,7 +232,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     }
 
-    vecBlock.InitDropOut(dropMask, workspace);
     uint64_t singleCoreOffset = 0;
     if constexpr (!bmm2Write2Ub) {
         int64_t bmm2ResBlock = this->sharedParams.dSizeV;
@@ -254,7 +253,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         workspace += (totalOffset + mm2Offset * 3);
     }
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
+        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
             int64_t actualS1Len;
