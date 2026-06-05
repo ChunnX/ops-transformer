@@ -1402,8 +1402,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             vecSetSyncCom_ = 0;
             gmm1PingPongIdx_ = 0;
 
-            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 (UB ping-pong) + combine 跑完 =====
-            //   GMM2 tile M=128，输出到 UB [64K,192K) ping-pong，AIC↔AIV1 通过 NotifyVector/WaitForCube 同步。
+            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 (单 UB buffer) + combine 跑完 =====
+            //   GMM2 tile M=256，输出到 UB [64K,192K) 单 buffer 128KB，AIC↔AIV1 通过 NotifyVector/WaitForCube 同步。
             for (uint32_t bi = 0; bi < batchSize; ++bi) {
                 uint64_t waveIdx = batchedWaves[bi];
                 int curWaveTrace = waveTraceIdx_ + static_cast<int>(bi);
