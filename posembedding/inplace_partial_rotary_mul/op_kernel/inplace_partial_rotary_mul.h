@@ -30,21 +30,21 @@ public:
     __aicore__ inline void CopyInData(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
     __aicore__ inline void CopyInDataR(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
     __aicore__ inline void SetGatherSrcOffset(LocalTensor<int32_t> &idsUb, int64_t count);
-    __aicore__ inline void ComputeMul(LocalTensor<float> &dtsUb, LocalTensor<float> & src0Ub, LocalTensor<float> &src1Ub, int64_t onceA, int64_t numHead,int64_t headDim);
-    __aicore__ inline void  InterleavedInversion(int64_t count,LocalTensor<float> &ub);
+    __aicore__ inline void ComputeMul(LocalTensor<float>& dtsUb, LocalTensor<float>& src0Ub, LocalTensor<float>& src1Ub, int64_t onceA, int64_t numHead, int64_t headDim);
+    __aicore__ inline void  InterleavedInversion(int64_t count, LocalTensor<float> &ub);
     __aicore__ inline void DataCopyOut(LocalTensor<T> &yUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
 private:
     TPipe* pipe_;
     const InplacePartialRopeRegbaseTilingData* tiling_;
     int32_t blockIdx_ = 0;
 
-    //需要的tilingdata
+    // 需要的tilingdata
     int64_t halfNumx_ = 0;
     int64_t halfNumr1_ = 0;
     int64_t xNum_= 0;
     int64_t r1Num_= 0;
     int64_t count_ = 0;
-    
+
     static constexpr int32_t ONE_BLOCK_SIZE = 32;
     int32_t perBlock32 = ONE_BLOCK_SIZE / sizeof(float);
 
@@ -61,18 +61,17 @@ private:
     BinaryRepeatParams repeatParams_{1, 1, 1, 0, 0, 0};
     DataCopyPadExtParams<T> dataCopyPadParams_{false, 0, 0, 0};
 
-    int64_t usedCoreNum_=0;
-    int64_t numHead_ =0;
-    int64_t headDim_ =0;
+    int64_t usedCoreNum_ = 0;
+    int64_t numHead_ = 0;
+    int64_t headDim_ = 0;
     int64_t allHeadDim_ = 0;
-    int64_t coreTUbLoopTime_ =0;
-    int64_t coreBUbLoopTime_ = 0; //b分核，每个核处理多少个b，b就是shape0
-    int64_t coreTUbLoopTail_ =0;
+    int64_t coreTUbLoopTime_ = 0;
+    int64_t coreBUbLoopTime_ = 0; // b分核，每个核处理多少个b，b就是shape0
+    int64_t coreTUbLoopTail_ = 0;
     int64_t coreBUbLoopTail_ = 0;
     int64_t ubFactor_ = 0;
     int64_t start_ = 0;
-    int64_t blockFactor_=0;
-
+    int64_t blockFactor_ = 0;
 };
 
 template <typename T, bool isBrc>
@@ -82,18 +81,18 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Init(GM_ADDR x, GM_
     blockIdx_ = GetBlockIdx();
     tiling_ = tilingData;
     pipe_ = pipe;
-    usedCoreNum_ =tiling_->usedCoreNum;
+    usedCoreNum_ = tiling_->usedCoreNum;
     numHead_ = tiling_->numHead;
     headDim_ = tiling_->headDim;
     allHeadDim_ = tiling_->allHeadDim;
     coreTUbLoopTime_ = tiling_->coreTUbLoopTime;
-    coreBUbLoopTime_ = tiling_->coreBUbLoopTime; //b分核，每个核处理多少个b，b就是shape0
+    coreBUbLoopTime_ = tiling_->coreBUbLoopTime; // b分核，每个核处理多少个b，b就是shape0
     coreTUbLoopTail_ = tiling_->coreTUbLoopTail;
     coreBUbLoopTail_ = tiling_->coreBUbLoopTail;
     ubFactor_ = tiling_->ubFactor;
     blockFactor_ =  tiling_->blockFactor;
     start_ = tiling_->start;
-    
+
     xGm_.SetGlobalBuffer((__gm__ T *)x);
     r1Gm_.SetGlobalBuffer((__gm__ T *)r1);
     r2Gm_.SetGlobalBuffer((__gm__ T *)r2);
@@ -112,26 +111,29 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Init(GM_ADDR x, GM_
         halfNumr1_ = r1Num_;
     }
 }
+
 template <typename T, bool isBrc>
 __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::CopyInData(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset)
 {
     DataCopyExtParams copyParams;
     copyParams.blockCount = blockCout;
     copyParams.blockLen = blockLen * sizeof(T);
-    copyParams.srcStride = (allHeadDim_ - headDim_)*sizeof(T); //整个输入的大小
+    copyParams.srcStride = (allHeadDim_ - headDim_)*sizeof(T); // 整个输入的大小
     copyParams.dstStride = 0;
     DataCopyPad(xUb[ubOffset], xGm[gmOffset], copyParams, dataCopyPadParams_);
 }
+
 template <typename T, bool isBrc>
 __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::CopyInDataR(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset)
 {
     DataCopyExtParams copyParams;
     copyParams.blockCount = blockCout;
     copyParams.blockLen = blockLen * sizeof(T);
-    copyParams.srcStride = 0; //整个输入的大小
+    copyParams.srcStride = 0; // 整个输入的大小
     copyParams.dstStride = 0;
     DataCopyPad(xUb[ubOffset], xGm[gmOffset], copyParams, dataCopyPadParams_);
 }
+
 template <typename T, bool isBrc>
 __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::SetGatherSrcOffset(LocalTensor<int32_t> &idsUb, int64_t count)
 {
@@ -143,7 +145,7 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::SetGatherSrcOffset(
     WaitFlag<HardEvent::S_V>(eventIdSToV);
     int32_t scalarValue = 8;
     int32_t onceNum = 8;
-    
+
     while (scalarValue < count) {
         int32_t nextValue = scalarValue * 2;
         if (nextValue < count) {
@@ -156,13 +158,14 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::SetGatherSrcOffset(
     }
     Muls(idsUb, idsUb, 4, count);
 }
+
 template <typename T, bool isBrc>
-__aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::ComputeMul(LocalTensor<float> &dtsUb, LocalTensor<float> & src0Ub, LocalTensor<float> &src1Ub, int64_t onceA, int64_t numHead,int64_t headDim)
+__aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::ComputeMul(LocalTensor<float>& dtsUb, LocalTensor<float>& src0Ub, LocalTensor<float>& src1Ub, int64_t onceA, int64_t numHead, int64_t headDim)
 {
     int64_t count = numHead *headDim;
     if constexpr(!isBrc) {
         int64_t xtotalNum = onceA * count;
-        Mul(dtsUb, src0Ub, src1Ub, xtotalNum); //x*cos 非brc elewise乘
+        Mul(dtsUb, src0Ub, src1Ub, xtotalNum); // x*cos 非brc elewise乘
     } else {
         if (headDim <= 64) {
             int32_t mask = headDim;
@@ -172,38 +175,40 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::ComputeMul(LocalTen
             repeatParams_.dstRepStride = 8;
             repeatParams_.src0RepStride = 8;
             repeatParams_.src1RepStride = 0;
-            for (int64_t j =0; j<onceA; j++) {
-                Mul(dtsUb[j*count], src0Ub[j*count], src1Ub[j*headDim], mask, numHead, repeatParams_); //x*cos 非brc elewise乘
+            for (int64_t j = 0; j<onceA; j++) {
+                Mul(dtsUb[j*count], src0Ub[j*count], src1Ub[j*headDim], mask, numHead, repeatParams_); // x*cos 非brc elewise乘
             }
         } else {
-            for (int64_t j =0; j < onceA; j++) {
-                for (int64_t jj =0; jj < numHead; jj++) {
-                    Mul(dtsUb[j*count + jj * headDim], src0Ub[j*count + jj * headDim], src1Ub[j*headDim], headDim); //x*cos 非brc elewise乘
+            for (int64_t j = 0; j < onceA; j++) {
+                for (int64_t jj = 0; jj < numHead; jj++) {
+                    Mul(dtsUb[j*count + jj * headDim], src0Ub[j*count + jj * headDim], src1Ub[j*headDim], headDim); // x*cos 非brc elewise乘
             }
             }
         }
     }
     PipeBarrier<PIPE_V>();
 }
+
 template <typename T, bool isBrc>
-__aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::InterleavedInversion(int64_t count,LocalTensor<float> &ub)
+__aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::InterleavedInversion(int64_t count, LocalTensor<float> &ub)
 {
     // 做奇数位的*-1
     SetMaskNorm();
     int64_t fp32Mask = 64;
     int64_t repeatTimes = count / 64;
     int64_t remain = count % 64;
-    uint64_t fullMask = 0x5555555555555555; //0101010101010101  
+    uint64_t fullMask = 0x5555555555555555; //0101010101010101
     uint64_t tailMask = 0x55;
     SetVectorMask<float, MaskMode::NORMAL>(0, fullMask);
-    Muls<float, false>(ub, ub, -1.0f, MASK_PLACEHOLDER, repeatTimes, {1,1,8,8});
+    Muls<float, false>(ub, ub, -1.0f, MASK_PLACEHOLDER, repeatTimes, {1, 1, 8, 8});
     if (remain != 0) {
         int32_t tailTimes = count % 64 / 8;
         SetVectorMask<float, MaskMode::NORMAL>(0, tailMask);
-        Muls<float, false>(ub[repeatTimes * 64], ub[repeatTimes * 64], -1.0f, MASK_PLACEHOLDER, tailTimes, {1,1,1,1});
+        Muls<float, false>(ub[repeatTimes * 64], ub[repeatTimes * 64], -1.0f, MASK_PLACEHOLDER, tailTimes, {1, 1, 1, 1});
     }
     ResetMask();
 }
+
 template <typename T, bool isBrc>
 __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::DataCopyOut(LocalTensor<T> &yUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset)
 {
@@ -226,10 +231,10 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Process()
     SetGatherSrcOffset(idsUb, count);
     LocalTensor<uint32_t> idsUbUint32 =  idsBuf_.Get<uint32_t>();
     // A分核分ub, 一次搬入x个 cout, x就是ubFactor_
-    int64_t ubLoopTimes = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTime_ :coreBUbLoopTime_; //b分核，每个核处理多少个b，b就是shape0
+    int64_t ubLoopTimes = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTime_ :coreBUbLoopTime_; // b分核，每个核处理多少个b，b就是shape0
     int64_t ubLoopTailNum = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTail_ :coreBUbLoopTail_;
     int64_t ysCount = numHead_ *allHeadDim_;
-    for(int64_t i=0; i< ubLoopTimes; i++) {
+    for (int64_t i = 0; i< ubLoopTimes; i++) {
         int64_t ubSize = i == ubLoopTimes -1 ? ubLoopTailNum : ubFactor_;
         int64_t xtotalNum = ubSize * count;
         int64_t r1totalNum = ubSize * headDim_;
@@ -263,13 +268,13 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Process()
         PipeBarrier<PIPE_V>();
         LocalTensor<T> yUb = yQue_.AllocTensor<T>();
         LocalTensor<float> yUbFp32 = yUb.template ReinterpretCast<float>();
-        ComputeMul(yUbFp32 , xUbFp32, r1UbFp32, ubSize, numHead_,headDim_);
+        ComputeMul(yUbFp32 , xUbFp32, r1UbFp32, ubSize, numHead_, headDim_);
         // 开始做选择的取数，基偶取数
-        for (int64_t k =0; k < ubSize; k++) {
+        for (int64_t k = 0; k < ubSize; k++) {
             Gather(xUbFp32[k*count], xUbFp32[k*count], idsUbUint32, uint32_t(0), uint32_t(count)); //奇偶交换完成
         }
         PipeBarrier<PIPE_V>();
-        ComputeMul(xUbFp32 , xUbFp32, r2UbFp32, ubSize, numHead_,headDim_);
+        ComputeMul(xUbFp32 , xUbFp32, r2UbFp32, ubSize, numHead_, headDim_);
         r1Que_.FreeTensor(r1Ub);
         r2Que_.FreeTensor(r2Ub);
         InterleavedInversion(xtotalNum, xUbFp32);

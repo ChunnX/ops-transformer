@@ -24,8 +24,8 @@ extern "C" {
 #endif
 
 static aclnnStatus InplacePartialRotaryMulCommonProcess(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
-                                                         int64_t rotary_mode, const aclIntArray *partialSlice,
-                                                         aclTensor *out, aclOpExecutor *executor)
+                                                        int64_t rotary_mode, const aclIntArray *partialSlice,
+                                                        aclTensor *out, aclOpExecutor *executor)
 {
     auto result = l0op::InplacePartialRotaryMul(x, cos, sin, rotary_mode, partialSlice, executor);
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -34,8 +34,8 @@ static aclnnStatus InplacePartialRotaryMulCommonProcess(const aclTensor *x, cons
 }
 
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos, const aclTensor* sin,
-                                                          int64_t rotary_mode, const aclIntArray *partialSlice,
-                                                          aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
+                                                         int64_t rotary_mode, const aclIntArray *partialSlice,
+                                                         aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnInplacePartialRotaryMul,
         DFX_IN(x, cos, sin, rotary_mode, partialSlice),
@@ -59,7 +59,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, con
 }
 
 aclnnStatus aclnnInplacePartialRotaryMul(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                          aclrtStream stream)
+                                         aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnInplacePartialRotaryMul);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

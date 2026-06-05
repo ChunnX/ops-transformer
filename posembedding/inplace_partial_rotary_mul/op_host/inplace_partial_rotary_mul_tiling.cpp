@@ -26,7 +26,7 @@ constexpr int64_t TILING_KEY_PAD = 1;
 constexpr int64_t TILING_KEY_SPLIT_S = 0;
 constexpr int64_t TILING_KEY_SPLIT_BS = 100;
 constexpr int64_t TILING_KEY_SPLIT_BSN = 200;
-constexpr int64_t TILING_KEY_NOOP = 1;  // sliceLength=0, no computation
+constexpr int64_t TILING_KEY_NOOP = 1;  // sliceLength = 0, no computation
 constexpr int64_t FP16_BF16_DTYPE_SIZE = 2;
 constexpr int64_t FP32_DTYPE_SIZE = 4;
 constexpr int64_t INT32_DTYPE_SIZE = 4;
@@ -40,8 +40,7 @@ constexpr int64_t IO_NUM = 3; // sin、cos -> tri
 constexpr int64_t BASE_KEY = 2000;
 constexpr int64_t CONST_4 = 4;
 
-class InplacePartialRotaryMulTiling
-{
+class InplacePartialRotaryMulTiling {
 public:
     explicit InplacePartialRotaryMulTiling(gert::TilingContext* context) : context_(context){};
 
@@ -63,14 +62,14 @@ private:
 
 private:
     int64_t coreNum_ = 0;
-    int64_t ubSize_=0;
+    int64_t ubSize_ = 0;
     int64_t dtypeX = 0;
     int64_t repeatNum_ = 0;
     bool isBrc_ = true;
     int64_t dim0_ = 0;
     int64_t dim1_ = 0;
     int64_t dim2_ = 0;
-    int64_t end_ =0;
+    int64_t end_ = 0;
     int64_t tilingKey_ = TILING_KEY_NOOP;
     bool isAlign_ = false;
     bool isSpecail_ = false;
@@ -95,8 +94,8 @@ private:
     int64_t coreTUbLoopTail_ = 0;
     int64_t coreBUbLoopTail_ = 0;
     int64_t ubFactor_ = 0;
-    int64_t start_=0;
-    int64_t blockFactor_=0;
+    int64_t start_ = 0;
+    int64_t blockFactor_ = 0;
     gert::TilingContext* context_ = nullptr;
     InplacePartialRopeRegbaseTilingData tilingData_;
 };
@@ -121,7 +120,7 @@ int64_t GetDivRem(int64_t value1, int64_t value2)
     return value1 % value2;
 }
 void InplacePartialRotaryMulTiling::FillTilingData()
-{   
+{
     tilingData_.set_usedCoreNum(usedCoreNum_);
     tilingData_.set_numHead(numHead_);
     tilingData_.set_headDim(headDim_);
@@ -209,7 +208,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::CalTilingData()
     if (coreTUbLoopTail_ == 0) {
         coreTUbLoopTail_ = ubFactor_;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus InplacePartialRotaryMulTiling::Init()
@@ -249,7 +248,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
         dtypeSize_ = FP32_DTYPE_SIZE;
         oneBlockSize_ = ALIGN_32;
     }
-     
+
     OP_CHECK_IF(xInput == nullptr || inputR1 == nullptr || inputR2 == nullptr, OP_LOGE(context_->GetNodeName(), "get input nullptr."),
         return ge::GRAPH_FAILED);
     gert::Shape xShape = xInput->GetStorageShape();
@@ -381,21 +380,23 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
             tilingKey_ = tilingKey_ + 1;
         }
     }
-    if (xdim3_ % oneBlockSize_ == 0){
+    if (xdim3_ % oneBlockSize_ == 0) {
         isAlign_ = true;
     }
     OP_LOGI(context_->GetNodeName(), "isSpecail_ %d", isSpecail_);
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitN(int64_t numHeads, int64_t headDimAlign, int64_t ubSize,
-                             ge::DataType dataDtype)
+    ge::DataType dataDtype)
 {
     const int64_t bufferSize = ubSize - 0;
     int64_t totalHeadNum1Size = headDimAlign * IO_NUM * dtypeSize_ + headDimAlign * INT32_DTYPE_SIZE;
     if (dataDtype == ge::DT_BF16 || dataDtype == ge::DT_FLOAT16) {
         totalHeadNum1Size += headDimAlign * FP32_DTYPE_SIZE * IO_NUM;
     }
-    uint32_t ubCalcNNum{1}, ubCalcNLoop{numHeads}, ubCalcNTail{0};
+    uint32_t ubCalcNNum{1};
+    uint32_t ubCalcNLoop{numHeads};
+    uint32_t ubCalcNTail{0};
     if (bufferSize < totalHeadNum1Size) {
         std::string reasonMsg = "The D dimension of the input shape is too large to fit in UB (bufferSize=" +
             std::to_string(bufferSize) + ", required=" + std::to_string(totalHeadNum1Size) + ")";
@@ -415,7 +416,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitN(int64_t numHeads, in
 }
 
 ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitB(int64_t batchSize, int64_t numHeads, int64_t headDimAlign,
-                             int64_t ubSize, ge::DataType dataDtype)
+    int64_t ubSize, ge::DataType dataDtype)
 {
     const int64_t tBufferSize = numHeads * headDimAlign * FP32_DTYPE_SIZE;
     const int64_t bufferSize = ubSize - tBufferSize;
@@ -424,7 +425,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitB(int64_t batchSize, i
     if (dataDtype == ge::DT_BF16 || dataDtype == ge::DT_FLOAT16) {
         totalBatch1Size += numHeads * headDimAlign * FP32_DTYPE_SIZE * IO_NUM;
     }
-    int64_t ubCalcBNum{1}, ubCalcBLoop{batchSize}, ubCalcBTail{0};
+    int64_t ubCalcBNum{1};
+    int64_t ubCalcBLoop{batchSize};
+    int64_t ubCalcBTail{0};
     if (ubSize < tBufferSize || bufferSize < totalBatch1Size) {
         OP_CHECK_IF(TilingSplitN(numHeads, headDimAlign, ubSize, dataDtype) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context_->GetNodeName(), "TilingSplitN fail."), return ge::GRAPH_FAILED);
@@ -491,7 +494,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitS()
         return ge::GRAPH_SUCCESS;
     }
     context_->SetTilingKey(tilingKey_);
-    int64_t ubCalcNum, ubCalcLoop, ubCalcTail;
+    int64_t ubCalcNum;
+    int64_t ubCalcLoop;
+    int64_t ubCalcTail;
     if (bufferSize < ioUbSize) {
         ubCalcNum = GetDiv(bufferSize, totalSeq1Size);
         ubCalcLoop = GetCeilInt(coreCalcNum, ubCalcNum);
@@ -505,7 +510,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitS()
     tilingData_.set_ubCalcLoop(ubCalcLoop);
     tilingData_.set_ubCalcTail(ubCalcTail);
     // ub split for tail core
-    int64_t ubCalcTailNum{0}, ubCalcTailLoop{0}, ubCalcTailTail{0};
+    int64_t ubCalcTailNum{0};
+    int64_t ubCalcTailLoop{0};
+    int64_t ubCalcTailTail{0};
     if (coreCalcTail != 0) {
         ioUbSize = batchSize * coreCalcTail * numHeads * headDimAlign * IO_NUM * dtypeSize_;
         totalSeq1Size = batchSize * numHeads * headDimAlign * IO_NUM * dtypeSize_;
@@ -532,7 +539,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitS()
 
 ge::graphStatus InplacePartialRotaryMulTiling::TilingSplit()
 {
-    int64_t batchSizeOut{1}, seqLenOut{1}, numHeadsOut{1};
+    int64_t batchSizeOut{1};
+    int64_t seqLenOut{1};
+    int64_t numHeadsOut{1};
     if (r1dim1_ == 1 && r1dim2_ == 1 && xdim0_ == r1dim0_) {
         seqLenOut = r1dim0_;
         numHeadsOut = xdim1_ * xdim2_; // SBND -> 1S(BN)D -> 1SND
@@ -546,7 +555,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplit()
     } else if (xdim0_ == r1dim0_ && xdim1_ == r1dim1_) {
         batchSizeOut = 1;
         seqLenOut = r1dim0_ * r1dim1_;
-        numHeadsOut = xdim2_; // 1,BS,N,D cons/sin 1,BS,1,D
+        numHeadsOut = xdim2_; // 1,BS,N,D cons/sin 1,BS, 1,D
     } else {
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x, cos and sin",
             "layout not supported",
@@ -591,7 +600,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
         PrintTilingData();
         context_->SetBlockDim(usedCoreNum_);
         context_->SetTilingKey(tilingKey_);
-        
+
         size_t* workspaces = context_->GetWorkspaceSizes(1);
         workspaces[0] = static_cast<size_t>(16 * 1024 * 1024);
         tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -625,8 +634,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
         PrintInfo();
         return ge::GRAPH_SUCCESS;
     }
-    
-}
+};
 ge::graphStatus Tiling4InplacePartialRotaryMul(gert::TilingContext* context)
 {
     InplacePartialRotaryMulTiling tilingImpl = InplacePartialRotaryMulTiling(context);
