@@ -344,7 +344,7 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 // 兼容性处理，非ND格式转换为ND格式
 static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                            const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output,
-                           bool isMxQuantMode = false)
+                           bool isMxQuantMode = false, bool transposeX2 = false)
 {
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -358,7 +358,15 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
         x2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         x2NZ->SetViewFormat(op::Format::FORMAT_ND);
         x2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-        x2NZ->SetOriginalShape(x2->GetViewShape());
+        op::Shape nzOrigShape;
+        if (transposeX2) {
+            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(1));
+            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(0));
+        } else {
+            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(0));
+            nzOrigShape.AppendDim(x2->GetViewShape().GetDim(1));
+        }
+        x2NZ->SetOriginalShape(nzOrigShape);
     } else if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
         x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
@@ -408,7 +416,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
               ACLNN_ERR_PARAM_INVALID);
     bool isMxQuantMode = (x1QuantMode == 6 && x2QuantMode == 6);
     CHECK_RET(CheckFormat(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(ReFormatNotND(x1, x2, biasOptional, x1Scale, x2Scale, output, isMxQuantMode, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 检查alltoAllAxes是否为空或者[-1,-2]
     CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
     // 检查transposeX1是否合法, 目前不能为true
@@ -469,9 +477,10 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         }
         if (notContiguous) {
             transposeX2 = true;
-            // 把非连续x2转成连续
             if (isX2Nz) {
-                transX2 = TransX2TensorNZ(x2);
+                transX2 = x2;
+                OP_LOGI("QuantMatmulAlltoAll, NZ format non-contiguous x2: keeping original tensor, "
+                        "setting transposeX2=true to compensate .t().");
             } else {
                 transX2 = TransX2Tensor(x2);
             }
@@ -487,7 +496,15 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
             transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-            transX2NZ->SetOriginalShape(transX2->GetViewShape());
+            op::Shape nzOrigShape;
+            if (transposeX2) {
+                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(1));
+                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(0));
+            } else {
+                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(0));
+                nzOrigShape.AppendDim(transX2->GetViewShape().GetDim(1));
+            }
+            transX2NZ->SetOriginalShape(nzOrigShape);
             op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
             OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
                     "origShape=%s, viewShape=%s.",
