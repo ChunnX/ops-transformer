@@ -12,14 +12,16 @@
  * \file allto_all_matmul_tiling_910b.cpp
  * \brief
  */
-#include "vector"
-#include "tiling/tiling_api.h"
-#include "mc2_log.h"
+#include "allto_all_matmul_tiling_910b.h"
+
+#include <map>
+
 #include "common/utils/op_mc2.h"
 #include "mc2_hcom_topo_info.h"
+#include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include <map>
-#include "allto_all_matmul_tiling_910b.h"
+#include "tiling/tiling_api.h"
+#include "vector"
 
 using namespace AscendC;
 using namespace ge;
@@ -117,22 +119,22 @@ struct BaseBlock {
     static constexpr size_t size = SIZE / sizeof(T);
 
     static __aicore__ inline size_t Count(size_t len)
-    {
+{
         return (len + size - 1) / size;
     }
 
     static __aicore__ inline bool IsAligned(size_t len)
-    {
+{
         return len % size == 0;
     }
 
     static __aicore__ inline size_t AlignUp(size_t len)
-    {
+{
         return (len + size - 1) & ~(size - 1);
     }
 
     static __aicore__ inline size_t AlignDown(size_t len)
-    {
+{
         return len & ~(size - 1);
     }
 };
@@ -1135,12 +1137,12 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
             const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
             uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
             uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
-            OP_TILING_CHECK(
-                (x1ScaleDim0 != tokenSize),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
-                    Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                    "The shape of x1Scale dim0 must be " + std::to_string(tokenSize)),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK((x1ScaleDim0 != tokenSize),
+                            OP_LOGE(opName_,
+                                    "The x1Scale dim0 should be %u (x1's second dim multiplied by world_size), "
+                                    "but actual value is %lu.",
+                                    tokenSize, x1ScaleDim0),
+                            return ge::GRAPH_FAILED);
         }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
