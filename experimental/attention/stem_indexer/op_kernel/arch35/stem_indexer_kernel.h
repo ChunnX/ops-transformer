@@ -660,26 +660,35 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
+        
+        // 在 gS1 循环之前减一次 WINDOW_BLOCKS
+        uint32_t originalActS2Size = tempLoopInfo.actS2Size;
+        const uint32_t INIT_BLOCKS = 4;
+        const uint32_t WINDOW_BLOCKS = 4;
+
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
-            CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
-            runInfo.s2Start = splitCoreInfo.s2Start;
-            runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
             // 短路分支：validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS 时直接输出连续索引
-            const uint32_t INIT_BLOCKS = 4;
-            const uint32_t WINDOW_BLOCKS = 4;
-            if (tempLoopInfo.validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS) {
+            if (tempLoopInfo.actS2Size <= INIT_BLOCKS + WINDOW_BLOCKS) {
                 // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
-                vectorService.ProcessDirectOutput(runInfo, tempLoopInfo.validS2Len);
+                vectorService.ProcessDirectOutput(runInfo, tempLoopInfo.actS2Size);
             } else {
-                // 正常 TopK 流程：减去 WINDOW_BLOCKS
-                tempLoopInfo.validS2Len = tempLoopInfo.validS2Len - WINDOW_BLOCKS;
                 
+                tempLoopInfo.actS2Size -= WINDOW_BLOCKS;
+                // 重新计算 s2BasicSizeTail
+                tempLoopInfo.s2BasicSizeTail = tempLoopInfo.actS2Size % constInfo.s2BaseSize;
+                tempLoopInfo.s2BasicSizeTail = tempLoopInfo.s2BasicSizeTail == 0 ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
+                CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+                runInfo.s2Start = splitCoreInfo.s2Start;
+                runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
+                // 正常 TopK 流程：减去 WINDOW_BLOCKS
                 for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
                     ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
                     ++gloop;
                 }
             }
             splitCoreInfo.s2Start = 0;
+            // 循环结束后恢复
+            tempLoopInfo.actS2Size = originalActS2Size;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
