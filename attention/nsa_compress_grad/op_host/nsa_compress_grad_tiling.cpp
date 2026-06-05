@@ -143,7 +143,6 @@ ge::graphStatus NsaCompressGradTiling::GetWorkspaceSize() {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     size_t sysWorkspaceSize = WORKSIZE;
     /* usrWorkspaceSize = workspace for other gm */
-    // 使用 int64_t 进行中间计算，防止 uint32_t 连乘溢出
     int64_t usrWorkspaceSizeTmp = static_cast<int64_t>(tilingData_.get_blockSize()) * 
                                   static_cast<int64_t>(tilingData_.get_numOfHead()) * 
                                   sizeof(uint32_t) * static_cast<int64_t>(aivNum_) +

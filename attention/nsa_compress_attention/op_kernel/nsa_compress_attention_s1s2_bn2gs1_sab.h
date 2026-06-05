@@ -1049,7 +1049,6 @@ __aicore__ inline void NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
         // b,s2,n2,d
-        // 修复溢出风险：分段计算Bmm2 offset，避免连续乘法溢出
         uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s2SizeAcc) * static_cast<uint64_t>(this->tilingData->inputParams.n2Size) * static_cast<uint64_t>(this->d2Size);
         uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->d2Size);
         bOffset = static_cast<int64_t>(bOffsetU64);
