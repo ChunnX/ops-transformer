@@ -369,10 +369,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             GM_ADDR rankGM = (GM_ADDR)(GetWinAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
-    
         }
-        hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-        hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+        if(likely(curTokenNum > 0U)) {
+            hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
+            hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+        }
     }
     SyncAll<true>();
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
