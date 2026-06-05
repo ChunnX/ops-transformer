@@ -93,30 +93,30 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
 {
     // num_heads_q 校验
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_q should be > 0, but got %ld", numHeadsQ);
+        "num_heads_q should be > 0, but got %lld", numHeadsQ);
     // num_heads_k 校验
     CHECK_COND(numHeadsK == 1, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_kv should only be 1, but got %ld", numHeadsK);
+        "num_heads_kv should only be 1, but got %lld", numHeadsK);
     // topk 校验
     CHECK_COND(topk >= 0, ACLNN_ERR_PARAM_INVALID,
-        "topk should not be negative, but got %ld", topk);
+        "topk should not be negative, but got %lld", topk);
     // batch_size 非负校验
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID,
-        "batch_size should not be negative, but got %ld", batchSize);
+        "batch_size should not be negative, but got %lld", batchSize);
     // max_seqlen_q 校验
     CHECK_COND(maxSeqlenQ >= -1, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_q should be >= -1, but got %ld", maxSeqlenQ);
+        "max_seqlen_q should be >= -1, but got %lld", maxSeqlenQ);
     // max_seqlen_k 校验
     CHECK_COND(maxSeqlenK >= -1, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_k should be >= -1, but got %ld", maxSeqlenK);
+        "max_seqlen_k should be >= -1, but got %lld", maxSeqlenK);
     // mask_mode 校验
     CHECK_COND((maskMode == LI_NO_MASK_MODE) || (maskMode == LI_CAUSAL_MASK_MODE),
         ACLNN_ERR_PARAM_INVALID,
-        "mask_mode should be %ld/%ld, but got %ld", LI_NO_MASK_MODE, LI_CAUSAL_MASK_MODE, maskMode);
+        "mask_mode should be %lld/%lld, but got %lld", LI_NO_MASK_MODE, LI_CAUSAL_MASK_MODE, maskMode);
     // cmp_ratio 校验
     CHECK_COND((cmpRatio >= LI_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= LI_CMP_RATIO_UPPER_BOUND),
         ACLNN_ERR_PARAM_INVALID,
-        "cmp_ratio should be between [%ld, %ld], but got %ld",
+        "cmp_ratio should be between [%lld, %lld], but got %lld",
         LI_CMP_RATIO_LOWER_BOUND, LI_CMP_RATIO_UPPER_BOUND, cmpRatio);
     // layout_q 校验
     CHECK_COND((layoutQOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
@@ -181,7 +181,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     // 校验 cu_seqlens_q
     if (IsTensorExistLiV2(cuSeqlensQOptional)) {
         dimNum = GetDimNumLiV2(cuSeqlensQOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(cuSeqlensQOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of cu_seqlens_q must be int32, but got %d", static_cast<int32_t>(dataType));
@@ -189,7 +189,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     // 校验 cu_seqlens_k
     if (IsTensorExistLiV2(cuSeqlensKOptional)) {
         dimNum = GetDimNumLiV2(cuSeqlensKOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_k must be 1, but got %ld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_k must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(cuSeqlensKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of cu_seqlens_k must be int32, but got %d", static_cast<int32_t>(dataType));
@@ -197,7 +197,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     // 校验 seqused_q
     if (IsTensorExistLiV2(sequsedQOptional)) {
         dimNum = GetDimNumLiV2(sequsedQOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(sequsedQOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of seqused_q must be int32, but got %d", static_cast<int32_t>(dataType));
@@ -205,7 +205,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     // 校验 seqused_k
     if (IsTensorExistLiV2(sequsedKOptional)) {
         dimNum = GetDimNumLiV2(sequsedKOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_k must be 1, but got %ld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_k must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(sequsedKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of seqused_k must be int32, but got %d", static_cast<int32_t>(dataType));
@@ -214,7 +214,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     if (IsTensorExistLiV2(cmpResidualKOptional)) {
         dimNum = GetDimNumLiV2(cmpResidualKOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID,
-            "The dim num of cmp_residual_k must be 1, but got %ld", dimNum);
+            "The dim num of cmp_residual_k must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(cmpResidualKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of cmp_residual_k must be int32, but got %d", static_cast<int32_t>(dataType));
@@ -222,13 +222,13 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     // 校验 metadata
     if (IsTensorExistLiV2(metadata)) {
         dimNum = GetDimNumLiV2(metadata);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %ld", dimNum);
+        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lld", dimNum);
         dataType = GetDataTypeLiV2(metadata);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
             "The data type of metadata must be int32, but got %d", static_cast<int32_t>(dataType));
         // 校验 metadata 元素数
         if (metadata->GetViewShape().GetDim(0) != optiling::LI_V2_METADATA_TOTAL_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %lld",
                 optiling::LI_V2_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -237,13 +237,13 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     int64_t queryBatchSize = GetQueryBatchSizeLiV2(batchSize, cuSeqlensQOptional, sequsedQOptional, layoutQOptional);
     int64_t keyBatchSize = GetKeyBatchSizeLiV2(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional);
     CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
-        "The batch_size obtained from query should be the same as that obtained from key, but got %ld and %ld",
+        "The batch_size obtained from query should be the same as that obtained from key, but got %lld and %lld",
         queryBatchSize, keyBatchSize);
     // 校验 cmp_residual_k 元素数
     if (IsTensorExistLiV2(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
         CHECK_COND(cmpResidualKBatch == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
-            "The batch_size of cmp_residual_k should match the valid batch size, but got %ld and %ld",
+            "The batch_size of cmp_residual_k should match the valid batch size, but got %lld and %lld",
             cmpResidualKBatch, queryBatchSize);
     }
     return ACLNN_SUCCESS;

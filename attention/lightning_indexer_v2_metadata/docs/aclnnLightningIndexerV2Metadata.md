@@ -365,8 +365,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     } while (0)
 
 // 参考 lightning_indexer_v2_metadata.h
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 1024;
 constexpr uint32_t LI_V2_METADATA_SIZE = 8;
 constexpr uint32_t LD_V2_METADATA_SIZE = 8;
 
@@ -389,9 +390,9 @@ constexpr uint32_t LD_V2_WORKSPACE_NUM_INDEX = 4;
 constexpr uint32_t LD_V2_M_START_INDEX = 5;
 constexpr uint32_t LD_V2_M_NUM_INDEX = 6;
 
-struct LiV2MetaData {
-    uint32_t faData[AIC_CORE_NUM][LI_V2_METADATA_SIZE];
-    uint32_t fdData[AIV_CORE_NUM][LD_V2_METADATA_SIZE];
+struct LiV2Metadata {
+    uint32_t faData[AIC_CORE_MAX_NUM][LI_V2_METADATA_SIZE];
+    uint32_t fdData[AIV_CORE_MAX_NUM][LD_V2_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -545,7 +546,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsK = 1;
     context.headDim = 128;
     context.topk = 0;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
+    ret = CreateTensor(aclDataType::ACL_INT32, { LI_V2_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
     context.maskMode = 0;                   // 0: no mask, 3: causal
@@ -635,11 +636,11 @@ int main() {
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
 
     // 5. 打印输出
-    LiV2MetaData result {};
+    LiV2Metadata result {};
     ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
         printf("AIC Core%u\n", i);
         printf("    Core Enable : %u\n", result.faData[i][LI_V2_CORE_ENABLE_INDEX]);
         printf("    Start BN2   : %u\n", result.faData[i][LI_V2_BN2_START_INDEX]);
@@ -650,7 +651,7 @@ int main() {
         printf("    End S2      : %u\n", result.faData[i][LI_V2_S2_END_INDEX]);
         printf("    First Worksapce Index : %u\n", result.faData[i][LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX]);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
         printf("AIV Core%u\n", i);
         printf("    Core Enable             : %u\n", result.fdData[i][LD_V2_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][LD_V2_BN2_IDX_INDEX]);
