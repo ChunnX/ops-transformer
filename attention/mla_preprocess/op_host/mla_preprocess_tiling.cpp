@@ -767,7 +767,7 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     // blockSize（每个 block 的逻辑行数，固定 128）的取数位置随 cache 格式不同：
     //   - ND（cacheMode 0/1）：logical/origin shape 为 [blockNum, blockSize, 1, dim]，blockSize 在 dim1；
     //   - NZ（cacheMode 2/3）：storage shape 为 [blockNum, C1, blockSize, C0]，blockSize 在 dim2。
-    const bool isNzCache = (param.cacheMode == NUM_2 || param.cacheMode == NUM_3);  // 2:INT8_NZ, 3:NZ
+    const bool isNzCache = (param.cacheMode == NUM2 || param.cacheMode == NUM3);  // 2:INT8_NZ, 3:NZ
     if (isNzCache && kvCacheShape.GetDimNum() > DIM_2) {
         param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheShape.GetDim(DIM_2));
     } else {
