@@ -762,10 +762,10 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalAttenMsk(const int32_t p
          * 2.如果需要掩掉的块不仅仅在对角线上，则后面所有的块都需要被掩掉
          */
         if (lastS1Index + 1 < selectedS2) {
-            uint32_t mskLen = (selectedBlockCount - (selectIdx + 1)) * selectedBlockSize;
+            int64_t mskLen = static_cast<int64_t>(selectedBlockCount - (selectIdx + 1)) * static_cast<int64_t>(selectedBlockSize);
             if (mskLen != 0) {
                 tmpTensor = pTensor[(selectIdx + 1) * selectedBlockSize + pOffset];
-                Duplicate(tmpTensor, scalar, (selectedBlockCount - (selectIdx + 1)) * selectedBlockSize);
+                Duplicate(tmpTensor, scalar, mskLen);
             }
         }
     }
@@ -775,7 +775,7 @@ template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalSoftmax(const int32_t loopIdx, const int32_t processM,
                                                                 const int64_t mm12Addr, const int64_t mm345Addr)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t maxOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpMaxTensor = maxTensor[maxOffset];
     auto tmpSumTensor = sumTensor[maxOffset];
@@ -810,7 +810,7 @@ template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM,
                                                                     const int64_t mm12Addr, const int64_t mm345Addr)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t rowsumOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpRowSumOutTensor = rowSumOutTensor[rowsumOffset];
 
@@ -840,7 +840,7 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::VectorProcess(int64_t mm12A
     int32_t loop = (params.singleM + params.sftBaseM - 1) / params.sftBaseM;
     int32_t processM = params.sftBaseM;
     int32_t tailM = params.singleM % params.sftBaseM;
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
 
     for (int32_t i = 0; i < loop; i++) {
         if (i == 0) {
