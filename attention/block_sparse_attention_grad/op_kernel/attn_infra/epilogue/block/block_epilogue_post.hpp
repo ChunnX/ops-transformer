@@ -16,8 +16,8 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_POST_HPP	 
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_POST_HPP
 
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
+#include "../../../attn_infra/arch/bsag_resource.hpp"
+#include "../../../attn_infra/epilogue/bsag_epilogue_dispatch_policy.hpp"
 #include "kernel_operator.h"
 
 using namespace AscendC;

@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "tool.h"
+#include "weight_quant_tool.h"
 
 namespace MicroAPI = AscendC::MicroAPI;
 using AscendC::BLOCK_CUBE;

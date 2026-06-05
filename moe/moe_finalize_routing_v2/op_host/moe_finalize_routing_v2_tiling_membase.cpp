@@ -191,24 +191,28 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
 
     OP_CHECK_IF(
         dropPadMode_ < DROP_MODE_VALUE_0 || dropPadMode_ > DROP_MODE_VALUE_3,
-        OP_LOGE(context_->GetNodeName(), "the value of drop_pad_mode should be [0,3]."),
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode",
+            std::to_string(dropPadMode_).c_str(), "[0,3]"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         expandedRowIdxShape.GetDimNum() != 1,
-        OP_LOGE(context_->GetNodeName(), "the expanded_row_idx of input should be 1D tensor."),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_row_idx",
+            std::to_string(expandedRowIdxShape.GetDimNum()).c_str(), "1D"),
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
     k_ = 1;
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(context_->GetNodeName(), "the scales of input should be 2D tensor."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
+                std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         k_ = (params.scalesShape)->GetStorageShape().GetDim(DIM_INDEX_1);
 
         OP_CHECK_IF(
-            k_ == 0, OP_LOGE(context_->GetNodeName(), "K can not be 0."), return ge::GRAPH_FAILED);
+            k_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K",
+                std::to_string(k_).c_str(), "K can not be 0."), return ge::GRAPH_FAILED);
     }
 
     int64_t n = nk / k_;
@@ -218,15 +222,17 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     if (dropPadMode_ == DROP_MODE_VALUE_0 || dropPadMode_ == DROP_MODE_VALUE_2) {
         OP_CHECK_IF(
             expandedXShape.GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(
-                context_->GetNodeName(), "the expanded_x of input should be 2D tensor when drop_pad_mode is 0 or 2."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "expanded_x",
+                std::to_string(expandedXShape.GetDimNum()).c_str(),
+                "the expanded_x of input should be 2D tensor when drop_pad_mode is 0 or 2."),
             return ge::GRAPH_FAILED);
         h_ = expandedXShape.GetDim(DIM_INDEX_1);
     } else {
         OP_CHECK_IF(
             expandedXShape.GetDimNum() != SHAPE_SIZE_V3,
-            OP_LOGE(
-                context_->GetNodeName(), "the expanded_x of input should be 3D tensor when drop_pad_mode is 1 or 3."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "expanded_x",
+                std::to_string(expandedXShape.GetDimNum()).c_str(),
+                "the expanded_x of input should be 3D tensor when drop_pad_mode is 1 or 3."),
             return ge::GRAPH_FAILED);
         e = expandedXShape.GetDim(DIM_INDEX_0);
         h_ = expandedXShape.GetDim(DIM_INDEX_2);
@@ -237,15 +243,18 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     if (x1Shape != nullptr) {
         OP_CHECK_IF(
             x1Shape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(context_->GetNodeName(), "the x1 of input should be 2D tensor."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x1",
+                std::to_string(x1Shape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             n != x1Shape->GetStorageShape().GetDim(DIM_INDEX_0),
-            OP_LOGE(context_->GetNodeName(), "the dim 0 of x1 should be %ld.", n),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x1",
+                "invalid", "the dim 0 of x1 should be n."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             h_ != x1Shape->GetStorageShape().GetDim(DIM_INDEX_1),
-            OP_LOGE(context_->GetNodeName(), "the dim 1 of x1 should be %ld.", h_),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x1",
+                "invalid", "the dim 1 of x1 should be h."),
             return ge::GRAPH_FAILED);
     }
 
@@ -253,21 +262,23 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     if (x2Shape != nullptr) {
         OP_CHECK_IF(
             x1Shape == nullptr,
-            OP_LOGE(
-                context_->GetNodeName(),
-                "In the case of x1 parameter is not input, x2 parameter can't be inputted either."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+                "nullptr", "In the case of x1 parameter is not input, x2 parameter can't be inputted either."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             x2Shape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(context_->GetNodeName(), "the x2 of input should be 2D tensor."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
+                std::to_string(x2Shape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             n != x2Shape->GetStorageShape().GetDim(DIM_INDEX_0),
-            OP_LOGE(context_->GetNodeName(), "the dim 0 of x2 should be %ld.", n),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x2",
+                "invalid", "the dim 0 of x2 should be n."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             h_ != x2Shape->GetStorageShape().GetDim(DIM_INDEX_1),
-            OP_LOGE(context_->GetNodeName(), "the dim 1 of x2 should be %ld.", h_),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x2",
+                "invalid", "the dim 1 of x2 should be h."),
             return ge::GRAPH_FAILED);
     }
 
@@ -275,24 +286,27 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     if (biasShape != nullptr) {
         OP_CHECK_IF(
             expandedExpertIdxShape == nullptr,
-            OP_LOGE(context_->GetNodeName(), "the expert_idx must exist when bias exist."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "expert_idx",
+                "nullptr", "the expert_idx must exist when bias exist."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             biasShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(context_->GetNodeName(), "the bias of input should be 2D tensor."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "bias",
+                std::to_string(biasShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         if (dropPadMode_ == DROP_MODE_VALUE_1 || dropPadMode_ == DROP_MODE_VALUE_3) {
             OP_CHECK_IF(
                 e != biasShape->GetStorageShape().GetDim(DIM_INDEX_0),
-                OP_LOGE(
-                    context_->GetNodeName(), "the dim 0 of bias should be %ld when drop_pad_mode is 1 or 3.", e),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "bias",
+                    "invalid", "the dim 0 of bias should be e when drop_pad_mode is 1 or 3."),
                 return ge::GRAPH_FAILED);
         } else {
             e = biasShape->GetStorageShape().GetDim(DIM_INDEX_0);
         }
         OP_CHECK_IF(
             h_ != biasShape->GetStorageShape().GetDim(DIM_INDEX_1),
-            OP_LOGE(context_->GetNodeName(), "the dim 1 of bias should be %ld.", h_),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "bias",
+                "invalid", "the dim 1 of bias should be h."),
             return ge::GRAPH_FAILED);
     }
 
@@ -300,15 +314,18 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     if (expandedExpertIdxShape != nullptr) {
         OP_CHECK_IF(
             expandedExpertIdxShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
-            OP_LOGE(context_->GetNodeName(), "the expert_idx of input should be 2D tensor."),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expert_idx",
+                std::to_string(expandedExpertIdxShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             n != expandedExpertIdxShape->GetStorageShape().GetDim(DIM_INDEX_0),
-            OP_LOGE(context_->GetNodeName(), "the dim 0 of expert_idx should be %ld.", n),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expert_idx",
+                "invalid", "the dim 0 of expert_idx should be n."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             k_ != expandedExpertIdxShape->GetStorageShape().GetDim(DIM_INDEX_1),
-            OP_LOGE(context_->GetNodeName(), "the dim 1 of expert_idx should be %ld.", k_),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expert_idx",
+                "invalid", "the dim 1 of expert_idx should be k."),
             return ge::GRAPH_FAILED);
     }
 
@@ -316,36 +333,43 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
         OP_CHECK_IF(
             biasShape->GetStorageShape().GetDim(DIM_INDEX_0) <
                 expandedExpertIdxShape->GetStorageShape().GetDim(DIM_INDEX_1),
-            OP_LOGE(context_->GetNodeName(), "E should be larger than or equal to K."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "E",
+                std::to_string(biasShape->GetStorageShape().GetDim(DIM_INDEX_0)).c_str(),
+                "E should be larger than or equal to K."),
             return ge::GRAPH_FAILED);
     }
 
     if (biasShape != nullptr) {
         OP_CHECK_IF(
             (biasShape->GetStorageShape().GetDim(DIM_INDEX_0) == 0),
-            OP_LOGE(context_->GetNodeName(), "E can not be 0."), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "E", "0",
+                "E can not be 0."), return ge::GRAPH_FAILED);
     }
 
     // check output
     OP_CHECK_IF(
         yShape.GetDimNum() != SHAPE_SIZE_V2,
-        OP_LOGE(context_->GetNodeName(), "the y should be 2D tensor."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "y",
+            std::to_string(yShape.GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
     auto outputDesc = context_->GetOutputDesc(INDEX_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputDesc);
     auto expandedXInputDesc = context_->GetInputDesc(INDEX_IN_EXPAND_PERMUTED_ROWS_V2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expandedXInputDesc);
     OP_CHECK_IF(
         expandedXInputDesc->GetDataType() != outputDesc->GetDataType(),
-        OP_LOGE(context_->GetNodeName(), "the dtype of y should be same with expanded_x."),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "y and expanded_x",
+            "invalid", "the dtype of y should be same with expanded_x."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         n != yShape.GetDim(DIM_INDEX_0),
-        OP_LOGE(context_->GetNodeName(), "the dim 0 of output should be %ld.", n),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y",
+            "invalid", "the dim 0 of output should be n."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         h_ != yShape.GetDim(DIM_INDEX_1),
-        OP_LOGE(context_->GetNodeName(), "the dim 1 of output should be %ld.", h_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y",
+            "invalid", "the dim 1 of output should be h."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -850,9 +874,9 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::Check310pParams()
     auto expertIdxInputDesc = context_->GetOptionalInputDesc(INDEX_IN_EXPERT_FOR_SOURCE_ROW_V2);
     OP_CHECK_IF(
         x1InputDesc != nullptr || x2InputDesc != nullptr || biasInputDesc != nullptr || expertIdxInputDesc != nullptr,
-        OP_LOGE(context_->GetNodeName(), 
-        "310p only support inputs of expanded_x, expanded_row_idx and scales, any other inputs,"
-        "including x1, x2, bias and expert_idx, must be null."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "optional_inputs",
+            "not null", "310p only support inputs of expanded_x, expanded_row_idx and scales, any other inputs,"
+            "including x1, x2, bias and expert_idx, must be null."),
         return ge::GRAPH_FAILED);
     
     auto attrsPtr = context_->GetAttrs();
@@ -860,7 +884,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::Check310pParams()
     int64_t dropPadMode = *(attrsPtr->GetAttrPointer<int64_t>(0));
     OP_CHECK_IF(
         dropPadMode != DROP_MODE_VALUE_2,
-        OP_LOGE(context_->GetNodeName(), "310p only supports dropPadMode being 2."),
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode",
+            std::to_string(dropPadMode).c_str(), "2"),
         return ge::GRAPH_FAILED);
     
     // check hidden size
@@ -869,7 +894,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::Check310pParams()
     int64_t hiddenSize = expandedXShape.GetDim(DIM_INDEX_1);
     OP_CHECK_IF(
         hiddenSize % ONE_BLK_SIZE_V2 != 0,
-        OP_LOGE(context_->GetNodeName(), 
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "h",
+            std::to_string(hiddenSize).c_str(),
             "310p only supports h, which means the trailing axis of expanded_x[num_rows * k, h], is 32-aligned."),
         return ge::GRAPH_FAILED);
 
@@ -880,7 +906,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::Check310pParams()
     auto scaleDtype = scaleInputDesc->GetDataType();
     OP_CHECK_IF(
         scaleDtype != expandedXDtype,
-        OP_LOGE(context_->GetNodeName(), "310p only supports scale and expanded_x having the same data type."),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "scales and expanded_x",
+            "invalid", "310p only supports scale and expanded_x having the same data type."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -891,8 +918,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::CalcOpTiling()
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND310P) {
         OP_CHECK_IF(
             Check310pParams() != ge::GRAPH_SUCCESS,
-            OP_LOGE(
-                context_->GetNodeName(), "Check 310p inputs failed."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "310p_inputs",
+                "GRAPH_FAILED", "Check 310p inputs failed."),
             return ge::GRAPH_FAILED);
     }
     // for nk can not equal dim0 of expandedX in regbase
@@ -903,17 +930,19 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::CalcOpTiling()
 
         OP_CHECK_IF(
             nk != expandedXShape.GetDim(DIM_INDEX_0),
-            OP_LOGE(
-                context_->GetNodeName(), "the dim 0 of expanded_x should be %ld when drop_pad_mod is 0 or 2", nk),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expanded_x",
+                "invalid", "the dim 0 of expanded_x should be nk when drop_pad_mod is 0 or 2"),
             return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(
         SetParamInfo() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "MoeFinalizeRoutingV2Membase get input param info fail."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "input_param_info",
+            "GRAPH_FAILED", "MoeFinalizeRoutingV2Membase get input param info fail."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         CalcTilingData() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "MoeFinalizeRoutingTilingV2 calc tilingData fail."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tiling_data",
+            "GRAPH_FAILED", "MoeFinalizeRoutingTilingV2 calc tilingData fail."),
         return ge::GRAPH_FAILED);
     SetTilingData();
 

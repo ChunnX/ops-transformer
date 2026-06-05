@@ -131,13 +131,15 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
         // MXType场景下，gather的存储顺序是gatherScale1、gatherX1
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
             // 留出scales1偏移
+            // 当N=0时，mxfp8使用cfg.rankK计算偏移
+            uint32_t mxfpKa = (cfg.rankN == 0) ? cfg.rankK : tilingData->quantBmmv3TileTiling.matmulTiling.Ka;
             uint64_t gatherScale1Offset =
-                DequantBmm::Align(CeilDiv(tilingData_->quantBmmv3TileTiling.matmulTiling.Ka, MX_BLOCK_SIZE),
-                                  EVEN_ALIGN) * static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) *
-                                  static_cast<uint64_t>(cfg.rankDim);
+                DequantBmm::Align(CeilDiv(mxfpKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
+                static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) *
+                static_cast<uint64_t>(cfg.rankDim);
             gatherDequantGM1_ = workspaceGM_;
             gatherOut_ = workspaceGM_ + gatherScale1Offset;
-        } 
+        }
     } else {
         gatherOut_ = gatherOut;
     }
@@ -159,12 +161,21 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
     uint32_t tailM = tilingData_->quantBmmv3TailTiling.matmulTiling.M / (cfg.rankDim - 1);   // 尾块M轴大小
 
-
     uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingKa);    // 整块总共搬运数据个数
     uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(tilingKa);      // 尾块总共搬运数据个数
     uint64_t stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
                       tailSendCount * static_cast<uint64_t>(tailCnt); // 不同rank在数据块内的地址偏移
     uint8_t repeat = 1;                                               // 搬运重复次数
+    // 当N=0时，matmulTiling参数为0，重新计算通信参数
+    if (cfg.rankN == 0) {
+        uint32_t nTilingKa = cfg.rankK;                                         // 使用cfg.rankK
+        uint32_t nTailM = cfg.tailM;                                            // 从cfg读取tailM
+        uint32_t nTileM = (cfg.rankM - nTailM * tailCnt) / tileCnt;             // 计算tileM
+        tileSendCount = static_cast<uint64_t>(nTileM) * static_cast<uint64_t>(nTilingKa);
+        tailSendCount = static_cast<uint64_t>(nTailM) * static_cast<uint64_t>(nTilingKa);
+        stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
+                 tailSendCount * static_cast<uint64_t>(tailCnt);
+    }
     uint64_t scalesCount = DequantBmm::Align(CeilDiv(tilingKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
                            static_cast<uint64_t>(cfg.rankM); // scale1总共搬运数据个数
 
@@ -173,9 +184,16 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 
     if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
         // 全量scales1通信
-        uint64_t scaleStride = scalesCount;
+        // 当N=0时，mxfp8需要使用cfg.rankK重新计算scalesCount
+        uint64_t mxfpScalesCount = scalesCount;
+        if (cfg.rankN == 0) {
+            uint32_t mxfpKa = cfg.rankK;
+            mxfpScalesCount = DequantBmm::Align(CeilDiv(mxfpKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
+                             static_cast<uint64_t>(cfg.rankM);
+        }
+        uint64_t scaleStride = mxfpScalesCount;
         handleList_[SCALE1_HANDLE_IDX] =
-            hcclAllgather_.template AllGather<true>(dequantGM1_, gatherDequantGM1_, scalesCount, dataType_,
+            hcclAllgather_.template AllGather<true>(dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_,
                                                     scaleStride, repeat);
     }
 
@@ -206,6 +224,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulLocalCompute()
 {
     auto &&cfg = tilingData_->param;
+    // 当N=0时，跳过本地计算
+    if (cfg.rankN == 0) {
+        return;
+    }
     auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling;     // QuantBatchMatmulV3TilingData 本地核切分tiling参数
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
 
@@ -242,7 +264,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 {
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
-    if (GetBlockIdx() >= qMmv3Tiling.matmulTiling.usedCoreNum) {
+    if ((GetBlockIdx() >= qMmv3Tiling.matmulTiling.usedCoreNum) || (cfg.rankN == 0)) {
         uint32_t shift = isTail ? cfg.tileCnt : 0;
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
             for (uint32_t i = 0; i < count; i++) {
@@ -300,7 +322,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     auto &&cfg = tilingData_->param;
     // 计算本片的块
     // 未用到的AIC核不需要参与计算
-    if (GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) {
+    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
         QuantMatmulLocalCompute();
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();

@@ -11,7 +11,7 @@
 #ifndef DETAIL_TAG_TO_LAYOUT_HPP
 #define DETAIL_TAG_TO_LAYOUT_HPP
 
-#include "../../attn_infra/layout/layout.hpp"
+#include "../../attn_infra/layout/bsa_layout.hpp"
 #include "../../tla/layout.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

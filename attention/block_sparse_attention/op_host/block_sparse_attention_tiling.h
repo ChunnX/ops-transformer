@@ -169,6 +169,7 @@ private:
     ge::graphStatus ParseRequiredTensors(gert::TilingContext *bsaContext);
     ge::graphStatus ParseOptionalTensors(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDtype(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckAttentionOutDtype(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDimVal(gert::TilingContext *bsaContext,
         uint32_t kHeads, uint32_t vHeads, uint32_t kHeadDim, uint32_t vHeadDim);
     ge::graphStatus ParseQKVInTND(gert::TilingContext *bsaContext);
@@ -180,6 +181,11 @@ private:
     ge::graphStatus ParseAttenMask(gert::TilingContext *bsaContext);
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
+    ge::graphStatus ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex);
+    ge::graphStatus ValidateQDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus ValidateKDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus ValidateVDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
     // 950 exclusive
     uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
@@ -273,6 +279,7 @@ private:
     uint32_t pL1BufNum_;
     
     ge::DataType dataType_ = ge::DT_FLOAT16;
+    ge::DataType attentionOutDataType_ = ge::DT_FLOAT16;
 
     BlockSparseAttentionTilingData *tilingData_ = nullptr;
 };

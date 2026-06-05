@@ -1123,6 +1123,16 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     orgN = info.N;
     orgK = info.K;
     if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
+        if (info.isSmoothQuant) {
+            const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
+            uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
+            uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK(
+                (x1ScaleDim0 != tokenSize),
+                OP_LOGE(opName_, "The x1Scale dim0 should be %u (x1's second dim multiplied by world_size), "
+                                 "but actual value is %lu.", tokenSize, x1ScaleDim0),
+                return ge::GRAPH_FAILED);
+        }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
         uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
@@ -1450,7 +1460,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
     // 涉及SyncAll，需要设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
     // 1. tilingData
     AlltoAllMatmulTilingData *tilingData = context_->GetTilingData<AlltoAllMatmulTilingData>();
     OPS_CHECK(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "tilingData is nullptr."),
@@ -1459,9 +1469,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
     AlltoAllMatmulInfo &info = tilingData->allToAllMatmulInfo;
     OPS_LOG_I(opName_, "AllToAllMatmul get tilingData info.");
 
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo(info));
-    GE_ASSERT_GRAPH_SUCCESS(DoMmCommTiling(tilingData->cocTiling, info));
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling(tilingData));
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo(info));
+    MC2_CHECK_LOG_RET(opName_, DoMmCommTiling(tilingData->cocTiling, info));
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling(tilingData));
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     auto aicNum = ascendcPlatform.GetCoreNumAic();
     auto aivNum = ascendcPlatform.GetCoreNumAiv();

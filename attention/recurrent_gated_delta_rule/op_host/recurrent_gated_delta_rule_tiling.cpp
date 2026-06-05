@@ -282,19 +282,23 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
             return ge::GRAPH_FAILED);
     // nk>0 nk<=256
     OP_CHECK_IF(tilingData_.nk <= 0 || tilingData_.nk > 256,
-        OP_LOGE(inputParams_.opName, "Nk should be greater than 0 and less than or equal to 256, but Nk is %ld.", tilingData_.nk),
+        OP_LOGE(inputParams_.opName,
+            "Nk should be greater than 0 and less than or equal to 256, but Nk is %ld.", tilingData_.nk),
             return ge::GRAPH_FAILED);
     // nv>0 nv<=256
     OP_CHECK_IF(tilingData_.nv <= 0 || tilingData_.nv > 256,
-        OP_LOGE(inputParams_.opName, "Nv should be greater than 0 and less than or equal to 256, but Nv is %ld.", tilingData_.nv),
+        OP_LOGE(inputParams_.opName,
+            "Nv should be greater than 0 and less than or equal to 256, but Nv is %ld.", tilingData_.nv),
             return ge::GRAPH_FAILED);
     // dk>0 dk<=512
     OP_CHECK_IF(tilingData_.dk <= 0 || tilingData_.dk > 512,
-        OP_LOGE(inputParams_.opName, "Dk should be greater than 0 and less than or equal to 512, but Dk is %ld.", tilingData_.dk),
+        OP_LOGE(inputParams_.opName,
+            "Dk should be greater than 0 and less than or equal to 512, but Dk is %ld.", tilingData_.dk),
             return ge::GRAPH_FAILED);
     // dv>0 dv<=512
     OP_CHECK_IF(tilingData_.dv <= 0 || tilingData_.dv > 512,
-        OP_LOGE(inputParams_.opName, "Dv should be greater than 0 and less than or equal to 512, but Dv is %ld.", tilingData_.dv),
+        OP_LOGE(inputParams_.opName,
+            "Dv should be greater than 0 and less than or equal to 512, but Dv is %ld.", tilingData_.dv),
             return ge::GRAPH_FAILED);
     // nv>=nk
     OP_CHECK_IF(tilingData_.nv % tilingData_.nk != 0,
@@ -303,8 +307,9 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
             return ge::GRAPH_FAILED);
     // blockNum >= T
     OP_CHECK_IF(tilingData_.sBlockNum < tilingData_.t,
-        OP_LOGE(inputParams_.opName, "BlockNum should be greater than or equal to T, Current values: BlockNum=%ld, T=%ld.",
-                tilingData_.sBlockNum, tilingData_.t),
+        OP_LOGE(inputParams_.opName,
+            "BlockNum should be greater than or equal to T, Current values: BlockNum=%ld, T=%ld.",
+            tilingData_.sBlockNum, tilingData_.t),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

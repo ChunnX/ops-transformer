@@ -35,12 +35,14 @@ function help {
     echo "PROFILING_PATH(选填,分析profiling数据必填):profiling数据存放的路径,不填默认在TARGET_DIR指定的路径下查找"
     echo "PLOG_PATH(选填,分析错误日志必填):plog日志存放的路径,不填不进行plog日志分析"
     echo "GRAPH_PATH(选填,分析graph图文件必填):graph图文件存放的路径,不填不进行graph图文件分析"
+    echo "START_A2_CLUSTER(选填,分析A2集群数据必填):是否分析A2集群数据,0:不分析,1:分析,不填默认为0"
     exit 0
 }
 #获取sh脚本的文件路径
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SOC_VERSION_950="950"
 SOC_VERSION_910_93="910_93"
+SOC_VERSION_910B="910B"
 
 #入参
 for arg in "$@"; do
@@ -77,7 +79,10 @@ for arg in "$@"; do
     if [[ "$arg" == GRAPH_PATH=* ]]; then
         GRAPH_PATH="${arg#*=}"
     fi
-    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=) ]]; then
+    if [[ "$arg" == START_A2_CLUSTER=* ]]; then
+        START_A2_CLUSTER="${arg#*=}"
+    fi
+    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=|START_A2_CLUSTER=) ]]; then
         echo "warning:未知参数 $arg ,使用 -h or -help 查看帮助"
     fi
 done
@@ -103,7 +108,7 @@ fi
 if [ ! -n "$SOC_VERSION" ]; then
     echo "warning:SOC_VERSION 参数未输入,不进行dump数据解析"
 else
-    if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
+    if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ] && [ "$SOC_VERSION" != "$SOC_VERSION_910B" ]; then
         echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
     fi
 fi
@@ -335,6 +340,46 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
         fi
     else
         echo "error:路径 $TARGET_DIR 下没有以exception_info开头的dump数据"
+    fi
+elif [ "$SOC_VERSION" = "$SOC_VERSION_910B" ]; then
+    echo "进入 A2 处理流程"
+    if [ "$START_A2_CLUSTER" = "1" ]; then
+        echo "开始解析A2集群数据"
+        python3 $SCRIPT_DIR/dump_analysis_A2.py
+        echo "数据解析完成"
+        echo "--------------------------------------------"
+    elif find "$TARGET_DIR" -maxdepth 2 -name "mc2_exception_info*" | grep -q .; then
+        echo "开始解析多卡dump数据"
+        # 获取所有数字文件夹
+        card_dirs=( "$TARGET_DIR"/[0-9]*/ )
+        file_num=${#card_dirs[@]}
+        for card_dir in "${card_dirs[@]}"; do
+            card_num=$(basename "$card_dir")
+            if ls "$card_dir/exception_info."*.workspace.* >/dev/null 2>&1; then
+                echo "开始解析 $card_num 卡数据"
+                python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $card_num $card_dir $SOC_VERSION
+                echo "$card_num 卡数据解析完成"
+                echo "--------------------------------------------"
+            else
+                found_dump=0
+                for file_dump in "$card_dir"/exception_info.*; do
+                    if [[ -f "$file_dump" ]]; then
+                        found_dump=1
+                        echo "开始解析 $card_num 卡数据"
+                        python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
+                        python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $card_num $card_dir $SOC_VERSION
+                        echo "$card_num 卡数据解析完成"
+                        echo "--------------------------------------------"
+                    fi
+                done
+                if [[ $found_dump -eq 0 ]]; then
+                    echo "error:路径 $card_dir 下没有dump数据"
+                    echo "--------------------------------------------"
+                fi
+            fi
+        done
+    else
+        echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
     fi
 fi
 
