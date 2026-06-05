@@ -1,0 +1,49 @@
+=== EngramFetch 编译错误记录 ===
+
+编译命令: bash build.sh --ophost --ops=engram_fetch --soc=ascend910b,ascend910_95 -v
+
+--- 第一轮编译错误 (ophost) ---
+1. engram_fetch_infershape.cpp:27 - 'const struct gert::Shape' has no member named 'GetStorageShape'
+2. engram_fetch_infershape.cpp:28 - 'struct gert::Shape' has no member named 'SetStorageShape'
+3. engram_fetch_tiling_base.cpp:108 - 'MC2_TILINGKEY_OFFSET' was not declared in this scope; did you mean 'mc2tiling::MC2_TILINGKEY_OFFSET'?
+4. engram_fetch_tiling_base.cpp:119 - 'struct EngramFetchInfo' has no member named 'aivNum'
+5. engram_fetch_tiling_base.cpp:126 - 'class gert::TilingContext' has no member named 'SetWorkspace'; did you mean 'GetWorkspaceNum'?
+6. engram_fetch_tiling_base.cpp:136 - 'group_' was not declared in this scope; did you mean 'group_req'?
+7. engram_fetch_tiling_base.cpp:164 - 'EngramFetchTilingFuncImpl' was not declared in this scope; did you mean 'EngramFetchTilingBase'?
+
+--- 已修复的 def.cpp 问题 ---
+- 旧API: this->AICoreConfig("ascend910_93")... (不存在)
+- 新API: OpAICoreConfig aicore_config; this->AICore().AddConfig("ascend910_95", aicore_config);
+- HcclGroup 需要 String attr 名，不能传 input 名
+- 添加了 "group" REQUIRED String attr
+- 添加了 ascend910b config (build 默认用 ascend910b)
+
+--- 修复记录 ---
+1. infershape: GetStorageShape()→GetDim(), SetStorageShape()→SetDimNum+SetDim (gert::Shape 无 GetStorageShape)
+2. tiling: MC2_TILINGKEY_OFFSET→mc2tiling::MC2_TILINGKEY_OFFSET
+3. tiling: 删除 aivNum=1 (EngramFetchInfo 无此字段)
+4. tiling: SetWorkspace→GetWorkspaceSizes(1) API
+5. tiling: 添加 group_ 成员，从 attr 读取 group String
+6. tiling: IMPL_OP_OPTILING 改为 lambda + TilingRegistry::GetInstance().DoTilingImpl()
+7. tiling: attr index 重新排列 (加入 group attr 后 hccl_buffer_size 从2→3, output_dtype 从3→4)
+8. 添加 tiling_templates_registry.h include 和 using namespace Ops::Transformer::OpTiling
+
+--- 最终结果 ---
+ophost 编译通过 (0 error)
+
+--- opkernel 编译错误 ---
+1. engram_fetch.h:11 - fatal error: 'adv_api/hcomm/hcomm.h' file not found
+   原因: 当前 CANN 9.0.0 安装包不包含此头文件 (hcomm.h 在整个安装目录不存在)
+   需要: 更新 CANN 包版本, 或确认 adv_api/hcomm 在 kernel 编译 include path 中
+   adv_api/hccl/hccl.h 同样可能缺失
+
+--- 第二轮 API 变更 ---
+1. aclnn API: 删除 numRanks/hcclBufferSize 参数, 新增 hiddenSize(int32_t), fetched 移到 indices 后面
+   新签名: aclnnEngramFetchGetWorkspaceSize(bufferhandle, indices, fetched, hiddenSize, numEntriesPerRank, outputDtype, workspaceSize, executor)
+2. def.cpp: 删除 num_ranks/hccl_buffer_size attr, 新增 hidden_size REQUIRED Int attr
+3. EngramBufferHandle: 新增 rankSize 字段, kernel 从 bhPtr_->rankSize 读 numRanks
+4. EngramFetchInfo: 删除 numRanks/hcclBufferSize 字段
+5. infershape: output dim(1) 从 hidden_size attr 取 (而非 numEntriesPerRank)
+6. tiling: hiddenDim 直接从 hidden_size attr 读, 不再从 output shape 推算
+7. kernel: numRanks_ = bhPtr_->rankSize, Process 按 rank stride 分核 (rank = aivId_; rank < numRanks_; rank += aivNum_)
+8. binary.json: attrs 列表更新
