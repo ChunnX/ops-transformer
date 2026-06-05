@@ -13,6 +13,7 @@
  * \brief
  */
 #include "allto_all_matmul_tiling_base.h"
+
 #include "mc2_log.h"
 
 using namespace AscendC;
@@ -125,7 +126,7 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
         nowSocVersion = SocVersion::SOC910_93;
     }
     AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                            nowSocVersion, true);
+                                           nowSocVersion, true);
     alltoallMatmulTileFormulate.GetTiling();
     return alltoallMatmulTileFormulate.tilingM_.cutRes;
 }

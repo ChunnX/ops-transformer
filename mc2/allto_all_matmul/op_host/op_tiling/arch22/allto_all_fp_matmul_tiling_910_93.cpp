@@ -13,12 +13,14 @@
  * \brief
  */
 #include "allto_all_fp_matmul_tiling_910_93.h"
+
 #include <string>
 #include <vector>
+
 #include "common/utils/op_mc2.h"
+#include "hccl/hccl_types.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
-#include "hccl/hccl_types.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -101,11 +103,11 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
                                 "When x1 is BF16, bias dtype must be FLOAT32"),
                             return ge::GRAPH_FAILED);
         } else if (x1Dtype == ge::DT_FLOAT16) {
-            OP_TILING_CHECK((x1Dtype != biasDtype),
-                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
-                                Ops::Base::ToString(biasDtype).c_str(),
-                                "When x1 is FLOAT16, the dtype of bias must be same as x"),
-                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(
+                (x1Dtype != biasDtype),
+                OP_LOGE(opName, "When x1 Dtype is FLOAT16, bias Dtype should be same as x Dtype, but bias is %s.",
+                        Ops::Base::ToString(biasDtype).c_str()),
+                return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
                 Ops::Base::ToString(biasDtype).c_str(),
@@ -165,8 +167,8 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckOpInputInfo()
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
