@@ -1377,6 +1377,7 @@ mc2:
         - mc2/matmul_reduce_scatter_v2/op_kernel
       test:
         examples: False
+        test: False
       options:
         - matmul_reduce_scatter_v2
 
@@ -1658,6 +1659,7 @@ mc2:
         - mc2/moe_distribute_combine_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -1695,6 +1697,7 @@ mc2:
         - mc2/moe_distribute_dispatch/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
@@ -1744,6 +1747,7 @@ mc2:
         - mc2/moe_distribute_dispatch_v2/op_kernel
       test:
         examples: False
+        ut: False
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
