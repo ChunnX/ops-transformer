@@ -795,4 +795,5 @@ ge::graphStatus InferShapeRangeForBatchMatMul(
     return ge::GRAPH_SUCCESS;
 }
 } // namespace Transformer
+
 } // namespace Ops
