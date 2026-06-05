@@ -354,7 +354,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         dataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(dataSize).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", dataSize),
         return ge::GRAPH_FAILED);
 
     context_->GetRawTilingData()->SetDataSize(dataSize);
@@ -687,27 +687,27 @@ WeightQuantMatmulAllReduceTilingA5::WeightQuantMatmulAllReduceTilingA5(gert::Til
 
 CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    CutResult mCutAllreduceOutput;
+    SocVersion inputSocVer = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVer);
+    const gert::StorageShape* commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
-        mCutAllreduce = allReduceTilingHccl.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
-        mCutAllreduce = allReduceTilingHccl.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        allReduceTilingHcclInst.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceOutput;
 }
 
 //注册Tiling类

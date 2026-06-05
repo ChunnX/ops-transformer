@@ -29,9 +29,10 @@ template <typename T>
 inline typename std::enable_if<
     std::is_same<T, gert::TilingParseContext>::value || std::is_same<T, gert::TilingContext>::value, bool>::type
 Mc2IsAdvancedSocVersion(T *context) {
-    OP_TILING_CHECK(context == nullptr, OP_LOGE("Mc2MatMulV3", "context is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMulV3", "context"),
+                    return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null."),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "platformInfo"),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     std::string mmad;

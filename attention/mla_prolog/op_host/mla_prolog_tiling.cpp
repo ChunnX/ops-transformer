@@ -360,8 +360,16 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
+<<<<<<< HEAD
         baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
         scenarioInfo_.splitMFlag_ = 1U;
+=======
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+        if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE1) &&
+            baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
+            scenarioInfo_.splitMFlag_ = 1U;
+        }
+>>>>>>> 2fb579cb423db0be35343026476169b9a2775a42
     }
     return ge::GRAPH_SUCCESS;
 }

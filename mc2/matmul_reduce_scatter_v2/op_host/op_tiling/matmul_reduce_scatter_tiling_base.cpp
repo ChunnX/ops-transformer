@@ -22,7 +22,6 @@
 #include <cmath>
 #include <cstdint>
 #include "mc2_hcom_topo_info.h"
-#include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
@@ -111,12 +110,14 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size %lu still exceeds 256MB.", sizeOfSingleM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulOutputSize", std::to_string(sizeOfSingleM).c_str(),
+            "should not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
-    
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
+            "should not exceed 256MB after splitting M into 16 parts"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -132,7 +133,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
         tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
 
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMmMode",
+            std::to_string(static_cast<int>(quantMmMode)).c_str(), "PERBLOCK_MODE when size exceeds 256MB after formulaic splitting"),
         return ge::GRAPH_FAILED);
 
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
@@ -546,6 +548,8 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &r
                                                    const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
                                                    uint32_t debugMode)
 {
+    (void)mmTiling;
+    (void)tailTiling;
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,

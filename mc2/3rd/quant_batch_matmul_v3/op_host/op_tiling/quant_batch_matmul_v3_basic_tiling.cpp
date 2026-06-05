@@ -299,18 +299,21 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
         OP_LOGD(inputParams_.opName, "get mSizePerNpu: %lu", inputParams_.mSizePerNpu);
         OP_TILING_CHECK(
             inputParams_.mSizePerNpu > inputParams_.mSize,
-            OP_LOGE(inputParams_.opName, "when M in each Npu(%lu) should not bigger than total M(%lu)",
-                                  inputParams_.mSizePerNpu, inputParams_.mSize),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "mSizePerNpu",
+                std::to_string(inputParams_.mSizePerNpu).c_str(),
+                "M in each Npu should not be bigger than total M."),
             return false);
 
         OP_TILING_CHECK(inputParams_.transA,
-                        OP_LOGE(inputParams_.opName,
-                                              "cannot support non-continuous M with transpose_x1 true"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                            "true",
+                            "Cannot support non-continuous M with transpose_x1 true."),
                         return false);
 
         OP_TILING_CHECK(inputParams_.batchA > 1 || inputParams_.batchB > 1 || inputParams_.batchC > 1,
-                        OP_LOGE(inputParams_.opName,
-                                              "cannot support non-continuous M with batch axis"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                            "",
+                            "Cannot support non-continuous M with batch axis."),
                         return false);
         return true;
     }
@@ -349,8 +352,9 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t 
     uint64_t totalCnt = 1;  // 1 最少核数即最少计算一个base块
     OP_TILING_CHECK(
         baseM < BLOCK_CUBE || baseN < BLOCK_CUBE,
-        OP_LOGE(inputParams_.opName, "baseM(%lu) or baseN(%lu) is less than 16 when m(%lu) n(%lu)", baseM,
-                              baseN, inputParams_.mSize, inputParams_.nSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseM and baseN",
+            (std::to_string(baseM) + " and " + std::to_string(baseN)).c_str(),
+            "baseM and baseN should be at least 16."),
         return 1UL);
     uint64_t mCnt = inputParams_.GetTotalBaseMCnt(baseM);     // m方向需要的轮数
     uint64_t nCnt = ops::CeilDiv(inputParams_.nSize, baseN);  // n方向需要的轮数
@@ -664,7 +668,9 @@ bool Mc2QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
             return true;
         }
     }
-    OP_LOGE(inputParams_.opName, "cannot find any baseK when baseM(%lu) and baseN(%lu)", baseM, baseN);
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseK",
+        "",
+        "Cannot find any valid baseK.");
     return false;
 }
 
@@ -757,8 +763,9 @@ bool Mc2QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
     Int4LowerAxisAlign(basicTiling_.baseM, basicTiling_.baseN);
     basicTiling_.usedCoreNum = std::min(coreNum, ops::CeilDiv(inputParams_.nSize, basicTiling_.baseN));
     OP_TILING_CHECK(basicTiling_.usedCoreNum <= 0,
-                    OP_LOGE(inputParams_.opName, "usedCoreNum is 0 when m(%lu) n(%lu) in incre",
-                                          inputParams_.mSize, inputParams_.nSize),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "usedCoreNum",
+                        std::to_string(basicTiling_.usedCoreNum).c_str(),
+                        "usedCoreNum should be greater than 0."),
                     return false);
     OP_TILING_CHECK(!GetBaseK(basicTiling_.baseM, basicTiling_.baseN),
                     OP_LOGE(inputParams_.opName, "GetBaseK failed"), return false);
@@ -960,7 +967,9 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
 bool Mc2QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &stepKb) const
 {
     OP_TILING_CHECK(stepKa == 0 || stepKb == 0,
-                    OP_LOGE(inputParams_.opName, "stepKa(%lu) or stepKb(%lu) is 0", stepKa, stepKb),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "stepKa and stepKb",
+                        (std::to_string(stepKa) + " and " + std::to_string(stepKb)).c_str(),
+                        "stepKa and stepKb should not be 0."),
                     return false);
     uint64_t kL1 = GetSizeWithDataType(std::min(stepKa, stepKb) * basicTiling_.baseK, inputParams_.aDtype);
     // 小k极其容易全载，导致MTE2与（MTE1/MMAD）串行，考虑拆分DB加载

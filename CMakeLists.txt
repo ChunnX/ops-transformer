@@ -10,6 +10,11 @@
 
 cmake_minimum_required(VERSION 3.16)
 include(cmake/fetch_cann_cmake.cmake)
+if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
+endif()
+
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
@@ -125,6 +130,7 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+include(cmake/third_party/ops-tensor.cmake)
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
