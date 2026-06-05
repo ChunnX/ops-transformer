@@ -371,11 +371,12 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         commTurn != 0,
         VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %ld.", commTurn),
         return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
-    OP_TILING_CHECK(
-        blockSize != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %ld.", blockSize),
-        return false);
+    // blockSize 语义同 AllGatherMatmulV2:
+    //   0      - 非量化, 32 - MX 量化, packed - PerBlock 量化
+    // 子类 (QuantBmmReduceScatterTiling) 走 fp8 路径时使用非零值,
+    // base 不在此处硬拒, 否则 README §情形4 MX 路径不可达。
+    [[maybe_unused]] auto blockSize =
+        *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
     return CheckInputScale();
 }
 
