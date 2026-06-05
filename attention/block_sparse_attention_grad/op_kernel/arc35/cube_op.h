@@ -50,8 +50,8 @@ private:
     static constexpr int32_t L0_AB_SIZE = 64 * 1024;
     static constexpr int32_t L0_C_SIZE = 256 * 1024;
     static constexpr int32_t BASE_BLOCK_SIZE = 128 * 128;
-    TEventID event_ping_ = EVENT_ID1;
-    TEventID event_pong_ = EVENT_ID2;
+    TEventID event_ping_ = EVENT_ID3;
+    TEventID event_pong_ = EVENT_ID4;
 
 public:
     __aicore__ inline CubeOp(){};
@@ -102,14 +102,18 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
-        SET_FLAG(FIX, MTE1, event_ping_);
-        SET_FLAG(FIX, MTE1, event_pong_);
+        SET_FLAG(M, MTE1, event_ping_);
+        SET_FLAG(M, MTE1, event_pong_);
+        SET_FLAG(FIX, M, event_ping_);
+        SET_FLAG(FIX, M, event_pong_);
     }
 
     __aicore__ inline void Destroy()
     {
-        WAIT_FLAG(FIX, MTE1, event_ping_);
-        WAIT_FLAG(FIX, MTE1, event_pong_);
+        WAIT_FLAG(M, MTE1, event_ping_);
+        WAIT_FLAG(M, MTE1, event_pong_);
+        WAIT_FLAG(FIX, M, event_ping_);
+        WAIT_FLAG(FIX, M, event_pong_);
     }
 
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
@@ -185,7 +189,7 @@ private:
             src_k_stride = kv_head_num_ * head_dim_;
         }
 
-        WAIT_FLAG(FIX, MTE1, evnet_id);
+        WAIT_FLAG(M, MTE1, evnet_id);
         load_data_gm_2_l0<true>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_,
                                 src_q_stride);
         load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
@@ -193,6 +197,7 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
+        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
@@ -201,7 +206,7 @@ private:
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
-        // SET_FLAG(M, MTE1, m_mte1_event);
+        SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.mSize = mProcessAlign;
@@ -212,7 +217,7 @@ private:
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
-        SET_FLAG(FIX, MTE1, evnet_id);
+        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
@@ -236,13 +241,13 @@ private:
             dst_kv_stride = kv_head_num_ * head_dim_;
         }
 
-        WAIT_FLAG(FIX, MTE1, evnet_id);
+        WAIT_FLAG(M, MTE1, evnet_id);
         load_data_l1_2_l0_zn(l0_a_tensor, l1_a_tensor, mProcessAlign, nProcessAlign);
         load_data_l1_2_l0_zn(l0_b_tensor, l1_b_tensor, mProcessAlign, head_dim_align_);
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        // WAIT_FLAG(FIX, M, fix_m_event);
+        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
@@ -251,7 +256,7 @@ private:
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
-        // SET_FLAG(M, MTE1, m_mte1_event);
+        SET_FLAG(M, MTE1, evnet_id);
 
         AscendC::FixpipeParamsV220 fixpipeParamsV220;
         fixpipeParamsV220.mSize = nProcess;
@@ -260,7 +265,7 @@ private:
         fixpipeParamsV220.dstStride = dst_kv_stride;
         fixpipeParamsV220.unitFlag = 3;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-        SET_FLAG(FIX, MTE1, evnet_id);
+        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
@@ -284,12 +289,13 @@ private:
             dst_q_stride = q_head_num_ * head_dim_;
         }
 
-        WAIT_FLAG(FIX, MTE1, evnet_id);
+        WAIT_FLAG(M, MTE1, evnet_id);
         load_data_l1_2_l0_nz(l0_a_tensor, l1_a_tensor, mProcessAlign, nProcessAlign);
         load_data_l1_2_l0_zn(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
+        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = head_dim_;
@@ -298,6 +304,7 @@ private:
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
+        SET_FLAG(M, MTE1, evnet_id);
 
         AscendC::FixpipeParamsV220 fixpipeParamsV220;
         fixpipeParamsV220.mSize = mProcess;
@@ -306,7 +313,7 @@ private:
         fixpipeParamsV220.dstStride = dst_q_stride;
         fixpipeParamsV220.unitFlag = 3;
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-        SET_FLAG(FIX, MTE1, evnet_id);
+        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void load_data_gm_2_l1(const LocalTensor<INPUT_TYPE> &dstL1Tensor,
