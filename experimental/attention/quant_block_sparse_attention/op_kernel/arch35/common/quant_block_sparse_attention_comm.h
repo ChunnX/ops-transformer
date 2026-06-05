@@ -31,11 +31,11 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     template <typename INPUT_T, typename T, LayOutTypeEnum layout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
     DTemplateType dVTemplateType, bool hasAtten,\
-    typename OUTPUT_T, bool isInfer, bool isPa, bool useDn>
+    typename OUTPUT_T, bool isInfer, bool isPa>
 
 #define TEMPLATE_INTF_ARGS \
     INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isInfer, isPa, useDn
+    hasAtten, OUTPUT_T, isInfer, isPa
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_T) \
