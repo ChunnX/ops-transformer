@@ -1434,6 +1434,15 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             tokenStatus = GetArrivedTokenInfo(formServerId, tokenIdx, justExpInfo, tokenStructU8Lt, selfDataStatusGMAiv);
         }
 
+        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 7, tokenStatus);
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 8, FINISH_STATUS);
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            dumpId += 1;
+            // assert(false, "Dispatch DFX: Win2Ipc timeout!");
+        }
+
         if (tokenStatus != ARRIVAL_STATUS) {
             continue;
         }  
@@ -1443,14 +1452,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //等待tokenStructU8Lt搬出，才能复用tokenStructU8Lt
         tokenIdx += 1;
         justExpInfo = (tokenIdx % coresPerServer != logicAivId % coresPerServer);
-        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 7, tokenStatus);
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 8, FINISH_STATUS);
-            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
-            dumpId += 1;
-            // assert(false, "Dispatch DFX: Win2Ipc timeout!");
-        }
+        
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>(); // tokenNumPerExpTensor的scalar值写完，才能搬出
     //数据发送结束，填写tokenNum到对端Ipc，每轮填写coresPerServer个，总共要填写 SERVER_RANK_SIZE * localMoeExpertNum_个
