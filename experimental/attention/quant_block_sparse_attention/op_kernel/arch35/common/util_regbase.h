@@ -355,13 +355,7 @@ struct RunInfo<false> {
     bool isQHasLeftPadding; \
     bool isKVHasLeftPadding; \
     int64_t queryRightPaddingSize; \
-    int64_t kvRightPaddingSize; \
-    /* 后量化 */ \
-    bool isPostQuantPerChnl; \
-    bool isPostQuantBF16; \
-    bool isPostQuantOffsetExist; \
-    float postQuantScaleValue; \
-    float postQuantOffsetValue
+    int64_t kvRightPaddingSize
 
 #define CV_SHARED_PARAMS \
     /* base params */ \
@@ -461,9 +455,7 @@ struct CVSharedParams<true, false> {
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
     uint32_t needInit : 1;
-    uint32_t isPostQuantPerChnl : 1;
-    uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t headNumRatio : 22;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
@@ -495,9 +487,7 @@ struct CVSharedParams<true, true> {
     uint32_t isQHasLeftPadding : 1;
     uint32_t isKVHasLeftPadding : 1;
     uint32_t needInit : 1;
-    uint32_t isPostQuantPerChnl : 1;
-    uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t headNumRatio : 22;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;

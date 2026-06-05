@@ -28,7 +28,12 @@ template <typename CubeBlockType, typename VecBlockType>
 class QuantBlockSparseAttentionKernel : public QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
 public:
     ARGS_TRAITS;
-    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value && !IsSameType<OUTPUT_T, float>::value;
+    static constexpr ImplModeEnum implMode = kBsaImplMode;
+    static constexpr PseTypeEnum pseMode = kBsaPseMode;
+    static constexpr bool hasDrop = kBsaHasDrop;
+    static constexpr bool hasRope = kBsaHasRope;
+    static constexpr bool isInfer = kBsaIsInfer;
+    static constexpr bool enableKVPrefix = kBsaEnableKVPrefix;
     using BaseClass = QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
     /* =====================UB变量==================== */
     __aicore__ inline void InitUniqueConstInfo();
@@ -46,10 +51,6 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
 {
-    if constexpr (POST_QUANT) {
-        this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
-        this->constInfo.isPostQuantBF16 = this->sharedParams.isPostQuantBF16;
-    }
     this->constInfo.isRowInvalid = this->sharedParams.isRowInvalid;
     this->constInfo.headNumRatio = this->sharedParams.headNumRatio;
     this->constInfo.isGqa = this->sharedParams.isGqa;
@@ -169,7 +170,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
-                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr, this->pseInfo);
+                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
@@ -247,7 +248,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 {
     constexpr uint64_t fp8QBlockSize = 128U; // 128 is SOuterSize
     constexpr uint64_t fp8KvBlockSize = 256U; // 256 is SInnerSize
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (q_layout == LayOutTypeEnum::LAYOUT_NTD) {
         if (runParam.boIdx == 0 || runParam.boIdx == 1) {
             this->s1ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqQlenAddr[0], fp8QBlockSize);
             this->s2ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqKvlenAddr[0], fp8KvBlockSize);

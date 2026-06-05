@@ -25,13 +25,22 @@ using namespace AscendC;
 //   - 按 g_coreType 选择实/Dummy 的 Cube/Vec block（AIC 跑真 Cube + Dummy Vec，AIV 跑 Dummy Cube + 真 Vec）
 //   - 实例化 QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
-// __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
-#define BSA_OP_IMPL(...)                                                                                 \
+// 模板参数严格对齐 CUBE_BLOCK_TRAITS 字段顺序：
+// INPUT_T, T, OUTPUT_T, q_layout, kv_layout, s1Tpl, s2Tpl, dTpl, dVTpl,
+// hasAtten, isPa, enableS1OutSplit。implMode/PSE/drop/rope/infer/KVPrefix 在 kernel traits 内固定。
+#define BSA_OP_IMPL(INPUT_T_, T_, OUTPUT_T_, Q_LAYOUT_, KV_LAYOUT_, S1_TPL_, S2_TPL_, D_TPL_, DV_TPL_,  \
+                    HAS_ATTEN_, IS_PA_, ENABLE_S1_OUT_SPLIT_)                                           \
     do {                                                                                                 \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                      \
-            BaseApi::BSABlockCube<__VA_ARGS__>, BaseApi::BSABlockCubeDummy<__VA_ARGS__>>::type;          \
+            BaseApi::BSABlockCube<INPUT_T_, T_, OUTPUT_T_, Q_LAYOUT_, KV_LAYOUT_, S1_TPL_, S2_TPL_,     \
+                D_TPL_, DV_TPL_, HAS_ATTEN_, IS_PA_, ENABLE_S1_OUT_SPLIT_>,                              \
+            BaseApi::BSABlockCubeDummy<INPUT_T_, T_, OUTPUT_T_, Q_LAYOUT_, KV_LAYOUT_, S1_TPL_,          \
+                S2_TPL_, D_TPL_, DV_TPL_, HAS_ATTEN_, IS_PA_, ENABLE_S1_OUT_SPLIT_>>::type;              \
         using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                       \
-            BaseApi::BSABlockVecDummy<__VA_ARGS__>, BaseApi::BSABlockVec<__VA_ARGS__>>::type;            \
+            BaseApi::BSABlockVecDummy<INPUT_T_, T_, OUTPUT_T_, Q_LAYOUT_, KV_LAYOUT_, S1_TPL_,           \
+                S2_TPL_, D_TPL_, DV_TPL_, HAS_ATTEN_, IS_PA_, ENABLE_S1_OUT_SPLIT_>,                     \
+            BaseApi::BSABlockVec<INPUT_T_, T_, OUTPUT_T_, Q_LAYOUT_, KV_LAYOUT_, S1_TPL_, S2_TPL_,       \
+                D_TPL_, DV_TPL_, HAS_ATTEN_, IS_PA_, ENABLE_S1_OUT_SPLIT_>>::type;                       \
         BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType> op;                             \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
@@ -39,7 +48,6 @@ using namespace AscendC;
             attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
-            /*postQuantScale*/nullptr, /*postQuantOffset*/nullptr,                                       \
             /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
             /*queryRope*/nullptr, /*keyRope*/nullptr, /*learnableSink*/nullptr,                          \
             /*softmaxMax*/nullptr, /*softmaxSum*/nullptr, /*softmaxOut*/nullptr,                         \
@@ -87,24 +95,12 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    // layout: BSND -> LAYOUT_BSH（B,S,H≡B,S,N*D，LayOutTypeEnum 无 LAYOUT_BSND）; TND -> LAYOUT_TND
-    constexpr LayOutTypeEnum bsaLayout =
+    // q_layout: BSND -> LAYOUT_BSH（B,S,H≡B,S,N*D，LayOutTypeEnum 无 LAYOUT_BSND）; TND -> LAYOUT_TND
+    constexpr LayOutTypeEnum bsaQLayout =
         (LAYOUT_T == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::LAYOUT_BSH;
-    // isPa: KV 连续 -> false; PA_BNSD -> true
-    constexpr bool bsaIsPa = (KV_LAYOUT_T == BSA_KV_LAYOUT_PA_ND);
+    constexpr BSAKvLayout bsaKvLayout = BSAKvLayout::PA_BNSD;
+    (void)KV_LAYOUT_T;
 
-    // block 模板参数顺序对齐 CUBE_BLOCK_TRAITS：
-    // INPUT_T, T(计算 float), OUTPUT_T(BF16), implMode, layout, s1Tpl, s2Tpl, dTpl, dVTpl,
-    // pseMode, hasAtten, hasDrop, hasRope, isInfer, isPa, enableKVPrefix, enableS1OutSplit
-    if constexpr (QKV_DTYPE == BSA_DTYPE_FP8_E4M3FN) {
-        BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
-            S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
-            DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
-            false, false);
-    } else {
-        BSA_OP_IMPL(hifloat8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION, bsaLayout,
-            S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128,
-            DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, true, false, false, true, bsaIsPa,
-            false, false);
-    }
+    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, bsaQLayout, bsaKvLayout, S1TemplateType::Aligned128,
+        S2TemplateType::Aligned128, DTemplateType::Aligned128, DTemplateType::Aligned128, true, true, false);
 }

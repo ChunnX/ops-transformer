@@ -21,7 +21,6 @@
 #include "common/util_regbase.h"
 #include "common/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "vf/vf_post_quant.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -38,26 +37,21 @@ public:
     static constexpr uint32_t bufferSizeByte32K = 32768;
     static constexpr uint32_t gSplitMax = 16;
     static constexpr uint32_t preloadTimes = 3;
-    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
-                                       !IsSameType<OUTPUT_T, float>::value;
+    static constexpr ImplModeEnum implMode = kBsaImplMode;
+    static constexpr PseTypeEnum pseMode = kBsaPseMode;
+    static constexpr bool hasDrop = kBsaHasDrop;
+    static constexpr bool hasRope = kBsaHasRope;
+    static constexpr bool isInfer = kBsaIsInfer;
+    static constexpr bool enableKVPrefix = kBsaEnableKVPrefix;
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                                   IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
-    using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
-    postQuantGmType postQuantScaleGm;
-    postQuantGmType postQuantOffsetGm;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
-    postQuantBf16GmType postQuantScaleBf16Gm;
-    postQuantBf16GmType postQuantOffsetBf16Gm;
-
     /* =====================UB变量========================== */
     TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue;; // postQuant
-    TQue<QuePosition::VECIN, 1> postQuantOffsetQue;; // postQuant
     TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
 
     __aicore__ inline BSABlockVec() {};
@@ -67,14 +61,12 @@ public:
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace) {}
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-        __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-        __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+        __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax,
         __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
         ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitUniqueLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset);
     __aicore__ inline void GenerateDropoutMask(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<uint8_t> &dropMaskUb) {}
     __aicore__ inline void SoftmaxDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb,
                                               LocalTensor<float> &maxUb);
@@ -83,14 +75,6 @@ public:
     template <typename VEC2_RES_T>
     __aicore__ inline void CopyOutAttentionOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                int64_t vec2S1Idx, int64_t vec2CalcSize);
-
-    template <typename VEC2_RES_T>
-    __aicore__ inline void PostQuant(ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t dSizeAligned64);
-
-    template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-    __aicore__ inline void PostQuantPerChnl(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
-    LocalTensor<VEC2_RES_T> &vec2ResUb, uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset, int64_t dSizeAligned64,
-    GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm, GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm);
 
 private:
     __aicore__ inline void InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
@@ -131,17 +115,12 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;
     sharedParams.s2SparseValidSize = inputParamsRegbase.s2SparseValidSize;
     sharedParams.bandIndex = inputParamsRegbase.bandIndex;
-    sharedParams.implMode = inputParamsRegbase.implMode;
+    sharedParams.implMode = static_cast<uint8_t>(implMode);
     sharedParams.layoutType = inputParamsRegbase.layoutType;
     sharedParams.sparseType = inputParamsRegbase.sparseType;
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
- 
-    if constexpr (POST_QUANT) {
-        sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
-        sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
-    }
     sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
@@ -198,9 +177,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        if constexpr (POST_QUANT) {
-            this->attentionOutInitGm.SetGlobalBuffer((__gm__ half *)attentionOut);
-        }
         softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
         if (this->tilingData->initOutputParams.needInit == 1) {
@@ -217,71 +193,15 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax,
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     BaseClass::InitCommonGlobalBuffer(
-        deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, blockTable,
+        deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable,
         learnableSink, workspace, constInfo);
-    if constexpr (POST_QUANT) {
-        this->InitPostQuant(constInfo, postQuantScale, postQuantOffset);
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
-{
-    if constexpr (POST_QUANT) {
-        constInfo.isPostQuantOffsetExist = false;
-        if (!constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
-                constInfo.postQuantScaleValue = postQuantScaleGm.GetValue(0);
-            }
-            if (postQuantOffset != nullptr) {
-                postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
-                constInfo.postQuantOffsetValue = postQuantOffsetGm.GetValue(0);
-            } else {
-                constInfo.postQuantOffsetValue = 0.0;
-            }
-        }
-        
-        if (!constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
-                constInfo.postQuantScaleValue = ToFloat(postQuantScaleBf16Gm.GetValue(0));
-            }
-            if (postQuantOffset != nullptr) {
-                postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
-                constInfo.postQuantOffsetValue = ToFloat(postQuantOffsetBf16Gm.GetValue(0));
-            } else {
-                constInfo.postQuantOffsetValue = 0.0;
-            }
-        }
-
-        if (constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                this->postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
-            }
-            if (postQuantOffset != nullptr) {
-                constInfo.isPostQuantOffsetExist = true;
-                postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
-            }
-        }
-
-        if (constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
-            }
-            if (postQuantOffset != nullptr) {
-                constInfo.isPostQuantOffsetExist = true;
-                postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
-            }
-        }
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -290,12 +210,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstIn
     if (constInfo.isSoftmaxLseEnable) {
         // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
         this->tPipe->InitBuffer(softmaxLseQueue, 1, (BaseClass::s1BaseSize >> 1U) * sizeof(float) * 8);
-    }
-    if constexpr (POST_QUANT) {
-        this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2K
-        if (constInfo.isPostQuantOffsetExist) {
-            this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K
-        }
     }
     if (constInfo.learnableSinkFlag) {
         this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
@@ -377,7 +291,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetActualSeqLenKV(ConstInfo<i
         uint64_t dimInfo[4];
         kvTensorDesc.SetShapeAddr(&dimInfo[0]);
         keyListTensorDesc.GetDesc(kvTensorDesc, boIdx);
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+        if constexpr (q_layout == LayOutTypeEnum::LAYOUT_BNSD) {
             s2InCurrentBatch = kvTensorDesc.GetShape(2);
         } else {
             s2InCurrentBatch = kvTensorDesc.GetShape(1);
@@ -387,7 +301,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetActualSeqLenKV(ConstInfo<i
         actualSeqLen = s2InCurrentBatch;
     } else {
         actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
-        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
+        if constexpr ((q_layout == LayOutTypeEnum::LAYOUT_TND || q_layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
             if (boIdx > 0) {
                 actualSeqLen -= actualSeqKvlenAddr[boIdx - 1];
             }
@@ -420,7 +334,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
-    if (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if (q_layout == LayOutTypeEnum::LAYOUT_TND || q_layout == LayOutTypeEnum::LAYOUT_NTD) {
         intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;
@@ -436,11 +350,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
     uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
         (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) : 0;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
-    if constexpr (POST_QUANT) {
-        InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2], singleInitOutputSize / 2, 0.0);
-    } else {
-        InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], singleInitOutputSize, 0.0);
-    }
+    InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], singleInitOutputSize, 0.0);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -455,92 +365,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(Const
         }
         InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)], 
             singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-TEMPLATES_DEF_NO_DEFAULT
-template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::PostQuantPerChnl(
-    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
-    uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset, int64_t dSizeAligned64,
-    GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm, GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm)
-{
-    DataCopyExtParams copyInParams;
-    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyInPadParams;
-    copyInParams.blockCount = gSplitSize;
-    copyInParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
-    copyInParams.srcStride = 0;
-    copyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));  // 32: datablock size
-
-    LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
-        this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-    this->postQuantScaleQue.template EnQue(postQuantScaleUb);
-    this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
-    if (constInfo.isPostQuantOffsetExist) {
-        LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
-            this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-        this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
-        this->postQuantOffsetQue.template DeQue<POSTQUANT_PARAMS_T>();
-        PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(
-            attenOut[splitOffset], vec2ResUb[splitOffset], postQuantScaleUb, postQuantOffsetUb, gSplitSize, s1RowCount,
-            constInfo.dSizeV, dSizeAligned64);
-        this->postQuantOffsetQue.FreeTensor(postQuantOffsetUb);
-    } else {
-        PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(
-            attenOut[splitOffset], vec2ResUb[splitOffset], postQuantScaleUb, gSplitSize, s1RowCount, constInfo.dSizeV, dSizeAligned64);
-    }
-    this->postQuantScaleQue.FreeTensor(postQuantScaleUb);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-template <typename VEC2_RES_T>
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                      RunInfo<isInfer> &runInfo, LocalTensor<OUTPUT_T> &attenOut,
-                                                                      LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                      int64_t vec2S1Idx, int64_t dSizeAligned64)
-{
-    uint32_t s1RowCount = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
-    uint32_t gRowCount = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
-    if (constInfo.isPostQuantPerChnl) {
-        uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV +
-                                            runInfo.sOuterOffset * constInfo.dSizeV;
-        uint64_t perChannelQuantOffset = constInfo.isGqa ?
-                                                perChannelQuantGQAOffset :
-                                                runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
-        uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
-                                                            (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
-        gSplitSize = gSplitSize > gRowCount ? gRowCount : gSplitSize;
-        uint32_t loopCount = (gRowCount + gSplitSize - 1) / gSplitSize;
-        uint32_t tailSplitSize = gRowCount - (loopCount - 1) * gSplitSize;
-        for (uint32_t i = 0; i < loopCount; i++) {
-            uint32_t startRow = i * gSplitSize;
-            if (i + 1 == loopCount) {
-                gSplitSize = tailSplitSize;
-            }
-            uint32_t splitOffset = startRow * dSizeAligned64;
-            if (constInfo.isPostQuantBF16) {
-                PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                    gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
-            } else {
-                PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                    gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleGm, postQuantOffsetGm);
-            }
-        }
-    } else {
-        PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue, 
-                                                 runInfo.vec2S1RealSize, constInfo.dSizeV, dSizeAligned64);
     }
 }
 
