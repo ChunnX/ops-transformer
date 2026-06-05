@@ -864,7 +864,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad = results[2]
         loss_out = results[3]
 
-        kl_loss = loss_out[0, 0, 0]
+        kl_loss = loss_out[:, :, 0].sum()
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
@@ -898,6 +898,8 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     softmax_sum: torch.Tensor,
     scale_value: float,
     *,
+    query_rope: Optional[torch.Tensor] = None,
+    key_rope: Optional[torch.Tensor] = None,
     actual_seq_lengths_query: Optional[torch.Tensor] = None,
     actual_seq_lengths_key: Optional[torch.Tensor] = None,
     sparse_mode: int = 3,
@@ -924,6 +926,8 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss(
         query_b, key_b, query_index_b, key_index_b, weights_b, sparse_indices_b,
         softmax_max_b, softmax_sum_b, scale_value,
+        query_rope=query_rope.unsqueeze(0) if query_rope is not None else None,
+        key_rope=key_rope.unsqueeze(0) if key_rope is not None else None,
         actual_seq_lengths_query=actual_q_len,
         actual_seq_lengths_key=actual_k_len,
         layout_query="BSND",

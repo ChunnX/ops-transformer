@@ -62,7 +62,8 @@ def run_precision_test():
         k_rope_mqa = key_rope.squeeze(2)  # (B, S2, d_rope)
         q_full = torch.cat([query, query_rope], dim=-1)  # (B, S1, N1, DQuery+d_rope)
         k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)  # (B, S2, DQuery+d_rope)
-        bmm1_full = torch.matmul(q_full, k_full.transpose(-1, -2))  # (B, S1, N1, S2) on NPU
+        k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
+        bmm1_full = torch.matmul(q_full, k_full_t)  # (B, S1, N1, S2) on NPU
         bmm1_scaled = bmm1_full.float() * scale_value
         sm_max_val = bmm1_scaled.max(dim=-1).values  # (B, S1, N1)
         sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)  # (B, S1, N1)
@@ -106,6 +107,8 @@ def run_precision_test():
             softmax_max, softmax_sum, scale_value,
             query_rope=query_rope,
             key_rope=key_rope,
+            actual_seq_qlen=[S1] * B,
+            actual_seq_klen=[S2] * B,
             layout="BSND",
             sparse_mode=3,
         )
@@ -130,8 +133,13 @@ def run_precision_test():
             mean_diff = diff.mean().item()
             rel_err = (diff / (off_val.float().abs() + 1e-6)).mean().item()
             print(f"  {name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, rel_err={rel_err:.6f}")
-        loss_diff = abs(loss_tl.float().item() - loss_off.float().item())
-        print(f"  Loss: abs_diff={loss_diff:.6f}, tl={loss_tl.item():.6f}, off={loss_off.item():.6f}")
+        loss_tl_val = loss_tl.float().item()
+        loss_off_val = loss_off.float().item()
+        loss_abs_diff = abs(loss_tl_val - loss_off_val)
+        loss_rel_err = loss_abs_diff / (abs(loss_off_val) + 1e-6)
+        if math.isnan(loss_rel_err) or math.isinf(loss_rel_err):
+            loss_rel_err = float('inf')
+        print(f"  Loss: abs_diff={loss_abs_diff:.6f}, rel_err={loss_rel_err:.6f}, tl={loss_tl_val:.6f}, off={loss_off_val:.6f}")
     elif tl_available:
         print("\n[3] 官方算子不可用，仅验证 TileLang 输出非全零...")
         for name, val in [("dQueryIndex", d_qi_tl), ("dKeyIndex", d_ki_tl), ("dWeights", dw_tl)]:

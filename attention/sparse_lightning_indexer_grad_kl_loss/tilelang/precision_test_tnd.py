@@ -57,12 +57,26 @@ def run_precision_test():
     for i in range(t2):
         sparse_indices[0, 0, i] = i
 
-    # softmaxMax/Sum: TND (N2, T1, G) = (1, 1, 128), dtype=float32
-    # debug_official.py: softmaxMax=25.4483, softmaxSum=1.0
-    softmax_max = torch.full((n2, t1, G), 25.4483, dtype=torch.float32).npu()
-    softmax_sum = torch.full((n2, t1, G), 1.0, dtype=torch.float32).npu()
-
     scale_value = 1.0 / math.sqrt(d_query)
+
+    with torch.no_grad():
+        query_b = query.unsqueeze(0)
+        key_b = key.unsqueeze(0)
+        query_rope_b = query_rope.unsqueeze(0)
+        key_rope_b = key_rope.unsqueeze(0)
+        k_mqa = key_b.squeeze(2)
+        k_rope_mqa = key_rope_b.squeeze(2)
+        q_full = torch.cat([query_b, query_rope_b], dim=-1)
+        k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
+        k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
+        bmm1_full = torch.matmul(q_full, k_full_t)
+        bmm1_scaled = bmm1_full.float() * scale_value
+        sm_max_val = bmm1_scaled.max(dim=-1).values
+        sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
+        softmax_max_bsnd = sm_max_val.reshape(1, t1, n2, G).permute(0, 2, 1, 3).contiguous().float()
+        softmax_sum_bsnd = sm_sum_val.reshape(1, t1, n2, G).permute(0, 2, 1, 3).contiguous().float()
+        softmax_max = softmax_max_bsnd.squeeze(0)
+        softmax_sum = softmax_sum_bsnd.squeeze(0)
 
     # actual_seq_lengths: list[int]
     actual_seq_qlen = [t1]
@@ -82,6 +96,8 @@ def run_precision_test():
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = sparse_lightning_indexer_grad_kl_loss_tnd(
             query, key, query_index, key_index, weights, sparse_indices,
             softmax_max, softmax_sum, scale_value,
+            query_rope=query_rope,
+            key_rope=key_rope,
             actual_seq_lengths_query=actual_seq_qlen,
             actual_seq_lengths_key=actual_seq_klen,
             sparse_mode=3,
@@ -128,8 +144,13 @@ def run_precision_test():
             mean_diff = diff.mean().item()
             rel_err = (diff / (off_val.float().abs() + 1e-6)).mean().item()
             print(f"  {name}: max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, rel_err={rel_err:.6f}")
-        loss_diff = abs(loss_tl.float().item() - loss_off.float().item())
-        print(f"  Loss: abs_diff={loss_diff:.6f}, tl={loss_tl.item():.6f}, off={loss_off.item():.6f}")
+        loss_tl_val = loss_tl.float().item()
+        loss_off_val = loss_off.float().item()
+        loss_abs_diff = abs(loss_tl_val - loss_off_val)
+        loss_rel_err = loss_abs_diff / (abs(loss_off_val) + 1e-6)
+        if math.isnan(loss_rel_err) or math.isinf(loss_rel_err):
+            loss_rel_err = float('inf')
+        print(f"  Loss: abs_diff={loss_abs_diff:.6f}, rel_err={loss_rel_err:.6f}, tl={loss_tl_val:.6f}, off={loss_off_val:.6f}")
     elif tl_available:
         print("\n[3] 官方算子不可用，仅验证 TileLang 输出非全零...")
         for name, val in [("dQueryIndex", d_qi_tl), ("dKeyIndex", d_ki_tl), ("dWeights", dw_tl)]:

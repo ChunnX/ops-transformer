@@ -42,7 +42,8 @@ def run_single_test(config_name, B, S1, S2, N1, N2, Nidx1, Nidx2,
         k_rope_mqa = key_rope.squeeze(2)
         q_full = torch.cat([query, query_rope], dim=-1)
         k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
-        bmm1_full = torch.matmul(q_full, k_full.transpose(-1, -2))
+        k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
+        bmm1_full = torch.matmul(q_full, k_full_t)
         bmm1_scaled = bmm1_full.float() * scale_value
         sm_max_val = bmm1_scaled.max(dim=-1).values
         sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
@@ -95,6 +96,8 @@ def run_single_test(config_name, B, S1, S2, N1, N2, Nidx1, Nidx2,
             softmax_max_in, softmax_sum_in, scale_value,
             query_rope=query_rope_in,
             key_rope=key_rope_in,
+            actual_seq_qlen=[S1] * B,
+            actual_seq_klen=[S2] * B,
             layout=tl_layout,
             sparse_mode=3,
         )
@@ -111,14 +114,26 @@ def run_single_test(config_name, B, S1, S2, N1, N2, Nidx1, Nidx2,
             ("dKeyIndex", d_ki_tl, d_ki_off),
             ("dWeights", dw_tl, dw_off),
         ]:
-            diff = (tl_val.float() - off_val.float()).abs()
+            tl_f = tl_val.float()
+            off_f = off_val.float()
+            tl_nan = torch.isnan(tl_f).sum().item()
+            tl_zero = (tl_f == 0).sum().item()
+            tl_total = tl_f.numel()
+            if tl_nan > 0 or tl_zero == tl_total:
+                print(f"  [WARN] {name}: nan_count={tl_nan}/{tl_total}, zero_count={tl_zero}/{tl_total}")
+            diff = (tl_f - off_f).abs()
             results[name] = {
                 "max_diff": diff.max().item(),
                 "mean_diff": diff.mean().item(),
-                "rel_err": (diff / (off_val.float().abs() + 1e-6)).mean().item(),
+                "rel_err": (diff / (off_f.abs() + 1e-6)).mean().item(),
             }
-        loss_diff = abs(loss_tl.float().item() - loss_off.float().item())
-        results["Loss"] = {"abs_diff": loss_diff, "tl": loss_tl.item(), "off": loss_off.item()}
+        loss_tl_val = loss_tl.float().item()
+        loss_off_val = loss_off.float().item()
+        loss_abs_diff = abs(loss_tl_val - loss_off_val)
+        loss_rel_err = loss_abs_diff / (abs(loss_off_val) + 1e-6)
+        if math.isnan(loss_rel_err) or math.isinf(loss_rel_err):
+            loss_rel_err = float('inf')
+        results["Loss"] = {"abs_diff": loss_abs_diff, "rel_err": loss_rel_err, "tl": loss_tl_val, "off": loss_off_val}
         return results
     return None
 
@@ -136,11 +151,11 @@ def print_result(config_name, results):
         status = "PASS" if ok else "FAIL"
         print(f"  {name}: max_diff={r['max_diff']:.6f}, rel_err={r['rel_err']:.6f} [{status}]")
     r = results["Loss"]
-    ok = r["abs_diff"] < 0.01
+    ok = r["rel_err"] < 0.01
     if not ok:
         passed = False
     status = "PASS" if ok else "FAIL"
-    print(f"  Loss: abs_diff={r['abs_diff']:.6f} [{status}]")
+    print(f"  Loss: abs_diff={r['abs_diff']:.6f}, rel_err={r['rel_err']:.6f}, tl={r['tl']:.6f}, off={r['off']:.6f} [{status}]")
     return passed
 
 
