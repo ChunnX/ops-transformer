@@ -155,16 +155,24 @@ public:
             eventUbCAddMTE2VList[i] = eventMTE2V++;
             if (V_MTE2_UBC_ADD_FLAG) {
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCAddVMTE2List[i]);
+            } else {
+                // AscendC::printf("BlockEpilogue SetFlag V_MTE2 eventUbCAddVMTE2List[i] %d\n", eventUbCAddVMTE2List[i]);
             }
 
             if (V_MTE2_UBC_FLAG) {
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
+            } else {
+                // AscendC::printf("BlockEpilogue SetFlag V_MTE2 eventUbCVMTE2List[i] %d\n", eventUbCVMTE2List[i]);
             }
             if (V_MTE2_PERTOKEN_FLAG) {
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[i]);
+            } else {
+                // AscendC::printf("BlockEpilogue SetFlag V_MTE2 eventUbPerTokenScaleVMTE2List[i] %d\n", eventUbPerTokenScaleVMTE2List[i]);
             }
             if (MTE3_MTE2_FLAG) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventUbDMTE3MTE2List[i]);
+            } else {
+                // AscendC::printf("BlockEpilogue SetFlag MTE3_MTE2 eventUbDMTE3MTE2List[i] %d\n", eventUbDMTE3MTE2List[i]);
             }
         }
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
@@ -180,15 +188,23 @@ public:
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
             if (V_MTE2_UBC_FLAG) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
+            } else {
+                // AscendC::printf("~BlockEpilogue WaitFlag V_MTE2 eventUbCVMTE2List[i] %d\n", eventUbCVMTE2List[i]);
             }
             if (V_MTE2_PERTOKEN_FLAG) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[i]);
+            } else {
+                // AscendC::printf("~BlockEpilogue WaitFlag V_MTE2 eventUbPerTokenScaleVMTE2List[i] %d\n", eventUbPerTokenScaleVMTE2List[i]);
             }
             if (MTE3_MTE2_FLAG) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventUbDMTE3MTE2List[i]);
+            } else {
+                // AscendC::printf("~BlockEpilogue WaitFlag MTE3_MTE2 eventUbDMTE3MTE2List[i] %d\n", eventUbDMTE3MTE2List[i]);
             }
             if (V_MTE2_UBC_ADD_FLAG) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCAddVMTE2List[i]);
+            } else {
+                // AscendC::printf("~BlockEpilogue WaitFlag V_MTE2 eventUbCAddVMTE2List[i] %d\n", eventUbCAddVMTE2List[i]);
             }
         }
     }
