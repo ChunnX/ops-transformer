@@ -949,6 +949,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     for (int32_t b = 0; b < BufferNum; ++b) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[b]);
     }
+
+    // 通知 AIC：dispatch 已完成，AIV1 的 UB 已释放，GMM2 可以开始 fixpipe 写 UB
+    PipeBarrier<PIPE_ALL>();
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(4);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1402,8 +1406,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             vecSetSyncCom_ = 0;
             gmm1PingPongIdx_ = 0;
 
-            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 (单 UB buffer) + combine 跑完 =====
-            //   GMM2 tile M=256，输出到 UB [64K,192K) 单 buffer 128KB，AIC↔AIV1 通过 NotifyVector/WaitForCube 同步。
+            // 等 AIV1 的 prefetch dispatch(expertIdx+1) 释放 UB，再开始 GMM2 fixpipe 写 AIV1 UB
+            // 末轮 expert 无 prefetch dispatch，也无需等（没有下一个 dispatch 抢 UB）
+            if constexpr (g_coreType == AscendC::AIC) {
+                if (expertIdx + 1U < expertPerRank_) {
+                    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(4 + 16);
+                }
+            }
+
+            // ===== Phase 2: GMM2 (toAiv1, UB 128×256 单 buffer) + combine =====
             for (uint32_t bi = 0; bi < batchSize; ++bi) {
                 uint64_t waveIdx = batchedWaves[bi];
                 int curWaveTrace = waveTraceIdx_ + static_cast<int>(bi);
@@ -1436,6 +1447,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_GMM2_END);
                 MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
                                               MegaMoeTrace::SP_WAVE_END);
+            }
+
+            // 确保 GMM2 的 MTE3 combine 全部完成，AIV1 UB 释放，再让下一轮 prefetch dispatch 用
+            if constexpr (g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 1) {
+                    PipeBarrier<PIPE_ALL>();
+                }
             }
 
             waveTraceIdx_ += static_cast<int>(batchSize);
