@@ -474,13 +474,10 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
-            if (gS1Cur == 0 && s2Cur == 0) {
-                return TASK_DEAL_MODE::DEAL_ZERO;
-            }
-            return TASK_DEAL_MODE::SKIP_ZERO;
-        }
-        // 计算每一行的起止点，只有当换行时（bN2Cur、gS1Cur更新）才需要重新计算
+
+        uint32_t decZero = static_cast<uint32_t>((s2LoopTimes == 0) | (gS1LoopTimes == 0));
+        uint32_t isFirstZero = decZero & static_cast<uint32_t>((gS1Cur == 0) & (s2Cur == 0));
+
         if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
             if constexpr (!HAS_MASK) {
                 CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
@@ -491,19 +488,17 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
+        uint32_t decS2End = (decZero ^ 1) & static_cast<uint32_t>(
+            (curS2Start < curS2End) & (s2Cur >= curS2End));
+        uint32_t decSkip = (decZero ^ 1) & (decS2End ^ 1) & static_cast<uint32_t>(
+            (s2Cur < curS2Start) | (s2Cur >= curS2End));
 
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
-        }
+        uint32_t anyDec = decZero | decS2End | decSkip;
+        uint32_t modeVal = decZero * ((isFirstZero ^ 1) * 4) + decS2End * 5 + decSkip * 1 + (anyDec ^ 1) * 2;
 
-        if (s2Cur == curS2Start) {
-            mloop++;
-        }
+        mloop += static_cast<uint32_t>(s2Cur == curS2Start) & (anyDec ^ 1);
 
-        return TASK_DEAL_MODE::CREATE_TASK;
+        return static_cast<TASK_DEAL_MODE>(modeVal);
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
