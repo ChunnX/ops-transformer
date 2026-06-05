@@ -23,12 +23,14 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if __has_include("version/hcomm_version.h")
+#include "version/hcomm_version.h"
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#endif
 #endif
 
 // 量化与非量化共用的方法和常量、枚举值
@@ -220,7 +222,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             // default：小于等于8P走CCU，否则走AICPU
             // 获取卡数
             uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
             auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
             CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif

@@ -191,23 +191,23 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 
 CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutAllreduceRet;
+    SocVersion socVer = SocVersion::SOC910_B;
+    SetMCutSocVersion(socVer);
+    const gert::StorageShape* commQuantScaleOne = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleOne != nullptr) && (commQuantScaleTwo != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantAllReduceHcclTiling(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, socVer);
+        quantAllReduceHcclTiling.GetTiling();
+        mCutAllreduceRet = quantAllReduceHcclTiling.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceHcclTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVer, isPerBlock_);
+        allReduceHcclTiling.GetTiling();
+        mCutAllreduceRet = allReduceHcclTiling.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceRet;
 }
 
 //注册Tiling
