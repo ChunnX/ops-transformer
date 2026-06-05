@@ -264,19 +264,6 @@ ge::graphStatus TilingCompute(gert::TilingContext* context, const int64_t topK)
     return context->SetTilingKey(param.core.tilingKey);
 }
 
-static inline int64_t GetDropPadTilingKey(const ge::DataType dtype)
-{
-    switch (dtype) {
-        case ge::DT_FLOAT16:
-            return TILINGKEY_DROPPAD_FP16;
-        case ge::DT_FLOAT:
-            return TILINGKEY_DROPPAD_FP32;
-        case ge::DT_BF16:
-        default:
-            return TILINGKEY_DROPPAD_BF16;
-    }
-}
-
 ge::graphStatus TilingComputeDropPad(gert::TilingContext* context)
 {
     auto attrPtr = context->GetAttrs();
@@ -374,7 +361,7 @@ ge::graphStatus TilingComputeDropPad(gert::TilingContext* context)
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     context->SetBlockDim(blockDim);
 
-    return context->SetTilingKey(GetDropPadTilingKey(permutedTokens->GetDataType()));
+    return context->SetTilingKey(TILINGKEY_DROPPAD);
 }
 
 /*
