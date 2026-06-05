@@ -605,8 +605,14 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     OP_TILING_CHECK((args_.isATrans != 0),
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is true"),
                     return false);
+    // blockSize semantics:
+    //   0      - non-quantized fp16/bf16 V2 path
+    //   32     - MX quantized fp8 QuantBmm path with FLOAT8_E8M0 scale
+    //   packed - PerBlock quantized path
+    // Only non-fp8 inputs keep the base blockSize == 0 restriction.
     auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
-    OP_TILING_CHECK(blockSize != 0, VECTOR_INNER_ERR_REPORT_TILING(opName_,
+    bool x1IsFp8 = CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST);
+    OP_TILING_CHECK(!x1IsFp8 && blockSize != 0, VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "blockSize should be 0, but the actual value is %ld.", blockSize), return false);
     OP_LOGD(opName_,
             " group=%s, rankSize=%ld, is_trans_a=%u, is_trans_b=%d, gather_index=%u,"
