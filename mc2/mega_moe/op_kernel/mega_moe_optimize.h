@@ -949,6 +949,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     for (int32_t b = 0; b < BufferNum; ++b) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[b]);
     }
+
+    // 通知 AIC：dispatch 已完成，AIV1 的 UB 已释放，GMM2 可以开始 fixpipe 写 UB
+    PipeBarrier<PIPE_ALL>();
+    // dispatch(e+1) 用 AIV→AIC 通道通知 cube：本轮 prefetch 已写完 UB[128K+]，
+    // 可以开始 GMM2(e) fixpipe 写 AIV1 UB。flag 号必须避开 GMM1/GMM2 的
+    // NotifyVector/Cube(base 4/6 → 占 4,5,6,7,20,22)与 dispatch→gmm1(2,3,18)，
+    // 这里取独占的 8（AIC 侧 wait 8+16=24）。
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(8);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1289,6 +1297,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
+    // ── dispatch↔GMM2 UB 同步的计数模型（AIV1 写 triple@UB[128K+]，AIC fixpipe 也写同区）──
+    // SetFlag(8) 由 AIV1 在每次 TripleInfoCalAndDispatch 末尾发出，次数 = expert 粒度：
+    //   pre-loop dispatch(0) 1 次 + 主循环 dispatch(e+1)（e+1<N，含 invalid expert）N-1 次 = N 次。
+    // 为严格配平，AIC 侧也按 expert 粒度恰好 wait N 次：循环前先消费 pre-loop 的 dispatch(0) 这一发，
+    // 之后每个 expert（valid/invalid 都执行，与 set 一致）在 dispatch 调用之后消费 dispatch(e+1) 这一发。
+    // 这样 GMM2(e) 等到的恰是「与它并行抢 UB 的」dispatch(e+1)，而非早已完成的 dispatch(e)。
+    if constexpr (g_coreType == AscendC::AIC) {
+        if (expertPerRank_ > 0U) {
+            CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(8 + 16);  // 消费 pre-loop dispatch(0)
+        }
+    }
+
     // for 循环: per-expert 并行 wave GMM1→GMM2 流水 + prefetch (expertIdx+1) 的 dispatch
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -1316,7 +1336,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
+        // 本轮 dispatch(e+1) 发了一次 SetFlag(8)（e+1<N 时；含 invalid expert）。AIC 必须恰好
+        // 消费一次，否则 per-core 计数漂移。消费点理想是「GMM2(e) 第一个 tile 之前」——这样
+        // GMM1(e) 仍能与 dispatch(e+1) 并行，只在 fixpipe 写 UB[128K+] 前才挡。但有三类核到不了
+        // 那个点：!valid（下方 continue）、!coreActive_（batch loop 跑空）。用 needDispatchWait
+        // 标记本轮待消费，正常核在首个 GMM2 前消费，漏网核在轮尾兜底，保证每核每轮恰好一次。
+        bool needDispatchWait = (g_coreType == AscendC::AIC) && (expertIdx + 1U < expertPerRank_);
+
         if (!valid) {
+            if (needDispatchWait) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(8 + 16);
+            }
             continue;
         }
         uint64_t m_i = Get<M_VALUE>(problemShape_);
@@ -1402,8 +1432,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             vecSetSyncCom_ = 0;
             gmm1PingPongIdx_ = 0;
 
-            // ===== Phase 2: 把 batch 内每个 wave 的 GMM2 (单 UB buffer) + combine 跑完 =====
-            //   GMM2 tile M=256，输出到 UB [64K,192K) 单 buffer 128KB，AIC↔AIV1 通过 NotifyVector/WaitForCube 同步。
+            // dispatch↔GMM2 的 UB 同步：在「本 expert 第一个 GMM2 tile 之前」消费一次本轮
+            // dispatch(e+1) 的 SetFlag(8)。放这里而非 GMM1 前，是为了保住 GMM1(e) ∥ dispatch(e+1)
+            // 的并行——只在 fixpipe 真正要写 UB[128K+] 前才挡。needDispatchWait 跨 batch 只消费一次。
+            if (needDispatchWait) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(8 + 16);
+                needDispatchWait = false;
+            }
+
+            // ===== Phase 2: GMM2 (toAiv1, UB 128×256 单 buffer) + combine =====
             for (uint32_t bi = 0; bi < batchSize; ++bi) {
                 uint64_t waveIdx = batchedWaves[bi];
                 int curWaveTrace = waveTraceIdx_ + static_cast<int>(bi);
@@ -1438,7 +1475,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_WAVE_END);
             }
 
+            // 确保 GMM2 的 MTE3 combine 全部完成，AIV1 UB 释放，再让下一轮 prefetch dispatch 用
+            if constexpr (g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 1) {
+                    PipeBarrier<PIPE_ALL>();
+                }
+            }
+
             waveTraceIdx_ += static_cast<int>(batchSize);
+        }
+
+        // 兜底：!coreActive_ 的核 batch loop 跑空，没走到首个 GMM2 前的消费点，
+        // needDispatchWait 仍为 true，在此补消费，保证每 AIC core 每轮恰好消费一次。
+        if (needDispatchWait) {
+            CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_M>(8 + 16);
         }
 
         Get<M_VALUE>(problemShape_) = m_i;

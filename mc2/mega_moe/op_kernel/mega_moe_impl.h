@@ -364,9 +364,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     }
 }
 
-// GroupMatmul2Optimize - GMM2 (单 UB buffer) + Combine via triple-info routing (per-wave)
-// 单 buffer 模式：L1_TILE_M=256,tile 256×256,UB [64K,192K) 128KB，与旧代码 CombineTileOptimize 同大小。
-//   AIC ↔ AIV1 通过 NotifyVector/WaitForCube + NotifyCube/WaitForVector 同步，替代 GM rowReadyFlags。
+// GroupMatmul2Optimize - GMM2 (单 UB buffer, 128×256, toAiv1) + Combine via triple-info routing (per-wave)
+//   UB [64K,128K) 64KB 单 buffer，tile 128×256。toAiv1=true: fixpipe 写 AIV1 的 UB。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           bool IsInterleaved = false>
 __aicore__ inline void GroupMatmul2Optimize(
@@ -412,8 +411,7 @@ __aicore__ inline void GroupMatmul2Optimize(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
-    // 单 buffer：L1_TILE_M × L1_TILE_N = 256×256，与旧代码 CombineTileOptimize 的 ubBuffer 同大小
-    auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+    auto layoutC = MakeLayoutC{}(L1_TILE_M_GMM2, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -426,16 +424,16 @@ __aicore__ inline void GroupMatmul2Optimize(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_GMM2, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
-    // 单 UB buffer：toAiv1=true 时 fixpipe 走 AIV1 通路，UB 地址从 AIV1 的 0 开始（物理 128K），128KB
+    // 单 buffer [64K,128K) 64KB, 128×256 bf16
     constexpr int64_t GMM2_UB_BASE = 64 * 1024;
 
     auto l0cOutUb = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE), layoutC);
-    LocalTensor<ElementC> ubGmm2(TPosition::VECCALC, GMM2_UB_BASE, L1_TILE_M * L1_TILE_N);
+    LocalTensor<ElementC> ubGmm2(TPosition::VECCALC, GMM2_UB_BASE, L1_TILE_M_GMM2 * L1_TILE_N);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -451,7 +449,7 @@ __aicore__ inline void GroupMatmul2Optimize(
 
     BlockScheduler scheduler(
         {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_GMM2), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
 
     int32_t vecSetSyncCom2 = 0;
@@ -488,8 +486,7 @@ __aicore__ inline void GroupMatmul2Optimize(
                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
 
-            // 单 buffer：第一个 tile 无需等，后续每次等 AIV1 消费完
-            // AIV1 信号 0 → AIC 信号 16
+            // 单 buffer：第一个 tile 无需等，后续等 AIV1 消费完
             if (vecSetSyncCom2 > 0) {
                 WaitForVector(16);
             }
@@ -512,7 +509,7 @@ __aicore__ inline void GroupMatmul2Optimize(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
 
-            // toAiv1=true: L0C→UB 写到 AIV1 的 UB 空间
+            // toAiv1=true: L0C→UB fixpipe 写到 AIV1 的 UB
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape, true);
 
             NotifyVector(16);
