@@ -129,6 +129,8 @@ public:
     // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
+    // attenMask 整块清零(V)先于 mask DMA(MTE2) 的反向同步（V_MTE2 通道 0，未被其他路径占用）
+    static constexpr uint32_t FA_ATTEN_MASK_V_MTE2_0 = 0U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -297,11 +299,23 @@ public:
 
     __aicore__ inline void ClearOutput()
     {
-        if (IsInitAttentionOutGm()) {
+        bool needOutputInit = IsInitAttentionOutGm();
+        // 静态Tensor迁移：FD 中间结果 GM workspace(accumOut/softmaxFDSum/softmaxFDMax) 复用同一段
+        // user workspace，运行时不会在 kernel 启动间清零。稀疏(mask)场景下 FA 实际写入的 split 槽位
+        // 可能少于 FD combine 读取的槽位；未写槽位在批跑时残留上一个用例的大值(attention/LSE)，导致
+        // 第二个及之后的 mask 用例 FD 规约读到脏数据而精度崩坏（单跑/首个用例因 workspace 为全新清零
+        // 内存而恰好通过）。因此 isFd 时在 kernel 入口整体清零该 workspace，使批跑与单跑行为一致。
+        bool needFdWsInit = this->isFd;
+        if (needOutputInit || needFdWsInit) {
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
+            if (needOutputInit) {
+                InitOutputSingleCore();
+                if (constInfo.isSoftmaxLseEnable) {
+                    InitLseOutputSingleCore();
+                }
+            }
+            if (needFdWsInit) {
+                InitFdWorkspaceSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
@@ -360,6 +374,27 @@ public:
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        }
+    }
+
+    __aicore__ inline void InitFdWorkspaceSingleCore()
+    {
+        // accumOut / softmaxFDSum / softmaxFDMax 在 user workspace 上连续排布
+        // （见 InitVecInput：accumOut@workspace, softmaxFDSum@+accumOutSize, softmaxFDMax@+accumOutSize+logSumExpSize），
+        // 总大小为 accumOutSize + 2 * logSumExpSize（单位：float 元素）。整体清零以消除批跑跨启动的脏残留。
+        int64_t totalFdWsSize = (int64_t)constInfo.accumOutSize + 2 * (int64_t)constInfo.logSumExpSize;
+        if (totalFdWsSize <= 0) {
+            return;
+        }
+        int64_t singleCoreSize =
+            (totalFdWsSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
+        int64_t tailSize = totalFdWsSize - constInfo.aivIdx * singleCoreSize;
+        int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+
+        if (singleInitSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -1249,26 +1284,40 @@ public:
         const uint32_t preMte2ToVId =
             (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_1 : FA_ATTEN_MASK_MTE2_V_0;
 
+        // 静态Tensor迁移：attenMaskBuf 为固定地址裸 UB，运行时不会在 kernel 启动间清零。
+        // mask 的 DMA 仅写入有效 s1 行 × s2dealNum 列，行尾 padding / 无效行不写。
+        // 批跑时这些未写区域残留上一个用例的脏 mask 位，会被 MergeMask / softmax 误当作屏蔽位读入，
+        // 导致整行 attention/LSE 崩坏（单跑因 UB 为全新清零内存而恰好通过）。
+        // 因此在 DMA 覆盖前整块清零，保证批跑与单跑行为一致。
+        ZeroMaskBuf(attenMaskUb, maskInfo.gs1dealNum * s2BaseSize);
+
         if (IsSkipMask && IsSkipMaskForPre) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
-            return;
+            return; // 已清零，等价于全不屏蔽
         }
 
         if (!IsSkipMask) {
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
-        } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
+        // else: 已整块清零，无需再次 Duplicate
 
         if (!IsSkipMaskForPre) {
             const uint32_t preBufIdx = 1U - bufIdx;
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
+            ZeroMaskBuf(attenMaskUbPre, maskInfo.gs1dealNum * s2BaseSize);
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
             PipeBarrier<PIPE_V>();
         }
+    }
+
+    // 整块清零 mask buffer，并插入 V→MTE2 同步，保证清零(V)先于后续 mask DMA(MTE2) 写入同一 UB。
+    __aicore__ inline void ZeroMaskBuf(LocalTensor<uint8_t> &maskUb, uint32_t numElements)
+    {
+        Duplicate(maskUb, static_cast<uint8_t>(0U), numElements);
+        SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
+        WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
