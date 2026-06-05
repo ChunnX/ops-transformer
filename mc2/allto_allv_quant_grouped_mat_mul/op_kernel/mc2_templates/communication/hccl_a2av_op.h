@@ -310,6 +310,11 @@ public:
         alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+        AscendC::printf("[LBH] LaunchCombined turn=%u startExpert=%u axis=%lu\n", turnIdx, startExpertIdx, axis);
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            AscendC::printf("[LBH] LaunchCombined rank=%lu sendCnt=%lu sendOff=%lu recvCnt=%lu recvOff=%lu\n",
+                i, alltoAllvSendCnt[i], alltoAllvSendOffset[i], alltoAllvRecvCnt[i], alltoAllvRecvOffset[i]);
+        }
     }
 
     __aicore__ inline void WaitCombinedAic(uint32_t turnIdx)
@@ -405,6 +410,11 @@ public:
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
 
+        AscendC::printf("[LBH] PermuteOutput turn=%u realCombineSize=%u startExpert=%u H1=%u PACK_FACTOR=%u axis=%lu rankDim=%u e=%u subBlock=%u\n",
+            turnIdx, realCombineSize, startExpertIdx, H1_, PACK_FACTOR, axis, rankDim_, e_, subBlockIdx);
+        AscendC::printf("[LBH] PermuteOutput srcBaseOffset=%lu dstBaseOffset=%lu\n",
+            outputPermuteSrcBaseOffset_, outputPermuteDstBaseOffset_);
+
         uint32_t expertStart = (subBlockIdx == 0U) ? 0U : realCombineSize / 2U;
         uint32_t expertEnd = (subBlockIdx == 0U) ? realCombineSize / 2U : realCombineSize;
 
@@ -415,10 +425,13 @@ public:
             for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
                 uint32_t posBefore = rankIndex * realCombineSize + localIdx;
                 uint32_t globalExpertIdx = startExpertIdx + localIdx;
-                recvSumCntSrc[posBefore] = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+                uint64_t cnt = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]);
+                recvSumCntSrc[posBefore] = cnt * axis;
                 if (posBefore != 0U) {
                     recvSumCntSrc[posBefore] += recvSumCntSrc[posBefore - 1U];
                 }
+                AscendC::printf("[LBH] recvCnt rank=%u expert=%u cnt=%lu recvSumSrc[%u]=%lu\n",
+                    rankIndex, globalExpertIdx, cnt, posBefore, recvSumCntSrc[posBefore]);
             }
         }
 
@@ -430,6 +443,8 @@ public:
                 if (posAfter != 0U) {
                     recvSumCntDst[posAfter] += recvSumCntDst[posAfter - 1U];
                 }
+                AscendC::printf("[LBH] recvSumDst[%u]=%lu (expert=%u rank=%u)\n",
+                    posAfter, recvSumCntDst[posAfter], globalExpertIdx, rankIndex);
             }
         }
 
@@ -452,6 +467,9 @@ public:
                 }
                 uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
                 uint64_t tileNum = CeilDiv(totalCnt, DATACOPY_MAX_BLOCK_LEN);
+
+                AscendC::printf("[LBH] copy expert=%u rank=%u posBef=%u posAft=%u srcOff=%lu dstOff=%lu totalCnt=%lu tileNum=%lu\n",
+                    startExpertIdx + localIdx, rankIndex, posBefore, posAfter, srcOffset, dstOffset, totalCnt, tileNum);
 
                 if (tileNum == 0UL) {
                     continue;
@@ -509,6 +527,8 @@ public:
                 turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
             }
         }
+        AscendC::printf("[LBH] PermuteOutput turn=%u done turnTotalData=%lu newSrcBase=%lu newDstBase=%lu\n",
+            turnIdx, turnTotalData, outputPermuteSrcBaseOffset_ + turnTotalData, outputPermuteDstBaseOffset_ + turnTotalData);
         outputPermuteSrcBaseOffset_ += turnTotalData;
         outputPermuteDstBaseOffset_ += turnTotalData;
     }
