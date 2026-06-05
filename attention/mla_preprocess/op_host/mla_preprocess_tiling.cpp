@@ -647,9 +647,9 @@ void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheBlockSize  is %ld.",
               mlaTilingData.get_kvCacheBlockSize());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheStride0    is %ld.",
-              mlaTilingData.get_kvCacheStride0());
+            mlaTilingData.get_kvCacheStride0());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheRopeStride0 is %ld.",
-              mlaTilingData.get_kvCacheRopeStride0());
+            mlaTilingData.get_kvCacheRopeStride0());
 }
 
 ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
