@@ -43,6 +43,8 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 
+constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
+
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
     return std::count(list.begin(), list.end(), value) > 0;
@@ -894,6 +896,43 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+uint32_t QuantGroupedMatmulAllToAllvTilingCommon::GetCommModeIndex() const
+{
+    return GmmA2AvAttrIndex::ATTR_COMM_MODE_INDEX;
+}
+
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context,
+    uint8_t &commMode) const
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(GetCommModeIndex());
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
+    int64_t rankDim = *epWorldSizePtr;
+    const size_t maxLength = 6UL;
+    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (strncmp(commModeStr, "", maxLength) == 0) {
+        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(context->GetNodeName(),
+            "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 {
     uint32_t alltoAllvCmd = 8U;
@@ -915,9 +954,20 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint8_t commMode = 0;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
@@ -1059,7 +1109,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
