@@ -26,16 +26,19 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
     AscendC::RoundMode::CAST_ROUND,
 };
 template <typename T, typename INPUT_T, bool isAlign>
-__simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T * dstUb, __ubuf__ T * dwUb, __ubuf__ T * srcUb, __ubuf__ T * weightUb, __ubuf__ T * reduceSumUb,
+__simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T * dstUb, __ubuf__ T * dwUb, __ubuf__ T * srcUb, __ubuf__ T * softmaxReduceSumUb, __ubuf__ T * weightUb, __ubuf__ T * reduceSumUb,
     __ubuf__ T * reluUb, uint32_t regCnt, uint32_t tailSize, uint32_t nIndexSize, uint32_t nBaseSize, uint32_t repeatSize, uint32_t blockStride)
 {
     RegTensor<float> vreg_input_x1;
     RegTensor<float> vreg_input_x2;
+    RegTensor<float> vreg_input_x2_tmp;
     RegTensor<float> vreg_input_x1_new;
     RegTensor<float> vreg_input_x2_new;
+    RegTensor<float> vreg_input_x2_new_tmp;
     RegTensor<float> vreg_input_sub;
     RegTensor<float> vreg_input_sub_new;
     RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_softmax_reduce;
     RegTensor<half> vreg_weight_half;
     RegTensor<bfloat16_t> vreg_weight_bf;
     RegTensor<half> vreg_relugrad_half;
@@ -58,17 +61,20 @@ __simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T * dstUb, __ubuf__ T 
     MaskReg preg_bf16 = UpdateMask<uint16_t>(repeatSize);
     
     Duplicate(vreg_zero, 0.0f);
+    LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_softmax_reduce, softmaxReduceSumUb);
     if constexpr (!isAlign) {
         LoadAlign(vreg_input_x1, srcUb + regCnt * floatRepSize);
         LoadAlign(vreg_input_x2, reduceSumUb + regCnt * floatRepSize);
         Select(vreg_input_x1_new, vreg_input_x1, vreg_zero, preg_tail_n);
         Select(vreg_input_x2_new, vreg_input_x2, vreg_zero, preg_tail_n);
-        Sub(vreg_input_sub_new, vreg_input_x2_new, vreg_input_x1_new, preg_all_b32);
+        Mul(vreg_input_x2_new_tmp, vreg_input_x2_new, vreg_softmax_reduce, preg_all_b32);
+        Sub(vreg_input_sub_new, vreg_input_x2_new_tmp, vreg_input_x1_new, preg_all_b32);
         StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub_new, preg_all_b32);
     } else {
         LoadAlign(vreg_input_x1, srcUb + regCnt * floatRepSize);
         LoadAlign(vreg_input_x2, reduceSumUb + regCnt * floatRepSize);
-        Sub(vreg_input_sub, vreg_input_x2, vreg_input_x1, preg_all_b32);
+        Mul(vreg_input_x2_tmp, vreg_input_x2, vreg_softmax_reduce, preg_all_b32);
+        Sub(vreg_input_sub, vreg_input_x2_tmp, vreg_input_x1, preg_all_b32);
         StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub, preg_all_b32);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -138,8 +144,9 @@ __simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T * dstUb, __ubuf__ T 
 }
 
 template <typename T, typename INPUT_T, bool isAlign>
-__aicore__ inline void ProcessVec6Vf(const LocalTensor<INPUT_T>& dstTensor, const LocalTensor<T>& dwTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& weightTensor, const LocalTensor<T>& reduceSumTensor,
-    const LocalTensor<T>& reluTensor, const uint32_t m, const uint32_t nIndexSize, const uint32_t nBaseSize)
+__aicore__ inline void ProcessVec6Vf(const LocalTensor<INPUT_T>& dstTensor, const LocalTensor<T>& dwTensor, const LocalTensor<T>& srcTensor,
+                                const LocalTensor<T>& softmaxReduceTensor, const LocalTensor<T>& weightTensor, const LocalTensor<T>& reduceSumTensor,
+                                const LocalTensor<T>& reluTensor, const uint32_t m, const uint32_t nIndexSize, const uint32_t nBaseSize)
 {
     if (nIndexSize == 0){
         return;
@@ -151,17 +158,18 @@ __aicore__ inline void ProcessVec6Vf(const LocalTensor<INPUT_T>& dstTensor, cons
     uint32_t blockStride = nIndexSize;
     __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
     __ubuf__ T * reluUb = (__ubuf__ T*)reluTensor.GetPhyAddr();
+    __ubuf__ T * softmaxReduceSumUb = (__ubuf__ T*)softmaxReduceTensor.GetPhyAddr();
     __ubuf__ T * reduceSumUb = (__ubuf__ T*)reduceSumTensor.GetPhyAddr();
     __ubuf__ T * weightUb = (__ubuf__ T*)weightTensor.GetPhyAddr();
     __ubuf__ T * dwUb = (__ubuf__ T*)dwTensor.GetPhyAddr();
 
     for (uint32_t regCnt = 0; regCnt < alignCnt; ++regCnt) {
         __ubuf__ INPUT_T * dstUb = (__ubuf__ INPUT_T*)dstTensor.GetPhyAddr() +  (regCnt * nIndexSize) * (s2BaseSize >> 1);
-        ProcessVec6BasicVF<T, INPUT_T, true>(dstUb, dwUb, srcUb, weightUb, reduceSumUb, reluUb, regCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+        ProcessVec6BasicVF<T, INPUT_T, true>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb, reluUb, regCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
     }
     if constexpr (!isAlign) {
         __ubuf__ INPUT_T * dstUb = (__ubuf__ INPUT_T*)dstTensor.GetPhyAddr() +  (alignCnt * nIndexSize) * (s2BaseSize >> 1);
-        ProcessVec6BasicVF<T, INPUT_T, false>(dstUb, dwUb, srcUb, weightUb, reduceSumUb, reluUb, alignCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+        ProcessVec6BasicVF<T, INPUT_T, false>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb, reluUb, alignCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
     }
 }
 } // namespace
