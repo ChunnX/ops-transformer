@@ -20,7 +20,7 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #include "quant_block_sparse_attention_block_cube.h"
 #include "quant_block_sparse_attention_block_vec.h"
-#include "common/quant_block_sparse_attention_common_regbase.h"
+#include "quant_block_sparse_attention_common_arch35.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -32,7 +32,7 @@
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
 #include "common/quant_block_sparse_attention_tiling_regbase.h"
-#include "common/quant_block_sparse_attention_comm.h"
+
 #include "common/quant_block_sparse_attention_kvcache.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"

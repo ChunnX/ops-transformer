@@ -20,7 +20,7 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_ATTENMASK_H_
 
 #include "common/util_regbase.h"
-#include "common/quant_block_sparse_attention_common_regbase.h"
+#include "quant_block_sparse_attention_common_arch35.h"
 
 using namespace AscendC;
 using namespace AscendC::MicroAPI;

@@ -21,7 +21,8 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
-#include "quant_block_sparse_attention_comm.h"
+#include "../quant_block_sparse_attention_common_arch35.h"
+#include "../quant_block_sparse_attention_attenmask.h"
 #define NUM_128 128
 using namespace matmul;
 
