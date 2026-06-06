@@ -61,7 +61,7 @@
     <td>beta</td>
     <td>输入</td>
     <td>表示layernorm计算中尺度偏移的大小，维度只支持1维且维度为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
+    <td>FLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>

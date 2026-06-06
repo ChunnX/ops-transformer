@@ -130,7 +130,7 @@ std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(
 ) {
     return std::unique_ptr<gert::TilingContextPara::TensorDescription>(
         new gert::TilingContextPara::TensorDescription(
-            shape,
+            shape, //这里用大括号构造
             dtype,
             format
         )
@@ -147,8 +147,8 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
          ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, // placeholder
-        {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, // placeholder
+        {{}, ge::DT_INT32, ge::FORMAT_ND}, // placeholder
+        {{}, ge::DT_INT32, ge::FORMAT_ND}, // placeholder
         *mmXShape,
         *mmWeightShape,
     };
@@ -158,10 +158,14 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
     const TilingParams& tilingParams,
     const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmYShape
 ) {
+    auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
+        gert::TilingContextPara::TensorDescription{
+            {{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
+            ge::DT_FLOAT16, ge::FORMAT_ND} : *mmYShape;
     return {
         {{{tilingParams.A, tilingParams.gmmYDim1}, {tilingParams.A, tilingParams.gmmYDim1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        *mmYShape,
+        mmYDesc,
         {{{tilingParams.A, tilingParams.H1}, {tilingParams.A, tilingParams.H1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
     };
@@ -228,7 +232,8 @@ TEST_P(AlltoAllvGroupedMatMulArch35TilingTest, ShapeSize)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tilingParams.recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)}
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(tilingParams.permuteOutFlag)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingDataSize
     );
@@ -303,7 +308,7 @@ static TestParam testParams[] = {
     {"Test_H_4", {{"H1", "65536"}, {"permuteOutFlag", "true"}}, {}, {}, ge::GRAPH_FAILED},
     // send counts 校验（arch35 NeedToCheckCounts=false，send counts 不会被严格校验）
     {"Test_send_counts_0",
-     {{"BSK", "16386"}, {"permuteOutFlag", "true"}},
+     {{"BSK", "16386"}, {"BS", "2048"}, {"permuteOutFlag", "true"}},
      {{"sendCounts",
        std::vector<int64_t>{
            3201, 3201, 3200, 3200, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
@@ -371,6 +376,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BasicSuccess)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -408,6 +414,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, H4)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -445,6 +452,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, A1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -482,6 +490,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BS1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -519,6 +528,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -556,6 +566,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim2)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -593,6 +604,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim3)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -630,6 +642,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim5)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -667,6 +680,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim6)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -704,6 +718,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim7)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -741,6 +756,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim10)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -778,6 +794,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, TransMmWeight1)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -817,6 +834,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize2)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
@@ -856,6 +874,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize16)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 16}};
@@ -895,6 +914,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize32)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 32}};
@@ -934,6 +954,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize64)
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 64}};

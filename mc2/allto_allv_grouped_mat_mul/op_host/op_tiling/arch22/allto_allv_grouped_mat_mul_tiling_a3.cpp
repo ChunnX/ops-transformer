@@ -35,7 +35,7 @@ namespace optiling {
     {
         AlltoAllvGmmTilingA3 tiling(context);
         OP_TILING_CHECK(
-            tiling.Init() != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
+            tiling.Init(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
             return ge::GRAPH_FAILED);
         return tiling.RunFusionKernelTiling(context);
     }
@@ -47,4 +47,4 @@ namespace optiling {
     }
 
     REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA3, 0);
-}
+}  // namespace optiling

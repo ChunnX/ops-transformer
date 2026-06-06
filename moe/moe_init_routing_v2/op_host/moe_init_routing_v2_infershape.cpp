@@ -179,7 +179,7 @@ static void InferOutputShape(const gert::Shape *xShape, const gert::Shape *exper
     int64_t outActiveNum = OTHER_SHAPE;
     int64_t expandedRowIdxNum = OTHER_SHAPE;
 
-    if (n > 0 && k > 0) {
+    if (n >= 0 && k >= 0) {
         expandedRowIdxNum = n * k;
         outActiveNum = activeNum > 0 ? std::min(n * k, activeNum) : n * k;
     }

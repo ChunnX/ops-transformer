@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_gating_top_k_backward.h
+ * \file moe_gating_top_k_backward_kernel.h
  * \brief
  */
-#ifndef MOE_GATING_TOP_K_E_K_GENERALIZED_H
-#define MOE_GATING_TOP_K_E_K_GENERALIZED_H
+#ifndef MOE_GATING_TOP_K_BACKWARD_KERNEL_H
+#define MOE_GATING_TOP_K_BACKWARD_KERNEL_H
 #include "kernel_operator.h"
 #include "common.h"
 #include "basic_api/kernel_operator_utils_intf.h"
@@ -118,7 +118,7 @@ MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR exper
     pipe_->InitBuffer(bufk4RecipSumW_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufs_, AlignBytes(tilingData_->baseRows * 1, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufs_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
 }
 
 template <typename T>
@@ -343,4 +343,4 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut(int64_t loopIdx)
 }
 
 } // namespace MoeGatingTopKBackward
-#endif // MOE_GATING_TOP_K_BACKWARD_H
+#endif // MOE_GATING_TOP_K_BACKWARD_KERNEL_H

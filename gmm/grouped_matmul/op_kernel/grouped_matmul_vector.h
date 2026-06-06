@@ -64,14 +64,14 @@ __aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const
             singleM = AlignUp<HALF_UB_BLOCK_UNIT_SIZE>(singleM);
             uint32_t cursingleM = singleM;
             if (singleM * coreIdx >= m) {
-                yBaseOffset += m * n;
+                yBaseOffset += static_cast<uint64_t>(m) * n;
                 continue;
             } else if (m - singleM * coreIdx < singleM) {
                 cursingleM = m - singleM * coreIdx;
             }
             InitOutput<T>(yGm[yBaseOffset + coreIdx * singleM * n], cursingleM * n, 0);
         }
-        yBaseOffset += m * n;
+        yBaseOffset += static_cast<uint64_t>(m) * n;
     }
 }
 

@@ -782,8 +782,9 @@ __aicore__ inline void ProcessVec1DnUpdate(
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
+    __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+    float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, int32_t subLoop)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -927,6 +928,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
 
     if (subLoop == 1) {
         LoadAlign(vreg_x_max_f32_b, new_global_max);
@@ -955,6 +959,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         loopNum = ubN / 4;
     }
 
+    if constexpr (hasAtten == true) {
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -1102,6 +1109,12 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+        // pscale update
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
+        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
     } else {
         RegTensor<float> first_loop_sum;
         LoadAlign(first_loop_sum, new_global_sum);
@@ -1109,16 +1122,44 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Add(vreg_x_sum0, first_loop_sum, vreg_x_sum0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+        // pscale update
+        RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+        RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst0;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst1;
+        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+        MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+        uint32_t maskLen = 128;
+        MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+        Duplicate(vreg_p_scale, static_cast<float>(1.0f));
+        Mul(vreg_p_scale, vreg_x_max_f32_b, vreg_p_scale, preg_all);
+        Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+        Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
+        Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+        Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all_b16);
+        Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+        Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+        DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1,
+            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_all_b8);
     }
     
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, int32_t subLoop)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+    const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const uint32_t m, const uint32_t n,
+    const uint32_t originN, const T scale, float deScaleQK, float pScale,
+    const T minValue, float keepProb, bool needAtten, int32_t subLoop,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -1126,6 +1167,7 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
     __ubuf__ float *new_global_sum = (__ubuf__ T*) expSumTensor.GetPhyAddr();
     __ubuf__ float *new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
     __ubuf__ uint8_t * indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
@@ -1142,17 +1184,20 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
         repeatStride = 1;
     }
 
-    ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
-        maskUb, indexesUb, m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
+    ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
+        new_global_sum, new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub, m, n, originN,
+        scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
         repeatStride, subLoop);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-    __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
-    const uint32_t blockStride, const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop)
+    __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+    float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
+    const uint32_t blockStride, const uint32_t repeatStride, __ubuf__ float *pre_loop_max,
+    __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1297,6 +1342,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
+
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
             (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
@@ -1332,6 +1381,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         loopNum = ubN / 4;
     }
 
+    if constexpr (hasAtten == true) {
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -1487,6 +1539,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134);
+        // pscale update
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
+        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
     } else {
         RegTensor<float> vreg_l1;
         LoadAlign(vreg_l0, first_loop_sum);
@@ -1497,15 +1555,43 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Add(vreg_l0, vreg_x_sum0, vreg_l1, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+        // pscale update
+        MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+        RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+        RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst0;
+        RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst1;
+        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+        uint32_t maskLen = 128;
+        MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+        Duplicate(vreg_p_scale, static_cast<float>(1.0f));
+        Mul(vreg_p_scale, vreg_subloop_update, vreg_p_scale, preg_all);
+        Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+        Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
+        Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+        Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all_b16);
+        Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+        Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+        DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1,
+            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+        StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_all_b8);
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten,
-    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor, const LocalTensor<float>& firstLoopSumTensor, int32_t subLoop)
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const uint32_t m, const uint32_t n, const uint32_t originN,
+    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten,
+    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor,
+    const LocalTensor<float>& firstLoopSumTensor, int32_t subLoop,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -1516,7 +1602,9 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     __ubuf__ float* pre_loop_sum = (__ubuf__ T*) preLoopSumTensor.GetPhyAddr();
     __ubuf__ float* first_loop_sum = (__ubuf__ T*) firstLoopSumTensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
     __ubuf__ uint8_t * indexesUb = nullptr;
+    __ubuf__ uint8_t * indexesPScaleUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
@@ -1532,8 +1620,9 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
-        maskUb, indexesUb, m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
+    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
+        new_global_sum, new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub, m, n, originN,
+        scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
         repeatStride, pre_loop_max, pre_loop_sum, first_loop_sum, subLoop);
 }
 
@@ -1556,11 +1645,15 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
-                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
-                                       const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
-                                       const uint32_t m, const uint32_t n, const uint32_t originN,
-                                       const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop)
+__aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor,
+    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
+    TBuf<> *vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor, const uint32_t m, const uint32_t n,
+    const uint32_t originN, const T scale, float deScaleQK, float pScale,
+    const T minValue, float keepProb, bool needAtten,
+    const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor,
+    const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -1570,7 +1663,7 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
         }
         ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, subLoop);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, subLoop, pScaleSubLoop0Tensor);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1579,7 +1672,8 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
         }
         ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor, subLoop);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, preLoopMaxTensor, preLoopSumTensor,
+            firstLoopSumTensor, subLoop, pScaleSubLoop0Tensor);
     }
 }
 

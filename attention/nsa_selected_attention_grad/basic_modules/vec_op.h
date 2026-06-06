@@ -15,7 +15,7 @@
 
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "nsa_selected_attention_grad_common_header.h"
 
 namespace NSAG_BASIC {
 struct StaticParams {
@@ -521,7 +521,8 @@ __aicore__ inline void VecOp<NSAGT>::Process(const int64_t dyGmOffset, const int
 
     for (int32_t i = 0; i < loop; i++) {
         if (i == 0) {
-            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<int32_t>(vWaitMte2)); // wait softmax_max and softmax_sum MTE2
+            AscendC::WaitFlag<HardEvent::MTE2_V>(
+                static_cast<int32_t>(vWaitMte2)); // wait softmax_max and softmax_sum MTE2
         }
         if (i == loop - 1 && tailM != 0) {
             processM = tailM;

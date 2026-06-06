@@ -79,6 +79,7 @@ if (BUILD_OPEN_PROJECT)
     )
     target_compile_definitions(cust_opapi PRIVATE
             -DACLNN_LOG_FMT_CHECK
+            -DOP_LOG_LIBOPAPI_ONLY
     )
     target_link_libraries(cust_opapi PRIVATE
             $<BUILD_INTERFACE:intf_pub>
@@ -984,6 +985,12 @@ if (NOT ENABLE_AICPU_KERNEL)
     )
 
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${BLAZE}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${TENSOR_API}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).

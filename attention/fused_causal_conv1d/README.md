@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。
+- 算子功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。
 
 - 本算子支持以下场景：
 
@@ -24,7 +24,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]（无作用）
@@ -39,8 +39,7 @@
     residual_connection: 不做残差: 0, 做残差：1
     block_size: 典型值 128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    inplace: 非原地更新: False, 原地更新: True
-    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
+    y: [cu_seq_len, dim]
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
@@ -52,7 +51,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -67,8 +66,7 @@
     residual_connection: 不做残差: 0, 做残差：1
     block_size: 典型值 128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    inplace: 非原地更新: False, 原地更新: True
-    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
+    y: [cu_seq_len, dim]
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
@@ -80,7 +78,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -95,8 +93,7 @@
     residual_connection: 不做残差: 0, 做残差：1
     block_size: 典型值 128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    inplace: 非原地更新: False, 原地更新: True
-    y: 非原地更新: [cu_seq_len, dim], 原地更新: 无作用
+    y: [cu_seq_len, dim]
     ```
 
     其中state_len必须大于所有batch中最大的token个数加1。
@@ -108,7 +105,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -123,7 +120,6 @@
     residual_connection: 不做残差: 0, 做残差：1
     block_size: 典型值 128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    inplace: 非原地更新: False, 原地更新: True
     y: [batch, m+1, dim]
     ```
 
@@ -293,7 +289,7 @@
     <tr>
       <td>x</td>
       <td>输入/输出</td>
-      <td>公式中的输入序列x，当inplace为true时，卷积结果将原地更新至x，无效batch部分保持x原数值不变。</td>
+      <td>公式中的输入序列x。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
@@ -434,13 +430,6 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>inplace</td>
-      <td>可选输入</td>
-      <td>用于判断卷积结果是否原地更新到x。</td>
-      <td>BOOL</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>y</td>
       <td>输出</td>
       <td>x 经过conv1d 计算后的结果。</td>
@@ -487,13 +476,14 @@
         - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
   - num_accepted_tokens分为None和非None，非None情况下长度为batch，每个元素取值不超过当前batch的token个数且大于0。
   - Pangu V2 模式（conv_mode = 1）下，首次运行 numComputedTokens 不能为 None。
+  - 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+  - 算子输入不支持有±inf和nan的情况。
   
   ## 调用说明
   
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | aclnn接口 | [test_aclnn_fused_causal_conv1d](./examples/test_aclnn_fused_causal_conv1d.cpp) | 通过[aclnnFusedCausalConv1d](./docs/aclnnFusedCausalConv1d.md)调用FusedCausalConv1d算子 |
-  | aclnn接口 | [test_aclnn_inplace_fused_causal_conv1d](./examples/test_aclnn_inplace_fused_causal_conv1d.cpp) | 通过[aclnnInplaceFusedCausalConv1d](./docs/aclnnInplaceFusedCausalConv1d.md)调用FusedCausalConv1d算子 |
   | 图模式 | - | 通过[算子IR](./op_graph/fused_causal_conv1d_proto.h)构图方式调用FusedCausalConv1d算子 |
 
 
