@@ -1112,7 +1112,6 @@ public:
     int64_t rope_d = 0;
     int64_t value_d = 0;
     uint64_t dsinksumWorkSpaceOffset = 0;
-    uint64_t dsinksumDataSizeOffset = 0;
     uint32_t baseMN = 0;
     uint32_t sinkDataSize = 0;
 
@@ -1511,14 +1510,6 @@ public:
     {
         this->dsinksumWorkSpaceOffset = dsinksumWorkSpaceOffset_val;
     }
-    uint64_t get_dsinksumDataSizeOffset() const
-    {
-        return this->dsinksumDataSizeOffset;
-    }
-    void set_dsinksumDataSizeOffset(uint64_t dsinksumDataSizeOffset_val)
-    {
-        this->dsinksumDataSizeOffset = dsinksumDataSizeOffset_val;
-    }
     uint32_t get_baseMN() const
     {
         return this->baseMN;
@@ -1583,7 +1574,6 @@ public:
         rope_d = 0;
         value_d = 0;
         dsinksumWorkSpaceOffset = 0;
-        dsinksumDataSizeOffset = 0;
         baseMN = 0;
         sinkDataSize = 0;
     }

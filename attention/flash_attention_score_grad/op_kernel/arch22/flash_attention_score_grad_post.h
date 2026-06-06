@@ -809,8 +809,6 @@ public:
         }
         dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                     tilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
-        dsinksumDataSizeGm.SetGlobalBuffer((__gm__ uint32_t *)workspace +
-                    tilingData->postTilingData.dsinksumDataSizeOffset / sizeof(uint32_t));
 
         if constexpr (INPUT_FORMAT == NZ) {
             pipe->InitBuffer(inQueuePing, 1, ubBaseSize * 2 + nzReservedSize);
@@ -1032,18 +1030,16 @@ public:
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
             AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
             AscendC::LocalTensor<float> vecOut = outQueue.template AllocTensor<float>();
-            int s1Pad = (tilingData->postTilingData.s1 + 255) / 256 * 256;
-            int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
-            int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
             int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
-            int tailDsinkSumSize = (dataSizePerN1 * sizeof(float)) % (2 * ubBaseSize);
-            int copyOffset = 0;
+            int coreNumForSink = tilingData->postTilingData.coreNum;
+            int dsinkSumMaxCopyTimePerHead = (coreNumForSink * sizeof(float) + 2 * ubBaseSize - 1) / (2 * ubBaseSize);
+            int tailDsinkSumSize = (coreNumForSink * sizeof(float)) % (2 * ubBaseSize);
             for (int n1temp = 0; n1temp < N1; n1temp++) {
                 float dsinkCalc = 0.0;
-                for (int dsinkSumDataCopyLoop = 0; dsinkSumDataCopyLoop < dsinkSumMaxCopyTimePerN1; dsinkSumDataCopyLoop++) {
-                    int currentCopyDataSize = (dsinkSumDataCopyLoop ==  dsinkSumMaxCopyTimePerN1-1) ? tailDsinkSumSize : 2 * ubBaseSize;
+                for (int coreLoop = 0; coreLoop < dsinkSumMaxCopyTimePerHead; coreLoop++) {
+                    int currentCopyDataSize = (coreLoop == dsinkSumMaxCopyTimePerHead - 1) ? tailDsinkSumSize : 2 * ubBaseSize;
                     int itemNum = currentCopyDataSize / sizeof(float);
+                    int copyOffset = n1temp * coreNumForSink + coreLoop * (2 * ubBaseSize / sizeof(float));
 
                     DataCopyExtParams copyParams;
                     copyParams.blockCount = 1;
@@ -1063,7 +1059,6 @@ public:
                     inQueue.EnQue(vecIn);
                     inQueue.template DeQue<float>();
 
-
                     AscendC::PipeBarrier<PIPE_ALL>();
                     AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
                     AscendC::PipeBarrier<PIPE_ALL>();
@@ -1074,7 +1069,6 @@ public:
                     AscendC::PipeBarrier<PIPE_ALL>();
                     dsinkCalc += vecOut.GetValue(0);
                     AscendC::PipeBarrier<PIPE_ALL>();
-                    copyOffset += itemNum;
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
                 dsinkGm.SetValue(n1temp, -dsinkCalc);
@@ -1336,19 +1330,17 @@ public:
             AscendC::LocalTensor<float> vecIn = inQueuePing.template AllocTensor<float>();
             AscendC::LocalTensor<float> vecOut = outQueuePing.template AllocTensor<float>();
 
-            int s1Pad = (tilingData->postTilingData.s1 + 255) / 256 * 256;
-            int s2Pad = (tilingData->postTilingData.s2 + 255) / 256 * 256;
-            int dataSizePerN1 = tilingData->postTilingData.b * s1Pad * s2Pad / tilingData->postTilingData.baseMN;
             int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int dsinkSumMaxCopyTimePerN1 = (dataSizePerN1 * sizeof(float) + 2 * ubBaseSize -1) / ( 2 * ubBaseSize);
-            int tailDsinkSumSize = (dataSizePerN1 * sizeof(float)) % (2 * ubBaseSize);
-            int copyOffset = 0;
+            int coreNumForSink = tilingData->postTilingData.coreNum;
+            int dsinkSumMaxCopyTimePerHead = (coreNumForSink * sizeof(float) + 2 * ubBaseSize - 1) / (2 * ubBaseSize);
+            int tailDsinkSumSize = (coreNumForSink * sizeof(float)) % (2 * ubBaseSize);
 
             for (int n1temp = 0; n1temp < N1; n1temp++) {
                 float dsinkCalc = 0.0;
-                for (int dsinkSumDataCopyLoop = 0; dsinkSumDataCopyLoop < dsinkSumMaxCopyTimePerN1; dsinkSumDataCopyLoop++) {
-                    int currentCopyDataSize = (dsinkSumDataCopyLoop ==  dsinkSumMaxCopyTimePerN1-1) ? tailDsinkSumSize : 2 * ubBaseSize;
+                for (int coreLoop = 0; coreLoop < dsinkSumMaxCopyTimePerHead; coreLoop++) {
+                    int currentCopyDataSize = (coreLoop == dsinkSumMaxCopyTimePerHead - 1) ? tailDsinkSumSize : 2 * ubBaseSize;
                     int itemNum = currentCopyDataSize / sizeof(float);
+                    int copyOffset = n1temp * coreNumForSink + coreLoop * (2 * ubBaseSize / sizeof(float));
 
                     DataCopyExtParams copyParams;
                     copyParams.blockCount = 1;
@@ -1368,7 +1360,6 @@ public:
                     inQueuePing.EnQue(vecIn);
                     inQueuePing.template DeQue<float>();
 
-
                     AscendC::PipeBarrier<PIPE_ALL>();
                     AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
                     AscendC::PipeBarrier<PIPE_ALL>();
@@ -1379,7 +1370,6 @@ public:
                     AscendC::PipeBarrier<PIPE_ALL>();
                     dsinkCalc += vecOut.GetValue(0);
                     AscendC::PipeBarrier<PIPE_ALL>();
-                    copyOffset += itemNum;
                 }
                 AscendC::PipeBarrier<PIPE_ALL>();
                 dsinkGm.SetValue(n1temp, -dsinkCalc);
@@ -1431,7 +1421,6 @@ public:
     AscendC::GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
     AscendC::GlobalTensor<float> dqRopeWorkSpaceGm, dkRopeWorkSpaceGm;
     AscendC::GlobalTensor<float> dsinksumWorkSpaceGm;
-    AscendC::GlobalTensor<uint32_t> dsinksumDataSizeGm;
 
     const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *__restrict tilingData;
     constexpr static uint32_t SYNC_GLOBAL_WORKSPACE_SIZE = 16 * 1024;

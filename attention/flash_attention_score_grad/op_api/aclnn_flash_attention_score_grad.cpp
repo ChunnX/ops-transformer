@@ -2540,9 +2540,9 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    if (sinkInOptional != nullptr || dropMaskOptional != nullptr) {
+    if (dropMaskOptional != nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize currently only support without sinkInOptional and dropMaskOptional.");
+            "aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize currently only support without dropMaskOptional.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
