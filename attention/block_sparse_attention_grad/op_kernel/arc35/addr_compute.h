@@ -28,11 +28,53 @@ public:
         }
     }
 
-    __aicore__ inline void Record(int32_t s1_start_idx, int32_t s1_len)
+    __aicore__ inline void Reset(int32_t s1_start_idx, int32_t s1_len)
     {
         is_finish = false;
         this->s1_start_idx = s1_start_idx;
         this->s1_len = s1_len;
+    }
+
+    __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
+    {
+        this->runTimeInfoBak_.bIdx = runTimeInfo.bIdx;
+        this->runTimeInfoBak_.s1Idx = runTimeInfo.s1Idx;
+        this->runTimeInfoBak_.s2Idx = runTimeInfo.s2Idx;
+        this->runTimeInfoBak_.n1Idx = runTimeInfo.n1Idx;
+        this->runTimeInfoBak_.n2Idx = runTimeInfo.n2Idx;
+        this->runTimeInfoBak_.s1Len = runTimeInfo.s1Len;
+        this->runTimeInfoBak_.s2Len = runTimeInfo.s2Len;
+        this->runTimeInfoBak_.s1LenAlign = runTimeInfo.s1LenAlign;
+        this->runTimeInfoBak_.s2LenAlign = runTimeInfo.s2LenAlign;
+    }
+
+    __aicore__ inline void UpdateRunTimeInfo(RunTimeInfo &runTimeInfo, const int32_t q_head_num,
+                                             const int32_t kv_head_num, const int32_t head_dim)
+    {
+        int32_t base_s1_idx, base_s1_len;
+        this->Update(base_s1_idx, base_s1_len);
+
+        runTimeInfo.bIdx = runTimeInfoBak_.bIdx;
+        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s2Idx = runTimeInfoBak_.s2Idx;
+        runTimeInfo.n1Idx = runTimeInfoBak_.n1Idx;
+        runTimeInfo.n2Idx = runTimeInfoBak_.n2Idx;
+        runTimeInfo.s1Len = base_s1_len;
+        runTimeInfo.s2Len = runTimeInfoBak_.s2Len;
+        runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
+        runTimeInfo.s2LenAlign = runTimeInfoBak_.s2LenAlign;
+        runTimeInfo.queryGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num, head_dim,
+                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.keyGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num, head_dim,
+                                         runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+        runTimeInfo.lseGmOffset =
+            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.sftgGmOffset =
+            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
     }
 
     __aicore__ inline bool IsFinish()
@@ -45,6 +87,7 @@ private:
     int32_t s1_len{0};
     int32_t s1_base_size{128};
     bool is_finish{true};
+    RunTimeInfo runTimeInfoBak_;
 };
 
 template <typename BSA_TYPE>
@@ -141,7 +184,7 @@ public:
 
         if (!single_block_.IsFinish()) {
             // 处理完Single块，更新RunTimeInfo
-            RunTimeInfoUpdate(runTimeInfo);
+            single_block_.UpdateRunTimeInfo(runTimeInfo, q_head_num_, kv_head_num_, head_dim_);
             return;
         }
 
@@ -235,20 +278,17 @@ private:
             return;
         }
         int32_t single_s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
-        single_block_.Record(s1Idx_, single_s1_len);
-        RunTimeInfoUpdate(runTimeInfo);
-        current_cube_idx_++;
-    }
-
-
-    __aicore__ inline void RunTimeInfoUpdate(RunTimeInfo &runTimeInfo)
-    {
+        single_block_.Reset(s1Idx_, single_s1_len);
         int32_t base_s1_idx, base_s1_len;
         int32_t base_s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
         int32_t n2Idx = n1Idx_ / q_group_;
-        single_block_.Update(base_s1_idx, base_s1_len);
 
+        single_block_.Update(base_s1_idx, base_s1_len);
         runTimeInfo.bIdx = bIdx_;
+        runTimeInfo.last_q_seq_sum = last_q_seq_sum_;
+        runTimeInfo.last_kv_seq_sum = last_kv_seq_sum_;
+        runTimeInfo.cur_q_seq_len = cur_q_seq_len_;
+        runTimeInfo.cur_kv_seq_len = cur_kv_seq_len_;
         runTimeInfo.s1Idx = base_s1_idx;
         runTimeInfo.s2Idx = s2Idx_;
         runTimeInfo.n1Idx = n1Idx_;
@@ -257,15 +297,21 @@ private:
         runTimeInfo.s2Len = base_s2_len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = RoundUp(base_s2_len, 16);
-        runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
-                                                                 head_dim_, bIdx_, runTimeInfo.s1Idx, n1Idx_);
-        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
-                                                               head_dim_, bIdx_, runTimeInfo.s2Idx, n2Idx);
-        runTimeInfo.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_,
-                                                               runTimeInfo.s1Idx, n1Idx_);
-        runTimeInfo.sftgGmOffset = GetSftgGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_,
-                                                                 runTimeInfo.s1Idx, n1Idx_);
+        runTimeInfo.queryGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num, head_dim,
+                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.keyGmOffset =
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num, head_dim,
+                                         runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+        runTimeInfo.lseGmOffset =
+            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.sftgGmOffset =
+            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
+        single_block_.RecordRunTimeInfo(runTimeInfo);
+        current_cube_idx_++;
     }
 };
 } // namespace BSA_ARC35
