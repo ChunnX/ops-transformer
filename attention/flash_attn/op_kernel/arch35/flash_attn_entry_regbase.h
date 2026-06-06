@@ -31,7 +31,7 @@
 #ifdef __DAV_C310_CUBE__
 #include "flash_attn_gqa_cube.h"
 #else
-#include "flash_attn_kernel_base_gqa_vec.h"
+#include "flash_attn_gqa_vec.h"
 #endif
 #include "flash_attn_tiling_data.h"
 
