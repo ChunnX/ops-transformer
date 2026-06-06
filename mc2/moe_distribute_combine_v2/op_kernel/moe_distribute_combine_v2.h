@@ -31,14 +31,16 @@
 #include "../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_elastic.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_context.h"
+#include "../moe_distribute_dispatch_v2/hccl_context_holder.h"
+#include "../moe_distribute_dispatch_v2/mc2_moe_context_holder.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_elastic.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_context.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/hccl_context_holder.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/mc2_moe_context_holder.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -46,9 +48,9 @@ namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
-// 复用 dispatch v2 中定义的 context holder（v2 走 HcclOpParam，v3 走 Mc2MoeContext）
-using HcclContextHolderV2 = MoeDistributeDispatchV2Impl::HcclContextHolderV2;
-using Mc2MoeContextHolderV3 = MoeDistributeDispatchV2Impl::Mc2MoeContextHolderV3;
+// 复用 dispatch v2 中定义的 context holder（hccl 路径 / mc2 路径）
+using HcclContextHolder = MoeDistributeDispatchV2Impl::HcclContextHolder;
+using Mc2MoeContextHolder = MoeDistributeDispatchV2Impl::Mc2MoeContextHolder;
 #define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
     uint8_t QuantMode, bool HasAddRmsNorm
 #define CombineMC2TypeFunc ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
@@ -524,8 +526,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     InitInputAndOutput(
         residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
         constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
-    ctx_.Set(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize);
-    ctx_.InitEpAndCheck(tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize, tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
     InitAttrs(mc2Context, tilingData);
 
     if constexpr (QuantMode > UNQUANT) {
