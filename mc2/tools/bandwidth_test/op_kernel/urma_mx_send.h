@@ -100,12 +100,12 @@ private:
 
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
     {
-         return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE;
+         return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)context_->epHcclBuffer_[rankId];
+        return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 
         // 获取指定 rank 的通信窗口数据区地址
@@ -163,6 +163,7 @@ private:
     __gm__ Mc2MoeContext* context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
 
+    uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
     uint32_t aivNum_{0};       // AIV核总数
@@ -286,6 +287,22 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     statusTensor_ = statusBuf_.Get<int32_t>();
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
     statusSpaceGm_ = GetUrmaStateAddrByRankId(epRankId_);
+    
+    TBuf<> dataStateBuf;
+    tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
+    uint32_t epRankIdHccl{0};
+    uint32_t epWorldSizeHccl{0};
+    epRankIdHccl =  context_->epRankId;
+    statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
+    epWorldSizeHccl = epWorldSize_;
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    epRankId_ = epRankIdHccl;
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET
+                                                    + aivId_ * WIN_ADDR_ALIGN));
+    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
+                                                    epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
+    
+    winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2);
 
     // 初始化状态为 1.0f (0x3F800000)，用于状态同步
     sumTarget_ = static_cast<float>(1.0);
