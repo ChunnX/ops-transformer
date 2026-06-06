@@ -876,7 +876,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
         }
 
         int32_t int32Align = BLOCK_SIZE / sizeof(int32_t);
-        int32_t safeSumTileNum = FLOAT32_SAFE_INT / static_cast<int32_t>(tileLen_) / int32Align * int32Align;
+        int32_t safeSumTileNum = FLOAT32_SAFE_INT / static_cast<int32_t>(tileLen_);
+        safeSumTileNum = (safeSumTileNum / int32Align) * int32Align;
+        // Ensure safeSumTileNum is at least int32Align to avoid segSize = 0
+        if (safeSumTileNum == 0) {
+            safeSumTileNum = int32Align;
+        }
         int32_t segSize = static_cast<int32_t>(dataNum) < safeSumTileNum ?
             static_cast<int32_t>(dataNum) : safeSumTileNum;
         for (int32_t segOff = 0; segOff < static_cast<int32_t>(dataNum); segOff += segSize) {
