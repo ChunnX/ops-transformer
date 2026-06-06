@@ -47,6 +47,7 @@ private:
     __aicore__ inline void QuantizeToInt4(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal, float scaleTemp);
     __aicore__ inline void QuantizeToInt8(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal, float scaleTemp);
     __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
+    __aicore__ inline void SetColTileParams(int64_t j);
 
 private:
     TPipe *pipe_;
@@ -408,6 +409,20 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(Local
 }
 
 template <typename T, typename QuantT>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::SetColTileParams(int64_t colLoopindex)
+{
+    colsTileLength_ = perLoopCols_;
+    if (colLoopindex == colLoops_ - 1) {
+        colsTileLength_ = lastLoopCols_;
+    }
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        colsTileLengthAsInt8_ = colsTileLength_ / 2;
+    } else {
+        colsTileLengthAsInt8_ = colsTileLength_;
+    }
+}
+
+template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt8(LocalTensor<float> &inLocal,
                                                                            LocalTensor<int8_t> &outLocal,
                                                                            float scaleTemp)
@@ -485,15 +500,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
         uint32_t tmp = 0xFF7FFFFF;
         float reduceMax = *((float *)&tmp);
         for (int64_t j = 0; j < colLoops_; j++) {
-            colsTileLength_ = perLoopCols_;
-            if (j == colLoops_ - 1) {
-                colsTileLength_ = lastLoopCols_;
-            }
-            if constexpr (IsSameType<QuantT, int4b_t>::value) {
-                colsTileLengthAsInt8_ = colsTileLength_ / 2;
-            } else {
-                colsTileLengthAsInt8_ = colsTileLength_;
-            }
+            SetColTileParams(j);
             float tileMax;
             if (isInputScale_) {
                 tileMax = ComputeMax<true>(inLocal, scaleLocal, srcIdx / k_, expertIdx, j);
@@ -521,15 +528,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
         DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});
 
         for (int64_t j = 0; j < colLoops_; j++) {
-            colsTileLength_ = perLoopCols_;
-            if (j == colLoops_ - 1) {
-                colsTileLength_ = lastLoopCols_;
-            }
-            if constexpr (IsSameType<QuantT, int4b_t>::value) {
-                colsTileLengthAsInt8_ = colsTileLength_ / 2;
-            } else {
-                colsTileLengthAsInt8_ = colsTileLength_;
-            }
+            SetColTileParams(j);
             ComputeScale(inLocal, scaleTemp, rowOffset + i, j);
         }
         inputXInQueue_.FreeTensor(inLocal);
