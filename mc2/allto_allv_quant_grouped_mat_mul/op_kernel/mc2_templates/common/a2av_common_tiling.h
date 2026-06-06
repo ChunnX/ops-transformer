@@ -30,6 +30,7 @@ static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
+static constexpr uint16_t PERMUTE_BUF_SIZE = 32768U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -56,6 +57,8 @@ struct TaskTilingInfo {
     
     // 平台信息
     uint64_t ubSize;        // UB大小
+    uint64_t aivCoreNum;    // AIV 核数量
+    uint64_t aicCoreNum;    // AIC 核数量
 
     // 循环调度参数
     uint32_t expertNum;          // 每次GMM计算合并的专家数量（计算批大小）

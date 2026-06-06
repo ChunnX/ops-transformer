@@ -59,7 +59,8 @@ public:
     __aicore__ inline HcclA2avOp() {}
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
-                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer);
+                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
+                                uint32_t aivCoreNum);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
@@ -105,7 +106,12 @@ private:
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
+    TBuf<QuePosition::VECIN> permuteTBuf_;
+    TBuf<QuePosition::VECIN> permuteTBuf2_;
     int32_t eventID_ = 0;
+
+    uint32_t aivCoreNum_ = 40U;
+    bool permuteBufInitialized_ = false;
 
     uint64_t permuteBaseOffset_ = 0UL;
     uint64_t scalePermuteBaseOffset_ = 0UL;
@@ -114,9 +120,11 @@ private:
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Init(
     const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
-    GM_ADDR sendBuffer, GM_ADDR recvBuffer, GM_ADDR permuteBuffer)
+    GM_ADDR sendBuffer, GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
+    uint32_t aivCoreNum)
 {
     taskTilingInfo_ = taskTilingInfo;
+    aivCoreNum_ = aivCoreNum;
     GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
     hccl_.InitV2(hcclContextGm, hcclInitTiling);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
@@ -125,7 +133,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     e_ = taskTilingInfo_->e;
     H1_ = taskTilingInfo_->H1;
     N1_ = taskTilingInfo_->N1;
-    bufferLen_ = MAX_BUFFER_SIZE;
+    bufferLen_ = PERMUTE_BUF_SIZE;
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
     permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
@@ -201,35 +209,56 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    A2AV_AIV_ALL();
+    if (!permuteBufInitialized_) {
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(permuteTBuf_, bufferLen_);
+        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
+        permuteBufInitialized_ = true;
+    }
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    PermuteImpl<fp8_e8m0_t, false, true>(
+    PermuteImplParallel<fp8_e8m0_t, false, true>(
         recvScaleGlobalBuffer_, scalePermuteOutBuffer_,
         recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, scalePermuteBaseOffset_, bufferLen_, eventID_);
+        axis, scalePermuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
+        aivCoreNum_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    A2AV_AIV_ALL();
+    if (!permuteBufInitialized_) {
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(permuteTBuf_, bufferLen_);
+        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
+        permuteBufInitialized_ = true;
+    }
     uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-    PermuteImpl<CommBufType, false, true>(
+    PermuteImplParallel<CommBufType, false, true>(
         recvGlobalBuffer_, permuteOutBuffer_,
         recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, permuteBaseOffset_, bufferLen_, eventID_);
+        axis, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
+        aivCoreNum_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteSendAfterCompute(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
-    PermuteImpl<CommBufType, true, false>(
+    A2AV_AIV_ALL();
+    if (!permuteBufInitialized_) {
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(permuteTBuf_, bufferLen_);
+        pipe->InitBuffer(permuteTBuf2_, bufferLen_);
+        permuteBufInitialized_ = true;
+    }
+    PermuteImplParallel<CommBufType, true, false>(
         permuteSrcBuffer_, sendGlobalBuffer_,
         sendCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        N1_, permuteBaseOffset_, bufferLen_, eventID_);
+        N1_, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
+        aivCoreNum_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>

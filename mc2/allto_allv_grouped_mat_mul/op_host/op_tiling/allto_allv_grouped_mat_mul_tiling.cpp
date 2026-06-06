@@ -698,6 +698,8 @@ ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context)
     uint64_t numBlocks = mc2tiling::GetNumBlocks(aicNum, aivNum, context_->GetNodeName());
 
     tilingData->taskTilingInfo.ubSize = ubSize_;
+    tilingData->taskTilingInfo.aivCoreNum = aivNum;
+    tilingData->taskTilingInfo.aicCoreNum = aicNum;
     context->SetBlockDim(static_cast<uint32_t>(numBlocks));
 
     return ge::GRAPH_SUCCESS;

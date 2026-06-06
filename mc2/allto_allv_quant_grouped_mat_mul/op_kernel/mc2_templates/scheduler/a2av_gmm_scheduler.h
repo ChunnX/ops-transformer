@@ -55,18 +55,30 @@ public:
         }
         for (uint32_t startExpertIdx = 0; startExpertIdx < e; startExpertIdx += expertNum) {
             uint32_t actualExpertNum = (startExpertIdx + expertNum > e) ? (e - startExpertIdx) : expertNum;
-            if constexpr (MX_QUANT_MODE) {
-                commOp_.WaitScale(startExpertIdx);
-                if (isNeedPermute) {
-                    commOp_.PermuteScale(startExpertIdx, actualExpertNum);
+            if ASCEND_IS_AIV {
+                if constexpr (MX_QUANT_MODE) {
+                    commOp_.WaitScale(startExpertIdx);
+                    if (isNeedPermute) {
+                        commOp_.PermuteScale(startExpertIdx, actualExpertNum);
+                    }
+                    commOp_.Wait(startExpertIdx);
+                    if (isNeedPermute) {
+                        SyncAll<true>();
+                        commOp_.PermuteData(startExpertIdx, actualExpertNum);
+                    }
+                } else {
+                    commOp_.Wait(startExpertIdx);
+                    if (isNeedPermute) {
+                        commOp_.PermuteData(startExpertIdx, actualExpertNum);
+                    }
                 }
+                SyncAll<true>();
+                AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
             }
-            commOp_.Wait(startExpertIdx);
-            if (isNeedPermute) {
-                commOp_.PermuteData(startExpertIdx, actualExpertNum);
+            if ASCEND_IS_AIC {
+                AscendC::CrossCoreWaitFlag(9);
+                computeOp_.Process(startExpertIdx, actualExpertNum);
             }
-            SyncAll<false>();
-            computeOp_.Process(startExpertIdx, actualExpertNum);
         }
         this->End();
     }

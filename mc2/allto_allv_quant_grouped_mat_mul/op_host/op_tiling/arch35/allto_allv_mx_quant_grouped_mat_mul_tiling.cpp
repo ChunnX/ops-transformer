@@ -488,12 +488,11 @@ void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
     expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
         Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
     // aixs
-    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t gmmXSize = a_ * h1_;
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
         gmmXSize = Ops::Base::CeilDiv(gmmXSize, MXFP4_PACK_FACTOR);
     }
-    uint64_t gmmXScaleSize = a_ * Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) *
-        GetSizeByDataType(gmmWeightDataType_) * 2;
+    uint64_t gmmXScaleSize = a_ * Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) * 2;
     // comm
     tilingData->workspaceInfo.commXOutSize = (permuteOutFlag_ && expertNum_ == 1) ?
         0 : Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
