@@ -156,7 +156,9 @@ private:
     uint32_t ubBufferUsedAddr_ = 0;
 
     uint64_t preOffset_ = 0;
-    uint16_t gmm2PingPongIdx_ = 0;
+    // GMM2 ping-pong：跨 wave/expert 持久的 tile 计数。pp = gmm2SyncCom_&1 选 buf0/buf1，
+    // 滞后一拍复用机制跨 GMM2 调用无缝；最后两个在飞 buffer 在 expert loop 后由 EndGMM2Sync drain。
+    int32_t gmm2SyncCom_ = 0;
     // GMM1 pingpong：跨 wave 持久化的 ping/pong 状态。
     // tileNum 通常 = blockNum/wavesParallel = coresPerWave，意味着每核每 wave 只 1 个 tile，
     // 单次 GroupMatmulSwigluQuant 调用内 pingpong 无法翻转。把它提到类成员后，
@@ -475,14 +477,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndGMM2Sync()
     if constexpr(g_coreType == AIV) {
         return;
     }
-    if (vecSetSyncCom_ <= 0) {
-        return;
-    } else if (vecSetSyncCom_ == 1) {
-        WaitForVector();
-    } else {
-        WaitForVector(gmm2PingPongIdx_);
-        WaitForVector(1 - gmm2PingPongIdx_);
+    // 所有 GMM2 调用完成后，drain 最后两个仍在飞的 ping-pong buffer（各一次）。
+    // gmm2SyncCom_ 是全局 tile 计数；倒数第二、倒数第一两个 tile 的 pp 必一奇一偶，覆盖两条通道。
+    // 通道与 GMM2 内部一致：AIC WaitForVector(16+pp)，对应 AIV1 NotifyCube(pp)（flag 22/23）。
+    int32_t total = gmm2SyncCom_;
+    if (total >= 2) {
+        WaitForVector(16 + ((total - 2) & 1));
     }
+    if (total >= 1) {
+        WaitForVector(16 + ((total - 1) & 1));
+    }
+    gmm2SyncCom_ = 0;
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1462,12 +1467,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     MegaMoeImpl::GroupMatmul2Optimize<
                         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
-                        expertBeforeCnt_, expertIdx, rankId_, waveRowOffset, curWaveTrace);
+                        expertBeforeCnt_, expertIdx, rankId_, waveRowOffset, curWaveTrace, gmm2SyncCom_);
                 } else if (subBlockIdx_ == 1) {
                     MegaMoeImpl::GroupMatmul2Optimize<
                         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
-                        expertBeforeCnt_, expertIdx, rankId_, waveRowOffset, curWaveTrace);
+                        expertBeforeCnt_, expertIdx, rankId_, waveRowOffset, curWaveTrace, gmm2SyncCom_);
                 }
                 MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
                                               MegaMoeTrace::SP_GMM2_END);
@@ -1500,6 +1505,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     EndSync();
     vecSetSyncCom_ = 0;
     gmm1PingPongIdx_ = 0;
+
+    // ★ GMM2 ping-pong 的延迟 drain：所有 GMM2 都跑完了，此时才 drain 最后两个在飞的 buffer。
+    // 这之前的每一轮 GMM2 都不 drain，使 combine(e) 与 GMM1(e+1) 重叠。GMM2 用 AIV1 flag 22/23，
+    // 与 EndSync 的 GMM1 AIV0 flag 6/7 不冲突，故两者先后调用互不干扰。
+    EndGMM2Sync();
 
     if constexpr(g_coreType == AIV) {
         if (aivCoreIdx_ == 1) {

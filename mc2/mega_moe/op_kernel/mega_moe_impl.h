@@ -364,15 +364,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     }
 }
 
-// GroupMatmul2Optimize - GMM2 (单 UB buffer, 128×256, toAiv1) + Combine via triple-info routing (per-wave)
-//   UB [64K,128K) 64KB 单 buffer，tile 128×256。toAiv1=true: fixpipe 写 AIV1 的 UB。
+// GroupMatmul2Optimize - GMM2 (ping-pong 双 UB buffer, 128×256, toAiv1) + Combine via triple-info routing
+//   buf0 @ [64K,128K)、buf1 @ [128K,192K) 各 64KB，tile 128×256。toAiv1=true: fixpipe 写 AIV1 的 UB。
+//   gmm2SyncCom 是跨 wave/expert 持久的 ping-pong 计数（引用），本函数不再末尾 drain——最后两个在飞的
+//   buffer 延迟到 expert loop 结束后由 EndGMM2Sync 统一 drain，使 combine 与后续 GMM1 重叠。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           bool IsInterleaved = false>
 __aicore__ inline void GroupMatmul2Optimize(
     const ParamsOptimize& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave,
     uint32_t groupCnt, uint32_t expertIdx, int32_t rankId, uint64_t waveRowOffset,
-    int waveTraceIdx)
+    int waveTraceIdx, int32_t& gmm2SyncCom)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<K_VALUE>(problemShape);
@@ -458,7 +460,9 @@ __aicore__ inline void GroupMatmul2Optimize(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_GMM2), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
 
-    int32_t vecSetSyncCom2 = 0;
+    // 别名指向 Process 持有的持久 ping-pong 计数：跨 wave/expert 连续编号，
+    // 使 buffer 复用的「滞后一拍」机制跨 GMM2 调用无缝衔接，无需每次 drain。
+    int32_t& vecSetSyncCom2 = gmm2SyncCom;
 
     for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -578,17 +582,8 @@ __aicore__ inline void GroupMatmul2Optimize(
         vecSetSyncCom2++;
     }
 
-    // Drain：循环内 WaitForVector 滞后一拍（只等到倒数第 3 个 tile），最后两个在飞的 buffer
-    // 在此各 drain 一次。倒数第二、倒数第一两个 tile 的 pp 必然一奇一偶，分别对应两条通道。
-    if constexpr (g_coreType == AscendC::AIC) {
-        int32_t total = vecSetSyncCom2;
-        if (total >= 2) {
-            WaitForVector(16 + ((total - 2) & 1));
-        }
-        if (total >= 1) {
-            WaitForVector(16 + ((total - 1) & 1));
-        }
-    }
+    // 不在此 drain：最后两个在飞的 buffer 延迟到 expert loop 结束后由 EndGMM2Sync 统一处理，
+    // 让本 wave 的 combine 与后续 GMM1(mmad→L0C/AIV0，不碰 GMM2 的 AIV1 UB)重叠。
 }
 
 } // namespace MegaMoeImpl
