@@ -66,12 +66,10 @@ private:
     __aicore__ inline void CopyOutBoundaryBinCumSum(LocalTensor<int32_t>& resTensor);
     __aicore__ inline void ComputeCumSumPrev(LocalTensor<int32_t>& resTensor, int32_t& cumSumValuePrev);
     __aicore__ inline void CopyOutCoreTopK(LocalTensor<int32_t>& resTensor, int32_t totalTileTopKInCore);
-    template<typename CT>
-    __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<CT>& xLocal, CT boundaryValue,
+    __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<half>& xLocal, half boundaryHalf,
                                                   uint64_t curTileLen, uint64_t tileGmOffset,
                                                   int32_t& curTileK);
-    template<typename CT>
-    __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<CT>& xLocal, CT boundaryValue,
+    __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<half>& xLocal, half boundaryHalf,
                                                   uint64_t curTileLen, uint64_t tileGmOffset,
                                                   int32_t& curTileK);
     __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx);
@@ -1000,37 +998,36 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 }
 
 template <typename BSAT>
-template<typename CT>
 __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
-    LocalTensor<CT>& xLocal, CT boundaryValue,
+    LocalTensor<half>& xLocal, half boundaryHalf,
     uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
-    Compares<CT, uint8_t>(cmpMask, xLocal, boundaryValue, AscendC::CMPMODE::GT, alignLen);
+    Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::GT, alignLen);
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<CT> maskCT = outValueBuf_.Get<CT>();
-    LocalTensor<CT> onesCT = outIndexBuf_.Get<CT>();
+    LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
+    LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
 
     if (constInfo.sparsityMode == BSASparseMode::TopK) {
-        Duplicate<CT>(maskCT, (CT)0, alignLen);
-        Duplicate<CT>(onesCT, (CT)1, alignLen);
+        Duplicate<half>(maskHalf, (half)0, alignLen);
+        Duplicate<half>(onesHalf, (half)1, alignLen);
         PipeBarrier<PIPE_V>();
-        Select<CT>(maskCT, cmpMask, onesCT, (CT)0,
-                   SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        Select<half>(maskHalf, cmpMask, onesHalf, (half)0,
+                    SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
     } else {
-        Duplicate<CT>(maskCT, (CT)1, alignLen);
-        Duplicate<CT>(onesCT, (CT)0, alignLen);
+        Duplicate<half>(maskHalf, (half)1, alignLen);
+        Duplicate<half>(onesHalf, (half)0, alignLen);
         PipeBarrier<PIPE_V>();
-        Select<CT>(maskCT, cmpMask, onesCT, (CT)1,
-                   SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        Select<half>(maskHalf, cmpMask, onesHalf, (half)1,
+                    SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
     }
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<int32_t> maskInt32 = maskCT.template ReinterpretCast<int32_t>();
-    Cast<int32_t, CT>(maskInt32, maskCT, RoundMode::CAST_RINT, alignLen);
+    LocalTensor<int32_t> maskInt32 = maskHalf.ReinterpretCast<int32_t>();
+    Cast<int32_t, half>(maskInt32, maskHalf, RoundMode::CAST_RINT, alignLen);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<int16_t> maskInt16 = maskInt32.ReinterpretCast<int16_t>();
@@ -1054,15 +1051,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
 }
 
 template <typename BSAT>
-template<typename CT>
 __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
-    LocalTensor<CT>& xLocal, CT boundaryValue,
+    LocalTensor<half>& xLocal, half boundaryHalf,
     uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
-    Compares<CT, uint8_t>(cmpMask, xLocal, boundaryValue, AscendC::CMPMODE::EQ, alignLen);
+    Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<int32_t> vecIndex = tempBuf_.Get<int32_t>();
@@ -1108,7 +1104,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
 
+    // Restore boundary value (twiddle inverse transform)
     int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
+    half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
 
     // WS version: batch read tileTopK, use ping-pong double buffering
     for (uint32_t repeatId = 0; repeatId <= tileNumRepeatTimes_; repeatId++) {
@@ -1148,23 +1146,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
-            if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
-                LocalTensor<bfloat16_t> xLocalBf16 = curBuf.template Get<bfloat16_t>()[tileLen_];
-                LocalTensor<float> xLocalFp32 = xLocalBf16.template ReinterpretCast<float>();
-                Cast(xLocalFp32, xLocalBf16, RoundMode::CAST_NONE, curTileLen);
-                PipeBarrier<PIPE_V>();
-                float boundaryFloat = AscendC::Cast(*reinterpret_cast<bfloat16_t*>(&boundaryInt16));
-                SubTopKAndWriteMaskGT<float>(xLocalFp32, boundaryFloat, curTileLen, tileGmOffset, curTileK);
-                if (curTileK > 0) {
-                    SubTopKAndWriteMaskEQ<float>(xLocalFp32, boundaryFloat, curTileLen, tileGmOffset, curTileK);
-                }
-            } else {
-                LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
-                half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
-                SubTopKAndWriteMaskGT<half>(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
-                if (curTileK > 0) {
-                    SubTopKAndWriteMaskEQ<half>(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
-                }
+            LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
+
+            SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+
+            if (curTileK > 0) {
+                SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
             }
 
             if (i < dataNum - 1) {
