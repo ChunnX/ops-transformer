@@ -95,6 +95,20 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU8Even = {
     AscendC::RoundMode::CAST_NONE,
 };
 
+constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU16Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitB322B8Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE,
+};
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitF32toh8 = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
@@ -185,6 +199,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         RegTensor<T0> ropeReg;
         RegTensor<uint32_t> scaleTmp0;
         RegTensor<uint8_t> scaleTmp1;
+        RegTensor<bfloat16_t> scaleTmp1Bf16;
         UnalignRegForStore ureg0;
         UnalignRegForLoad ureg1;
         UnalignRegForStore ureg2;
@@ -219,7 +234,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                     Compare<uint32_t, AscendC::CMPMODE::NE>(cmpMask, vreg2, zero, pregMerge);
                     Select(vreg4, one, zero, cmpMask);
                     Add(vreg1, vreg1, vreg4, pregMerge);
-                    ShiftLefts((RegTensor<int32_t> &)max2, vreg1, static_cast<int16_t>(23), pregMerge);
+                    ShiftLefts((RegTensor<int32_t> &)max2, (RegTensor<int32_t> &)vreg1, static_cast<int16_t>(23), pregMerge);
                 }
                 Duplicate(dupScale, max2, pregMain);
                 Div(x0, x0, dupScale, pregLoop);
@@ -230,8 +245,8 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 // cat scale
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
-                    Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1, scaleTmp0, preg1);
-                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + (quantColNum + ropeNum + j + i * dstCurColNumAlign) >> 1, (RegTensor<T1>&)scaleTmp1, preg1);
+                    Cast<bfloat16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
+                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + ((quantColNum + ropeNum + j + i * dstCurColNumAlign) >> 1), scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
                     DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign, (RegTensor<T1>&)scaleTmp1, preg1);

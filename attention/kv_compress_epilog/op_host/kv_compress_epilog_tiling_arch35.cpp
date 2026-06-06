@@ -15,6 +15,7 @@
 
 #include <sstream>
 #include "kv_compress_epilog_tiling_arch35.h"
+#include "log/log.h"
 
 using namespace ge;
 
@@ -35,8 +36,8 @@ ge::graphStatus KvCompressEpilogTiling::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<KvCompressEpilogCompileInfo>();
-        OPS_ERR_IF(compileInfoPtr == nullptr,
-                  OPS_LOG_E(context_, "compileInfoPtr is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr,
+                  OP_LOGE(context_->GetNodeName(), "compileInfoPtr is null"),
                   return ge::GRAPH_FAILED);
         coreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
@@ -52,9 +53,9 @@ ge::graphStatus KvCompressEpilogTiling::GetPlatformInfo()
 
 ge::graphStatus KvCompressEpilogTiling::GetInputShapes()
 {
-    auto shapeX = context_->GetInputShape(INPUT_X_IDX);
+    auto shapeX = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapeX);
-    auto shapeSlotMapping = context_->GetInputShape(INPUT_SLOT_MAPPING_IDX);
+    auto shapeSlotMapping = context_->GetInputShape(SLOT_MAPPING_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapeSlotMapping);
     auto xStorageShape = shapeX->GetStorageShape();
     auto slotMappingShape = shapeSlotMapping->GetStorageShape();
@@ -78,8 +79,8 @@ ge::graphStatus KvCompressEpilogTiling::GetInputShapes()
 ge::graphStatus KvCompressEpilogTiling::GetAttributes()
 {
     auto* attrs = context_->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr,
-              OPS_LOG_E(context_, "get attrs nullptr"),
+    OP_CHECK_IF(attrs == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get attrs nullptr"),
               return ge::GRAPH_FAILED);
 
     const int64_t* attrQuantGroupSize = attrs->GetAttrPointer<int64_t>(QUANT_GROUP_SIZE_ATTR_INDEX);
@@ -93,8 +94,8 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     if (attrQuantMode != nullptr) {
         quantMode_ = *attrQuantMode;
     }
-    OPS_ERR_IF(quantMode_ != 1 && quantMode_ != 2,
-              OPS_LOG_E(context_, "quantMode should be 1 or 2"),
+    OP_CHECK_IF(quantMode_ != 1 && quantMode_ != 2,
+              OP_LOGE(context_->GetNodeName(), "quantMode should be 1 or 2"),
               return ge::GRAPH_FAILED);
 
     const int64_t* attrRoundScale = attrs->GetAttrPointer<int64_t>(ROUND_SCALE_ATTR_INDEX);
@@ -105,7 +106,7 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     auto scaleAttr = attrs->GetAttrPointer<float>(SCALE_ATTR_INDEX);
     scalesAttr_ = scaleAttr == nullptr ? 1.0f : *scaleAttr;
 
-    OPS_LOG_I(context_->GetNodeName(), "quant_group_size: %ld quantMode_: %ld roundScale_: %ld", quantGroupSize_, quantMode_, roundScale_);
+    OP_LOGI(context_->GetNodeName(), "quant_group_size: %ld quantMode_: %ld roundScale_: %ld", quantGroupSize_, quantMode_, roundScale_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -113,24 +114,24 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
 ge::graphStatus KvCompressEpilogTiling::GetDtypeInfo()
 {
     auto xDesc = context_->GetInputDesc(X_INPUT_INDEX);
-    OPS_ERR_IF(xDesc == nullptr,
-              OPS_LOG_E(context_, "get x desc nullptr"),
+    OP_CHECK_IF(xDesc == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get x desc nullptr"),
               return ge::GRAPH_FAILED);
     xDtype_ = xDesc->GetDataType();
 
-    OPS_ERR_IF(xDtype_ != ge::DT_BF16,
-              OPS_LOG_E(context_, "x dtype only support BF16, got %d",
+    OP_CHECK_IF(xDtype_ != ge::DT_BF16,
+              OP_LOGE(context_->GetNodeName(), "x dtype only support BF16, got %d",
                        static_cast<int>(xDtype_)),
               return ge::GRAPH_FAILED);
 
     auto slotMappingDesc = context_->GetInputDesc(SLOT_MAPPING_INDEX);
-    OPS_ERR_IF(slotMappingDesc == nullptr,
-              OPS_LOG_E(context_, "get slot_mapping desc nullptr"),
+    OP_CHECK_IF(slotMappingDesc == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get slot_mapping desc nullptr"),
               return ge::GRAPH_FAILED);
     slotMappingDtype_ = slotMappingDesc->GetDataType();
 
-    OPS_ERR_IF((slotMappingDtype_ != ge::DT_INT32 && slotMappingDtype_ != ge::DT_INT64),
-              OPS_LOG_E(context_, "slot_mapping dtype only support INT32/INT64, got %d",
+    OP_CHECK_IF((slotMappingDtype_ != ge::DT_INT32 && slotMappingDtype_ != ge::DT_INT64),
+              OP_LOGE(context_->GetNodeName(), "slot_mapping dtype only support INT32/INT64, got %d",
                        static_cast<int>(slotMappingDtype_)),
               return ge::GRAPH_FAILED);
 
@@ -139,18 +140,18 @@ ge::graphStatus KvCompressEpilogTiling::GetDtypeInfo()
 
 ge::graphStatus KvCompressEpilogTiling::ValidateShapes()
 {
-    OPS_ERR_IF(bs_ <= 0,
-              OPS_LOG_E(context_, "input x first dimension must be positive, got %ld", bs_),
+    OP_CHECK_IF(bs_ <= 0,
+              OP_LOGE(context_->GetNodeName(), "input x first dimension must be positive, got %ld", bs_),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(d_ <= SLICE_SIZE,
-              OPS_LOG_E(context_, "input x tail dimension must Greater than 64, got %ld", d_),
+    OP_CHECK_IF(d_ <= SLICE_SIZE,
+              OP_LOGE(context_->GetNodeName(), "input x tail dimension must Greater than 64, got %ld", d_),
               return ge::GRAPH_FAILED);
-    OPS_ERR_IF(d_ > D_LENGTH_FULL_LOAD,
-              OPS_LOG_E(context_, "input x tail dimension must less than 8192, got %ld", d_),
+    OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
+              OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
               return ge::GRAPH_FAILED);
-    OPS_ERR_IF(d_ % SLICE_SIZE != 0,
-              OPS_LOG_E(context_, "d_ %% 64 should be 0 , got %ld", d_),
+    OP_CHECK_IF(d_ % SLICE_SIZE != 0,
+              OP_LOGE(context_->GetNodeName(), "d_ %% 64 should be 0 , got %ld", d_),
               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -160,14 +161,14 @@ ge::graphStatus KvCompressEpilogTiling::ValidateDtypes()
 {
     // Output should have same dtype as input kv_compress_cache
     auto kvCacheOutputDesc = context_->GetOutputDesc(KV_COMPRESS_CACHE_OUTPUT_INDEX);
-    OPS_ERR_IF(kvCacheOutputDesc == nullptr,
-              OPS_LOG_E(context_, "get output desc nullptr"),
+    OP_CHECK_IF(kvCacheOutputDesc == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get output desc nullptr"),
               return ge::GRAPH_FAILED);
 
     ge::DataType outputDtype = kvCacheOutputDesc->GetDataType();
-    OPS_ERR_IF((outputDtype != ge::DT_UINT8),
-              OPS_LOG_E(context_, "kv_compress_cache dtype only support UINT8, got %d",
-                       static_cast<int>(kvCacheDtype_)),
+    OP_CHECK_IF((outputDtype != ge::DT_UINT8),
+              OP_LOGE(context_->GetNodeName(), "kv_compress_cache dtype only support UINT8, got %d",
+                       static_cast<int>(outputDtype)),
               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -182,7 +183,7 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     // Supporting quantmode=3 scenarios requires modifying this part
     scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
     int64_t scaleBytes = 1;
-    if (quantMode_ = QUANT_MDOE_GROUP_QUANT_BF16) {
+    if (quantMode_ == QUANT_MDOE_GROUP_QUANT_BF16) {
         scaleBytes = 2;
     }
 
@@ -249,14 +250,14 @@ ge::graphStatus KvCompressEpilogTiling::PostTiling()
 
     // Set workspace size
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    OPS_ERR_IF(workspaces == nullptr,
-              OPS_LOG_E(context_, "get workspaces nullptr"),
+    OP_CHECK_IF(workspaces == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get workspaces nullptr"),
               return ge::GRAPH_FAILED);
     workspaces[0] = static_cast<size_t>(DEFAULT_WORKSPACE_SIZE);
 
     // Save tiling data to buffer
-    OPS_ERR_IF(context_->GetRawTilingData() == nullptr,
-              OPS_LOG_E(context_, "get tilingdata nullptr"),
+    OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
+              OP_LOGE(context_->GetNodeName(), "get tilingdata nullptr"),
               return ge::GRAPH_FAILED);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
                             context_->GetRawTilingData()->GetCapacity());
@@ -287,7 +288,7 @@ void KvCompressEpilogTiling::DumpTilingInfo()
     info << ", tailRowFactorOfFormerBlock: " << tilingData_.get_tailRowFactorOfFormerBlock();
     info << ", tailRowFactorOfTailBlock: " << tilingData_.get_tailRowFactorOfTailBlock();
 
-    OPS_LOG_I(context_, "%s", info.str().c_str());
+    OP_LOGI(context_->GetNodeName(), "%s", info.str().c_str());
 }
 
 uint64_t KvCompressEpilogTiling::GetTilingKey() const
@@ -297,28 +298,28 @@ uint64_t KvCompressEpilogTiling::GetTilingKey() const
 
 ge::graphStatus KvCompressEpilogTiling::GetShapeAttrsInfo()
 {
-    OPS_ERR_IF(context_ == nullptr,
-              OPS_LOG_E(context_, "context can not be nullptr"),
+    OP_CHECK_IF(context_ == nullptr,
+              OP_LOGE(context_->GetNodeName(), "context can not be nullptr"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(GetInputShapes() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "GetInputShapes failed"),
+    OP_CHECK_IF(GetInputShapes() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "GetInputShapes failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(GetAttributes() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "GetAttributes failed"),
+    OP_CHECK_IF(GetAttributes() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "GetAttributes failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(GetDtypeInfo() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "GetDtypeInfo failed"),
+    OP_CHECK_IF(GetDtypeInfo() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "GetDtypeInfo failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(ValidateShapes() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "ValidateShapes failed"),
+    OP_CHECK_IF(ValidateShapes() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "ValidateShapes failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(ValidateDtypes() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "ValidateDtypes failed"),
+    OP_CHECK_IF(ValidateDtypes() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "ValidateDtypes failed"),
               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -326,20 +327,20 @@ ge::graphStatus KvCompressEpilogTiling::GetShapeAttrsInfo()
 
 ge::graphStatus KvCompressEpilogTiling::RunTiling()
 {
-    OPS_ERR_IF(GetPlatformInfo() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "GetPlatformInfo failed"),
+    OP_CHECK_IF(GetPlatformInfo() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "GetPlatformInfo failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(GetShapeAttrsInfo() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "GetShapeAttrsInfo failed"),
+    OP_CHECK_IF(GetShapeAttrsInfo() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "GetShapeAttrsInfo failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(DoOpTiling() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "CalcOpTiling failed"),
+    OP_CHECK_IF(DoOpTiling() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "CalcOpTiling failed"),
               return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(PostTiling() != ge::GRAPH_SUCCESS,
-              OPS_LOG_E(context_, "PostTiling failed"),
+    OP_CHECK_IF(PostTiling() != ge::GRAPH_SUCCESS,
+              OP_LOGE(context_->GetNodeName(), "PostTiling failed"),
               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -348,7 +349,7 @@ ge::graphStatus KvCompressEpilogTiling::RunTiling()
 // ---------- Tiling Entry Points ----------
 ge::graphStatus TilingForKvCompressEpilog(gert::TilingContext* context)
 {
-    OPS_ERR_IF(context == nullptr,
+    OP_CHECK_IF(context == nullptr,
               OPS_REPORT_VECTOR_INNER_ERR("KvCompressEpilog", "Tiling context is null"),
               return ge::GRAPH_FAILED);
 
