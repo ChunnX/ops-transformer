@@ -66,9 +66,12 @@ private:
     __aicore__ inline void CopyOutBoundaryBinCumSum(LocalTensor<int32_t>& resTensor);
     __aicore__ inline void ComputeCumSumPrev(LocalTensor<int32_t>& resTensor, int32_t& cumSumValuePrev);
     __aicore__ inline void CopyOutCoreTopK(LocalTensor<int32_t>& resTensor, int32_t totalTileTopKInCore);
-    __aicore__ inline void SubTopKAndWriteMask(LocalTensor<half>& xLocal, half boundaryHalf,
-                                                uint64_t curTileLen, uint64_t tileGmOffset,
-                                                int32_t& curTileK);
+    __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<half>& xLocal, half boundaryHalf,
+                                                  uint64_t curTileLen, uint64_t tileGmOffset,
+                                                  int32_t& curTileK);
+    __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<half>& xLocal, half boundaryHalf,
+                                                  uint64_t curTileLen, uint64_t tileGmOffset,
+                                                  int32_t& curTileK);
     __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void VToSSync();
     __aicore__ inline void SToVSync();
@@ -991,18 +994,16 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     LocalTensor<half>& xLocal, half boundaryHalf,
     uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
-    // GT phase: select elements > boundary
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::GT, alignLen);
     PipeBarrier<PIPE_V>();
 
-    // Convert bitmask to per-element half using Select
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
 
@@ -1013,7 +1014,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
         Select<half>(maskHalf, cmpMask, onesHalf, (half)0,
                     SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
     } else {
-        // BottomK: mask initial is 1, matching positions write 0
         Duplicate<half>(maskHalf, (half)1, alignLen);
         Duplicate<half>(onesHalf, (half)0, alignLen);
         PipeBarrier<PIPE_V>();
@@ -1022,7 +1022,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
     }
     PipeBarrier<PIPE_V>();
 
-    // Cast half -> int32_t -> int16_t -> uint8_t
     LocalTensor<int32_t> maskInt32 = maskHalf.ReinterpretCast<int32_t>();
     Cast<int32_t, half>(maskInt32, maskHalf, RoundMode::CAST_RINT, alignLen);
     PipeBarrier<PIPE_V>();
@@ -1035,61 +1034,60 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
     Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
 
-    // Write to GM
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
 
-    // Count selected elements using GatherMask
     LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
                true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
     VToSSync();
     curTileK -= static_cast<int32_t>(rsvdCnt);
+}
 
-    // EQ phase: if still need more elements, select elements == boundary
-    if (curTileK > 0) {
-        Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
-        PipeBarrier<PIPE_V>();
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
+    LocalTensor<half>& xLocal, half boundaryHalf,
+    uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
+{
+    uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
-        // Create index array
-        LocalTensor<int32_t> vecIndex = tempBuf_.Get<int32_t>();
-        for (uint64_t i = 0; i < curTileLen; i++) {
-            vecIndex.SetValue(i, static_cast<int32_t>(i));
-        }
+    LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
+    Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
+    PipeBarrier<PIPE_V>();
 
-        // Gather matching indices
-        LocalTensor<int32_t> matchIndices = vecIndex[alignLen];
-        uint64_t eqRsvdCnt = 0;
-        GatherMask(matchIndices, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
-                   true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
-        VToSSync();
-
-        uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
-
-        // Read mask from GM
-        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
-        DataCopyPad(maskLocal, maskTmpGmLocal[tileGmOffset],
-                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
-                    DataCopyPadExtParams<uint8_t>(false, 0,
-                        static_cast<uint8_t>(alignLen - curTileLen), 0));
-        PipeBarrier<PIPE_V>();
-
-        // Mark selected positions
-        uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
-        for (uint32_t i = 0; i < writeCnt; i++) {
-            int32_t idx = matchIndices.GetValue(i);
-            maskLocal.SetValue(idx, writeValue);
-        }
-
-        // Write back to GM
-        VToMTE3Sync();
-        DataCopyPad(maskTmpGmLocal[tileGmOffset], maskLocal,
-                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-
-        curTileK -= static_cast<int32_t>(writeCnt);
+    LocalTensor<int32_t> vecIndex = tempBuf_.Get<int32_t>();
+    for (uint64_t i = 0; i < curTileLen; i++) {
+        vecIndex.SetValue(i, static_cast<int32_t>(i));
     }
+
+    LocalTensor<int32_t> matchIndices = vecIndex[alignLen];
+    uint64_t eqRsvdCnt = 0;
+    GatherMask(matchIndices, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
+               true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
+    VToSSync();
+
+    uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
+
+    LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+    DataCopyPad(maskLocal, maskTmpGmLocal[tileGmOffset],
+                DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
+                DataCopyPadExtParams<uint8_t>(false, 0,
+                    static_cast<uint8_t>(alignLen - curTileLen), 0));
+    PipeBarrier<PIPE_V>();
+
+    uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+    for (uint32_t i = 0; i < writeCnt; i++) {
+        int32_t idx = matchIndices.GetValue(i);
+        maskLocal.SetValue(idx, writeValue);
+    }
+
+    VToMTE3Sync();
+    DataCopyPad(maskTmpGmLocal[tileGmOffset], maskLocal,
+                DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+
+    curTileK -= static_cast<int32_t>(writeCnt);
 }
 
 template <typename BSAT>
@@ -1145,12 +1143,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
 
-            // GT phase: handle all tiles (including curTileK==0)
-            SubTopKAndWriteMask(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+            SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
-            // EQ phase: only execute when curTileK > 0
             if (curTileK > 0) {
-                SubTopKAndWriteMask(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+                SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
             }
 
             if (i < dataNum - 1) {
