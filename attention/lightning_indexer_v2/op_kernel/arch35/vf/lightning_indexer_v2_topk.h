@@ -69,9 +69,15 @@ public:
                                       uint32_t s2LoopNum, bool returnValueFlag, uint32_t outputIdxOffset)
     {
         if (s2LoopNum == 1) {
-            liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                               idx0Local, idx1Local, idx2Local, idx3Local,
-                                               nkValueLocal, topK, s2SeqLen);
+            if (returnValueFlag) {
+                liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                  idx0Local, idx1Local, idx2Local, idx3Local,
+                                                  nkValueLocal, topK, s2SeqLen);
+            } else {
+                liV2Topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                   idx0Local, idx1Local, idx2Local, idx3Local,
+                                                   nkValueLocal, topK, s2SeqLen);
+            }
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
         } else {
