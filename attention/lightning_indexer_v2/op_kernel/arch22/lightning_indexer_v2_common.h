@@ -107,8 +107,7 @@ struct ConstInfo {
     bool attenMaskFlag = false;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
-    int64_t cmpRatio = 1;
-     int64_t cmpResidualK = 0;
+    int32_t cmpRatio = 1;
      bool returnValue = false;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度

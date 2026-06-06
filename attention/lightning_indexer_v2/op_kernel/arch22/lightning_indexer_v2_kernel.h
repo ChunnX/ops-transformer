@@ -121,6 +121,8 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
+    GlobalTensor<int32_t> cmpResidualKGm;
+    bool isCmpResidualKValid = false;
 
     uint32_t tmpBlockIdx = 0U;
     uint32_t aiCoreIdx = 0U;
@@ -147,8 +149,8 @@ protected:
     __aicore__ inline uint32_t GetActualSeqLenQ(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                 GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                                  GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                  uint32_t defaultSeqLen, uint32_t cmpRatio, uint32_t cmpResidualK);
+                                                   GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                   uint32_t defaultSeqLen, int32_t cmpRatio);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
                                                uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -169,7 +171,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
     constInfo.topk = tilingData->topk;
     constInfo.cmpRatio = tilingData->cmpRatio;
-    constInfo.cmpResidualK = tilingData->cmpResidualK;
     constInfo.outputLayout = LAYOUT_T;
     if (LAYOUT_T == LI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -253,15 +254,15 @@ template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                              bool isAccumSeq,
                                                              GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                             uint32_t defaultSeqLen, uint32_t cmpRatio,
-                                                             int32_t cmpResidualK)
+                                                              uint32_t defaultSeqLen, int32_t cmpRatio)
 {
+    int32_t residualK = isCmpResidualKValid ? cmpResidualKGm.GetValue(bIdx) : 0;
     if (actualLenDims == 0) {
-        return defaultSeqLen * cmpRatio + cmpResidualK;
+        return defaultSeqLen * cmpRatio + residualK;
     } else if (isAccumSeq) {
-        return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio + cmpResidualK;
+        return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio + residualK;
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx) * cmpRatio + cmpResidualK;
+        return actualSeqLengthsGm.GetValue(bIdx) * cmpRatio + residualK;
     }
 }
 
@@ -275,7 +276,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::GetS1S2ActualSeqLen(uint32
                                  constInfo.qSeqSize);
     actS2SizeOrig =
         GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2,
-                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio, constInfo.cmpResidualK);
+                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio);
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;
 }
 
@@ -354,7 +355,7 @@ __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetS2BaseBlockNumOnMas
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
     int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);
     int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase +
-                          static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);
+                           static_cast<int32_t>(constInfo.s1BaseSize)) / constInfo.cmpRatio;
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
     validS2Len = Max(validS2Len, 1);
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
@@ -516,6 +517,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
 
     InitTilingData(tiling);
     InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK);
+
+    if (cmpResidualK != nullptr) {
+        cmpResidualKGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK);
+        isCmpResidualKValid = true;
+    }
 
     // if (metadata != nullptr) {
     //     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);

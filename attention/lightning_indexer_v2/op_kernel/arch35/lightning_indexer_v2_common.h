@@ -114,8 +114,8 @@ struct ConstInfo {
     bool attenMaskFlag = false;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
-    int64_t cmpRatio = 1;
-    int64_t cmpResidualK = 0;
+    int32_t cmpRatio = 1;
+
     bool batchSupperFlag = false;  // Qactual_seq长度是否为B+1
     bool returnValue = false;
 

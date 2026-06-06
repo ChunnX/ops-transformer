@@ -156,7 +156,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.topk = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
+    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
 
     if (opParamInfo_.layOut != nullptr) {
@@ -175,7 +175,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "mask mode is:%d", *opParamInfo_.maskMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%lld", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
@@ -200,7 +200,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
                 ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
-                        "but now cmpRatio is %ld.",
+                        "but now cmpRatio is %d.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.returnValue == 0) || (*opParamInfo_.returnValue == 1)),
                OP_LOGE(opName_, "input attr return_value only supported 0 or 1."),
@@ -668,7 +668,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     if (opParamInfo_.cmpResidualK.tensor != nullptr) {
-        liInfo.cmpResidualK = static_cast<int64_t>(opParamInfo_.cmpResidualK.tensor->GetData<int32_t>()[0]);
+        liInfo.cmpResidualK = opParamInfo_.cmpResidualK.tensor->GetData<int32_t>()[0];
     }
     liInfo.returnValue = *opParamInfo_.returnValue;
     liInfo.inputQLayout = qLayout_;
@@ -758,7 +758,6 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_preTokens(tilingInfo->preTokens);
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
-    tilingData_.set_cmpResidualK(tilingInfo->cmpResidualK);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
