@@ -537,8 +537,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         
         // 是否返回Value值
         if (returnValueFlag) {
-            // uint16_t -> bfloat16
-            // LocalTensor<uint16_t> scoreOutLocal1_ = scoreOutLocal_.template ReinterpretCast<uint16_t>();
             liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
             // 无效值刷0
             if (validS2Len < topkCount_) {
@@ -546,12 +544,12 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template Reinterpret<uint32_t>()[validS2Len / 16 * 16], zeroUInt32, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16], zeroUInt32, mask, 1, 1, 0);
             }
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template Reinterpret<uint32_t>()[validS2Len / 16 * 16 + 64], zeroUInt32,
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64], zeroUInt32,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             AscendC::DataCopyParams copyOutValueParams;
