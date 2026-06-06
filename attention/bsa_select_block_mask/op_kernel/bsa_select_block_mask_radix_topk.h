@@ -1065,6 +1065,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     for (uint64_t i = 0; i < curTileLen; i++) {
         vecIndex.SetValue(i, static_cast<int32_t>(i));
     }
+    SToVSync();
 
     LocalTensor<int32_t> matchIndices = vecIndex[alignLen];
     uint64_t eqRsvdCnt = 0;
