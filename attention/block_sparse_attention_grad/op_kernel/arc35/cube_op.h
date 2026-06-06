@@ -48,8 +48,8 @@ private:
     LocalTensor<float> l0_c_tensor_ping_;
     LocalTensor<float> l0_c_tensor_pong_;
     // dk\dvL0C
-    LocalTensor<float> l0_dk_tensor_ping_;
-    LocalTensor<float> l0_dv_tensor_pong_;
+    LocalTensor<float> l0_c_dk_tensor_ping_;
+    LocalTensor<float> l0_c_dv_tensor_pong_;
     static constexpr int32_t L1_SIZE = 512 * 1024;
     static constexpr int32_t L0_AB_SIZE = 64 * 1024;
     static constexpr int32_t L0_C_SIZE = 256 * 1024;
@@ -116,8 +116,8 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
-        l0_dk_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 128 * 1024);
-        l0_dv_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 192 * 1024);
+        l0_c_dk_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 128 * 1024);
+        l0_c_dv_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 192 * 1024);
         SET_FLAG(M, MTE1, event_ping_);
         SET_FLAG(M, MTE1, event_pong_);
         SET_FLAG(FIX, M, event_ping_);
@@ -248,9 +248,9 @@ private:
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor;
         if constexpr (TYPE) {
-            l0_c_tensor = l0_dk_tensor_ping_;
+            l0_c_tensor = l0_c_dk_tensor_ping_;
         } else {
-            l0_c_tensor = l0_dv_tensor_ping_;
+            l0_c_tensor = l0_c_dv_tensor_ping_;
         }
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
 
