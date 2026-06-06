@@ -25,7 +25,7 @@ from npu_ops_transformer.ops import npu_lightning_indexer_v2
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                  head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, 
-                 seqused_q, seqused_k, cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio):
+                 seqused_q, seqused_k, cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio, return_value):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -49,6 +49,7 @@ class GeneralizedLIV2:
         self.max_seqlen_q = max_seqlen_q
         self.mask_mode = mask_mode
         self.cmp_ratio = cmp_ratio
+        self.return_value = return_value
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
@@ -98,7 +99,7 @@ class GeneralizedLIV2:
 
         y = torch.full(out_shape_bnsd,-1,dtype = torch.int32)
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
-
+        y_value_np = np.full(output_shape_bnsd, -np.inf, dtype=np.float32)
         for b_idx in range(batch_size):
             curr_actualSeq_q = seqused_q[b_idx]
             curr_actualSeq_k = math.floor(seqused_k[b_idx] / cmp_ratio)
@@ -121,9 +122,10 @@ class GeneralizedLIV2:
                     y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
                                                                                         :curr_actualSeq_q,
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_fp16(b_idx)
+                y_value_np[b_idx:(b_idx + 1), :, curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
-        return y, y_value
+        return y, y_value_np
 
     def trans_shape_to_bnsd(self, tensor, shape, layout, headnums=None, act_seq=None, is_weights=False, tensor_name=None):
         if layout in ["BSND"]:
@@ -235,7 +237,7 @@ class GeneralizedLIV2:
             # 根据布尔矩阵置-inf
             reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
         to_be_sort_ele = reduce_sum.clone()
-        to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
+        to_be_sort_ele = to_be_sort_ele.to(torch.float32)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
@@ -275,7 +277,7 @@ class GeneralizedLIV2:
             cur_q.to(dtype = torch.float32).squeeze(0),
             cur_k.to(dtype = torch.float32).permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
-        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32) / 1024.0).clamp_min(0.0).to(torch.float16)
+        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0).to(torch.float16)
         brc_vmul = torch.bmm(
             cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
             qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
@@ -295,6 +297,7 @@ class GeneralizedLIV2:
             reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
 
         to_be_sort_ele = reduce_sum.clone()
+        to_be_sort_ele = to_be_sort_ele.to(torch.float32)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
@@ -430,6 +433,7 @@ class GeneralizedLIV2:
         k_dtype = self.qk_dtype
         w_shape = self.w_shape
         cmp_ratio = self.cmp_ratio
+        return_value = self.return_value
 
         if layout_query == "TND":
             if len(actual_seq_lengths_query) == batch_size + 1:
@@ -498,14 +502,19 @@ class GeneralizedLIV2:
         else:
             raise ValueError("unsupported sparse_mode!")
         self.m_tensor = m_tensor
-        y, y_value = self.cal_atten_bnsd()
+        y, y_value_np = self.cal_atten_bnsd()
+        sparse_value = torch.from_numpy(y_value_np)
+
         # TND & PA 需要传入out_shape为BNSD
         out_shape_bnsd = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnsd[1] = k_head_num
         out_shape_bnsd[-1] = sparse_count
         y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
         y += output_idx_offset
-        return y, y_value
+
+        if return_value:
+            sparse_value = self.trans_bnsd_to_layout(sparse_value, out_shape_bnsd, layout_query, actualSeqLengths_q)
+        return y, sparse_value
 
 def trans_prefix_actseq(self,list):
         list_len = len(list)
@@ -529,7 +538,7 @@ def liv2_output_single(params):
 
     test_liv2 = GeneralizedLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                                 head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-                                cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio)
+                                cmp_residual_k, layout_query, layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio, return_value)
 
     actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32).npu() \
                             if seqused_q is None else torch.tensor(seqused_q).to(torch.int32).npu()
@@ -628,7 +637,7 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result, _ = npu_lightning_indexer_v2(query, key, weights,
+    npu_result, npu_topk_value = npu_lightning_indexer_v2(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
@@ -643,6 +652,7 @@ def liv2_output_single(params):
                                              layout_k = layout_key,
                                              mask_mode = mask_mode,
                                              cmp_ratio = cmp_ratio,
-                                             return_value = 0)
+                                             return_value = return_value)
     torch.npu.synchronize()
-    return cpu_result, npu_result, topk_value
+    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, npu_topk_value
