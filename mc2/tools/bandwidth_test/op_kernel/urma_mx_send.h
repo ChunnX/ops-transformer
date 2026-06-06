@@ -286,7 +286,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     totalUsedUB_ += statusBufSize;
     statusTensor_ = statusBuf_.Get<int32_t>();
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
-    statusSpaceGm_ = GetUrmaStateAddrByRankId(epRankId_);
+
+    GM_ADDR statusDataSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankId_]);
 
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
@@ -296,12 +297,14 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
-    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET
                                                     + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
     
     winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2);
+
+    statusSpaceGm_ = GetUrmaStateAddrByRankId(epRankId_);
 
     // 初始化状态为 1.0f (0x3F800000)，用于状态同步
     sumTarget_ = static_cast<float>(1.0);
