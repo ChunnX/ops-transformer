@@ -838,14 +838,15 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->N2 = localParams_.N2;
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
+    gmmQTilingCommonInfoPtr->aivCoreNum = static_cast<uint64_t>(localParams_.aivCoreNum);
+    gmmQTilingCommonInfoPtr->aicCoreNum = static_cast<uint64_t>(localParams_.aicCoreNum);
 
-    uint32_t expertNum = static_cast<uint32_t>(1);
-    gmmQTilingCommonInfoPtr->expertNum = expertNum;
-    gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum;
+    gmmQTilingCommonInfoPtr->expertNum = expertNum_;
+    gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum_;
     gmmQTilingCommonInfoPtr->tailLoopExpertNum =
-        (localParams_.ep % expertNum == 0) ? 0 : static_cast<uint32_t>(localParams_.ep % expertNum);
+        (localParams_.ep % expertNum_ == 0) ? 0 : static_cast<uint32_t>(localParams_.ep % expertNum_);
     gmmQTilingCommonInfoPtr->totalLoopCount =
-        static_cast<uint32_t>(Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(expertNum)));
+        static_cast<uint32_t>(Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(expertNum_)));
 
     return ge::GRAPH_SUCCESS;
 }

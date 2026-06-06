@@ -47,34 +47,55 @@ __aicore__ inline void ComputePrefixSum(
 }
 
 template <typename ElemType>
-__aicore__ inline void TileDataCopyLoop(
-    LocalTensor<ElemType> &ubTensor,
+__aicore__ inline void TileDataCopyLoopDoubleBuf(
+    LocalTensor<ElemType> &ubBufA,
+    LocalTensor<ElemType> &ubBufB,
     GlobalTensor<ElemType> &srcBuffer,
     GlobalTensor<ElemType> &dstBuffer,
     uint64_t srcBaseOffset, uint64_t dstBaseOffset, uint64_t totalCnt,
-    uint64_t bufferLen, TPipe *pipe, int32_t &eventID)
+    uint64_t bufferLen, TPipe *pipe)
 {
     uint64_t tileNum = CeilDiv(totalCnt, bufferLen);
+    if (tileNum == 0UL) {
+        return;
+    }
+
+    DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(0U), 0U, 0U};
+    DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+
+    int32_t prevMte3EventID = -1;
+
     for (uint64_t tile = 0UL; tile < tileNum; tile++) {
         uint64_t realLength = bufferLen;
         if (tile == tileNum - 1UL) {
             realLength = totalCnt - tile * bufferLen;
         }
         uint64_t elemOffset = CeilDiv(tile * bufferLen, sizeof(ElemType));
-        DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
-        DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+        dataCopyParams.blockLen = static_cast<uint16_t>(realLength);
 
-        DataCopyPad(ubTensor, srcBuffer[srcBaseOffset + elemOffset], dataCopyParams, dataCopyPadParams);
+        LocalTensor<ElemType> &curBuf = (tile % 2UL == 0UL) ? ubBufA : ubBufB;
 
-        eventID = static_cast<int32_t>(pipe->FetchEventID<HardEvent::MTE2_MTE3>());
-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
+        DataCopyPad(curBuf, srcBuffer[srcBaseOffset + elemOffset], dataCopyParams, dataCopyPadParams);
 
-        DataCopyPad(dstBuffer[dstBaseOffset + elemOffset], ubTensor, dataCopyParams);
+        int32_t mte2EventID = static_cast<int32_t>(pipe->FetchEventID<HardEvent::MTE2_MTE3>());
+        SetFlag<HardEvent::MTE2_MTE3>(mte2EventID);
+        WaitFlag<HardEvent::MTE2_MTE3>(mte2EventID);
 
-        eventID = static_cast<int32_t>(pipe->FetchEventID<HardEvent::MTE3_MTE2>());
-        SetFlag<HardEvent::MTE3_MTE2>(eventID);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventID);
+        if (prevMte3EventID >= 0) {
+            WaitFlag<HardEvent::MTE3_MTE2>(prevMte3EventID);
+            pipe->ReleaseEventID<HardEvent::MTE3_MTE2>(prevMte3EventID);
+            prevMte3EventID = -1;
+        }
+
+        DataCopyPad(dstBuffer[dstBaseOffset + elemOffset], curBuf, dataCopyParams);
+
+        prevMte3EventID = static_cast<int32_t>(pipe->FetchEventID<HardEvent::MTE3_MTE2>());
+        SetFlag<HardEvent::MTE3_MTE2>(prevMte3EventID);
+    }
+
+    if (prevMte3EventID >= 0) {
+        WaitFlag<HardEvent::MTE3_MTE2>(prevMte3EventID);
+        pipe->ReleaseEventID<HardEvent::MTE3_MTE2>(prevMte3EventID);
     }
 }
 
@@ -85,13 +106,12 @@ __aicore__ inline void PermuteImpl(
     const uint64_t *offsetCounts, uint32_t e, uint32_t rankDim,
     uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis, uint64_t &permuteBaseOffset,
+    TBuf<QuePosition::VECIN> &permuteTBuf, TBuf<QuePosition::VECIN> &permuteTBuf2,
     uint64_t bufferLen, int32_t &eventID)
 {
+    LocalTensor<ElemType> ubBufA = permuteTBuf.Get<ElemType>();
+    LocalTensor<ElemType> ubBufB = permuteTBuf2.Get<ElemType>();
     TPipe *pipe = GetTPipePtr();
-    pipe->Reset();
-    TBuf<QuePosition::VECIN> tBuf;
-    pipe->InitBuffer(tBuf, bufferLen);
-    LocalTensor<ElemType> ubTensor = tBuf.Get<ElemType>();
 
     uint32_t totalPos = rankDim * expertNum;
     uint64_t sumCntSrc[MAX_EXPERT_SIZE] = {0UL};
@@ -129,10 +149,10 @@ __aicore__ inline void PermuteImpl(
             uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) *
                 axis * sizeof(ElemType);
 
-            TileDataCopyLoop<ElemType>(
-                ubTensor, srcBuffer, dstBuffer,
+            TileDataCopyLoopDoubleBuf<ElemType>(
+                ubBufA, ubBufB, srcBuffer, dstBuffer,
                 srcOffset, dstOffset, totalCnt,
-                bufferLen, pipe, eventID);
+                bufferLen, pipe);
         }
     }
 
@@ -140,6 +160,91 @@ __aicore__ inline void PermuteImpl(
     for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; expertIdx++) {
         for (uint32_t rankIndex = 0U; rankIndex < rankDim; rankIndex++) {
             currentDataCount += offsetCounts[rankIndex * e + expertIdx];
+        }
+    }
+    permuteBaseOffset += currentDataCount * axis;
+}
+
+template <typename ElemType, bool SrcIsExpertFirst, bool DstIsExpertFirst>
+__aicore__ inline void PermuteImplParallel(
+    GlobalTensor<ElemType> &srcBuffer,
+    GlobalTensor<ElemType> &dstBuffer,
+    const uint64_t *offsetCounts, uint32_t e, uint32_t rankDim,
+    uint32_t startExpertIdx, uint32_t expertNum,
+    uint64_t axis, uint64_t &permuteBaseOffset,
+    TBuf<QuePosition::VECIN> &permuteTBuf, TBuf<QuePosition::VECIN> &permuteTBuf2,
+    uint64_t bufferLen, int32_t &eventID,
+    uint32_t aivCoreNum)
+{
+    LocalTensor<ElemType> ubBufA = permuteTBuf.Get<ElemType>();
+    LocalTensor<ElemType> ubBufB = permuteTBuf2.Get<ElemType>();
+    TPipe *pipe = GetTPipePtr();
+
+    uint32_t totalPos = rankDim * expertNum;
+    uint64_t sumCntSrc[MAX_EXPERT_SIZE] = {0UL};
+    uint64_t sumCntDst[MAX_EXPERT_SIZE] = {0UL};
+
+    ComputePrefixSum<SrcIsExpertFirst>(sumCntSrc, totalPos, offsetCounts, e, startExpertIdx, expertNum, rankDim);
+    ComputePrefixSum<DstIsExpertFirst>(sumCntDst, totalPos, offsetCounts, e, startExpertIdx, expertNum, rankDim);
+
+    uint32_t myBlockIdx = GetBlockIdx();
+    uint32_t totalPairs = rankDim * expertNum;
+    uint32_t pairsPerCore = CeilDiv(totalPairs, aivCoreNum);
+    uint32_t myStartPair = myBlockIdx * pairsPerCore;
+    uint32_t myEndPair = (myStartPair + pairsPerCore > totalPairs) ? totalPairs : (myStartPair + pairsPerCore);
+
+    uint32_t endExpertIdx = startExpertIdx + expertNum;
+
+    for (uint32_t pairIdx = myStartPair; pairIdx < myEndPair; pairIdx++) {
+        uint32_t rankIndex, expertIdx;
+        if constexpr (!SrcIsExpertFirst) {
+            rankIndex = pairIdx / expertNum;
+            expertIdx = startExpertIdx + (pairIdx % expertNum);
+        } else {
+            expertIdx = startExpertIdx + (pairIdx / rankDim);
+            rankIndex = pairIdx % rankDim;
+        }
+
+        uint32_t localExpertIdx = expertIdx - startExpertIdx;
+
+        uint32_t srcPos, dstPos;
+        if constexpr (!SrcIsExpertFirst) {
+            srcPos = rankIndex * expertNum + localExpertIdx;
+        } else {
+            srcPos = localExpertIdx * rankDim + rankIndex;
+        }
+        if constexpr (!DstIsExpertFirst) {
+            dstPos = rankIndex * expertNum + localExpertIdx;
+        } else {
+            dstPos = localExpertIdx * rankDim + rankIndex;
+        }
+
+        uint64_t srcOffset = permuteBaseOffset;
+        if (srcPos != 0U) {
+            srcOffset += sumCntSrc[srcPos - 1U] * axis;
+        }
+        uint64_t dstOffset = permuteBaseOffset;
+        if (dstPos != 0U) {
+            dstOffset += sumCntDst[dstPos - 1U] * axis;
+        }
+
+        uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) *
+            axis * sizeof(ElemType);
+
+        if (totalCnt == 0UL) {
+            continue;
+        }
+
+        TileDataCopyLoopDoubleBuf<ElemType>(
+            ubBufA, ubBufB, srcBuffer, dstBuffer,
+            srcOffset, dstOffset, totalCnt,
+            bufferLen, pipe);
+    }
+
+    uint64_t currentDataCount = 0UL;
+    for (uint32_t expertIdxIter = startExpertIdx; expertIdxIter < endExpertIdx; expertIdxIter++) {
+        for (uint32_t rankIndexIter = 0U; rankIndexIter < rankDim; rankIndexIter++) {
+            currentDataCount += offsetCounts[rankIndexIter * e + expertIdxIter];
         }
     }
     permuteBaseOffset += currentDataCount * axis;

@@ -99,7 +99,8 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
         A2avGmmScheduler<HcclOpType, ComputeOpType, LocalComputeOpType>;
     // comm
     HcclOpType commOp;
-    commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
+    commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM,
+                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
     computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
     if constexpr (MX_QUANT_MODE) {
         commOp.InitScaleBuffer(gmmxScaleGM, commScaleOutGm, gmmXScalePermuteGM);

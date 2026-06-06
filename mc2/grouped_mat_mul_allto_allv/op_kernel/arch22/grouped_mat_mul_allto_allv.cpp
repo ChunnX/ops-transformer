@@ -100,7 +100,8 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
 
     GM_ADDR sendBufferAddr = (tilingData.taskTilingInfo.expertNum > 1) ? permuteSendGM : gmmOutputGM;
     HcclOpType hcclOp;
-    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM);
+    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM,
+        static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);

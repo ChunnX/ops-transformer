@@ -99,8 +99,6 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
-    // set expertNum
-    expertNum_ = 1;
     // set workspace
     SetWorkspaceInfo();
     // tensorListSize为kernel侧tensorlist开辟的空间
@@ -165,6 +163,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
+    tilingData->taskTilingInfo.aivCoreNum = static_cast<uint64_t>(aivCoreNum_);
+    tilingData->taskTilingInfo.aicCoreNum = static_cast<uint64_t>(aicCoreNum_);
     tilingData->taskTilingInfo.expertNum = expertNum_;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
     tilingData->taskTilingInfo.tailLoopExpertNum =
