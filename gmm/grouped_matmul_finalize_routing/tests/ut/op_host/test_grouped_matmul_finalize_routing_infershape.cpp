@@ -10,16 +10,16 @@
 
 /*!
  * \file test_grouped_matmul_finalize_routing_infershape.cpp
- * \brief CSV-driven unit tests for grouped_matmul_finalize_routing infershape.
+ * \brief CSV-driven unit tests for grouped_matmul_finalize_routing infershape & inferdtype.
  */
 
 #include <gtest/gtest.h>
 
-#include <fstream>
 #include <string>
 #include <vector>
 
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "csv_case_load_utils.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
@@ -28,251 +28,129 @@
 using namespace std;
 
 namespace {
+
+using ops::ut::MakeGertStorageShape;
 using ops::ut::ParseBool;
-using ops::ut::SplitStr2Vec;
+using ops::ut::ParseDims;
+using ops::ut::ParseGeDtype;
+using ops::ut::ParseGeFormat;
+using ops::ut::ParseScalarToken;
+using ops::ut::ResolveCsvPath;
 using ops::ut::Trim;
 
-ge::DataType ParseDtype(const string &dtype)
+static float ParseFloatDefault(const string &v, float d = 0.0F)
 {
-    return ops::ut::ParseGeDtype(dtype);
+    string t = Trim(v);
+    return t.empty() ? d : stof(t);
 }
 
-ge::Format ParseFormat(const string &format)
-{
-    return ops::ut::ParseGeFormat(format);
-}
+static const char *K_IN_NAMES[] = {"x",         "w",           "scale", "bias",    "pertokenScale",
+                                   "groupList", "sharedInput", "logit", "rowIndex"};
 
-vector<int64_t> ParseDims(const string &value)
-{
-    return ops::ut::ParseDims(value, {}, true);
-}
+struct GmmFrInfershapeCase {
+    GmmFrInfershapeCase(const csv_map &m)
+    {
+        caseName = ReadMap(m, "caseName");
+        enable = ParseBool(ReadMap(m, "enable"));
+        prefix = ReadMap(m, "prefix");
+        expectSuccess = ParseBool(ReadMap(m, "expectSuccess"));
+        expectYShape = ReadMap(m, "expectYShape");
+        for (size_t i = 0; i < 9; ++i) {
+            inShapes.push_back(ReadMap(m, string(K_IN_NAMES[i]) + "Shape"));
+            inDtypes.push_back(ReadMap(m, string(K_IN_NAMES[i]) + "Dtype"));
+            inFormats.push_back(ReadMap(m, string(K_IN_NAMES[i]) + "Format"));
+        }
+        yDtype = ReadMap(m, "yDtype");
+        yFormat = ReadMap(m, "yFormat");
+        dtypeAttr = ParseScalarToken(ReadMap(m, "dtype"));
+        siWeight = ParseFloatDefault(ReadMap(m, "sharedInputWeight"), 1.0F);
+        siOffset = ParseScalarToken(ReadMap(m, "sharedInputOffset"));
+        tpX = ParseBool(ReadMap(m, "transposeX"));
+        tpW = ParseBool(ReadMap(m, "transposeW"));
+        outBs = ParseScalarToken(ReadMap(m, "outputBs"));
+        glType = ParseScalarToken(ReadMap(m, "groupListType"));
+    }
 
-struct GroupedMatmulFinalizeRoutingInfershapeCase {
     void Run() const
     {
-        RunInferShape();
-    }
-
-    void RunInferShape() const
-    {
-        gert::InfershapeContextPara infershapeContextPara(
-            "GroupedMatmulFinalizeRouting",
-            {
-                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype),
-                 ParseFormat(scaleFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
-                 ParseFormat(pertokenScaleFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype),
-                 ParseFormat(groupListFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
-                 ParseFormat(sharedInputFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype),
-                 ParseFormat(logitFormat)},
-                {ops::ut::MakeGertStorageShape(ParseDims(rowIndexShape)), ParseDtype(rowIndexDtype),
-                 ParseFormat(rowIndexFormat)},
-            },
-            {
-                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
-            },
-            {
-                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtype)},
-                {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(sharedInputWeight)},
-                {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sharedInputOffset)},
-                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
-                {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeW)},
-                {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputBs)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-            });
-
-        vector<vector<int64_t>> expectShape = {ParseDims(expectYShape)};
-        ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
-    }
-
-    void RunInferDtype() const
-    {
-        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-        ASSERT_NE(spaceRegistry, nullptr);
-        auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulFinalizeRouting");
-        ASSERT_NE(opImpl, nullptr);
-        ASSERT_NE(opImpl->infer_datatype, nullptr);
-
-        ge::DataType xDtypeVal = ParseDtype(xDtype);
-        ge::DataType wDtypeVal = ParseDtype(wDtype);
-        ge::DataType scaleDtypeVal = Trim(scaleShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(scaleDtype);
-        ge::DataType biasDtypeVal = Trim(biasShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(biasDtype);
-        ge::DataType pertokenScaleDtypeVal =
-            Trim(pertokenScaleShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(pertokenScaleDtype);
-        ge::DataType groupListDtypeVal = Trim(groupListShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(groupListDtype);
-        ge::DataType sharedInputDtypeVal =
-            Trim(sharedInputShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(sharedInputDtype);
-        ge::DataType logitDtypeVal = Trim(logitShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(logitDtype);
-        ge::DataType rowIndexDtypeVal = Trim(rowIndexShape) == "NONE" ? ge::DT_UNDEFINED : ParseDtype(rowIndexDtype);
-
-        vector<void *> inputDataTypes = {
-            &xDtypeVal,         &wDtypeVal,           &scaleDtypeVal, &biasDtypeVal,     &pertokenScaleDtypeVal,
-            &groupListDtypeVal, &sharedInputDtypeVal, &logitDtypeVal, &rowIndexDtypeVal,
-        };
-
-        auto contextHolder = gert::InferDataTypeContextFaker()
-                                 .SetOpType("GroupedMatmulFinalizeRouting")
-                                 .NodeIoNum(9, 1)
-                                 .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                                 .InputDataTypes(inputDataTypes)
-                                 .Attr("dtype", int64_t(dtype))
-                                 .Attr("shared_input_weight", float(sharedInputWeight))
-                                 .Attr("shared_input_offset", int64_t(sharedInputOffset))
-                                 .Attr("transpose_x", bool(transposeX))
-                                 .Attr("transpose_w", bool(transposeW))
-                                 .Attr("output_bs", int64_t(outputBs))
-                                 .Attr("group_list_type", int64_t(groupListType))
-                                 .Build();
-        auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
-        ASSERT_NE(context, nullptr);
-        auto inferDtypeRet = opImpl->infer_datatype(context);
-        EXPECT_EQ(inferDtypeRet, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED)
-            << "InferDtype failed for case=" << caseName;
-        if (inferDtypeRet == ge::GRAPH_SUCCESS) {
-            EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT);
+        vector<gert::InfershapeContextPara::TensorDescription> ins;
+        for (size_t i = 0; i < 9; ++i) {
+            ins.emplace_back(MakeGertStorageShape(ParseDims(inShapes[i], {}, true)), ParseGeDtype(inDtypes[i]),
+                             ParseGeFormat(inFormats[i]));
         }
+        gert::InfershapeContextPara para(
+            "GroupedMatmulFinalizeRouting", ins,
+            {{MakeGertStorageShape(ParseDims("NONE", {}, true)), ParseGeDtype(yDtype), ParseGeFormat(yFormat)}},
+            {{"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeAttr)},
+             {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(siWeight)},
+             {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(siOffset)},
+             {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(tpX)},
+             {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(tpW)},
+             {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outBs)},
+             {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(glType)}});
+        ExecuteTestCase(para, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
+                        {ParseDims(expectYShape, {}, true)});
     }
 
     string caseName;
     bool enable = true;
     string prefix;
-    string caseType;
     bool expectSuccess = false;
     string expectYShape;
-
-    string xShape;
-    string wShape;
-    string scaleShape;
-    string biasShape;
-    string pertokenScaleShape;
-    string groupListShape;
-    string sharedInputShape;
-    string logitShape;
-    string rowIndexShape;
-
-    string xDtype;
-    string wDtype;
-    string scaleDtype;
-    string biasDtype;
-    string pertokenScaleDtype;
-    string groupListDtype;
-    string sharedInputDtype;
-    string logitDtype;
-    string rowIndexDtype;
-    string yDtype;
-
-    string xFormat;
-    string wFormat;
-    string scaleFormat;
-    string biasFormat;
-    string pertokenScaleFormat;
-    string groupListFormat;
-    string sharedInputFormat;
-    string logitFormat;
-    string rowIndexFormat;
-    string yFormat;
-
-    int64_t dtype = 0;
-    float sharedInputWeight = 1.0F;
-    int64_t sharedInputOffset = 0;
-    bool transposeX = false;
-    bool transposeW = false;
-    int64_t outputBs = 0;
-    int64_t groupListType = 1;
+    vector<string> inShapes, inDtypes, inFormats;
+    string yDtype, yFormat;
+    int64_t dtypeAttr = 0;
+    float siWeight = 1.0F;
+    int64_t siOffset = 0;
+    bool tpX = false;
+    bool tpW = false;
+    int64_t outBs = 0;
+    int64_t glType = 1;
 };
 
-vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
+vector<GmmFrInfershapeCase> LoadEnabled()
 {
-    vector<GroupedMatmulFinalizeRoutingInfershapeCase> cases;
-    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_infershape.csv",
-                                                   "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__);
-    ifstream csvData(csvPath, ios::in);
-    EXPECT_TRUE(csvData.is_open()) << "cannot open case file " << csvPath;
-    if (!csvData.is_open()) {
-        return cases;
+    string path = ResolveCsvPath("test_grouped_matmul_finalize_routing_infershape.csv",
+                                 "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__);
+    auto all = GetCasesFromCsv<GmmFrInfershapeCase>(path);
+    vector<GmmFrInfershapeCase> out;
+    for (auto &c : all) {
+        if (c.enable) {
+            out.push_back(std::move(c));
+        }
     }
-
-    string line;
-    while (getline(csvData, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        vector<string> items;
-        SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "caseName" || items.size() < 42U) {
-            continue;
-        }
-
-        size_t idx = 0;
-        GroupedMatmulFinalizeRoutingInfershapeCase tc;
-        tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(Trim(items[idx++]));
-        if (!tc.enable) {
-            continue;
-        }
-        tc.prefix = Trim(items[idx++]);
-        tc.caseType = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(Trim(items[idx++]));
-        tc.expectYShape = Trim(items[idx++]);
-
-        tc.xShape = Trim(items[idx++]);
-        tc.wShape = Trim(items[idx++]);
-        tc.scaleShape = Trim(items[idx++]);
-        tc.biasShape = Trim(items[idx++]);
-        tc.pertokenScaleShape = Trim(items[idx++]);
-        tc.groupListShape = Trim(items[idx++]);
-        tc.sharedInputShape = Trim(items[idx++]);
-        tc.logitShape = Trim(items[idx++]);
-        tc.rowIndexShape = Trim(items[idx++]);
-
-        tc.xDtype = Trim(items[idx++]);
-        tc.wDtype = Trim(items[idx++]);
-        tc.scaleDtype = Trim(items[idx++]);
-        tc.biasDtype = Trim(items[idx++]);
-        tc.pertokenScaleDtype = Trim(items[idx++]);
-        tc.groupListDtype = Trim(items[idx++]);
-        tc.sharedInputDtype = Trim(items[idx++]);
-        tc.logitDtype = Trim(items[idx++]);
-        tc.rowIndexDtype = Trim(items[idx++]);
-        tc.yDtype = Trim(items[idx++]);
-
-        tc.xFormat = Trim(items[idx++]);
-        tc.wFormat = Trim(items[idx++]);
-        tc.scaleFormat = Trim(items[idx++]);
-        tc.biasFormat = Trim(items[idx++]);
-        tc.pertokenScaleFormat = Trim(items[idx++]);
-        tc.groupListFormat = Trim(items[idx++]);
-        tc.sharedInputFormat = Trim(items[idx++]);
-        tc.logitFormat = Trim(items[idx++]);
-        tc.rowIndexFormat = Trim(items[idx++]);
-        tc.yFormat = Trim(items[idx++]);
-
-        tc.dtype = stoll(Trim(items[idx++]));
-        tc.sharedInputWeight = stof(Trim(items[idx++]));
-        tc.sharedInputOffset = stoll(Trim(items[idx++]));
-        tc.transposeX = ParseBool(Trim(items[idx++]));
-        tc.transposeW = ParseBool(Trim(items[idx++]));
-        tc.outputBs = stoll(Trim(items[idx++]));
-        tc.groupListType = stoll(Trim(items[idx++]));
-        cases.push_back(tc);
-    }
-    EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvPath;
-    return cases;
+    return out;
 }
 
-const vector<GroupedMatmulFinalizeRoutingInfershapeCase> &GetCases()
+ge::graphStatus RunInferDtype(const ge::DataType dtypes[9], bool tpW)
 {
-    static const auto cases = LoadCases();
-    return cases;
+    auto reg = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto impl = reg->GetOpImpl("GroupedMatmulFinalizeRouting");
+    ge::DataType v[9];
+    vector<void *> iv;
+    for (size_t i = 0; i < 9; ++i) {
+        v[i] = dtypes[i];
+        iv.push_back(&v[i]);
+    }
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .SetOpType("GroupedMatmulFinalizeRouting")
+                             .NodeIoNum(9, 1)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes(iv)
+                             .NodeAttrs({
+                                 {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                 {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+                                 {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                 {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                 {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(tpW)},
+                                 {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                             })
+                             .Build();
+    return impl->infer_datatype(contextHolder.GetContext<gert::InferDataTypeContext>());
 }
 
-string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingInfershapeCase> &info)
+string MakeParamName(const testing::TestParamInfo<GmmFrInfershapeCase> &info)
 {
     return ops::ut::MakeSafeParamName(info.param.prefix);
 }
@@ -280,308 +158,116 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingIn
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
-class TestGroupedMatmulFinalizeRoutingInfershape
-    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingInfershapeCase> {
-protected:
-    static void SetUpTestCase()
-    {
-    }
-    static void TearDownTestCase()
-    {
-    }
-};
 
-TEST_P(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
+class TestInfershape : public testing::TestWithParam<GmmFrInfershapeCase> {};
+
+TEST_P(TestInfershape, csvDriven)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE_CSV, TestGroupedMatmulFinalizeRoutingInfershape,
-                         testing::ValuesIn(GetCases()), MakeParamName);
+INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE, TestInfershape, testing::ValuesIn(LoadEnabled()), MakeParamName);
 
-class TestGroupedMatmulFinalizeRoutingInferDtype : public testing::Test {
-protected:
-};
+class TestInferdtype : public testing::Test {};
 
-ge::graphStatus RunInferDtypeWithDtypes(vector<void *> &inputDataTypes,
-                                        vector<pair<string, Ops::Transformer::AnyValue>> &attrs)
+TEST_F(TestInferdtype, W8A8ValidDtypes)
 {
-    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulFinalizeRouting");
-    auto contextHolder = gert::InferDataTypeContextFaker()
-                             .SetOpType("GroupedMatmulFinalizeRouting")
-                             .NodeIoNum(9, 1)
-                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                             .InputDataTypes(inputDataTypes)
-                             .NodeAttrs(attrs)
-                             .Build();
-    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
-    return opImpl->infer_datatype(context);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8,      ge::DT_FLOAT,     ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8ValidDtypes)
+TEST_F(TestInferdtype, W8A8WithBf16Scale)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8,      ge::DT_BF16,      ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_INT32};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8WithBf16Scale)
+TEST_F(TestInferdtype, W4A8ValidDtypes)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_BF16;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_INT32;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT4,      ge::DT_INT64, ge::DT_FLOAT, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W4A8ValidDtypes)
+TEST_F(TestInferdtype, MXFP8ValidDtypes)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT4, scaleD = ge::DT_INT64;
-    ge::DataType biasD = ge::DT_FLOAT, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E8M0,
+                        ge::DT_UNDEFINED,   ge::DT_FLOAT8_E8M0, ge::DT_INT64,
+                        ge::DT_UNDEFINED,   ge::DT_FLOAT,       ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, true), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, MXFP8ValidDtypes)
+TEST_F(TestInferdtype, MXFP4ValidDtypes)
 {
-    ge::DataType xD = ge::DT_FLOAT8_E5M2, wD = ge::DT_FLOAT8_E5M2, scaleD = ge::DT_FLOAT8_E8M0;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_FLOAT8_E8M0;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E8M0,
+                        ge::DT_UNDEFINED,   ge::DT_FLOAT8_E8M0, ge::DT_INT64,
+                        ge::DT_UNDEFINED,   ge::DT_FLOAT,       ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, true), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, MXFP4ValidDtypes)
+TEST_F(TestInferdtype, W8A8WithSharedInput)
 {
-    ge::DataType xD = ge::DT_FLOAT4_E2M1, wD = ge::DT_FLOAT4_E2M1, scaleD = ge::DT_FLOAT8_E8M0;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_FLOAT8_E8M0;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8, ge::DT_FLOAT, ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_BF16, ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8WithSharedInput)
+TEST_F(TestInferdtype, W4A8WithSharedInput)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_BF16;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT4, ge::DT_INT64, ge::DT_FLOAT, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_BF16, ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W4A8WithSharedInput)
+TEST_F(TestInferdtype, InvalidDtypeCompletelyWrong)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT4, scaleD = ge::DT_INT64;
-    ge::DataType biasD = ge::DT_FLOAT, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_BF16;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
+    ge::DataType d[] = {ge::DT_FLOAT16, ge::DT_BF16,      ge::DT_FLOAT,     ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64,   ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, InvalidDtypeCompletelyWrong)
+TEST_F(TestInferdtype, W8A8WrongScaleDtype)
 {
-    ge::DataType xD = ge::DT_FLOAT16, wD = ge::DT_BF16, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8,      ge::DT_INT32,     ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8WrongScaleDtype)
+TEST_F(TestInferdtype, W4A8WrongBiasDtype)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_INT32;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT4,      ge::DT_INT64, ge::DT_INT32, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W4A8WrongBiasDtype)
+TEST_F(TestInferdtype, W8A8WrongGroupListDtype)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT4, scaleD = ge::DT_INT64;
-    ge::DataType biasD = ge::DT_INT32, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8,      ge::DT_FLOAT,     ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT32, ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8WrongGroupListDtype)
+TEST_F(TestInferdtype, W8A8WrongRowIndexDtype)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT32, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT8,      ge::DT_FLOAT,     ge::DT_UNDEFINED, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_UNDEFINED, ge::DT_FLOAT};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W8A8WrongRowIndexDtype)
+TEST_F(TestInferdtype, MXWrongScaleDtype)
 {
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT8, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_UNDEFINED, riD = ge::DT_FLOAT;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, ge::DT_UNDEFINED, ge::DT_FLOAT8_E8M0,
+                        ge::DT_INT64,       ge::DT_UNDEFINED,   ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, true), ge::GRAPH_FAILED);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, MXWrongScaleDtype)
+TEST_F(TestInferdtype, W4A8WithOffset)
 {
-    ge::DataType xD = ge::DT_FLOAT8_E5M2, wD = ge::DT_FLOAT8_E5M2, scaleD = ge::DT_FLOAT;
-    ge::DataType biasD = ge::DT_UNDEFINED, ptD = ge::DT_FLOAT8_E8M0;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_FAILED);
+    ge::DataType d[] = {ge::DT_INT8,  ge::DT_INT4,      ge::DT_INT64, ge::DT_FLOAT, ge::DT_UNDEFINED,
+                        ge::DT_INT64, ge::DT_UNDEFINED, ge::DT_FLOAT, ge::DT_INT64};
+    EXPECT_EQ(RunInferDtype(d, false), ge::GRAPH_SUCCESS);
 }
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInferDtype, W4A8WithOffset)
-{
-    ge::DataType xD = ge::DT_INT8, wD = ge::DT_INT4, scaleD = ge::DT_INT64;
-    ge::DataType biasD = ge::DT_FLOAT, ptD = ge::DT_UNDEFINED;
-    ge::DataType glD = ge::DT_INT64, siD = ge::DT_UNDEFINED;
-    ge::DataType logD = ge::DT_FLOAT, riD = ge::DT_INT64;
-    vector<void *> inputDataTypes = {&xD, &wD, &scaleD, &biasD, &ptD, &glD, &siD, &logD, &riD};
-    vector<pair<string, Ops::Transformer::AnyValue>> attrs = {
-        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
-        {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-    };
-    EXPECT_EQ(RunInferDtypeWithDtypes(inputDataTypes, attrs), ge::GRAPH_SUCCESS);
-}
 } // namespace GroupedMatmulFinalizeRoutingInfershapeUT
