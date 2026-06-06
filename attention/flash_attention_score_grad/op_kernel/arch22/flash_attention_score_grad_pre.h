@@ -418,9 +418,9 @@ public:
         }
 
         if (unlikely(TilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-            if (g_coreType == AIV && cBlockIdx == 0) {
-                size_t dsinksumSize = TilingData->postTilingData.coreNum * TilingData->postTilingData.n2 * TilingData->postTilingData.g;
-                InitOutput<float>(dsinksumWorkSpaceGm, dsinksumSize, 0);
+            if (g_coreType == AIV && cBlockIdx < TilingData->postTilingData.coreNum) {
+                size_t dsinksumSize = TilingData->postTilingData.n2 * TilingData->postTilingData.g;
+                InitOutput<float>(dsinksumWorkSpaceGm[cBlockIdx * dsinksumSize], dsinksumSize, 0);
             }
         }
 

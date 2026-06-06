@@ -926,7 +926,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetShapeAttrsIn
     if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
         return ge::GRAPH_FAILED;
     }
-    ProcessSinkInfo();
+    if (ge::GRAPH_SUCCESS != ProcessSinkInfo()) {
+        return ge::GRAPH_FAILED;
+    }
     auto ret = GetBaseShapeInfo();
     if (ret != ge::GRAPH_SUCCESS) {
         PrintShapeInfo();
@@ -1730,16 +1732,21 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
     return ge::GRAPH_SUCCESS;
 }
 
-void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessSinkInfo() {
-    OP_LOGD(context_, "Before correction ,the value of sink %ld.",
-            fBaseParams.sink);
+ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessSinkInfo() {
+    OP_LOGD(context_, "FlashAttentionScoreGrad: Before correction, the value of sink %ld.", fBaseParams.sink);
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
-    if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {
+    if (sinkShape != nullptr) {
+        OP_CHECK_IF(sinkShape->GetStorageShape().GetDimNum() != 1,
+                    OP_LOGE(context_, "FlashAttentionScoreGrad: Sink shape dimNum=%d is not 1, which is invalid.",
+                            sinkShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
         fBaseParams.sink = 1;
-        OP_LOGD(context_, "Sink is in use, the value of sink now sink=%ld.",fBaseParams.sink);
-    }else{
-        OP_LOGD(context_, "Sink is nullptr");
+        OP_LOGD(context_, "FlashAttentionScoreGrad: Sink is in use, the value of sink now sink=%ld.", fBaseParams.sink);
+    } else {
+        fBaseParams.sink = 0;
+        OP_LOGD(context_, "FlashAttentionScoreGrad: Sink is not provided, skip sink computation.");
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 int64_t FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::FindBandIdx()
@@ -2036,14 +2043,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPostTiling()
 
     // dsink workspace
     if (fBaseParams.sink == 1) {
-        int64_t sinkBeginOffset = workspaceOffsets;
         tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
-
         workspaceOffsets =
             (workspaceOffsets + fBaseParams.coreNum * fBaseParams.n2 * fBaseParams.g * FP32_BYTES +
-             GM_ALIGN) /
-            GM_ALIGN * GM_ALIGN;
-        tilingData->postTilingData.set_sinkDataSize(workspaceOffsets - sinkBeginOffset);
+             GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
     // mask bool workspace size
