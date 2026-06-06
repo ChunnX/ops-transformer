@@ -10,6 +10,7 @@
 
 #ifndef DATA_UTILS_H
 #define DATA_UTILS_H
+#include <string>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
