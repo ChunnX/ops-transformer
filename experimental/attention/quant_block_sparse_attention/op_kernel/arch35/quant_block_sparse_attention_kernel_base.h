@@ -20,7 +20,7 @@
 #define QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_BASE_H_
 #include "quant_block_sparse_attention_block_cube.h"
 #include "quant_block_sparse_attention_block_vec.h"
-#include "common/flash_attention_score_common_regbase.h"
+#include "common/quant_block_sparse_attention_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -32,9 +32,8 @@
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-
-#include "common/pse.h"
-#include "common/infer_flash_attention_comm.h"
+#include "common/quant_block_sparse_attention_tiling_regbase.h"
+#include "common/quant_block_sparse_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
@@ -47,11 +46,9 @@ using namespace regbaseutil;
 namespace BaseApi {
 namespace BSAKernelBase {
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
+template <bool isFp8>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<(useDn && isFp8),
-        BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-        BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
+    using Type = BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 };
 }
 
@@ -86,7 +83,6 @@ public:
                             const QuantBlockSparseAttentionTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
-    __aicore__ inline void InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
@@ -107,9 +103,6 @@ public:
     static constexpr bool isFp8 = CubeBlockType::isFp8;
     static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
-    static constexpr bool useDn = CubeBlockType::useDn;
-    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
-    static constexpr bool useNz = CubeBlockType::useNz;
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD =  CubeBlockType::splitD;
@@ -123,7 +116,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename BSAKernelBase::Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename BSAKernelBase::Bmm2ResBuffSel<isFp8>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     // mm2左矩阵P
@@ -139,9 +132,8 @@ public:
     int32_t aicIdx;
 
     /* 初始化后不变的信息 */
-    ConstInfo<isInfer, hasRope> constInfo;
+    ConstInfo<isInfer> constInfo;
     AttenMaskInfo attenMaskInfo;
-    PseInfo pseInfo;
     /* 其他正向独有的一些信息 */
     // Unpack参数
     uint64_t s1OuterSizeAcc;
@@ -181,12 +173,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
     this->pipe = tPipe;
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
-        attenMaskInfo, pseInfo);
+        attenMaskInfo);
     vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope);
+        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, key, value, blockTable);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -197,29 +189,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         }
     }
 
-    this->InitActualKVPrefixLen(actualSharedPrefixLen);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
         actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
-{
-    if constexpr (isInfer) {
-        if constexpr (enableKVPrefix) {
-            constInfo.kvPrefixSize = this->sharedParams.kvPrefixSize;
-            if (!this->sharedParams.isActualSharedPrefixLenNull) {
-                this->actualKVPrefixLen = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
-            } else {
-                this->actualKVPrefixLen = this->sharedParams.kvPrefixSize;
-            }
-            constInfo.actualKVPrefixSize = this->actualKVPrefixLen;
-        }
-    }
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -252,21 +227,11 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
-    } else {
-        if constexpr (isInfer) {
-            if (!constInfo.isActualLenDimsNull) {
-                actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
-            }
-            if (!constInfo.isActualLenDimsKVNull) {
-                actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
-            }
-        }
     }
 
-    vecBlock.InitDropOut(dropMask, workspace);
     uint64_t singleCoreOffset = 0;
     if constexpr (!bmm2Write2Ub) {
         int64_t bmm2ResBlock = this->sharedParams.dSizeV;
@@ -288,9 +253,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         workspace += (totalOffset + mm2Offset * 3);
     }
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum,
-        workspace, singleCoreOffset,
-        this->aicIdx, constInfo);
+        prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
         if ASCEND_IS_AIV {
             int64_t actualS1Len;
@@ -322,7 +285,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
             }
         }
     }
-    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
     cubeBlock.InitDequantParams(deqScaleQ, deqScaleK, deqScaleV);
 }
 
@@ -330,9 +293,6 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitMMResBuf()
 {
     uint32_t mm1OutDtype = sizeof(T);
-    if constexpr (useNz) {
-        mm1OutDtype = sizeof(half);
-    }
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
     if constexpr (isMxfp8FullQuant) {
         mm1ResultSize /= 2;
@@ -343,32 +303,19 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     if constexpr (bmm2Write2Ub) {
-        if constexpr (!(useDn && isFp8)) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
-        } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-            }
+        ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+        bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+        if ASCEND_IS_AIV {
+            bmm2Buffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
         }
     } else {
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     if ASCEND_IS_AIV {
-        if constexpr (useNz) {
-            bmm1Buffers.Get().SetCrossCore<true>();
-            bmm1Buffers.Get().SetCrossCore<true>();
-        } else {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
-        }
+        bmm1Buffers.Get().SetCrossCore();
+        bmm1Buffers.Get().SetCrossCore();
     }
 }
  
@@ -395,11 +342,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.combineDim = (constInfo.dSize + constInfo.dSizeV + sizeof(float) + 31U) / 32U * 32U;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
-    if constexpr (hasRope) {
-        constInfo.dSizeRope = sharedParams.dSizeRope;
-    } else {
-        constInfo.dSizeRope = 0;
-    }
+    constInfo.dSizeRope = 0;
     constInfo.gSize = sharedParams.gSize;
     constInfo.s1OuterSize = sharedParams.s1OuterSize;
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
@@ -417,12 +360,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
-    if (sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD) ||
-        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
-        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD)) {
-        constInfo.t1Size = constInfo.bSize * constInfo.s1Size;
-    }
-
     if constexpr (isInfer) {
         constInfo.s1D = constInfo.s1Size * constInfo.dSize;
         constInfo.gD = constInfo.gSize * constInfo.dSize;
@@ -433,10 +370,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
@@ -455,76 +388,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
                     constInfo.attentionOutStride = 0;
                 }
             }
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-        // BSH/BSNGD
-        constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = constInfo.n2Dv;
-        if constexpr (isInfer) {
-            if (sharedParams.isGqa) {
-                constInfo.mm1Ka = constInfo.dSize;
-            }
-        }
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride =
-                (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            if constexpr (isInfer) {
-                if (sharedParams.isPfaGS1Merge == 1) {
-                    constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-                } else if (sharedParams.isGqa == 1) {
-                    constInfo.attentionOutStride = 0;
-                }
-            }
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_SBH) {
-        // SBH/SBNGD
-        constInfo.bN2GDv = sharedParams.bSize * constInfo.n2GDv;
-        constInfo.s1BaseBN2GDv = s1BaseSize * constInfo.bN2GDv;
-        constInfo.s2BaseBN2Dv = sharedParams.bSize * constInfo.s2BaseN2Dv;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
-            constInfo.mm1RopeKb = sharedParams.bSize * constInfo.n2Size * constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = sharedParams.bSize * constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = sharedParams.bSize * constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = sharedParams.bSize * constInfo.n2Dv;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride =
-                (sharedParams.bSize * constInfo.n2Size * constInfo.gSize - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-        // bnsd
-        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = constInfo.dSize;
-        constInfo.mm1Kb = constInfo.dSize;
-        constInfo.mm2Kb = constInfo.dSizeV;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = 0;
-        }
-    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-        // NG(BS)D
-        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
-        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
-        if constexpr (hasRope) {
-            constInfo.mm1RopeKa = constInfo.dSizeRope;
-            constInfo.mm1RopeKb = constInfo.dSizeRope;
-        }
-        constInfo.mm1Ka = constInfo.dSize;
-        constInfo.mm1Kb = constInfo.dSize;
-        constInfo.mm2Kb = constInfo.dSizeV;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = 0;
         }
     }
 
@@ -578,9 +441,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
             this->s1SizeAcc += runParam.actualS1Size;
             this->s2SizeAcc += runParam.actualS2Size;
             runParam.b1SSOffset += runParam.actualS1Size * runParam.actualS2Size;
-            if constexpr (hasDrop) {
-                runParam.b1SSOffsetAlign16 += runParam.actualS1Size * Align(runParam.actualS2Size);
-            }
             runParam.boIdx++;
             if (runParam.boIdx >= this->sharedParams.bSize) {
                 break;
@@ -602,17 +462,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runParam.b1SSOffset = runParam.boIdx * constInfo.s1S2;
         runParam.actualS1Size = constInfo.s1Size;
         runParam.actualS2Size = constInfo.s2Size;
-        if constexpr (hasDrop) {
-            runParam.b1SSOffsetAlign16 = runParam.boIdx * constInfo.s1Size * Align(constInfo.s2Size);
-        }
     }
     runParam.s1RealSize = Min(s1BaseSize, runParam.actualS1Size - runParam.s1oIdx * s1BaseSize);
-    if constexpr (useDn || useNz) {
-        runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
-    } else {
-        runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
-    }
+    runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
@@ -635,7 +487,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         runInfo.boIdx = runParam.boIdx;
         runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
         runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
@@ -676,23 +528,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
-    if constexpr (enableKVPrefix) {
-        if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-            if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > constInfo.actualKVPrefixSize) {
-                runInfo.s2RealSize = constInfo.actualKVPrefixSize - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-                runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
-            }
-        } else {
-            if (runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx - constInfo.actualKVPrefixSize) {
-                runInfo.s2RealSize = (runInfo.s2EndIdx - constInfo.actualKVPrefixSize) - (runInfo.s2LoopCount - constInfo.prefixLoopCount) * runInfo.s2RealSize - runInfo.s2StartIdx;
-                runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
-            }
-        }
-    } else {
-        if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-            runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-            runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
-        }
+    if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
+        runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
+        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
 }
 }

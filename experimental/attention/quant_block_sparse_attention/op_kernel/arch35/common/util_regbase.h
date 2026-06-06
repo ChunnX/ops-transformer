@@ -115,7 +115,6 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t cubeSOuterOffset;           // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
     int64_t keyCoreOffset;              // BN方向上，不同BN的Key的offset batch层确定
     int64_t valueCoreOffset;            // BN方向上，不同BN的value的offset batch层确定
-    uint64_t pseShiftCoreOffset;        // Souter方向上，不同souter的pseShift的offset
     int64_t keyOffset;              // mm1 Key 的offset,后续更名为KFinalOffset
 
     // q k v attenMask不同轴的offset
@@ -172,8 +171,8 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t attentionOutOffset; \
     uint64_t s1ScaleNumAcc; \
     uint64_t s2ScaleNumAcc; \
-    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
-    int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
+    int64_t s1SizeAcc;  \
+    int64_t s2SizeAcc;  \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
@@ -199,7 +198,6 @@ struct RunInfo<true> {
     COMMON_RUN_INFO;
     // 推理新增
     int64_t gS1Idx;
-    uint64_t pseShiftOffset;              // vector1 pse 的 offset
     int64_t queryLeftPaddingSize;
     int64_t kvLeftPaddingSize;
     int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
@@ -317,8 +315,6 @@ struct RunInfo<false> {
     int64_t s1BaseBN2GDR; \
     int64_t s1BaseDR; \
     int64_t s2BaseDR; \
-    int64_t mm1RopeKa; /* rope matmul 跳读参数*/ \
-    int64_t mm1RopeKb
 
 #define KVPREFIX_INFO \
     /* prefix参数 */ \
@@ -387,7 +383,6 @@ struct RunInfo<false> {
     uint32_t s1OuterSize;  \
     uint32_t bandIndex;  \
     uint32_t compressMode : 4;  \
-    uint32_t implMode : 4;  \
     uint32_t layoutType : 4;  \
     uint32_t sparseType : 8;  \
     uint32_t dSizeRope : 11; \
@@ -402,34 +397,17 @@ struct FagCVSharedParams {
     FAG_CV_SHARED_PARAMS;
 };
  
-template<bool isInfer = false, bool hasRope = false>
+template<bool isInfer = false>
 struct ConstInfo;
 
 template<>
-struct ConstInfo<true, true> {
+struct ConstInfo<true> {
     COMMON_CONST_INFO;
     INFER_CONST_INFO;
-    ROPE_INFO;
-    KVPREFIX_INFO;
 };
 
 template <>
-struct ConstInfo<true, false> {
-    COMMON_CONST_INFO;
-    INFER_CONST_INFO;
-    KVPREFIX_INFO;
-};
-
-template <>
-struct ConstInfo<false, true> {
-    COMMON_CONST_INFO;
-    ROPE_INFO;
-    int64_t n2GS1o; // 训练特有
-    int64_t gS1o;
-};
-
-template <>
-struct ConstInfo<false, false> {
+struct ConstInfo<false> {
     COMMON_CONST_INFO;
     int64_t n2GS1o; // 训练特有
     int64_t gS1o;

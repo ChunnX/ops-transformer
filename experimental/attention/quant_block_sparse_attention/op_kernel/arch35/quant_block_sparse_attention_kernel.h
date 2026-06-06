@@ -19,9 +19,8 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #define QUANT_BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #include "quant_block_sparse_attention_kernel_base.h"
-#include "common/infer_flash_attention_comm.h"
-#include "common/infer_flash_attention_kvcache.h"
-#include "common/infer_flash_attention_sparse.h"
+#include "common/quant_block_sparse_attention_comm.h"
+#include "common/quant_block_sparse_attention_kvcache.h"
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
@@ -69,21 +68,6 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
         this->constInfo.paBlockStride = this->sharedParams.paBlockStride;
     }
-
-    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
-    if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
-        this->constInfo.attentionOutStride =
-            (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
-    } else if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) ||
-        this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD)) {
-        this->constInfo.attentionOutStride = 0;
-    }
-
-    // prefix
-    if constexpr (enableKVPrefix) {
-        this->constInfo.prefixLoopCount = (this->constInfo.actualKVPrefixSize + this->constInfo.s2BaseSize - 1) / this->constInfo.s2BaseSize;
-    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -91,23 +75,15 @@ __aicore__ inline void
 QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
 {
-    InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, runInfo);
-    ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
+    InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS>(runParam, runInfo);
+    ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d paBlockStride=%u combineDim=%u\n",
-            this->aicIdx, actualCoreNums, this->constInfo.paBlockStride, this->constInfo.combineDim);
-    }
     if (this->aicIdx >= actualCoreNums) {
-        if (this->aicIdx == 0) {
-            printf("[BSA_DEBUG] exit ProcessMainLoop by inactive core aicIdx=%d coreNum=%d\n",
-                this->aicIdx, actualCoreNums);
-        }
         return;
     }
     // 确定核内切分起点
@@ -136,9 +112,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         bool lastBN = (bnIdx == bnEndIdx - 1);
         runParam.boIdx = bnIdx / this->constInfo.n2Size;
         runParam.n2oIdx = bnIdx % this->constInfo.n2Size;
-        ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, this->attenMaskInfo,
+        ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo,
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
-        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, lastBN,
+        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, lastBN,
                                                                       nextGs1Idx);
         int64_t tempGS1End = lastBN ? (runParam.s1LoopTimes + 3) : runParam.s1LoopTimes;
         for (int64_t gS1Index = gS1StartIdx; gS1Index < tempGS1End; ++gS1Index) {
@@ -168,10 +144,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             }
             if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
-                bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
-                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr, this->pseInfo);
+                bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(
+                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc =
-                    ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo);
+                    ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
@@ -192,8 +168,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 if (taskId > 0 && notLastTwoLoop) {
                     if ASCEND_IS_AIV {
                         auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
-                            this->constInfo);
+                        // this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                        //     this->constInfo);
                     }
                 }
                 if (taskId > 1 && notLast) {
@@ -212,9 +188,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                     if ASCEND_IS_AIV {
                         RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
-                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                            // this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         } else {
-                            this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
+                            // this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
                         }
                     }
                 }
@@ -229,10 +205,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::Process()
 {
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter Process aicIdx=%d needInit=%d\n", this->aicIdx,
-            static_cast<int32_t>(this->sharedParams.needInit));
-    }
     // SyncAll Cube和Vector都需要调用
     if (this->sharedParams.needInit) {
         SyncAll<false>();
@@ -247,23 +219,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 {
     constexpr uint64_t fp8QBlockSize = 128U; // 128 is SOuterSize
     constexpr uint64_t fp8KvBlockSize = 256U; // 256 is SInnerSize
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-        if (runParam.boIdx == 0 || runParam.boIdx == 1) {
-            this->s1ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqQlenAddr[0], fp8QBlockSize);
-            this->s2ScaleNumAcc = runParam.boIdx == 0 ? 0 : CeilDiv(this->actualSeqKvlenAddr[0], fp8KvBlockSize);
-            this->s1SizeAcc = runParam.boIdx == 0 ? 0 : this->actualSeqQlenAddr[0];
-            this->s2SizeAcc = runParam.boIdx == 0 ? 0 : this->actualSeqKvlenAddr[0];
-        } else {
-            this->s1ScaleNumAcc = CeilDiv(this->actualSeqQlenAddr[0], fp8QBlockSize);
-            this->s2ScaleNumAcc = CeilDiv(this->actualSeqKvlenAddr[0], fp8KvBlockSize);
-            for (uint32_t boIdx = 1; boIdx < runParam.boIdx; boIdx++) {
-                this->s1ScaleNumAcc += CeilDiv(this->actualSeqQlenAddr[boIdx] - this->actualSeqQlenAddr[boIdx - 1], fp8QBlockSize);
-                this->s2ScaleNumAcc += CeilDiv(this->actualSeqKvlenAddr[boIdx] - this->actualSeqKvlenAddr[boIdx - 1], fp8KvBlockSize);
-            }
-            this->s1SizeAcc = this->actualSeqQlenAddr[runParam.boIdx - 1];
-            this->s2SizeAcc = this->actualSeqKvlenAddr[runParam.boIdx - 1];
-        }
-    }
     // GS1合轴时，g轴信息包含在gS1中；GS1不合轴时，g轴信息包含在bn2g中；
     if (this->constInfo.isGqa) {
         runParam.goIdx = gS1Index / this->constInfo.s1OuterSize;
