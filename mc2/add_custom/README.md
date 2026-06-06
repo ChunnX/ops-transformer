@@ -1,11 +1,11 @@
-# Add Custom — aclrtHostRegister V1 零拷贝穿刺验证
+# Add Custom — aclrtHostRegister V2 零拷贝穿刺验证
 
 ## 概述
 
-验证 `aclrtHostRegister`(V1) + `ACL_HOST_REGISTER_MAPPED` 实现 Host↔Device 零拷贝信号通路。
+验证 `aclrtHostRegisterV2` + `aclrtHostGetDevicePointer` 实现 Host↔Device 零拷贝信号通路。
 
 ```
-[Host] aclrtMallocHost → aclrtHostRegister(MAPPED, &syncDev) → syncHost/syncDev
+[Host] aclrtMallocHost → aclrtHostRegisterV2(MAPPED) → aclrtHostGetDevicePointer → syncHost/syncDev
 [OP1] add_custom_with_sync: x+y→bufA, *(uint32_t*)syncDev = 32768
 [Host] while(*syncHost == 0) {}  ← 零拷贝自旋
 [Host] malloc(op2Bytes) → OP2 动态分配 → 执行
@@ -43,7 +43,7 @@ rm -rf build && ./run.sh
 ## 关键输出
 
 ```
-[INFO] syncHost=0x12c0014e1000  syncDev=0x3fff8200000  ← V1 一步拿到
+[INFO] syncHost=0x12c0014e1000  syncDev=0x3fff8200000  ← V2 两步拿到
 [INFO] Launch OP1 ...
 [INFO] Polling syncHost (zero-copy) ...
 [INFO] OP1 done, size=32768 bytes
@@ -57,7 +57,7 @@ error ratio: 0.0000
 | 步骤 | API | 说明 |
 |------|-----|------|
 | 申请 host-pinned | `aclrtMallocHost` | 必须 MallocHost, malloc 不行 |
-| 映射+拿dev地址 | `aclrtHostRegister`(V1) | MAPPED + &syncDev 一步到位 |
+| 映射+拿dev地址 | `aclrtHostRegisterV2` + `aclrtHostGetDevicePointer` | V2: 注册与取地址分离 |
 | kernel 写 | `*(volatile __gm__ uint32_t*)syncDev = val` | block0 写入 |
 | Host 读 | `while(*syncHost == 0){}` | 零拷贝, 无 memcpy |
 | 解注册 | `aclrtHostUnregister` | 必须先 Unregister 再 FreeHost |
@@ -66,10 +66,9 @@ error ratio: 0.0000
 
 | | A3 (910_93 + CANN 9.1.0) | A5 (950PR) |
 |------|:---:|:---:|
-| V1 Register(MAPPED) | ✅ | 测试中 |
-| kernel 写 mapped | ✅ | 测试中 |
-| 零拷贝轮询 | ✅ | 测试中 |
-| 精度 | ✅ 0.0000 | 测试中 |
+| V2 RegisterV2(MAPPED) | ✅ | ✅ |
+| GetDevicePointer | ✅ | ✅ |
+| kernel 写 mapped | ✅ | ✅ |
 
 ## 规格
 

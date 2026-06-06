@@ -28,9 +28,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=== [1/4] Generating test data ==="
+rm -rf input output
 python3 scripts/gen_data.py
 
 echo "=== [2/4] Building ($ARCH) ==="
+rm -rf build
 mkdir -p build && cd build
 cmake -DCMAKE_ASC_ARCHITECTURES="$ARCH" .. && make -j
 
