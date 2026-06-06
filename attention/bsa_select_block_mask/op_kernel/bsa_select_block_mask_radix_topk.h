@@ -531,9 +531,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(
     if constexpr (sizeof(IN_T) == 2) {
         ubOffset = tileLen_;
     }
+    uint64_t xAlign = BLOCK_SIZE / sizeof(IN_T);
+    uint8_t xPadNum = static_cast<uint8_t>((xAlign - dataNum % xAlign) % xAlign);
     DataCopyExtParams xCopyParams{
         static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(IN_T) * dataNum), 0, 0, 0};
-    DataCopyPadExtParams<IN_T> xPadParams{true, 0, 0, 0};
+    DataCopyPadExtParams<IN_T> xPadParams{true, 0, xPadNum, 0};
     DataCopyPad(xLocal[ubOffset], attnScoreGmLocal[xOffset], xCopyParams, xPadParams);
 }
 
