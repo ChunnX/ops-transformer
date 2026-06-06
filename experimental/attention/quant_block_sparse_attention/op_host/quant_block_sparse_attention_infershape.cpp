@@ -72,7 +72,7 @@ ge::graphStatus InferDataTypeQuantBlockSparseAttention(gert::InferDataTypeContex
         return ge::GRAPH_FAILED;
     }
     ge::DataType attentionOutType = context->GetOutputDataType(optiling::BSA_ATTENTION_OUT_INDEX);
-    if (attentionOutType != ge::DT_FLOAT16 && attentionOutType != ge::DT_BF16) {
+    if (attentionOutType != ge::DT_BF16) {
         attentionOutType = ge::DT_BF16;
     }
     context->SetOutputDataType(optiling::BSA_ATTENTION_OUT_INDEX, attentionOutType);
