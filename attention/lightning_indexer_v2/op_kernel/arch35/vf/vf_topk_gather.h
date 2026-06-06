@@ -712,6 +712,8 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
 
     // filter
+    int32_t count = LIV2Common::Align(topK, (uint32_t)64) - topK / 64 * 64;
+    AscendC::Duplicate(tmpIdxLocal[topK / 64 * 64], (uint32_t)(0), count);
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
