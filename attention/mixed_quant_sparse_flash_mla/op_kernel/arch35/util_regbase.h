@@ -199,9 +199,6 @@ struct RunInfo {
     bool isSoftmaxLseEnable; \
     uint32_t sparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
-    uint32_t actualLenDimsOriKV; /* seqused_ori_kv的维度 */ \
-    uint32_t actualLenDimsCmpKV; /* seqused_cmp_kv的维度 */ \
-    uint32_t cmpResidualKVSize; /* cmp_residual_kv的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
     uint32_t cmpBlockSize; \

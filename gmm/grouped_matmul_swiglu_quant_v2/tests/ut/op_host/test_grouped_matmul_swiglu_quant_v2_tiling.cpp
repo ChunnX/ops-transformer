@@ -58,12 +58,16 @@ constexpr size_t kCsvColumnCount =
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
+        // 跳过未启用的case
+        if (!enable) {
+            return;
+        }
         auto compileInfoForRun = compileInfo;
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmulSwigluQuantV2", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
                 {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
-                {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
+                {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantDtype)},
                 {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
                 {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
@@ -75,9 +79,9 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
             ExecuteTiling(tilingContextPara, tilingInfo);
             EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
             return;
+        } else {
+            ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
         }
-
-        ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
     }
 
     string socVersion;
@@ -160,12 +164,14 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             };
 
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-                tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), 
+                                     ops::ut::ParseDims(Trim(items[idx++])),
                                      ops::ut::ParseGeDtype(Trim(items[idx++])),
                                      ops::ut::ParseGeFormat(Trim(items[idx++]))});
             }
             for (size_t tensorIdx = 0; tensorIdx < kOutputTensorCount; ++tensorIdx) {
-                tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), 
+                                      ops::ut::ParseDims(Trim(items[idx++])),
                                       ops::ut::ParseGeDtype(Trim(items[idx++])),
                                       ops::ut::ParseGeFormat(Trim(items[idx++]))});
             }

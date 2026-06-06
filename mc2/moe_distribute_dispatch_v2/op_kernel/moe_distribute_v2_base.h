@@ -119,6 +119,7 @@ __aicore__ inline void AIVRDMAPostSend(
         if ((curHead - *(__gm__ uint32_t*)(curHardwareTailAddr)) < QP_DEPTH - 1) {
             break;
         }
+        AscendC::GetSystemCycle(); // add this line to solve slow poll CQ issue
     }
 
     __gm__ uint8_t* wqeAddr = (__gm__ uint8_t*)(sqBaseAddr + wqeSize * (curHead % QP_DEPTH));

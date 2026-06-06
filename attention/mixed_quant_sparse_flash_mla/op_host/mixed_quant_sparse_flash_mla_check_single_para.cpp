@@ -208,8 +208,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             oriBlockSize_), return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(dSizeOriKvInput_ != 640,
-        OP_LOGE(opName_, "Dimension of OriKv only support 640, but got %u", dSizeOriKvInput_),
+    OP_CHECK_IF(dSizeOriKvInput_ != 608,
+        OP_LOGE(opName_, "Dimension of OriKv only support 608, but got %u", dSizeOriKvInput_),
         return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -226,8 +226,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             return ge::GRAPH_FAILED;
         }
 
-        OP_CHECK_IF(dSizeCmpKvInput_ != 640,
-            OP_LOGE(opName_, "Dimension of CmpKv only support 640, but got %u", dSizeCmpKvInput_),
+        OP_CHECK_IF(dSizeCmpKvInput_ != 608,
+            OP_LOGE(opName_, "Dimension of CmpKv only support 608, but got %u", dSizeCmpKvInput_),
             return ge::GRAPH_FAILED);
 
         uint32_t cmpKvN2Size_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::N, kvLayout_);
@@ -299,11 +299,10 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
-        OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio!=1"),
-            return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+        opParamInfo_.cmpResidualKv.tensor == nullptr,
+        OP_LOGE(opName_, "cmp_residual_kv is required in SCFA and CFA mode "),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

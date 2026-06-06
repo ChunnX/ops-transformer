@@ -59,6 +59,9 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckUnrequiredParaExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
+                OP_LOGE(opName_, "oriSparseIndices is not supported now, it must be nullptr."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -68,12 +71,12 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
         if (qLayout_ == QSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512
                 && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
-                OP_LOGE(opName_, "When qLayout is BNSD, topK should be 512 or 1024, but got %ld",
+                OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
                     opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
-                OP_LOGE(opName_, "When qLayout is BNSD, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
+                OP_LOGE(opName_, "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
                     s1Size_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1));
                 return ge::GRAPH_FAILED;
             }

@@ -49,6 +49,7 @@ constexpr size_t GROUPSIZE_INDEX = 7;
 constexpr size_t IS_GATHER_OUT = 8;
 constexpr size_t IS_AMAX_OUT = 9;
 constexpr size_t Y_DTYPE = 10;
+constexpr size_t COMM_MODE_INDEX = 11;
 
 constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
@@ -115,6 +116,7 @@ protected:
     NpuArch npuArch_;
     const char* opName_{nullptr};
     const char* group_{nullptr};
+    const char* commMode_{nullptr};
     uint64_t tileMValue_{0};
     uint64_t tailMValue_{0};
     uint64_t drMValue_{0};
