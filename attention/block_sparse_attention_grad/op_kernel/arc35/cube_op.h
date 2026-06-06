@@ -235,7 +235,7 @@ private:
         SET_FLAG(FIX, M, evnet_id);
     }
 
-    template <bool TYPE>
+    template <uint32_t TYPE>
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                         const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo)
