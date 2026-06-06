@@ -24,12 +24,11 @@
 
 namespace optiling {
 using std::map;
-using std::pair;
 using std::string;
+using std::pair;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
-using namespace Ops::Base;
 
 // CheckSinglePara
 ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
@@ -71,7 +70,6 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
         if (fiaInfo.outLayout == FiaLayout::TND || fiaInfo.outLayout == FiaLayout::NTD) {
             if (lseShape->GetStorageShape().GetDimNum() != DIM_NUM_3) {
                 std::string dimStr = std::to_string(lseShape->GetStorageShape().GetDimNum()) + "D";
-                // TODO: fix TND/NTD after translation is provided.
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     fiaInfo.opName, "softmax_lse", dimStr.c_str(),
                     "TND/NTD The shape of softmax_lse must be 3D!");
@@ -80,8 +78,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
             if (lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST) {
-                std::string shapeStr = ToString(lseShape->GetStorageShape());
-                // TODO: fix [T, N, 1] after translation is provided.
+                std::string shapeStr = Ops::Base::ToString(lseShape->GetStorageShape());
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
                     "The shape of softmax_lse must be [T, N, 1].");
@@ -97,7 +94,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST) {
-                std::string shapeStr = ToString(lseShape->GetStorageShape());
+                std::string shapeStr = Ops::Base::ToString(lseShape->GetStorageShape());
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
                                                       "The shape of softmax_lse must be [B, N, Q_S, 1]");
                 return ge::GRAPH_FAILED;
@@ -127,13 +124,13 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
 ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
-        return ge::GRAPH_FAILED;
+            return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
         OP_LOGE(fiaInfo.opName,
-                "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
-        return ge::GRAPH_FAILED);
+            "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -142,4 +139,4 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace optiling
+}  // namespace optiling
