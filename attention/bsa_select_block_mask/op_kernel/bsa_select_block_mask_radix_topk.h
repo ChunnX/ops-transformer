@@ -29,7 +29,7 @@ public:
                                              GlobalTensor<OUT_T> &maskOutGm);
 
 private:
-    __aicore__ inline void NegateAttnScore();
+    __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
@@ -252,12 +252,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         AscendC::printf("[TopK] v6.8: main flow assembled\n");
     }
 
-    // 1. BottomK → NegateAttnScore()
-    if (constInfo.sparsityMode == BSASparseMode::BottomK) {
-        NegateAttnScore();
-    }
-
-    // 2. Calculate blockOffset
+    // 1. Calculate blockOffset
     uint64_t blockOffset_ = 0;
     if (GetBlockIdx() < formerCoreNum_) {
         blockOffset_ = GetBlockIdx() * formerTileNum_ * tileLen_;
@@ -323,6 +318,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
                 // Core processing
+                NegateDataForLargest(curBuf, curTileLen);
                 TwiddleInB16(curBuf, curTileLen);
                 DoAndMask(curBuf, curTileLen);
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
@@ -370,31 +366,18 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
+__aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(
+    TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
 {
-    for (uint64_t tileIdx = 0; tileIdx < tileNum_; tileIdx++) {
-        uint64_t curTileLen = BSAMin(tileLen_, sortLen_ - tileIdx * tileLen_);
-        uint64_t tileGmOffset = tileIdx * tileLen_;
-
-        LocalTensor<IN_T> xLocal = xBufPing_.Get<IN_T>();
+    if (constInfo.sparsityMode == BSASparseMode::BottomK) {
+        LocalTensor<IN_T> xLocal = xBuf.Get<IN_T>();
         uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
-
-        DataCopyPad(xLocal, attnScoreGmLocal[tileGmOffset],
-                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(IN_T)), 0, 0, 0),
-                    DataCopyPadExtParams<IN_T>(false, 0,
-                        static_cast<uint8_t>(alignLen - curTileLen), 0));
-        MTE2ToVSync();
-
         if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
             Muls(xLocal.template ReinterpretCast<half>(),
                  xLocal.template ReinterpretCast<half>(), (half)-1, alignLen);
         } else {
             Muls(xLocal, xLocal, (IN_T)-1, alignLen);
         }
-        VToMTE3Sync();
-
-        DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
-                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(IN_T)), 0, 0));
     }
 }
 
@@ -1146,6 +1129,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
+            NegateDataForLargest(curBuf, curTileLen);
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
 
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
