@@ -197,7 +197,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    参考[工程创建](#工程创建)完成基础环境搭建，同时检查算子开发交付件是否完备，是否在对应算子分类目录下。
 2. **编译自定义算子包。**
 
-   以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example_aicpu)目录。
+   以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example/op_kernel_aicpu)目录。
 
    ```bash
    # 编译指定算子，如bash build.sh --pkg --ops=add_example --aicpu_kernel -j16
