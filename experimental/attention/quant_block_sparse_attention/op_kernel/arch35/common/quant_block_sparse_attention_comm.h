@@ -24,18 +24,18 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
 // T       - means data type when calc
 
 #define CHILD_SPEC_TEMPLATE_ARGS \
-    INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isInfer, isPa
+    INPUT_T, T, qLayout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    hasAtten, OUTPUT_T, isPa
 
 #define TEMPLATE_INTF \
-    template <typename INPUT_T, typename T, LayOutTypeEnum layout, \
+    template <typename INPUT_T, typename T, LayOutTypeEnum qLayout, BSAKvLayout kvLayout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
     DTemplateType dVTemplateType, bool hasAtten,\
-    typename OUTPUT_T, bool isInfer, bool isPa>
+    typename OUTPUT_T, bool isPa>
 
 #define TEMPLATE_INTF_ARGS \
-    INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isInfer, isPa
+    INPUT_T, T, qLayout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
+    hasAtten, OUTPUT_T, isPa
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_T) \
@@ -43,7 +43,7 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(qLayout, BSALayout, BSALayout::TND) \
+    X(qLayout, LayOutTypeEnum, LayOutTypeEnum::LAYOUT_TND) \
     X(kvLayout, BSAKvLayout, BSAKvLayout::PA_BNSD) \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \

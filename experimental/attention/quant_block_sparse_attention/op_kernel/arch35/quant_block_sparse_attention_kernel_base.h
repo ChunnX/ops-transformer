@@ -84,10 +84,10 @@ public:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void ComputeConstexpr();
-    __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount,
+    __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
-    __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
+    __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr &runParam);
+    __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
 
     __aicore__ inline ChildClass* GetDerived() {
@@ -122,9 +122,9 @@ public:
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers; 
-    CVSharedParams<isInfer, isPa> sharedParams;
+    CVSharedParams<isPa> sharedParams;
     /* GM信息 */
-    using keyGmType = typename std::conditional<isInfer, GlobalTensor<INPUT_T>, int32_t>::type;
+    using keyGmType = GlobalTensor<INPUT_T>;
     keyGmType keyGm; // kv不连续场景需要使用来获取shape
     __gm__ int64_t *actualSeqQlenAddr;
     __gm__ int64_t *actualSeqKvlenAddr;
@@ -132,7 +132,7 @@ public:
     int32_t aicIdx;
 
     /* 初始化后不变的信息 */
-    ConstInfo<isInfer> constInfo;
+    ConstInfo constInfo;
     AttenMaskInfo attenMaskInfo;
     /* 其他正向独有的一些信息 */
     // Unpack参数
@@ -184,7 +184,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
         auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
         #pragma unroll
-        for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
+        for (int i = 0; i < sizeof(CVSharedParams<isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
             *tempTiling = *tempTilingSSbuf;
         }
     }
@@ -209,25 +209,23 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     const QuantBlockSparseAttentionTilingData *__restrict tiling, TPipe *tPipe)
 {
     // 初始化vector用到的global buffer
-    if constexpr (isInfer) {
-        keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
-        if (constInfo.isQHasLeftPadding) {
-            constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
-            if (constInfo.queryRightPaddingSize < 0) {
-                constInfo.queryRightPaddingSize = 0;
-            }
+    keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
+    if (constInfo.isQHasLeftPadding) {
+        constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
+        if (constInfo.queryRightPaddingSize < 0) {
+            constInfo.queryRightPaddingSize = 0;
         }
-        if (constInfo.isKVHasLeftPadding) {
-            constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
-            if (constInfo.kvRightPaddingSize < 0) {
-                constInfo.kvRightPaddingSize = 0;
-            }
+    }
+    if (constInfo.isKVHasLeftPadding) {
+        constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
+        if (constInfo.kvRightPaddingSize < 0) {
+            constInfo.kvRightPaddingSize = 0;
         }
     }
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     }
@@ -254,37 +252,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     }
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale,
         prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
-        if ASCEND_IS_AIV {
-            int64_t actualS1Len;
-            int64_t actualS2Len;
-            for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
-                this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
-                if (actualS2Len <= 0 && actualS1Len != 0) {
-                    int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[i - 1];
-                    if (actualS1Len < 0 && accumSize > 0) { 
-                        actualS1Len = constInfo.s1Size - accumSize;
-                        int64_t frontCoreNum = actualS1Len % (this->sharedParams.coreNum * 2);
-                        int64_t splitFactor = frontCoreNum > 0 ? 1 : 0;
-                        int64_t s1SizeInner = actualS1Len / this->sharedParams.coreNum / 2;
-                        int64_t innerOffset1 = (s1SizeInner + splitFactor) * (constInfo.aivIdx >= frontCoreNum ?
-                                            frontCoreNum : constInfo.aivIdx);
-                        int64_t innerOffset2 = s1SizeInner * (constInfo.aivIdx >= frontCoreNum ?
-                                            constInfo.aivIdx - frontCoreNum : 0);
-                        accumSize = accumSize + innerOffset1 + innerOffset2;
-                        actualS1Len = s1SizeInner + (constInfo.aivIdx >= frontCoreNum ? 0 : splitFactor);
-                    }
-                    GlobalTensor<OUTPUT_T> attentionOutEodGm = this->vecBlock.attentionOutGm[accumSize * this->constInfo.n2GDv];
-                    GlobalTensor<float> softmaxMaxEodGm = this->vecBlock.softmaxMaxGm[accumSize * this->constInfo.n2G * 8];
-                    GlobalTensor<float> softmaxSumEodGm = this->vecBlock.softmaxSumGm[accumSize * this->constInfo.n2G * 8];
-                    AscendC::Fill<OUTPUT_T>(attentionOutEodGm, actualS1Len * this->constInfo.n2GDv, static_cast<OUTPUT_T>(0.0));
-                    AscendC::Fill<float>(softmaxMaxEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
-                    AscendC::Fill<float>(softmaxSumEodGm, actualS1Len * this->constInfo.n2G * 8, static_cast<float>(0.0));
-                    SyncAll();
-                }
-            }
-        }
-    }
     cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
     cubeBlock.InitDequantParams(deqScaleQ, deqScaleK, deqScaleV);
 }
@@ -360,33 +327,27 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
-    if constexpr (isInfer) {
-        constInfo.s1D = constInfo.s1Size * constInfo.dSize;
-        constInfo.gD = constInfo.gSize * constInfo.dSize;
-        constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
-        constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
-    }
+    constInfo.s1D = constInfo.s1Size * constInfo.dSize;
+    constInfo.gD = constInfo.gSize * constInfo.dSize;
+    constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
+    constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
 
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
-        if constexpr (isInfer) {
-            if (sharedParams.isGqa) {
-                constInfo.mm1Ka = constInfo.dSize;
-            }
+        if (sharedParams.isGqa) {
+            constInfo.mm1Ka = constInfo.dSize;
         }
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            if constexpr (isInfer) {
-                if (sharedParams.isPfaGS1Merge == 1) {
-                    constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-                } else if (sharedParams.isGqa == 1) {
-                    constInfo.attentionOutStride = 0;
-                }
+            if (sharedParams.isPfaGS1Merge == 1) {
+                constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+            } else if (sharedParams.isGqa == 1) {
+                constInfo.attentionOutStride = 0;
             }
         }
     }
@@ -429,10 +390,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeAxisIdx(
-    int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
+    int64_t multiCoreInnerIdx, RunParamStr &runParam)
 {
     // 计算轴的idx
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
         GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
         int64_t actualS1Outersize = this->s1OuterSizeAcc + (CeilDiv(runParam.actualS1Size, this->s1BaseSize) * constInfo.n2G);
 
@@ -473,7 +434,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
+    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
     runInfo.s2EndIdx = runParam.s2LineEndIdx;
@@ -487,7 +448,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
         runInfo.boIdx = runParam.boIdx;
         runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
         runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
@@ -506,16 +467,14 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.queryOffset = runParam.tensorQOffset;
     runInfo.qRopeOffset = runParam.qRopeNBGOffset;
-    if constexpr (isInfer) {
-        runInfo.sOuterOffset = runParam.sOuterOffset;
-    }
+    runInfo.sOuterOffset = runParam.sOuterOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
     GetDerived()->InitUniqueRunInfo(runParam, runInfo);
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
+    RunInfo &runInfo, RunParamStr &runParam)
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;

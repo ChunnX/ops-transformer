@@ -31,14 +31,14 @@ public:
     using BaseClass = QuantBlockSparseAttentionKernelBase<QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
     /* =====================UB变量==================== */
     __aicore__ inline void InitUniqueConstInfo();
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, 
-        RunInfo<isInfer> &runInfo);
+    __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, 
+        RunInfo &runInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessMainLoop();
 
 private:
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index,
-                                                    RunParamStr<isInfer> &runParam);
+                                                    RunParamStr &runParam);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -73,7 +73,7 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
-    const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
+    const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS>(runParam, runInfo);
     ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
@@ -102,8 +102,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     bool notLast = true;
     bool isLastBmm1 = false;
     LocalTensor<INPUT_T> scmTensor[2];
-    RunInfo<isInfer> runInfo[4];
-    RunParamStr<isInfer> runParam;
+    RunInfo runInfo[4];
+    RunParamStr runParam;
 
     // 注意这里不等于0是因为，推理的在SetRunInfo中第一次也需要赋值runInfo.s1oIdx，boIdx，n2oIdx，goIdx
     // 训练这些值在multiCoreInnerIdx = 0的时候都是0，两边不统一
@@ -159,7 +159,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoop) {
-                    RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
+                    RunInfo &runInfo1 = runInfo[taskId & 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                     if ASCEND_IS_AIC {
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
@@ -174,7 +174,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 }
                 if (taskId > 1 && notLast) {
                     if ASCEND_IS_AIC {
-                        RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
+                        RunInfo &runInfo2 = runInfo[(taskId + 2) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
                             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
                                 this->constInfo);
@@ -186,7 +186,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 }
                 if (taskId > 2) {
                     if ASCEND_IS_AIV {
-                        RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
                             // this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         } else {
@@ -215,7 +215,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 // =========================================== private functions ===========================================
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t bnIndex, int64_t gS1Index, RunParamStr<isInfer> &runParam)
+    int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     constexpr uint64_t fp8QBlockSize = 128U; // 128 is SOuterSize
     constexpr uint64_t fp8KvBlockSize = 256U; // 256 is SInnerSize
