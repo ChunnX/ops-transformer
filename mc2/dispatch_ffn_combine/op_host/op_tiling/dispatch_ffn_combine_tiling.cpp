@@ -39,7 +39,6 @@
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
-using namespace Mc2Tiling;
 
 #define HCCL_BUFFSIZE "HCCL_BUFFSIZE"
 
