@@ -260,7 +260,7 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        // WAIT_FLAG(FIX, M, evnet_id);
+        WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
@@ -280,7 +280,7 @@ private:
             fixpipeParamsV220.unitFlag = 3;
             MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         }
-        // SET_FLAG(FIX, M, evnet_id);
+        SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
