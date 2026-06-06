@@ -83,8 +83,7 @@ private:
     int32_t kv_block_num_{0};
     int32_t block_x_{0};
     int32_t block_y_{0};
-    int32_t s1_single_size{0};
-    int32_t s2_single_size{0};
+    int32_t single_m_{0};
     SingleBlock single_block_;
 
 public:
@@ -106,8 +105,7 @@ public:
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
-        this->s1_single_size = 1024;
-        this->s2_single_size = this->base_n_;
+        this->single_m_ = 1024;
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
             int32_t max_q_seq_len_ = 0;
@@ -190,8 +188,8 @@ private:
     __aicore__ inline bool InitStartIdx()
     {
         // 遍历顺序 s2->s1->n1->batch
-        int32_t recoderS1 = GetSingleBlock(s1Idx_, cur_q_seq_len_, s1_single_size);
-        int32_t recoderS2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
+        int32_t recoderS1 = GetSingleBlock(s1Idx_, cur_q_seq_len_, single_m_);
+        int32_t recoderS2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, base_n_);
 
         if (unlikely(first_loop_ == 0)) {
             first_loop_ = 1;
@@ -236,31 +234,9 @@ private:
             current_cube_idx_++;
             return;
         }
-        int32_t base_s1_idx, base_s1_len;
-        int32_t single_s1_len = GetSingleBlock(s1Idx_, cur_q_seq_len_, s1_single_size);
-        int32_t single_s2_len = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
+        int32_t single_s1_len = GetSingleBlock(s1Idx_, cur_q_seq_len_, single_m_);
         single_block_.Record(s1Idx_, single_s1_len);
-        single_block_.Update(base_s1_idx, base_s1_len);
-
-        int32_t n2Idx = n1Idx_ / q_group_;
-        runTimeInfo.bIdx = bIdx_;
-        runTimeInfo.s1Idx = base_s1_idx;
-        runTimeInfo.s2Idx = s2Idx_;
-        runTimeInfo.n1Idx = n1Idx_;
-        runTimeInfo.n2Idx = n2Idx;
-        runTimeInfo.s1Len = base_s1_len;
-        runTimeInfo.s2Len = single_s2_len;
-        runTimeInfo.s1LenAlign = RoundUp(single_s1_len, 16);
-        runTimeInfo.s2LenAlign = RoundUp(single_s2_len, 16);
-        runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
-                                                                 head_dim_, bIdx_, s1Idx_, n1Idx_);
-        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
-                                                               head_dim_, bIdx_, s2Idx_, n2Idx);
-        runTimeInfo.lseGmOffset =
-            GetLseGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_, s1Idx_, n1Idx_);
-        runTimeInfo.sftgGmOffset =
-            GetSftgGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_, s1Idx_, n1Idx_);
-        runTimeInfo.need_compute = 1;
+        RunTimeInfoUpdate(runTimeInfo);
         current_cube_idx_++;
     }
 
@@ -268,15 +244,27 @@ private:
     __aicore__ inline void RunTimeInfoUpdate(RunTimeInfo &runTimeInfo)
     {
         int32_t base_s1_idx, base_s1_len;
+        int32_t base_s2_len = GetSingleBlock(s2Idx_, cur_kv_seq_len_, base_n_);
+        int32_t n2Idx = n1Idx_ / q_group_;
         single_block_.Update(base_s1_idx, base_s1_len);
 
+        runTimeInfo.bIdx = bIdx_;
         runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s2Idx = s2Idx_;
+        runTimeInfo.n1Idx = n1Idx_;
+        runTimeInfo.n2Idx = n2Idx;
         runTimeInfo.s1Len = base_s1_len;
-        runTimeInfo.s1LenAlign = RoundUp(runTimeInfo.s1Len, 16);
+        runTimeInfo.s2Len = base_s2_len;
+        runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
+        runTimeInfo.s2LenAlign = RoundUp(base_s2_len, 16);
         runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
                                                                  head_dim_, bIdx_, runTimeInfo.s1Idx, n1Idx_);
+        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
+                                                               head_dim_, bIdx_, runTimeInfo.s2Idx, n2Idx);
         runTimeInfo.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_,
                                                                runTimeInfo.s1Idx, n1Idx_);
+        runTimeInfo.sftgGmOffset = GetSftgGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_,
+                                                                 runTimeInfo.s1Idx, n1Idx_);
         runTimeInfo.need_compute = 1;
     }
 };
