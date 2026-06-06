@@ -29,6 +29,11 @@
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
 #ifdef __DAV_C310_CUBE__
+#include "../utils/flash_attn_cube_def.h"
+#else
+#include "../utils/flash_attn_vec_def.h"
+#endif
+#ifdef __DAV_C310_CUBE__
 #include "flash_attn_gqa_cube.h"
 #else
 #include "flash_attn_gqa_vec.h"

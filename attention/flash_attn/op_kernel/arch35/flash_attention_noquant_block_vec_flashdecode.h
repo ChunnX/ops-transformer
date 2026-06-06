@@ -29,6 +29,9 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "../../../common/op_kernel/memory_copy.h"
+#include "../utils/flash_attn_common_def.h"
+#include "../utils/flash_attn_vec_def.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -83,7 +86,6 @@ private:
     uint32_t preLoadNum = 2U;
     uint32_t dSizeV_Align;
     static constexpr bool attenMaskFlag = hasAtten;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
 
@@ -132,7 +134,7 @@ protected:
     // ================================类成员变量====================================
     // aic、aiv核信息
     uint32_t blockIdx = 0U;
-    const ConstInfoX &constInfo;
+    const ConstInfoXVec &constInfo;
     TaskInfo taskInfo{};
 
 private:
@@ -156,7 +158,7 @@ private:
     LocalTensor<T> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoXVec &constInfo) : constInfo(constInfo){};
 
     template <typename U> // 避免重名用U
     __aicore__ inline U Align(U num, U rnd)
@@ -527,26 +529,26 @@ public:
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint64_t bN2Offset = taskInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoXVec>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
                                                                    actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint32_t s1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    DataCopySoftmaxLseNTDArch35<T, ConstInfoXVec>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
                                                                actualGSplitSize, constInfo, s1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoXVec>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
                                                                 actualGSplitSize, constInfo);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoXVec>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
                                                                 actualGSplitSize, constInfo, qActSeqLens);
                 }
             }
