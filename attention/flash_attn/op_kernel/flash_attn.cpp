@@ -16,7 +16,6 @@
 #include "kernel_operator.h"
 #include "arch35/flash_attn_entry_regbase.h"
 #include "arch35/flash_attn_template_tiling_key.h"
-#include "arch35/flash_attn_tiling_data.h"
 
 using namespace AscendC;
 

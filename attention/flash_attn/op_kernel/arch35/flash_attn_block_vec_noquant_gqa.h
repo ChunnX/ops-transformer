@@ -15,7 +15,11 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 #include "../utils/attenmask_gs1.h"
 
@@ -1195,27 +1199,6 @@ public:
             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
-};
-
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockVecDummy {
-public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2;
-    static constexpr bool HAS_MASK = hasAtten;
-
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline FANoQuantGqaBlockVecDummy(ConstInfoX &constInfo) {};
 };
 
 } // namespace BaseApi

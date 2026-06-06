@@ -15,7 +15,11 @@
 #ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -564,51 +568,6 @@ public:
             reduceMLoop += 1;
         }
     }
-};
-
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-          uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FiaBlockVecFlashDecodeDummy {
-public:
-    // =================================类型定义区=================================
-    // 中间计算数据类型为float，高精度模式
-    using SINK_T = bfloat16_t;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-    __aicore__ inline FiaBlockVecFlashDecodeDummy(){};
-    __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
-                                            GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm) {};
-    __aicore__ inline void InitParams() {};
-    __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm) {};
-    __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink) {};
-    __aicore__ inline void InitDecodeParams() {};
-    __aicore__ inline void InitBuffers(TPipe *pipe, TQue<QuePosition::VECOUT, 1> SharedBuffer1[],
-                                       TQue<QuePosition::VECIN, 1> SharedBuffer2[], TBuf<> &SharedBuffer3) {};
-    __aicore__ inline void AllocEventID() {};
-    __aicore__ inline void FreeEventID() {};
-    __aicore__ inline void FlashDecode(FDparamsX &fd) {};
-
-protected:
-    __aicore__ inline void CopyAccumOutIn(LocalTensor<T> &accumOutLocal, uint32_t splitKVIndex, uint32_t startRow,
-                                          uint32_t dealRowCount) {};
-    __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM) {};
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
-                                             uint32_t actualCombineLoopSize, uint32_t cntM);
-    __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
-                                                uint32_t dealRowCount, uint32_t columnCount) {};
-    __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal,
-                                          uint32_t cntKV, uint32_t dealRowCount) {};
-    __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t cntM) {};
-    __aicore__ inline void SinkMax(LocalTensor<T> lseMaxUb, uint32_t startRow, uint32_t dealRowCount);
-
-    __aicore__ inline void DealInvalidRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t columnCount);
-    __aicore__ inline void DealInvalidMaskRows(LocalTensor<T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                               uint32_t columnCount, uint32_t cntM);
 };
 
 } // namespace BaseApi

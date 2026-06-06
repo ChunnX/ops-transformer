@@ -35,7 +35,7 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, bool hasAttenMask>
+template <typename CubeBlockType>
 class FlashAttentionNoQuantGqaKernelCube {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
@@ -45,8 +45,7 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = false;
-    static constexpr bool HAS_MASK = hasAttenMask;
+    static constexpr bool HAS_MASK = CubeBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
@@ -93,19 +92,10 @@ public:
     TPipe *pipe;
     CubeBlockType cubeBlock;
 
-    uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
-    uint32_t accGS1Loops = 0U;
-    uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
-    uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
 
-    // schduler params
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    int32_t s1SizeCurrBatch = 0;
     uint32_t curS2Start;
     uint32_t curS2End = 0;
     uint32_t prevBIdx;
@@ -114,12 +104,8 @@ public:
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
-    bool emptyBatch = false;
-    uint32_t dealZerosMSize = 0;
 
-    // metadata
     uint32_t sectionNum_;
-    bool isFd;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -144,7 +130,9 @@ public:
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernelCube()
         : cubeBlock(constInfo){};
-__aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
+
+private:
+    __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                        __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                        __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
                                        __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
@@ -171,7 +159,6 @@ __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
-        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                       FA_AIC_CORE_NUM * 16U * sectionNum_);
@@ -182,8 +169,15 @@ __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
         InitMMResBuf(workspace);
     }
 
-    __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *blockTable)
+public:
+    __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                    __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                    __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                    __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe,
+                                    __gm__ uint8_t *blockTable)
     {
+        InitCommon(key, value, cuSeqLensQ, cuSeqLensKv, seqUsedQ, seqUsedKv, workspace, fiaMetaData, tiling, tPipe);
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, keyPtr, valuePtr, blockTable,
                                     qCuSeqLensParser, kvCuSeqLensParser);
@@ -293,10 +287,6 @@ __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
         return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-    }
-
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         bmm1Buffers.Get().WaitCrossCore();
@@ -319,7 +309,6 @@ __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
-        accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -648,20 +637,11 @@ __aicore__ inline void InitCommon(__gm__ uint8_t *key, __gm__ uint8_t *value,
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            accGS1Loops++;
-        }
-
         // 当前BN2未处理完
         s2Cur = 0;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;
-        }
-
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            accGS1Loops++;
         }
 
         // 当前BN2已处理完
