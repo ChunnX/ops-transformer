@@ -72,8 +72,8 @@ bool FiaTilingNonQuantArch35::IsCapable()
         (fiaInfo_->sparseMode == 0 && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
         (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
          fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
-        (fiaInfo_->qkHeadDim != 128 &&
-         fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) // 非D=128 GQA，且非Prefill MLA
+        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
+        CheckS1OutSplit() // 使能S1外切场景
     ) {
         return false;
     }
@@ -355,61 +355,29 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
     actualSeqLength -= preTokensError;
 }
 
-/*
- * 计算同时参与计算所需的L2 cache大小
- * 算法思路：
- * 1. 同时最多只有aicNum个核在计算，每个核处理一个(batch, head)组合
- * 2. 每个batch有n2Size个head，因此每个batch最多有n2Size个核同时处理
- * 3. 为最大化L2占用，优先给actualSeqLenKV最大的batch分配核
- * 4. 分配策略：按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
- * 5. 如果同时参与计算的KV块超过L2CacheSize的一半就开启S1外切分核
- * 计算公式：L2Size = sum(分配核数 * actualSeqLenKV) * (qkHeadDim + vHeadDim) * dataTypeSize
- */
-int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
-{
-    int64_t dataTypeSize = 2;
-    if ((fiaInfo_->inputKvType == ge::DT_INT8) || (fiaInfo_->inputKvType == ge::DT_INT4) ||
-        (fiaInfo_->inputKvType == ge::DT_FLOAT8_E4M3FN) || (fiaInfo_->inputKvType == ge::DT_HIFLOAT8) ||
-        (fiaInfo_->inputKvType == ge::DT_FLOAT4_E2M1)) {
-        dataTypeSize = 1;
-    }
-    // 按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
-    std::vector<int64_t> sortedSeqLenKV = actualSeqLengthsKV_;
-    std::sort(sortedSeqLenKV.begin(), sortedSeqLenKV.end(), std::greater<int64_t>());
-    uint32_t remainingCores = platformInfo_.aicNum;
-    int64_t totalSeqLenKV = 0;
-    for (size_t i = 0; i < sortedSeqLenKV.size() && remainingCores > 0; i++) {
-        uint32_t coresForThisBatch = std::min(remainingCores, fiaInfo_->n2Size);
-        totalSeqLenKV += coresForThisBatch * sortedSeqLenKV[i];
-        remainingCores -= coresForThisBatch;
-    }
-
-    int64_t requiredL2Size = totalSeqLenKV * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize;
-    return requiredL2Size;
-}
-
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
-    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+    if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
-
-    // S1外切分核优化主要针对prefill阶段，需要Q序列长度足够大才能有效复用L2 cache
-    // sOuterSize = sOuterFactor_ * CV_RATIO，是S1外切分的最小块大小
-    int64_t maxActualSeqLenQ = 0;
-    for (size_t i = 0; i < actualSeqLengthsQ_.size(); i++) {
-        maxActualSeqLenQ = std::max(maxActualSeqLenQ, actualSeqLengthsQ_[i]);
-    }
-    uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
-    if (maxActualSeqLenQ < static_cast<int64_t>(sOuterSize)) {
+ 
+    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
+        fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
         return false;
     }
-
-    int64_t requiredL2Size = CalcRequiredL2Size();
-
-    // 当同时参与计算所需的L2Size超过系统配置一半时，开启S1外切分核优化L2cache复用率
-    // *2表示超过一半就开启，后续可根据实际情况调整此比例
-    return requiredL2Size * 2 >= platformInfo_.l2Size;
+ 
+    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
+       (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
+        return false;
+    }
+ 
+    // 仅支持非量化，占用2B
+    const int64_t dataTypeSize = 2U;
+    int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
+ 
+    // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
+    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
+           platformInfo_.l2Size;
 }
 
 void FiaTilingNonQuantArch35::SplitOutSeq()
@@ -418,24 +386,33 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
     uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
     int64_t totalSize = 0;
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
-        int64_t outerBlockNums = (actualSeqLengthsQ_[bIdx] * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
+        int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx];  // 用于存放减去行无效后，真实的actseqlen
+        int64_t preTokensLeftUp = 0;
+        int64_t nextTokensLeftUp = 0;
+        GetPreNextTokensLeftUp(actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
+                               preTokensLeftUp, nextTokensLeftUp);
+        FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
+                               preTokensLeftUp, nextTokensLeftUp);
+
+        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
                                  static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
-        if (actualSeqLengthsQ_[bIdx] == 0) {
-            outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
+        if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
+            outerBlockNums = fiaInfo_->n2Size;
         }
         totalSize += outerBlockNums;
         OP_LOGD(fiaInfo_->opName,
-                "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
-                "outerBlockNums:%lld, totalSize:%lld\n",
-                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
+            "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
+            "outerBlockNums:%lld, totalSize:%lld\n",
+            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
-    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%d", actualUsedCoreNum);
-    OP_LOGD(fiaInfo_->opName, "totalSize:%d", totalSize);
+    OP_LOGD(fiaInfo_->opName, "actualUsedCoreNum:%lld\n", actualUsedCoreNum);
+    OP_LOGD(fiaInfo_->opName, "totalSize:%lld\n", totalSize);
+    OP_LOGD(fiaInfo_->opName, "gqa enableS1OutSplit\n");
 }
 
 bool FiaTilingNonQuantArch35::CheckEnableDN()
@@ -800,8 +777,8 @@ void FiaTilingNonQuantArch35::GenTilingKey()
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %d, hasRope: %d, kvLayoutType: %llu, isFd: %d, emptyTensor: %d, "
-            "enableKvPrefix: %d, enableS1OutSplit: %d, isReconstructTemp: %d.",
+            "hasAttenMask: %u, hasRope: %u, kvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
+            "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
@@ -1063,7 +1040,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx <= NPU_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -1071,7 +1048,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx <= NPU_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],
