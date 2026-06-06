@@ -356,6 +356,23 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
     actualSeqLength -= preTokensError;
 }
 
+int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
+{
+    const int64_t dataTypeSize = 2U;
+    // 按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
+    std::vector<int64_t> sortedSeqLenKV = actualSeqLengthsKV_;
+    std::sort(sortedSeqLenKV.begin(), sortedSeqLenKV.end(), std::greater<int64_t>());
+    uint32_t remainingCores = platformInfo_.aicNum;
+    int64_t totalSeqLenKV = 0;
+    for (size_t i = 0; i < sortedSeqLenKV.size() && remainingCores > 0; i++) {
+        uint32_t coresForThisBatch = std::min(remainingCores, fiaInfo_->n2Size);
+        totalSeqLenKV += coresForThisBatch * sortedSeqLenKV[i];
+        remainingCores -= coresForThisBatch;
+    }
+    int64_t requiredL2Size = totalSeqLenKV * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize;
+    return requiredL2Size;
+}
+
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
     if (fiaInfo_->isOutQuantEnable) {
@@ -372,8 +389,21 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
         return false;
     }
 
-    // 仅支持非量化，占用2B
-    const int64_t dataTypeSize = 2U;
+    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
+    // S1外切分核优化主要针对prefill阶段，需要Q序列长度足够大才能有效复用L2 cache
+    // sOuterSize = sOuterFactor_ * CV_RATIO，是S1外切分的最小块大小
+    int64_t maxActualSeqLenQ = 0;
+    for (size_t i = 0; i < actualSeqLengthsQ_.size(); i++) {
+        maxActualSeqLenQ = std::max(maxActualSeqLenQ, actualSeqLengthsQ_[i]);
+    }
+    uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
+    if (maxActualSeqLenQ < static_cast<int64_t>(sOuterSize)) {
+        return false;
+    }
+
     // isCapable阶段，platformInfo_中还没有l2Size和aicNum，额外获取一次
     auto platformInfoPtr = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
@@ -381,11 +411,12 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
-    int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
 
-    // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
-           platformInfo_.l2Size;
+    int64_t requiredL2Size = CalcRequiredL2Size();
+
+    // 当同时参与计算所需的L2Size超过系统配置一半时，开启S1外切分核优化L2cache复用率
+    // *2表示超过一半就开启，后续可根据实际情况调整此比例
+    return requiredL2Size * 2 >= platformInfo_.l2Size;
 }
 
 void FiaTilingNonQuantArch35::SplitOutSeq()
