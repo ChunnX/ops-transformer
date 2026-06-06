@@ -89,7 +89,7 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     uint64_t actualSize = winSizeData.isLayered ? (static_cast<uint64_t>(winSizeData.moeExpertNum) * maxBs * (h *
         MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) * sizeof(uint32_t) + 64) + 404 * MB_SIZE) : ((maxBs *
         tokenNeedSizeDispatch * epWorldSize * static_cast<uint64_t>(winSizeData.localMoeExpertNum)) + (maxBs *
-        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER;
+        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER + epWorldSize * EP_RANK_OFFSET_STEP;
 
     if (winSizeData.isLayered) {
         // 校验可变bs
@@ -104,7 +104,6 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     } else {
         const char* socName = aclrtGetSocName();
         if (std::strstr(socName, "Ascend950")) {
-            actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
                 " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu,"
