@@ -17,7 +17,7 @@ public:
     __aicore__ inline void Update(int32_t &cur_s1_idx, int32_t &cur_s1_len)
     {
         /*
-         *  Single块内遍历S1方向。S2方向固定128
+         *  Single块内只遍历S1方向。
          */
         cur_s1_idx = s1_start_idx;
         cur_s1_len = s1_start_idx + s1_base_size < s1_end_idx ? s1_base_size : (s1_end_idx - s1_start_idx);
@@ -60,19 +60,19 @@ public:
         int32_t base_s1_idx, base_s1_len;
         this->Update(base_s1_idx, base_s1_len);
 
-        runTimeInfo.bIdx = runTimeInfoBak_.bIdx;
-        runTimeInfo.last_q_seq_sum = runTimeInfoBak_.last_q_seq_sum;
-        runTimeInfo.last_kv_seq_sum = runTimeInfoBak_.last_kv_seq_sum;
-        runTimeInfo.cur_q_seq_len = runTimeInfoBak_.cur_q_seq_len;
-        runTimeInfo.cur_kv_seq_len = runTimeInfoBak_.cur_kv_seq_len;
+        runTimeInfo.bIdx = this->runTimeInfoBak_.bIdx;
+        runTimeInfo.last_q_seq_sum = this->runTimeInfoBak_.last_q_seq_sum;
+        runTimeInfo.last_kv_seq_sum = this->runTimeInfoBak_.last_kv_seq_sum;
+        runTimeInfo.cur_q_seq_len = this->runTimeInfoBak_.cur_q_seq_len;
+        runTimeInfo.cur_kv_seq_len = this->runTimeInfoBak_.cur_kv_seq_len;
         runTimeInfo.s1Idx = base_s1_idx;
-        runTimeInfo.s2Idx = runTimeInfoBak_.s2Idx;
-        runTimeInfo.n1Idx = runTimeInfoBak_.n1Idx;
-        runTimeInfo.n2Idx = runTimeInfoBak_.n2Idx;
+        runTimeInfo.s2Idx = this->runTimeInfoBak_.s2Idx;
+        runTimeInfo.n1Idx = this->runTimeInfoBak_.n1Idx;
+        runTimeInfo.n2Idx = this->runTimeInfoBak_.n2Idx;
         runTimeInfo.s1Len = base_s1_len;
-        runTimeInfo.s2Len = runTimeInfoBak_.s2Len;
+        runTimeInfo.s2Len = this->runTimeInfoBak_.s2Len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
-        runTimeInfo.s2LenAlign = runTimeInfoBak_.s2LenAlign;
+        runTimeInfo.s2LenAlign = this->runTimeInfoBak_.s2LenAlign;
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num, head_dim,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
@@ -91,6 +91,10 @@ public:
     __aicore__ inline bool IsFinish()
     {
         return is_finish;
+    }
+    __aicore__ inline bool SetBaseBlock(uin32_t base_size)
+    {
+        this->s1_base_size = base_size;
     }
 
 private:
@@ -161,6 +165,7 @@ public:
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
         this->single_m_ = 1024;
+        single_block_.SetBaseBlock(this->base_m_);
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
             int32_t max_q_seq_len_ = 0;
