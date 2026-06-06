@@ -65,6 +65,7 @@ arrangement).
 * @li constant_expert_range:  Optional parameter. Type is:ListInt. Like [constant_expert_start, constant_expert_end].
       constant_expert_start must be greater than or equal to 0, constant_expert_end must be less than or equal to 10240,
       constant_expert_start must be less than constant_expert_end. Default: {}.
+* @li expert_num: The num of experts. Type is:Int. Default: 1.
 */
 REG_OP(MoeFinalizeRoutingV2)
     .INPUT(expanded_x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
@@ -83,6 +84,7 @@ REG_OP(MoeFinalizeRoutingV2)
     .ATTR(zero_expert_range, ListInt, {})
     .ATTR(copy_expert_range, ListInt, {})
     .ATTR(constant_expert_range, ListInt, {})
+    .ATTR(expert_num, Int, 1)
     .OP_END_FACTORY_REG(MoeFinalizeRoutingV2)
 
 } // namespace ge
