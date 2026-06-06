@@ -20,10 +20,10 @@ public:
          *  Single块内遍历S1方向。S2方向固定128
          */
         cur_s1_idx = s1_start_idx;
-        cur_s1_len = s1_start_idx + s1_base_size < s1_len ? s1_base_size : (s1_len - s1_start_idx);
+        cur_s1_len = s1_start_idx + s1_base_size < s1_end_idx ? s1_base_size : (s1_end_idx - s1_start_idx);
 
         s1_start_idx += cur_s1_len;
-        if (s1_start_idx >= s1_len) {
+        if (s1_start_idx >= s1_end_idx) {
             is_finish = true;
         }
     }
@@ -33,6 +33,7 @@ public:
         is_finish = false;
         this->s1_start_idx = s1_start_idx;
         this->s1_len = s1_len;
+        s1_end_idx = s1_start_idx + s1_len;
     }
 
     __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
@@ -76,6 +77,7 @@ public:
         runTimeInfo.sftgGmOffset =
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.need_compute = 1;
     }
 
     __aicore__ inline bool IsFinish()
@@ -86,6 +88,7 @@ public:
 private:
     int32_t s1_start_idx{0};
     int32_t s1_len{0};
+    int32_t s1_end_idx{0};
     int32_t s1_base_size{128};
     bool is_finish{true};
     RunTimeInfo runTimeInfoBak_;
