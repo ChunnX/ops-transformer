@@ -121,7 +121,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
+          bool bmm2Write2Ub = true, bool splitD = false, bool hasAttenMask = false>
 class FANoQuantGqaBlockCube {
 public:
     template <uint32_t dBaseSize>
@@ -167,6 +167,7 @@ public:
     static constexpr bool USE_DN = useDn;
     static constexpr bool HAS_PREFIX = false;
     static constexpr bool SPLITD = splitD;
+    static constexpr bool HAS_MASK = hasAttenMask;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
@@ -894,35 +895,6 @@ public:
     }
 
 }; // FANoQuantGqaBlockCube
-
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCubeDummy {
-public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool HAS_PREFIX = false;
-    static constexpr bool SPLITD = splitD;
-
-    using ROPE_T = INPUT_T;
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline FANoQuantGqaBlockCubeDummy(ConstInfoX &constInfo) {};
-};
 
 } // namespace BaseApi
 
