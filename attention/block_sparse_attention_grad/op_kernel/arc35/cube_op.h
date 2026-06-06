@@ -147,7 +147,7 @@ public:
     {
         LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
         LocalTensor<INPUT_TYPE> l1_b_tensor =
-            runTimeInfo.kv_ping_pong_idx ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
+            runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
 
         ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                     mm2OutUb, runTimeInfo);

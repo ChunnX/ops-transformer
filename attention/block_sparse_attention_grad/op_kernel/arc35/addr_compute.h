@@ -146,6 +146,7 @@ private:
     int32_t block_x_{0};
     int32_t block_y_{0};
     int32_t single_m_{0};
+    int32_t kv_ping_pong_idx_{0};
     SingleBlock single_block_;
 
 public:
@@ -331,8 +332,9 @@ private:
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
         runTimeInfo.need_copy_kv = 1;
-        runTimeInfo.kv_ping_pong_idx = 1 - runTimeInfo.kv_ping_pong_idx;
+        runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
         single_block_.RecordRunTimeInfo(runTimeInfo);
+        kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
         current_cube_idx_++;
     }
 };
