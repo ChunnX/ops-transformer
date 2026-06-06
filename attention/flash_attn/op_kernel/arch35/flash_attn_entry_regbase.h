@@ -85,14 +85,14 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         BaseApi::FANoQuantGqaCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
                                    dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD, hasAttenMask>;
 #else
-    using VecFaBlock =
-        BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                      s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                      useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelVec<VecFaBlock, VecFdBlock>;
+using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                   hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelVec<
+    INPUT_T, float, OUT_T, VecFdBlock,
+    inputLayoutType, outputLayoutType, s1TemplateType,
+    s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
+    bmm2Write2Ub, splitD>;
 #endif
 
     size_t offset = offsetof(optiling::FlashAttnTilingData, baseTiling);
