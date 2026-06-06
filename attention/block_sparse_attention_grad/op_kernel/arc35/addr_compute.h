@@ -88,6 +88,7 @@ public:
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
         runTimeInfo.need_copy_kv = 0;
+        runTimeInfo.is_singlekv_last = is_finish;
         runTimeInfo.kv_ping_pong_idx = this->runTimeInfoBak_.kv_ping_pong_idx;
     }
 
@@ -333,6 +334,7 @@ private:
         runTimeInfo.need_compute = 1;
         runTimeInfo.need_copy_kv = 1;
         runTimeInfo.kv_ping_pong_idx = kv_ping_pong_idx_;
+        runTimeInfo.is_singlekv_last = single_block_.IsFinish();
         single_block_.RecordRunTimeInfo(runTimeInfo);
         kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
         current_cube_idx_++;

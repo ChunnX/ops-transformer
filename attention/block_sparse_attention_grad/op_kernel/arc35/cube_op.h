@@ -47,7 +47,9 @@ private:
     LocalTensor<INPUT_TYPE> l0_b_tensor_pong_;
     LocalTensor<float> l0_c_tensor_ping_;
     LocalTensor<float> l0_c_tensor_pong_;
-
+    // dk\dvL0C
+    LocalTensor<float> l0_dk_tensor_ping_;
+    LocalTensor<float> l0_dv_tensor_pong_;
     static constexpr int32_t L1_SIZE = 512 * 1024;
     static constexpr int32_t L0_AB_SIZE = 64 * 1024;
     static constexpr int32_t L0_C_SIZE = 256 * 1024;
@@ -114,6 +116,8 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
+        l0_dk_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 128 * 1024);
+        l0_dv_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 192 * 1024);
         SET_FLAG(M, MTE1, event_ping_);
         SET_FLAG(M, MTE1, event_pong_);
         SET_FLAG(FIX, M, event_ping_);
@@ -168,7 +172,7 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        ComputeMMDKV(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -176,7 +180,7 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
-        ComputeMMDKV(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -231,6 +235,7 @@ private:
         SET_FLAG(FIX, M, evnet_id);
     }
 
+    template <bool TYPE>
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                         const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo)
@@ -241,7 +246,12 @@ private:
         int32_t nProcessAlign = runTimeInfo.s2LenAlign;
         LocalTensor<INPUT_TYPE> l0_a_tensor = event_ping_pong_flag ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
-        LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
+        LocalTensor<float> l0_c_tensor;
+        if constexpr (TYPE) {
+            l0_c_tensor = l0_dk_tensor_ping_;
+        } else {
+            l0_c_tensor = l0_dv_tensor_ping_;
+        }
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
 
         WAIT_FLAG(M, MTE1, evnet_id);
@@ -255,19 +265,21 @@ private:
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
         madParams.k = mProcess;
-        madParams.cmatrixInitVal = true;
-        madParams.unitFlag = 3;
+        madParams.cmatrixInitVal = runTimeInfo.need_copy_kv;
+        madParams.unitFlag = runTimeInfo.is_singlekv_last ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        AscendC::FixpipeParamsV220 fixpipeParamsV220;
-        fixpipeParamsV220.mSize = nProcess;
-        fixpipeParamsV220.nSize = head_dim_;
-        fixpipeParamsV220.srcStride = nProcessAlign;
-        fixpipeParamsV220.dstStride = kv_stride_;
-        fixpipeParamsV220.unitFlag = 3;
-        MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        if (runTimeInfo.is_singlekv_last) {
+            AscendC::FixpipeParamsV220 fixpipeParamsV220;
+            fixpipeParamsV220.mSize = nProcess;
+            fixpipeParamsV220.nSize = head_dim_;
+            fixpipeParamsV220.srcStride = nProcessAlign;
+            fixpipeParamsV220.dstStride = kv_stride_;
+            fixpipeParamsV220.unitFlag = 3;
+            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        }
         SET_FLAG(FIX, M, evnet_id);
     }
 
