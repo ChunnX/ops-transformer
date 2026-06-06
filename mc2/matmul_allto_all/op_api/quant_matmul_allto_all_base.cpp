@@ -477,26 +477,54 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
                     x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
                     transX2->GetViewShape().GetDim(1));
         }
-        // NZ格式预处理：先设置格式属性和originalShape，再校验NZ存储shape
         if (isX2Nz) {
-            auto transX2NZ = const_cast<aclTensor *>(transX2);
-            transX2NZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-            transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
-            transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-            transX2NZ->SetOriginalShape(transX2->GetViewShape());
             op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
             OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
-                    "origShape=%s, viewShape=%s.",
+                    "viewShape=%s, strides=[%ld,%ld].",
                     op::ToString(expectedNzShape).GetString(),
                     op::ToString(transX2->GetStorageShape()).GetString(),
-                    op::ToString(transX2->GetOriginalShape()).GetString(),
-                    op::ToString(transX2->GetViewShape()).GetString());
+                    op::ToString(transX2->GetViewShape()).GetString(),
+                    transX2->GetViewStrides()[0], transX2->GetViewStrides()[1]);
             if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            OP_LOGI("QuantMatmulAlltoAll, x2 is in NZ format, format and shape attributes set, NZ shape validated.");
+            int64_t viewDim0 = transX2->GetViewShape().GetDim(0);
+            int64_t viewDim1 = transX2->GetViewShape().GetDim(1);
+            int64_t contiguousStride0 = viewDim0 * viewDim1;
+            int64_t contiguousStride1 = 1;
+            int64_t viewDims[2] = {viewDim0, viewDim1};
+            int64_t viewStrides[2] = {contiguousStride0, contiguousStride1};
+            uint64_t storageDimNum = transX2->GetStorageShape().GetDimNum();
+            std::vector<int64_t> storageDims(storageDimNum);
+            for (uint64_t i = 0; i < storageDimNum; i++) {
+                storageDims[i] = transX2->GetStorageShape().GetDim(i);
+            }
+            aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+            aclGetDataType(transX2, &dataType);
+            transX2 = aclCreateTensor(viewDims, 2, dataType, viewStrides, transX2->GetViewOffset(),
+                                      aclFormat::ACL_FORMAT_FRACTAL_NZ, storageDims.data(), storageDimNum,
+                                      transX2->GetTensor()->GetAddr());
+            CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+            auto transX2NZ = const_cast<aclTensor *>(transX2);
+            transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
+            transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
+            op::Shape nzOrigShape;
+            if (transposeX2) {
+                nzOrigShape.AppendDim(viewDim1);
+                nzOrigShape.AppendDim(viewDim0);
+            } else {
+                nzOrigShape.AppendDim(viewDim0);
+                nzOrigShape.AppendDim(viewDim1);
+            }
+            transX2NZ->SetOriginalShape(nzOrigShape);
+            OP_LOGI("QuantMatmulAlltoAll, NZ x2 tensor created: viewShape=%s, storageShape=%s, "
+                    "strides=[%ld,%ld], origShape=%s.",
+                    op::ToString(transX2->GetViewShape()).GetString(),
+                    op::ToString(transX2->GetStorageShape()).GetString(),
+                    transX2->GetViewStrides()[0], transX2->GetViewStrides()[1],
+                    op::ToString(transX2->GetOriginalShape()).GetString());
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
