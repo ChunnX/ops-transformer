@@ -30,7 +30,6 @@
 #define ASCENDC_TPL_4_BW 4
 
 // 模板参数支持的范围定义
-// TODO
 ASCENDC_TPL_ARGS_DECL(LightningIndexerV2, // 算子OpType
                       ASCENDC_TPL_DTYPE_DECL(DT_Q, LI_TPL_FP16, LI_TPL_BF16),
                       ASCENDC_TPL_DTYPE_DECL(DT_K, LI_TPL_FP16, LI_TPL_BF16),
