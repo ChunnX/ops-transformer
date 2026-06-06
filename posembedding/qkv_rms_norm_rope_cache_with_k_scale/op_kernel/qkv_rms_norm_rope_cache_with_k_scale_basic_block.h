@@ -64,7 +64,7 @@ public:
         SetInitialAicMte1ToAivMte3AConsumedCredits();
     }
 
-    __aicore__ inline void ComputeTileAiv(const TileParam &tile, const TileParam &lastTile)
+    __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile)
     {
         const uint32_t preprocessOutUseId = ReservePreprocessOutUseId();
         aivQkOutUseIds_[MakeDataBufferId(tile.bufferId)] = ReserveQkOutUseId();

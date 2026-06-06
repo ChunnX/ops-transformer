@@ -134,6 +134,8 @@ struct TileParam {
     uint32_t vHeadSize;
     uint32_t rowOffset;
     uint32_t rowSize;
+    uint32_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
+    uint32_t scaleCacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
 };
 
 struct TokenRange {
