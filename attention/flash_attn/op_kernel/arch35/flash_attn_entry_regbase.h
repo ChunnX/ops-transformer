@@ -109,8 +109,13 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+    op.InitCommon(key, value, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv,
+                  workspace, runtimeMetaData, tilingData, &tPipe);
+#ifdef __DAV_C310_CUBE__
+    op.InitCube(query, blocktable);
+#else
+    op.InitVec(attenMask, learnableSink, softmaxLse, attentionOut);
+#endif
     op.Process();
 }
 
