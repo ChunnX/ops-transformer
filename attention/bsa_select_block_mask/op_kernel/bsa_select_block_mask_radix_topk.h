@@ -1080,7 +1080,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
                 DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
                 DataCopyPadExtParams<uint8_t>(false, 0,
                     static_cast<uint8_t>(alignLen - curTileLen), 0));
-    PipeBarrier<PIPE_V>();
+    MTE2ToSSync();
 
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
     for (uint32_t i = 0; i < writeCnt; i++) {
