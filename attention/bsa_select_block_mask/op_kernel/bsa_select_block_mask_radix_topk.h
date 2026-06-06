@@ -1106,6 +1106,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
         uint64_t firstOffset = blockOffset_ + firstTileId * tileLen_;
         CopyIn(xBufPing_, firstTileLen, firstOffset);
         pingPongFlag = true;
+        if (repeatId > 0) {
+            WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+        }
         SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
         for (uint32_t i = 0; i < dataNum; i++) {
