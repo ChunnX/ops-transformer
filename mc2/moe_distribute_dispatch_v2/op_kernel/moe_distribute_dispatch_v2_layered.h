@@ -1262,7 +1262,10 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
     LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
     GlobalTensor<uint32_t> selfDataStatusGMAivSendDump;
-    selfDataStatusGMAivSendDump.SetGlobalBuffer((__gm__ uint32_t*)((GM_ADDR)selfDataStatusGMAiv.GetPhyAddr() + 48 * 64));
+    // selfDataStatusGMAiv already points at aivId_, so this is dump slot 48 + aivId_.
+    constexpr uint32_t SEND_DUMP_SLOT_BASE = 48;
+    selfDataStatusGMAivSendDump.SetGlobalBuffer(
+        (__gm__ uint32_t*)((GM_ADDR)selfDataStatusGMAiv.GetPhyAddr() + SEND_DUMP_SLOT_BASE * FLAG_SIZE));
     dumpLt.SetValue(0, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
     dumpLt.SetValue(1, static_cast<uint32_t>(dstFlagRdmaAddr));
     dumpLt.SetValue(2, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
@@ -1297,7 +1300,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
     dumpLt.SetValue(0, readFlagValue);
     PipeBarrier<PIPE_ALL>();
-    DataCopyExtParams readFlagParams{1, 1 * sizeof(uint32_t), 0, 0, 0};
+    DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
     DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
     PipeBarrier<PIPE_ALL>();
 }
@@ -1362,8 +1365,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
 
-    if (endFlagValue != END_OF_WRITE_FLAG_VALUE && ackFlagValue != 8888) {
-        // 等待 token 或者 endOfWrite
+    if (endFlagValue != END_OF_WRITE_FLAG_VALUE || ackFlagValue != 8888) {
+        // Wait until both the normal end flag and the DFX ack flag arrive.
         PipeBarrier<PIPE_ALL>();
         return WAIT_STATUS;
     } else { // 得到上个token->可以处理 读到结束符 先搬运当前最后一个token，再走进来，越界读，读到不存在的token，返回finish
