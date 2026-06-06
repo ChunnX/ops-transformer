@@ -180,7 +180,7 @@ private:
         last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
     }
 
-    __aicore__ inline int32_t GetSingleBlock(int32_t sIdx, int32_t sLen, int32_t single_size)
+    __aicore__ inline int32_t GetBlockLen(int32_t sIdx, int32_t sLen, int32_t single_size)
     {
         return sIdx + single_size < sLen ? single_size : (sLen - sIdx);
     }
@@ -188,8 +188,8 @@ private:
     __aicore__ inline bool InitStartIdx()
     {
         // 遍历顺序 s2->s1->n1->batch
-        int32_t recoderS1 = GetSingleBlock(s1Idx_, cur_q_seq_len_, single_m_);
-        int32_t recoderS2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, base_n_);
+        int32_t recoderS1 = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
+        int32_t recoderS2 = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
 
         if (unlikely(first_loop_ == 0)) {
             first_loop_ = 1;
@@ -234,7 +234,7 @@ private:
             current_cube_idx_++;
             return;
         }
-        int32_t single_s1_len = GetSingleBlock(s1Idx_, cur_q_seq_len_, single_m_);
+        int32_t single_s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
         single_block_.Record(s1Idx_, single_s1_len);
         RunTimeInfoUpdate(runTimeInfo);
         current_cube_idx_++;
@@ -244,7 +244,7 @@ private:
     __aicore__ inline void RunTimeInfoUpdate(RunTimeInfo &runTimeInfo)
     {
         int32_t base_s1_idx, base_s1_len;
-        int32_t base_s2_len = GetSingleBlock(s2Idx_, cur_kv_seq_len_, base_n_);
+        int32_t base_s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
         int32_t n2Idx = n1Idx_ / q_group_;
         single_block_.Update(base_s1_idx, base_s1_len);
 
