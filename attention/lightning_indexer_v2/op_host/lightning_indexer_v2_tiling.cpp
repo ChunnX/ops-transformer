@@ -197,9 +197,8 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
-                ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
+    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -539,12 +538,6 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                 OP_LOGE(opName_, "BSND case input query, key dim 0 are %u, %ld respectively, they must be same.",
                     bSize_, opParamInfo_.key.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
-        OP_CHECK_IF((opParamInfo_.cuSeqlensK.tensor != nullptr) &&
-                    (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k dim 0 are %u, %ld "
-                    "respectively, they must be same.",
-                    bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize()),
-                return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_),
@@ -552,12 +545,6 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                     "respectively, they must be same.",
                     bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.cuSeqlensQ.tensor != nullptr) &&
-                   (opParamInfo_.cuSeqlensQ.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_q dim 0 are %u, %ld "
-                    "respectively, they must be same",
-                    bSize_, opParamInfo_.cuSeqlensQ.tensor->GetShapeSize()),
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
@@ -719,16 +706,25 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;        // Decode每个核需要存储头和尾部两块数据
     constexpr uint32_t S1_BASE_SIZE = 8;              // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 8192;          // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    // 主流程需Workspace大小
-    uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
-    workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
-    // Decode流程(LD)需要Workspace大小
-    // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-    // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-    
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        constexpr uint32_t li3510S1Base = 4;
+        constexpr uint32_t li3510S2Base = 128;
+        workspaceSize +=
+            li3510S1Base * ((tilingInfo->s2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
+            sizeof(uint32_t) * aicNum;
+    } else {
+        // 主流程需Workspace大小
+        uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
+        workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
+        // Decode流程(LD)需要Workspace大小
+        // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
+        workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE *
+                         V1_RES_ELEM_SIZE * aicNum;
+        // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
+        workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
+    }
+
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
