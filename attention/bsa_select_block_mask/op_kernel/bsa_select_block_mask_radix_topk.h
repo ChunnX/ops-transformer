@@ -383,7 +383,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
                     DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(IN_T)), 0, 0, 0),
                     DataCopyPadExtParams<IN_T>(false, 0,
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
-        PipeBarrier<PIPE_V>();
+        MTE2ToVSync();
 
         if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
             Muls(xLocal.template ReinterpretCast<half>(),
@@ -391,7 +391,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
         } else {
             Muls(xLocal, xLocal, (IN_T)-1, alignLen);
         }
-        PipeBarrier<PIPE_V>();
+        VToMTE3Sync();
 
         DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(IN_T)), 0, 0));
