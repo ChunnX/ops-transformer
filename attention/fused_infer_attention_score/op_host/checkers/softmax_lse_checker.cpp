@@ -51,11 +51,11 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     if (fiaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseShape = fiaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseShape == nullptr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmaxLse", "empty",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", "empty",
                 "When softmaxLseFlag is true, softmaxLse cannot be empty"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "softmaxLse", "empty",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", "empty",
                 "The TensorDesc of softmaxLse cannot be empty"),
     }
     return ge::GRAPH_SUCCESS;
@@ -127,9 +127,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInf
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
-        OP_LOGE(fiaInfo.opName,
-            "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
-            return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "softmax_lse_flag", "True",
+            "In GQA scenario, when the headDim of query, key and value are different, softmax_lse_flag must be False"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
