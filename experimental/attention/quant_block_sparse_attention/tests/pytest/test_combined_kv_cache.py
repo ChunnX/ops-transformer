@@ -7,7 +7,9 @@ import combined_kv_cache
 
 
 def _sample_dense_inputs():
-    fp8_dtype = getattr(torch, "float8_e4m3fn", torch.float16)
+    if not hasattr(torch, "float8_e4m3fn"):
+        pytest.skip("torch.float8_e4m3fn is required for combined KV cache tests")
+    fp8_dtype = torch.float8_e4m3fn
     dense_key = torch.arange(2 * 5 * 2 * 8, dtype=torch.float32).reshape(2, 5, 2, 8).to(fp8_dtype)
     dense_value = (-torch.arange(2 * 5 * 2 * 8, dtype=torch.float32)).reshape(2, 5, 2, 8).to(fp8_dtype)
     dense_k_scale = torch.arange(2 * 5 * 2, dtype=torch.float32).reshape(2, 5, 2)

@@ -26,8 +26,6 @@ SAVE_PATH = "bsa_testcase"
 def _parse_value(value):
     if value in ("torch.bfloat16", "bfloat16", "bf16"):
         return torch.bfloat16
-    if value in ("torch.float16", "float16", "fp16"):
-        return torch.float16
     if value in ("FALSE", "False", "false"):
         return False
     if value in ("TRUE", "True", "true"):

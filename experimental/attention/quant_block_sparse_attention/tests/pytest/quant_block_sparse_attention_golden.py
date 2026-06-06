@@ -27,14 +27,14 @@ MASK_VALUE = -10000.0
 
 
 def _fp8_dtype():
-    return getattr(torch, "float8_e4m3fn", torch.float16)
+    if not hasattr(torch, "float8_e4m3fn"):
+        raise RuntimeError("torch.float8_e4m3fn is required for quant_block_sparse_attention FP8 test data")
+    return torch.float8_e4m3fn
 
 
 def _torch_dtype(value):
     if value in (torch.bfloat16, "torch.bfloat16", "bfloat16", "bf16"):
         return torch.bfloat16
-    if value in (torch.float16, "torch.float16", "float16", "fp16"):
-        return torch.float16
     return value
 
 

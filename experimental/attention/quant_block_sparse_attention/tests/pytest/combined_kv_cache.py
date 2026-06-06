@@ -18,7 +18,9 @@ FP32_BYTES = 4
 
 
 def _fp8_dtype():
-    return getattr(torch, "float8_e4m3fn", torch.float16)
+    if not hasattr(torch, "float8_e4m3fn"):
+        raise RuntimeError("torch.float8_e4m3fn is required for combined KV cache views")
+    return torch.float8_e4m3fn
 
 
 def _align_up(value, alignment):

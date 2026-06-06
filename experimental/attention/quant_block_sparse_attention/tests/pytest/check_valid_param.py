@@ -83,7 +83,7 @@ def check_valid_param(params):
         raise ValueError(f"unsupported mask_mode: {params.get('mask_mode')}")
 
     if params.get("output_dtype", torch.bfloat16) not in (
-        torch.bfloat16, torch.float16, "torch.bfloat16", "torch.float16", "bfloat16", "float16", "bf16", "fp16"
+        torch.bfloat16, "torch.bfloat16", "bfloat16", "bf16"
     ):
         raise ValueError(f"unsupported output_dtype: {params.get('output_dtype')}")
 
