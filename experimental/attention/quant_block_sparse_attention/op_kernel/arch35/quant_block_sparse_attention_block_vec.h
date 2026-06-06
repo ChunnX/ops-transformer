@@ -24,7 +24,6 @@
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_div_cast.h"
-#include "common/quant_block_sparse_attention_tiling_regbase.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
