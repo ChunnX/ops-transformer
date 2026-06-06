@@ -24,16 +24,14 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "common/memcopy/gm_layout.h"
-#include "common/memcopy/parser.h"
-#include "common/memcopy/offset_calculator_v2.h"
+#include "common/offset_calculator.h"
 
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-#include "common/quant_block_sparse_attention_comm.h"
-#include "common/quant_block_sparse_attention_common_regbase.h"
+#include "quant_block_sparse_attention_common_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "quant_block_sparse_attention_attenmask.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
