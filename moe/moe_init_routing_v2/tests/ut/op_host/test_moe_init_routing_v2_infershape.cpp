@@ -376,6 +376,142 @@ TEST_F(MoeInitRoutingV2, moe_init_routing_v2_infer_shape_13)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
 }
 
+// expanded_row_idx shape = n * k when n >= 0 and k >= 0
+TEST_F(MoeInitRoutingV2, infer_shape_expanded_row_idx_n_mul_k_active_num_zero)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingV2",
+        {// input info
+         {{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        });
+    std::vector<std::vector<int64_t>> expectOutputShape = {{6, 5}, {6}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeInitRoutingV2, infer_shape_expanded_row_idx_zero_when_n_zero)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingV2",
+        {// input info: n=0, k=3
+         {{{0, 5}, {0, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{0, 3}, {0, 3}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(10)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        });
+    std::vector<std::vector<int64_t>> expectOutputShape = {{0, 5}, {0}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeInitRoutingV2, infer_shape_expanded_row_idx_zero_when_k_zero)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingV2",
+        {// input info: n=2, k=0
+         {{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 0}, {2, 0}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(10)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        });
+    std::vector<std::vector<int64_t>> expectOutputShape = {{0, 5}, {0}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeInitRoutingV2, infer_shape_expanded_row_idx_n_mul_k_unaffected_by_active_num)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingV2",
+        {// input info
+         {{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            // attr: active_num limits expanded_x but not expanded_row_idx
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        });
+    std::vector<std::vector<int64_t>> expectOutputShape = {{3, 5}, {6}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeInitRoutingV2, infer_shape_expanded_row_idx_n_mul_k_drop_pad_mode)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingV2",
+        {// input info
+         {{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(20)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        });
+    std::vector<std::vector<int64_t>> expectOutputShape = {{4, 2, 5}, {6}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
 TEST_F(MoeInitRoutingV2, moe_init_routing_v2_infer_datatype_01)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
