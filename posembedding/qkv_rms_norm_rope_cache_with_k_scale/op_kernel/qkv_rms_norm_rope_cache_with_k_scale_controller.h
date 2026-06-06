@@ -48,10 +48,6 @@ private:
         tile.vHeadSize = 0U;
         tile.rowOffset = 0U;
         tile.rowSize = 0U;
-        for (uint32_t tokenIdx = 0U; tokenIdx < QKV_RRC_MAX_TOKEN_TILE_PER_AIV; ++tokenIdx) {
-            tile.cacheBaseOffset[tokenIdx] = 0U;
-            tile.scaleCacheBaseOffset[tokenIdx] = 0U;
-        }
     }
 
     __aicore__ inline void FillTileParam(TileParam &tile,
