@@ -247,7 +247,7 @@ private:
         LocalTensor<INPUT_TYPE> l0_a_tensor = event_ping_pong_flag ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor;
-        if constexpr (DK) {
+        if constexpr (TYPE == DK) {
             l0_c_tensor = l0_c_dk_tensor_;
         } else {
             l0_c_tensor = l0_c_dv_tensor_;
@@ -260,7 +260,7 @@ private:
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
-        WAIT_FLAG(FIX, M, evnet_id);
+        // WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
@@ -280,7 +280,7 @@ private:
             fixpipeParamsV220.unitFlag = 3;
             MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         }
-        SET_FLAG(FIX, M, evnet_id);
+        // SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
