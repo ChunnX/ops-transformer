@@ -39,6 +39,7 @@ struct AlltoAllMatmulTilingUtParam {
     bool transposeX1;
     bool transposeX2;
     int64_t groupSize;
+    std::string commMode;
     bool alltoalloutFlag;
     std::string soc;
     ge::graphStatus expectResult;
@@ -72,6 +73,7 @@ struct AlltoAllMatmulTilingUtParam {
         this->transposeX1 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX1", "false"));
         this->transposeX2 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX2", "false"));
         this->groupSize = stoll(ReadMap(csvMap, "groupSize", "0"));
+        this->commMode = ReadMap(csvMap, "commMode", "");
         this->alltoalloutFlag = StrToBoolIgnoreCase(ReadMap(csvMap, "alltoalloutFlag", "false"));
         this->soc = ReadMap(csvMap, "socVersion");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectStatus"));
