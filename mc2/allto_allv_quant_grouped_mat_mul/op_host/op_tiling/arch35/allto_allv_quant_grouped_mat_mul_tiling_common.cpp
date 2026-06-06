@@ -90,6 +90,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
+    // check expertNum
+    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
+        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
     MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, expertNum_));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;

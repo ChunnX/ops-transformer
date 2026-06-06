@@ -484,9 +484,6 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 
 void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
 {
-    // check expertNum
-    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
-        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
     // aixs
     uint64_t gmmXSize = a_ * h1_;
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {

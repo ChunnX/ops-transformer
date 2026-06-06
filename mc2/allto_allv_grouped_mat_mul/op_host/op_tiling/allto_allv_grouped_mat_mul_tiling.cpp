@@ -873,6 +873,9 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     }
 
     if (maxMSize != 0) {
+        // check
+        expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
+            Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
         AlltoAllvGmmTilingHelper gmmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
             gmmXDataType_, gmmWeightDataType_, gmmXDataType_, expertNum_));
@@ -1139,9 +1142,6 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
-    // check
-    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
-        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
     const uint64_t tensorListSize = 512;
     uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     uint64_t groupListSize = sizeof(int64_t) * e_ + tensorListSize;

@@ -356,9 +356,6 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
 
 void AlltoAllvTTQuantGmmTiling::SetWorkspaceInfo()
 {
-    // check expertNum
-    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > PERTENSOR_HCCL_HANDLE_MAX ?
-        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(PERTENSOR_HCCL_HANDLE_MAX)) : expertNum_;
     // aixs
     uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     // comm
