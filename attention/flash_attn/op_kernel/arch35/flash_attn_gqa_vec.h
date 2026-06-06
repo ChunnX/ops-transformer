@@ -1420,7 +1420,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.gSize = this->tilingData->flashAttnBaseParams.gSize;
         constInfoXVec.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
         constInfoXVec.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfoXVec.dSize = this->tilingData->flashAttnBaseParams.dSize;
         constInfoXVec.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
         constInfoXVec.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
         constInfoXVec.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
@@ -1429,7 +1428,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
         constInfoXVec.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfoXVec.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfoXVec.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
         constInfoXVec.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
 
         constInfoXVec.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
@@ -1438,7 +1436,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
         constInfoXVec.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
         constInfoXVec.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfoXVec.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
 
         constInfoXVec.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
         constInfoXVec.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;

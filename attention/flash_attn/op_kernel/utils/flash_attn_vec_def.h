@@ -59,7 +59,6 @@ struct RunInfoXVec {
 
 struct CommonConstInfoVec {
     uint32_t bSize;
-    uint32_t dSize;
     uint32_t dSizeV;
     uint32_t dBasicBlock;
     uint32_t gSize;
@@ -83,12 +82,10 @@ struct CommonConstInfoVec {
     uint32_t attenMaskBatch;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
-    bool isExistRowInvalid;
     float scaleValue;
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
     bool needInitOutput;
-    FA_LAYOUT outputLayout;
 };
 
 struct LseConstInfoVec {
