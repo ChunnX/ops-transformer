@@ -31,7 +31,6 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    // {FaLayout::PA_NZ, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D, FaAxis::D0}},
     {FaLayout::PA_NZ, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
     {FaLayout::LSE_BNS, {FaAxis::B, FaAxis::N, FaAxis::S1}},
     {FaLayout::LSE_NT, {FaAxis::N, FaAxis::T}}};
