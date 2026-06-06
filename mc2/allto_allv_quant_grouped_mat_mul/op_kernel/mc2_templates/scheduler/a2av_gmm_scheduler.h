@@ -59,18 +59,14 @@ public:
                 if constexpr (MX_QUANT_MODE) {
                     commOp_.WaitScale(startExpertIdx);
                     if (isNeedPermute) {
+                        SyncAll<true>();
                         commOp_.PermuteScale(startExpertIdx, actualExpertNum);
                     }
-                    commOp_.Wait(startExpertIdx);
-                    if (isNeedPermute) {
-                        SyncAll<true>();
-                        commOp_.PermuteData(startExpertIdx, actualExpertNum);
-                    }
-                } else {
-                    commOp_.Wait(startExpertIdx);
-                    if (isNeedPermute) {
-                        commOp_.PermuteData(startExpertIdx, actualExpertNum);
-                    }
+                }
+                commOp_.Wait(startExpertIdx);
+                if (isNeedPermute) {
+                    SyncAll<true>();
+                    commOp_.PermuteData(startExpertIdx, actualExpertNum);
                 }
                 SyncAll<true>();
                 AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);

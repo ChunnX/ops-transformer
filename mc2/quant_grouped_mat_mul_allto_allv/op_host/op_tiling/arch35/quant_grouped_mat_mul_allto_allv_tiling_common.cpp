@@ -867,8 +867,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
         mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-    expertNum_ = Ops::Base::CeilDiv(localParams_.ep, expertNum_) > MAX_HCCL_HANDLE_NUM ?
-        Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(MAX_HCCL_HANDLE_NUM)) : expertNum_;
     // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
     // expertNum=1时无需Permute, GMM输出直接作为sendBuffer
     localTilingData_.workspaceInfo.wsPermuteOutSize = expertNum_ == 1 ? 0 :
@@ -897,6 +895,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
+    // check expertNum
+    expertNum_ = Ops::Base::CeilDiv(localParams_.ep, expertNum_) > MAX_HCCL_HANDLE_NUM ?
+        Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(MAX_HCCL_HANDLE_NUM)) : expertNum_;
     MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
         expertNum_));
     MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
