@@ -116,14 +116,6 @@ public:
     CATLASS_DEVICE
     void Finalize()
     {
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
     }
 
     CATLASS_DEVICE
