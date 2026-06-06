@@ -17,7 +17,7 @@
 #define _VEC_OP_DET_H_
 
 #include "dropmask.h"
-#include "common_header.h"
+#include "flash_attention_score_grad_common_header.h"
 #include "kernel_operator.h"
 
 template <typename FAGT>

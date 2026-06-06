@@ -18,6 +18,7 @@
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -42,7 +43,7 @@ aclnnStatus aclnnQuantMatmulAllReduceGetWorkspaceSize(
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduce, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduce", "dequantScale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
@@ -73,7 +74,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduceLaunchTask fail, ret: %d.", ret);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduce", "QuantMatmulAllReduceLaunchTask fail, ret: %d.", ret);
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};

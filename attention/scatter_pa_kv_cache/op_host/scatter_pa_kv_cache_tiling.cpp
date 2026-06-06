@@ -560,14 +560,30 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
     if (CheckInputShape() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    auto attrs = context_->GetAttrs();
+    auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
+    auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
+
     if (params_.templateType == TEMPLATE_NORM_NCT || params_.templateType == TEMPLATE_SISO_NCT) {
-        auto attrs = context_->GetAttrs();
-        auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
-        auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
         params_.kStride = strides->GetData()[0];
         params_.vStride = strides->GetData()[1];
         params_.kOffset = offsets->GetData()[0];
         params_.vOffset = offsets->GetData()[1];
+        // auto kvCacheStrides = attrs->GetListInt(INPUT_KV_CACHE_STRIDES_INDEX);
+        bool isViewKCache = context_->InputIsView(DIM_1);
+        bool isViewVCache = context_->InputIsView(DIM_4);
+        if (isViewKCache) {
+            auto *kCacheStride = context_->GetInputStride(DIM_1);
+            if (kCacheStride != nullptr) {
+                params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
+            }
+        }
+        if (isViewVCache) {
+            auto *VCacheStride = context_->GetInputStride(DIM_4);
+            if (VCacheStride != nullptr) {
+                params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
+            }
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -691,6 +707,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::PostTiling()
     tilingData_.set_vStride(params_.vStride);
     tilingData_.set_kOffset(params_.kOffset);
     tilingData_.set_vOffset(params_.vOffset);
+    tilingData_.set_kCacheBlockStride(params_.kCacheBlockStride);
+    tilingData_.set_vCacheBlockStride(params_.vCacheBlockStride);
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
@@ -713,6 +731,8 @@ void ScatterPaKvCacheMembaseTiling::DumpTilingInfo()
     info << "vStride: " << params_.vStride << std::endl;
     info << "kOffset: " << params_.kOffset << std::endl;
     info << "vOffset: " << params_.vOffset << std::endl;
+    info << "kCacheBlockStride: " << params_.kCacheBlockStride << std::endl;
+    info << "vCacheBlockStride: " << params_.vCacheBlockStride << std::endl;
     info << "tilingKey: " << params_.tilingKey << std::endl;
     OP_LOGD(context_, "%s", info.str().c_str());
 }

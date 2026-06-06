@@ -114,7 +114,8 @@ public:
                         bool isFirstKvSTile,
                         bool isLastKvSTile,
                         uint32_t colStrideCurSubCore,
-                        Arch::CrossCoreFlag mm2ToReFlag)
+                        Arch::CrossCoreFlag mm2ToReFlag,
+                        bool isFullQuantFp8)
     {
         uint32_t rowNumCurSubCore = tla::get<0>(gOTensorTlaTile.shape());
         uint32_t colNumCurSubCore = tla::get<1>(gOTensorTlaTile.shape());
@@ -172,6 +173,16 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
+            if (isFullQuantFp8) {
+                if (dStages == 1) {
+                    deQuantScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
+                                                        vlElemNum);
+                } else if (dStages == 2) {
+                    deQuantScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
+                                                        vlElemNum);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+            }
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,
@@ -391,6 +402,51 @@ public:
         }
     }
 
+    template <DRegSplitStages dRegSplitStages>
+    __simd_vf__ inline void deQuantScaleO(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
+                                          uint32_t colTail, uint32_t vlElemNum)
+    {
+    }
+
+    template <>
+    __simd_vf__ inline void deQuantScaleO<DRegSplitStages::ONE>(__ubuf__ ElementOTmp *goUb, uint32_t row,
+                                                                uint32_t colStride, uint32_t colTail,
+                                                                uint32_t vlElemNum)
+    {
+        using namespace AscendC::MicroAPI;
+        RegTensor<ElementOTmp> oVreg;
+        MaskReg pregTail = UpdateMask<float>(colTail);
+
+        for (uint16_t i = 0; i < row; ++i) {
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg, goUb + i * colStride);
+            constexpr float maxValueReciprocal = 1.0f / 448.0f;
+            Muls(oVreg, oVreg, maxValueReciprocal, pregTail);
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg, pregTail);
+        }
+    }
+
+    template <>
+    __simd_vf__ inline void deQuantScaleO<DRegSplitStages::TWO>(__ubuf__ ElementOTmp *goUb, uint32_t row,
+                                                                uint32_t colStride, uint32_t colTail,
+                                                                uint32_t vlElemNum)
+    {
+        using namespace AscendC::MicroAPI;
+        RegTensor<ElementOTmp> oVreg0;
+        RegTensor<ElementOTmp> oVreg1;
+        MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
+        MaskReg pregTail = UpdateMask<float>(colTail);
+
+        for (uint16_t i = 0; i < row; ++i) {
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg0, goUb + i * colStride);
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg1, goUb + i * colStride + vlElemNum);
+            constexpr float maxValueReciprocal = 1.0f / 448.0f;
+            Muls(oVreg0, oVreg0, maxValueReciprocal, pregAll);
+            Muls(oVreg1, oVreg1, maxValueReciprocal, pregTail);
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg0, pregAll);
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, oVreg1, pregTail);
+        }
+    }
+
     template <class TensorDst>
     __aicore__ inline
     void operator()(TensorDst &gOTensor,
@@ -399,7 +455,8 @@ public:
                     uint32_t gatheredKvSTileIdx,
                     bool isFirstKvSTile,
                     bool isLastKvSTile,
-                    Arch::CrossCoreFlag mm2ToReFlag)
+                    Arch::CrossCoreFlag mm2ToReFlag,
+                    bool isFullQuantFp8 = false)
     {
         uint32_t rowNumOri = actualOriShape[0];
         uint32_t colNumOri = actualOriShape[1];
@@ -428,12 +485,14 @@ public:
                 isFirstKvSTile,
                 isLastKvSTile,
                 colStrideCurSubCore,
-                mm2ToReFlag);
+                mm2ToReFlag,
+                isFullQuantFp8);
         } else {
             Arch::CrossCoreWaitFlag<4, PIPE_V>(mm2ToReFlag);
             Arch::CrossCoreSetFlag<4, PIPE_V>(mm2ToReFlag);
         }
     }
+
 private:
     AscendC::LocalTensor<ElementOTmp> loUbTensor[UB_OTMP_BUF_STAGES];
     AscendC::LocalTensor<SMDtype> dmUbTensor16;

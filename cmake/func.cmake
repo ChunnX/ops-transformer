@@ -83,7 +83,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         )
         if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a"))
+                ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
             file(GLOB MC2_OP_HOST_CMAKE_FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
             )
@@ -105,7 +105,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             )
             if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a"))
+                ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/framework/CMakeLists.txt"
@@ -406,12 +406,14 @@ function(add_ops_src_copy)
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
                 ${OPS_ADV_UTILS_KERNEL_INC}/* 
                 ${OPS_CGMCT}/*
+                ${OPS_GMM_COMMON_KERNEL_INC}/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM

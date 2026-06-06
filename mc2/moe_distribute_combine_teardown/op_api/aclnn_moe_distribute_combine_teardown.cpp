@@ -19,6 +19,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 
@@ -47,7 +48,7 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *quantExpandX
     OP_CHECK_NULL(commCmdInfo, return false);
     OP_CHECK_NULL(xOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineTeardown", "groupEp");
         return false;
     }
     OP_LOGD("aclnn_moe_distribute_combine_teardown CheckNotNull success");
@@ -67,7 +68,9 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantE
                            sharedExpertXOptional, groupEp, xOut),
               ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineTeardown", "groupEp",
+            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     OP_LOGD("aclnn_moe_distribute_combine_teardown checkparams success");
@@ -97,7 +100,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
 {
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_get_workspace_size start");
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnMoeDistributeCombineTeardown", "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

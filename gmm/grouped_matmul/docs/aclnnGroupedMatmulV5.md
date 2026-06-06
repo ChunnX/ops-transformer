@@ -576,7 +576,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       除[公共约束](#公共约束)外，A8W4场景其余约束如下：
       - 仅支持GroupType=0（M轴分组），actType=0
-      - 当前仅支持x、weight、out均为长度为1的TensorList
+      - 当前支持x、out均为长度为1的TensorList
+      - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
       - x不支持转置、weight不支持转置
       - x仅支持2维Tensor，Shape为（M，K）
       - weight默认支持3维Tensor，Shape为（E，K，N）
@@ -609,7 +610,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       除[公共约束](#公共约束)外，a16w4场景其余约束如下：
       - x不支持转置
-      - 仅支持GroupType=-1、0，actType=0，groupListType=0/1
+      - 仅支持GroupType=-1、0，actType=0，groupListType=0/1/2
       - weight中每一组tensor的最后一维大小都应是偶数，最后一维指weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
       - 对称量化支持perchannel和pergroup量化模式，若为pergroup，pergroup数G或$G_i$必须要能整除对应的$k_i$。
       - 非对称量化仅支持perchannel模式。
@@ -642,7 +643,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       除[公共约束](#公共约束)外，a16w8场景其余约束如下：
       - x不支持转置
-      - 仅支持GroupType=-1、0，actType=0，groupListType=0/1
+      - 仅支持GroupType=-1、0，actType=0，groupListType=0/1/2
       - 仅支持perchannel量化模式。
       - 若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。
       - 伪量化参数antiquantScaleOptional和antiquantOffsetOptional的shape要满足下表（其中g为matmul组数）：
@@ -668,7 +669,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - **约束说明**
 
       除[公共约束](#公共约束)外，A4W4场景其余约束如下：
-      - 仅支持GroupType=0（M轴分组），actType=0，groupListType=0/1
+      - 仅支持GroupType=0（M轴分组），actType=0，groupListType=0/1/2
       - 当前仅支持x、weight、out均为长度为1的TensorList
       - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
       - x仅支持2维Tensor，Shape为（M，K）
@@ -695,7 +696,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - **约束说明**
 
       除[公共约束](#公共约束)外，非量化场景其余约束如下：
-      - 支持GroupType=-1、0、2，actType=0，groupListType=0/1
+      - 支持GroupType=-1、0、2，actType=0，groupListType=0/1/2
     </details>
 
     <a id="groupType-constraints"></a>
@@ -713,7 +714,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | 0 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维；<br> 3）groupListOptional第1维最大支持1024，即最多支持1024个group |1）x不支持转置；<br> 2）支持weight转置，A8W4与A4W4场景不支持weight转置 |weight中tensor需为3维，x，y中tensor需为2维|
       | 0 | 单个|多个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group|1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一 |1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
       | 0 | 多个|多个|单个 | 2/3 | 1）groupListOptional可选；<br> 2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一|1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
-      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
+      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和应小于等于x中tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
       | 2 | 单个|多个|多个 | 0/1 | groupListOptional必须传空 | 1）x必须转置；<br> 2）weight不能转置| 1）x，weight，y中tensor需为2维。<br> 2）weight长度最大支持128，即最多支持128个group；<br> 3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br> 4）bias必须传空 |
 
     </details>

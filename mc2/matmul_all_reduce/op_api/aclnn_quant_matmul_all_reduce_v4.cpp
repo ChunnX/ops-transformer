@@ -18,6 +18,7 @@
 #include "common/op_api/mc2_aclnn_util.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -65,7 +66,7 @@ static bool CheckNotNull(
     OP_CHECK_NULL(x2Scale, return false);
     OP_CHECK_NULL(output, return false);
     if (reduceOp == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input reduceOp is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV4", "reduceOp");
         return false;
     }
     return true;
@@ -122,11 +123,11 @@ static bool CheckDtypeValid(
 static bool CheckAttr(const char* reduceOp, int64_t streamMode)
 {
     if (strncmp(reduceOp, REDUCE_OP_SUM, NUM_THREE) != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got=%s.", reduceOp);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV4", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got=%ld.", streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV4", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
     }
     return true;
@@ -150,10 +151,9 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape=%s, x2 shape=%s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnQuantMatmulAllReduceV4", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -164,19 +164,17 @@ static bool CheckShape(
 
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID, 
-            "Output is empty tensor, output shape is: %s",
-            op::ToString(output->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnQuantMatmulAllReduceV4", "output",
+            op::ToString(output->GetViewShape()).GetString(), "non-empty tensor");
         return false;
     }
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
         OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
-        op::Shape biasShape;
-        biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        op::Shape biasShapeExpected;
+        biasShapeExpected.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShapeExpected, return false);
     }
 
     // x3 shape [s,m,n]
@@ -236,6 +234,32 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
         x2->GetTensor()->GetAddr());
 }
 
+static aclnnStatus PrepareTransposedX2(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2,
+    const aclTensor*& transX2, const aclTensor*& transX2Scale)
+{
+    auto tempX2 = x2;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
+        if (x2->GetTensor() == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV4", "x2");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        tempX2 = CopyTensor(x2);
+    }
+    transX2 = tempX2;
+    transX2Scale = x2Scale;
+    if (transposeX2) {
+        if (tempX2->GetTensor() == nullptr) {
+            OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceV4", "Tensor is null.");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
+        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
+            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, const aclTensor* commQuantScale1Optional,
@@ -252,41 +276,22 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     // x2Scale转为uint64
     auto dequant = const_cast<aclTensor*>(x2Scale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduce, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV4", "x2Scale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
         dequant->SetDataType(op::DataType::DT_UINT64);
     }
 
-    // 目前不支持x1进行transpose
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-
     aclTensor* scale = nullptr;
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
-    auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
-        if (x2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        tempX2 = CopyTensor(x2);
-    }
-    auto transX2 = tempX2;
-    auto transX2Scale = x2Scale;
-    if (transposeX2) {
-        if (tempX2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
-        // mxfp是3维scale，转置的是前两维，需要特殊判断，perblock场景复用判断转置接口
-        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
-        }
-    }
+    const aclTensor* transX2 = nullptr;
+    const aclTensor* transX2Scale = nullptr;
+    auto transRet = PrepareTransposedX2(x2, x2Scale, transposeX2, transX2, transX2Scale);
+    CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
@@ -320,7 +325,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV4 ret=%d.", ret);
 
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduce, This is an error in launch aicore.");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceV4", "QuantMatmulAllReduce, This is an error in launch aicore.");
         return ACLNN_ERR_INNER;
     }
 
