@@ -56,15 +56,15 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    if (workspaceGM == nullptr) {
+        return;
+    }
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
         return;
     }
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    if (workspaceGM == nullptr) {
-        return;
-    }
     TPipe pipe;
 
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);

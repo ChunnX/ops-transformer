@@ -843,6 +843,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->aivCoreNum = static_cast<uint64_t>(localParams_.aivCoreNum);
     gmmQTilingCommonInfoPtr->aicCoreNum = static_cast<uint64_t>(localParams_.aicCoreNum);
 
+    OP_TILING_CHECK(expertNum_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum_",
+            std::to_string(expertNum_).c_str(), "positive value"),
+        return ge::GRAPH_FAILED);
     gmmQTilingCommonInfoPtr->expertNum = expertNum_;
     gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum_;
     gmmQTilingCommonInfoPtr->tailLoopExpertNum =
@@ -898,6 +902,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         mMaxSize = std::max(mSize, mMaxSize);
     }
     // check expertNum
+    OP_TILING_CHECK(expertNum_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum_",
+            std::to_string(expertNum_).c_str(), "positive value"),
+        return ge::GRAPH_FAILED);
     expertNum_ = Ops::Base::CeilDiv(localParams_.ep, expertNum_) > MAX_HCCL_HANDLE_NUM ?
         Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(MAX_HCCL_HANDLE_NUM)) : expertNum_;
     MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
