@@ -1262,30 +1262,18 @@ if (runInfo0.isValid) {
     }
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoXCube &info)
     {
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfoXCube.n2Size;
+info.bIdx = bN2Cur / constInfoXCube.n2Size;
         info.n2Idx = bN2Cur % constInfoXCube.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfoXCube.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
+        info.s2Idx = s2Cur * s2BaseSize;
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfoXCube.gSize;
+        uint64_t gS1Size = actSeqLensQ * constInfoXCube.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
         info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        if (((s2Cur + 1) * s2BaseSize) > actSeqLensKv) {
+            info.actSingleLoopS2Size = actSeqLensKv - s2Cur * s2BaseSize;
         }
         if (constInfoXCube.isKvContinuous) {
             info.isChangeBatch = false;
@@ -1297,7 +1285,6 @@ info.s2Idx = s2Cur * s2BaseSize;
                 info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
     }
