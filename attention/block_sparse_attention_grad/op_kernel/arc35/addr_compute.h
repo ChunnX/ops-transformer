@@ -11,6 +11,42 @@
 using namespace AscendC;
 
 namespace BSA_ARC35 {
+
+class SingleBlock {
+public:
+    __aicore__ inline void Update(int32_t &cur_s1_idx, int32_t &cur_s1_len)
+    {
+        /*
+         *  Single块内遍历S1方向。S2方向固定128
+         */
+        cur_s1_idx = s1_start_idx;
+        cur_s1_len = s1_start_idx + s1_base_size < s1_len ? s1_base_size : (s1_len - s1_start_idx);
+
+        s1_start_idx += cur_s1_len;
+        if (s1_start_idx >= s1_len) {
+            is_finish = true;
+        }
+    }
+
+    __aicore__ inline void Record(int32_t s1_start_idx, int32_t s1_len)
+    {
+        is_finish = false;
+        this->s1_start_idx = s1_start_idx;
+        this->s1_len = s1_len;
+    }
+
+    __aicore__ inline bool IsFinish()
+    {
+        return is_finish;
+    }
+
+private:
+    int32_t s1_start_idx{0};
+    int32_t s1_len{0};
+    int32_t s1_base_size{128};
+    bool is_finish{true};
+};
+
 template <typename BSA_TYPE>
 class AddrComputeModule {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
@@ -33,8 +69,6 @@ private:
     int32_t s1Idx_{0};            // 当前s1方向计算到的位置
     int32_t s2Idx_{0};            // 当前s2方向计算到的位置
     int32_t n1Idx_{0};            // 当前n1方向计算到的位置
-    int32_t s1Len_{0};            // 当前s1方向计算的长度
-    int32_t s2Len_{0};            // 当前s2方向计算的长度
     int32_t cur_q_seq_len_{0};    // 当前batch的q_seq_len
     int32_t cur_kv_seq_len_{0};   // 当前batch的kv_seq_len
     int32_t last_q_seq_sum_{0};   // 上一个batch的q_seq_len的累加和
@@ -49,6 +83,9 @@ private:
     int32_t kv_block_num_{0};
     int32_t block_x_{0};
     int32_t block_y_{0};
+    int32_t s1_single_size{0};
+    int32_t s2_single_size{0};
+    SingleBlock single_block_;
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
@@ -69,6 +106,8 @@ public:
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
+        this->s1_single_size = 1024;
+        this->s2_single_size = this->base_n_;
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
             int32_t max_q_seq_len_ = 0;
@@ -101,6 +140,13 @@ public:
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         runTimeInfo.need_compute = 0;
+
+        if (!single_block_.IsFinish()) {
+            // 处理完Single块，更新RunTimeInfo
+            RunTimeInfoUpdate(runTimeInfo);
+            return;
+        }
+
         while (true) {
             if (InitStartIdx()) {
                 break;
@@ -136,7 +182,7 @@ private:
         last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
     }
 
-    __aicore__ inline int32_t GetRecoderS(int32_t sIdx, int32_t sLen, int32_t single_size)
+    __aicore__ inline int32_t GetSingleBlock(int32_t sIdx, int32_t sLen, int32_t single_size)
     {
         return sIdx + single_size < sLen ? single_size : (sLen - sIdx);
     }
@@ -144,8 +190,8 @@ private:
     __aicore__ inline bool InitStartIdx()
     {
         // 遍历顺序 s2->s1->n1->batch
-        int32_t recoderS1 = GetRecoderS(s1Idx_, cur_q_seq_len_, base_m_);
-        int32_t recoderS2 = GetRecoderS(s2Idx_, cur_kv_seq_len_, base_n_);
+        int32_t recoderS1 = GetSingleBlock(s1Idx_, cur_q_seq_len_, s1_single_size);
+        int32_t recoderS2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
 
         if (unlikely(first_loop_ == 0)) {
             first_loop_ = 1;
@@ -190,18 +236,21 @@ private:
             current_cube_idx_++;
             return;
         }
-        s1Len_ = GetRecoderS(s1Idx_, cur_q_seq_len_, this->base_m_);
-        s2Len_ = GetRecoderS(s2Idx_, cur_kv_seq_len_, this->base_n_);
+        int32_t base_s1_idx, base_s1_len;
+        int32_t single_s2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
+        single_block_.Record(s1Idx_, s1Len_);
+        single_block_.Update(base_s1_idx, base_s1_len);
+
         int32_t n2Idx = n1Idx_ / q_group_;
         runTimeInfo.bIdx = bIdx_;
-        runTimeInfo.s1Idx = s1Idx_;
+        runTimeInfo.s1Idx = base_s1_idx;
         runTimeInfo.s2Idx = s2Idx_;
         runTimeInfo.n1Idx = n1Idx_;
         runTimeInfo.n2Idx = n2Idx;
-        runTimeInfo.s1Len = s1Len_;
-        runTimeInfo.s2Len = s2Len_;
+        runTimeInfo.s1Len = base_s1_len;
+        runTimeInfo.s2Len = single_s2;
         runTimeInfo.s1LenAlign = RoundUp(s1Len_, 16);
-        runTimeInfo.s2LenAlign = RoundUp(s2Len_, 16);
+        runTimeInfo.s2LenAlign = RoundUp(single_s2, 16);
         runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
                                                                  head_dim_, bIdx_, s1Idx_, n1Idx_);
         runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
@@ -212,9 +261,22 @@ private:
             GetSftgGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_, s1Idx_, n1Idx_);
         runTimeInfo.need_compute = 1;
         current_cube_idx_++;
+    }
 
-        // printf("cube_core_idx: %d, bIdx: %d, s1Idx: %d, s2Idx: %d, s1Len: %d, s2Len: %d\n", cube_core_idx_, bIdx_,
-        //        s1Idx_, s2Idx_, s1Len_, s2Len_);
+
+    __aicore__ inline void RunTimeInfoUpdate(RunTimeInfo &runTimeInfo)
+    {
+        int32_t base_s1_idx, base_s1_len;
+        single_block_.Update(base_s1_idx, base_s1_len);
+
+        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s1Len = base_s1_len;
+        runTimeInfo.s1LenAlign = RoundUp(runTimeInfo.s1Len, 16);
+        runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
+                                                                 head_dim_, bIdx_, runTimeInfo.s1Idx, n1Idx_);
+        runTimeInfo.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_,
+                                                               runTimeInfo.s1Idx, n1Idx_);
+        runTimeInfo.need_compute = 1;
     }
 };
 } // namespace BSA_ARC35
