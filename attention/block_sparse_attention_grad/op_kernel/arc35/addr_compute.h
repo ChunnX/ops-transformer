@@ -51,6 +51,7 @@ public:
         this->runTimeInfoBak_.s2Len = runTimeInfo.s2Len;
         this->runTimeInfoBak_.s1LenAlign = runTimeInfo.s1LenAlign;
         this->runTimeInfoBak_.s2LenAlign = runTimeInfo.s2LenAlign;
+        this->runTimeInfoBak_.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
     }
 
     template <uint32_t INPUT_LAYOUT>
@@ -86,6 +87,8 @@ public:
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
+        runTimeInfo.need_copy_kv = 0;
+        runTimeInfo.kv_ping_pong_idx = this->runTimeInfoBak_.kv_ping_pong_idx;
     }
 
     __aicore__ inline bool IsFinish()
@@ -327,6 +330,8 @@ private:
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
+        runTimeInfo.need_copy_kv = 1;
+        runTimeInfo.kv_ping_pong_idx = 1 - runTimeInfo.kv_ping_pong_idx;
         single_block_.RecordRunTimeInfo(runTimeInfo);
         current_cube_idx_++;
     }

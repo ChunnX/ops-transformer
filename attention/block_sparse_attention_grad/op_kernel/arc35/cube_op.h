@@ -133,7 +133,9 @@ public:
                                         const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor =
+            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+
         ComputeMM12(queryGm[runTimeInfo.queryGmOffset], keyGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                     mm1OutUb, runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
@@ -144,7 +146,9 @@ public:
                                          const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor =
+            runTimeInfo.kv_ping_pong_idx ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
+
         ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                     mm2OutUb, runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
@@ -153,7 +157,9 @@ public:
     __aicore__ inline void SendMatmulDq(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
-        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> l1_b_tensor =
+            runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
+
         ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
@@ -192,8 +198,13 @@ private:
         WAIT_FLAG(M, MTE1, evnet_id);
         load_data_gm_2_l0<true>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_,
                                 q_stride_);
-        load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
-                                       head_dim_align_, kv_stride_);
+        if (runTimeInfo.need_copy_kv) {
+            load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
+                                           head_dim_align_, kv_stride_);
+        } else {
+            load_data_l1_2_l0_nz(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
+        }
+
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
