@@ -39,6 +39,10 @@ public:
     __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
     {
         this->runTimeInfoBak_.bIdx = runTimeInfo.bIdx;
+        this->runTimeInfoBak_.last_q_seq_sum = runTimeInfo.last_q_seq_sum;
+        this->runTimeInfoBak_.last_kv_seq_sum = runTimeInfo.last_kv_seq_sum;
+        this->runTimeInfoBak_.cur_q_seq_len = runTimeInfo.cur_q_seq_len;
+        this->runTimeInfoBak_.cur_kv_seq_len = runTimeInfo.cur_kv_seq_len;
         this->runTimeInfoBak_.s1Idx = runTimeInfo.s1Idx;
         this->runTimeInfoBak_.s2Idx = runTimeInfo.s2Idx;
         this->runTimeInfoBak_.n1Idx = runTimeInfo.n1Idx;
@@ -57,6 +61,10 @@ public:
         this->Update(base_s1_idx, base_s1_len);
 
         runTimeInfo.bIdx = runTimeInfoBak_.bIdx;
+        runTimeInfo.last_q_seq_sum = runTimeInfoBak_.last_q_seq_sum;
+        runTimeInfo.last_kv_seq_sum = runTimeInfoBak_.last_kv_seq_sum;
+        runTimeInfo.cur_q_seq_len = runTimeInfoBak_.cur_q_seq_len;
+        runTimeInfo.cur_kv_seq_len = runTimeInfoBak_.cur_kv_seq_len;
         runTimeInfo.s1Idx = base_s1_idx;
         runTimeInfo.s2Idx = runTimeInfoBak_.s2Idx;
         runTimeInfo.n1Idx = runTimeInfoBak_.n1Idx;
