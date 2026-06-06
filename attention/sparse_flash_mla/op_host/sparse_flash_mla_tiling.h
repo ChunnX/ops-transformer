@@ -158,7 +158,6 @@ TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
 BEGIN_TILING_DATA_DEF(SparseFlashMlaCmpParams)
 
@@ -168,14 +167,11 @@ TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(SparseFlashMlaCmpParamsOp, SparseFlashMlaCmpParams)
 
 BEGIN_TILING_DATA_DEF(SparseFlashMlaTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(SparseFlashMlaSwaParams, baseParams);
 TILING_DATA_FIELD_DEF_STRUCT(SparseFlashMlaCmpParams, cmpParams);
 END_TILING_DATA_DEF
-
-REGISTER_TILING_DATA_CLASS(SparseFlashMla, SparseFlashMlaTilingData)
 
 struct SMLAParaInfo {
     SMLATilingRequiredParaInfo q = {nullptr, nullptr};

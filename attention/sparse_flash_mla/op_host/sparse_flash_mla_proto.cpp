@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_mla_proto.cpp
@@ -44,19 +44,19 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
     *attentionOutShape = *queryShape;
-    
+
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
-    OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
-    auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
+    OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
+    auto attrs = context->GetAttrs();
+    const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
     const char *inputLayoutOriKeyPtr = attrs->GetAttrPointer<char>(LAYOUT_ORI_KEY_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutOriKeyPtr);
-    std::string inputLayoutOriKeyPtr = std::string(inputLayoutOriKeyPtr);
+    std::string inputLayoutOriKey = std::string(inputLayoutOriKeyPtr);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
 
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
-            if (inputLayoutOriKeyPtr == "PA_BNBD") {
+            if (inputLayoutOriKey == "PA_BNBD") {
                 softmaxLseShape->SetDimNum(DIM_NUM_3);
                 softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_2));
                 softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
@@ -81,7 +81,7 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSparseFlashMla(gert::InferDataTypeContext *context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashMla", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
