@@ -68,8 +68,6 @@ enum class SparseType : uint8_t {
     BAND = 2,
     UNSUPPORTED = 3    // 超L2优化暂不支持sparse的场景
 };
-template<bool isInfer = false>
-struct RunParamStr;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -94,13 +92,8 @@ struct RunParamStr;
     int64_t qRopeNBGOffset;             /* QueryRope 的 offset */ \
     int64_t kRopeNBGOffset;             /* G方向上,不同g的KeyRope的offset */ 
 
-template<>
-struct RunParamStr<false> {  // 分核与切块需要使用到参数
-    COMMON_RUN_PARAM;
-};
 
-template<>
-struct RunParamStr<true> {  // 分核与切块需要使用到参数
+struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int64_t s1LoopTimes;
@@ -190,11 +183,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod3 = 0; \
     int64_t sOuterOffset
 
-template<bool isInfer = false>
-struct RunInfo;
-
-template <>
-struct RunInfo<true> {
+struct RunInfo {
     COMMON_RUN_INFO;
     // 推理新增
     int64_t gS1Idx;
@@ -209,11 +198,6 @@ struct RunInfo<true> {
 
     // prefix相关
     int64_t prefixOffset;                  //保存当前循环prefix的地址偏移
-};
-
-template<>
-struct RunInfo<false> {
-    COMMON_RUN_INFO;
 };
 
 #define COMMON_CONST_INFO \
@@ -316,13 +300,6 @@ struct RunInfo<false> {
     int64_t s1BaseDR; \
     int64_t s2BaseDR; \
 
-#define KVPREFIX_INFO \
-    /* prefix参数 */ \
-    bool isActualSharedPrefixLenNull = true; \
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */ \
-    int64_t kvPrefixSize = 0;  /* 保存prefix shape完整长度 */ \
-    int64_t prefixLoopCount = 0 /* 保存prefix参与的S2方向循环次数 */
-
 #define INFER_CONST_INFO \
     /* 推理新增 */ \
     bool isRowInvalid; /* 是否使能行无效 */ \
@@ -389,45 +366,20 @@ struct RunInfo<false> {
     uint32_t splitCoreMode : 1; \
     uint32_t coreNum
 
-#define FAG_CV_SHARED_PARAMS \
-    /* base params */ \
-    float qScaleDs
- 
-struct FagCVSharedParams {
-    FAG_CV_SHARED_PARAMS;
-};
- 
-template<bool isInfer = false>
-struct ConstInfo;
-
-template<>
-struct ConstInfo<true> {
+struct ConstInfo{
     COMMON_CONST_INFO;
     INFER_CONST_INFO;
-};
-
-template <>
-struct ConstInfo<false> {
-    COMMON_CONST_INFO;
-    int64_t n2GS1o; // 训练特有
+    int64_t n2GS1o;
     int64_t gS1o;
 };
 
 /* only support b32 or b64 */
-template <bool isInfer = false, bool isPa = false>
+template <bool isPa = false>
 struct CVSharedParams;
-
-template<>
-struct CVSharedParams<false, false> {
-    CV_SHARED_PARAMS;
-    int64_t firstFullLoadS1OuterIdx;
-    int64_t totalSize;
-    float scaleValue;
-};
 
 /* CVSharedParams需要小于等于CacheLine的大小：128Bytes */
 template<>
-struct CVSharedParams<true, false> {
+struct CVSharedParams<false> {
     CV_SHARED_PARAMS;
     uint32_t fromFused : 1;
     uint32_t isGqa : 1;
@@ -459,9 +411,8 @@ struct CVSharedParams<true, false> {
 
     int64_t totalSize;
 };
-
 template<>
-struct CVSharedParams<true, true> {
+struct CVSharedParams<true> {
     CV_SHARED_PARAMS;
     uint32_t fromFused : 1;
     uint32_t isGqa : 1;

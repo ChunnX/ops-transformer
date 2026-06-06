@@ -70,7 +70,7 @@ public:
     // ==================== Functions ======================
     __aicore__ inline BSABlockVecBase() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttentionTilingData *__restrict tiling,
-        CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, AttenMaskInfo &attenMaskInfo) {
+        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, AttenMaskInfo &attenMaskInfo) {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             tilingData = tiling;
@@ -83,19 +83,19 @@ public:
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
         __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-        ConstInfo<isInfer> &constInfo);
+        ConstInfo &constInfo);
     __aicore__ inline float GetPaKScaleValue(
-        const RunInfo<isInfer> &runInfo, const ConstInfo<isInfer> &constInfo);
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo<isInfer> &constInfo);
+        const RunInfo &runInfo, const ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo, int32_t subLoop = 0);
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
+        ConstInfo &constInfo, int32_t subLoop = 0);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo);
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
+        ConstInfo &constInfo);
 
     TPipe *tPipe;
     const QuantBlockSparseAttentionTilingData *__restrict tilingData;
@@ -145,36 +145,36 @@ public:
         return static_cast<ChildClass*>(this);
     }
 protected:
-    __aicore__ inline void BroadCastAndCopyOut(RunInfo<isInfer> &runInfo, GlobalTensor<T> &sumGm,
+    __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
                                                GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize);
 
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = INPUT_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     template <typename VEC2_RES_T>
-    __aicore__ inline void Bmm2DataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
+    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
         LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
 private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo);
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
+        ConstInfo &constInfo);
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-        RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
+        RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo);
-    __aicore__ inline void ProcessVec2NoGlobalUpdate(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
+    __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2NoGlobalUpdate(RunInfo &runInfo, ConstInfo &constInfo,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, int64_t vec2CalcSize);
 
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo);
-    __aicore__ inline void InvalidLineProcess(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb);
+    __aicore__ inline void InvalidLineProcess(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb);
 
-    __aicore__ inline int64_t ComputeOffsetForSoftmax(RunInfo<isInfer> &runInfo, const int64_t vec2S1Idx);
+    __aicore__ inline int64_t ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     template <typename VEC2_RES_T>
-    __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo, int64_t dSizeAligned64);
-    __aicore__ inline void MlaTransposeDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
+    __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, RunInfo &runInfo,
+        ConstInfo &constInfo, int64_t dSizeAligned64);
+    __aicore__ inline void MlaTransposeDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
  	    LocalTensor<OUTPUT_T> &attenOut);
-    __aicore__ inline void MlaTranspose2DataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo,
+    __aicore__ inline void MlaTranspose2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
         LocalTensor<OUTPUT_T> &attenOut);
 };
 
@@ -183,7 +183,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-    ConstInfo<isInfer> &constInfo)
+    ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
@@ -229,7 +229,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline float BSABlockVecBase<TEMPLATE_BASE_ARGS>::GetPaKScaleValue(
-    const RunInfo<isInfer> &runInfo, const ConstInfo<isInfer> &constInfo)
+    const RunInfo &runInfo, const ConstInfo &constInfo)
 {
     const uint64_t logicalToken = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
     const uint64_t logicalBlock = logicalToken / constInfo.blockSize;
@@ -244,8 +244,8 @@ __aicore__ inline float BSABlockVecBase<TEMPLATE_BASE_ARGS>::GetPaKScaleValue(
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
-    ConstInfo<isInfer> &constInfo, int32_t subLoop)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, 
+    ConstInfo &constInfo, int32_t subLoop)
 {
         ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, constInfo);
 }
@@ -276,7 +276,7 @@ __aicore__ inline bool BSABlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInvalidLineCh
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InvalidLineProcess(
-    RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
 {
     if (constInfo.softMaxCheckRes) {
         SoftMaxShapeInfo softmaxShapeInfo{
@@ -296,7 +296,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InvalidLineProcess(
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCopyOut(
-    RunInfo<isInfer> &runInfo, GlobalTensor<T> &sumGm,
+    RunInfo &runInfo, GlobalTensor<T> &sumGm,
     GlobalTensor<T> &maxGm, int64_t gmOffset, int64_t calculateSize)
 {
     // Copy sum to gm
@@ -322,14 +322,14 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::BroadCastAndCopyOut(
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
-    ConstInfo<isInfer> &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, 
+    ConstInfo &constInfo)
 {
     bmm1ResBuf.WaitCrossCore();
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten, false>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+        AttenMaskCopyIn<hasAtten>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
     }
@@ -361,15 +361,10 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     deScaleQOffset = runInfo.boIdx * constInfo.n2G * s1BlockCnt +
                             runInfo.n2oIdx * constInfo.gSize * s1BlockCnt +
                             runInfo.goIdx * s1BlockCnt + runInfo.s1oIdx;
-    if constexpr (isInfer) {
-        runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt +
-                                runInfo.n2oIdx * s2BlockCnt +
-                                (runInfo.s2StartIdx >> 8) + ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) >> 1); // 8 ：按照256分块计算deScaleKv偏移
-    } else {
-        runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt +
+    runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt +
                             runInfo.n2oIdx * s2BlockCnt +
-                            (runInfo.s2StartIdx >> 8) + (runInfo.s2LoopCount >> 1); // 8 ：按照256分块计算deScaleKv偏移
-    }
+                            (runInfo.s2StartIdx >> 8) + ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) >> 1); // 8 ：按照256分块计算deScaleKv偏移
+    
     deScaleKvOffset = runInfo.deScaleKvOffset;
 
     float deSCaleQValue = this->deScaleQGm.GetValue(deScaleQOffset);
@@ -452,15 +447,15 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline int64_t BSABlockVecBase<TEMPLATE_BASE_ARGS>::ComputeOffsetForSoftmax(
-    RunInfo<isInfer> &runInfo, const int64_t vec2S1Idx)
+    RunInfo &runInfo, const int64_t vec2S1Idx)
 {
     return vec2S1Idx * runInfo.vec2S1BaseSize;
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUb(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer> &constInfo) {
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo,
+    ConstInfo &constInfo) {
     if (unlikely(runInfo.vec2S1BaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
         return;
@@ -479,18 +474,10 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUb(
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
         LocalTensor<T> pScaleUb;
         float deSCalePreVValue = 1.0f;
-        if constexpr (isInfer) {
-            if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {   // 7：KV基本块大小128，按照256分块计算deScaleKv偏移
-                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-            } else {
-                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-            }
+        if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {   // 7：KV基本块大小128，按照256分块计算deScaleKv偏移
+            deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
         } else {
-            if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount) & 1) {   // 7：KV基本块大小128，按照256分块计算deScaleKv偏移
-                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-            } else {
-                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-            }
+            deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
         }
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
@@ -529,8 +516,8 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUb(
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
-__aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2NoGlobalUpdate(RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer> &constInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+__aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2NoGlobalUpdate(RunInfo &runInfo,
+    ConstInfo &constInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
     int64_t vec2CalcSize) {
     LocalTensor<INPUT_T> vec2ResUb = this->stage2OutBuf.template Get<INPUT_T>()[runInfo.taskIdMod2 * vec2CalcSize];
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[runInfo.taskIdMod2]);
@@ -543,7 +530,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2NoGlobalU
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(
-    GlobalTensor<T> &mmRes, RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo) {
+    GlobalTensor<T> &mmRes, RunInfo &runInfo, ConstInfo &constInfo) {
     // bmm2 result is on GM and global update data on UB
     runInfo.vec2S1BaseSize = 8192 / constInfo.dBasicBlock;
     int64_t vec2LoopLimit = CeilDiv(runInfo.halfS1RealSize, runInfo.vec2S1BaseSize);
@@ -594,18 +581,10 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(
         } else {
             int64_t vec2ExpBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
             float deSCalePreVValue = 1.0f;
-            if constexpr (isInfer) {
-                if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {
-                    deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-                } else {
-                    deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-                }
+            if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {
+                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
             } else {
-                if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount) & 1) {
-                    deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-                } else {
-                    deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-                }
+                deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
             }
             LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[vec2ExpBufOffset];
             if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
@@ -654,7 +633,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
-    mm2ResPos &bmm2ResBuf, RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo)
+    mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
 
@@ -710,18 +689,10 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
             } else {
                 int64_t vec2ExpBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
                 float deSCalePreVValue = 1.0f;
-                if constexpr (isInfer) {
-                    if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {
-                        deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-                    } else {
-                        deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-                    }
+                if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) & 1) {
+                    deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset);
                 } else {
-                    if (((runInfo.s2StartIdx >> 7) + runInfo.s2LoopCount) & 1) {
-                        deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset);
-                    } else {
-                        deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
-                    }
+                    deSCalePreVValue = deScaleVGm.GetValue(runInfo.deScaleKvOffset - 1);
                 }
                 LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[vec2ExpBufOffset];
                 if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
@@ -769,9 +740,9 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
 TEMPLATES_DEF_BASE_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb,
-    int64_t vec2S1Idx, RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, int64_t dSizeAligned64)
+    int64_t vec2S1Idx, RunInfo &runInfo, ConstInfo &constInfo, int64_t dSizeAligned64)
 {
-    if constexpr (isInfer && hasAtten) {
+    if constexpr (hasAtten) {
         if ((!constInfo.isRowInvalid ||
             attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
             return;
@@ -799,7 +770,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTens
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::MlaTransposeDataCopyOut(
-    RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, LocalTensor<OUTPUT_T> &attenOut)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<OUTPUT_T> &attenOut)
 {
     int64_t s1DealSize = runInfo.vec2S1RealSize;
     int64_t headSize = 0;
@@ -854,7 +825,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::MlaTransposeDataCopy
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::MlaTranspose2DataCopyOut(
-    RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, LocalTensor<OUTPUT_T> &attenOut)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<OUTPUT_T> &attenOut)
 {
     int64_t s1DealSize = runInfo.vec2S1RealSize;
     int64_t curGIdx = runInfo.sOuterOffset / constInfo.s1Size;
@@ -898,7 +869,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::MlaTranspose2DataCop
 TEMPLATES_DEF_BASE_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(
-    RunInfo<isInfer> &runInfo, ConstInfo<isInfer> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -924,9 +895,18 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
 
     int64_t attenOutOffset = constInfo.dSizeV;
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
         attenOutOffset = constInfo.n2GDv;
-        if constexpr (isInfer) {
+        if (constInfo.isPfaGS1Merge) {
+            attenOutOffset = 0;
+            dataCopyParams.blockLen *= constInfo.gSize;
+            dataCopyParams.blockCount /= constInfo.gSize;
+        } else if (constInfo.isGqa) {
+            attenOutOffset = constInfo.dSizeV;
+        }
+    } else {
+        if (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH)) {
+            attenOutOffset = constInfo.n2GDv;
             if (constInfo.isPfaGS1Merge) {
                 attenOutOffset = 0;
                 dataCopyParams.blockLen *= constInfo.gSize;
@@ -934,48 +914,28 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOut(
             } else if (constInfo.isGqa) {
                 attenOutOffset = constInfo.dSizeV;
             }
-        }
-    } else {
-        if (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH)) {
-            attenOutOffset = constInfo.n2GDv;
-            if constexpr (isInfer) {
-                if (constInfo.isPfaGS1Merge) {
-                    attenOutOffset = 0;
-                    dataCopyParams.blockLen *= constInfo.gSize;
-                    dataCopyParams.blockCount /= constInfo.gSize;
-                } else if (constInfo.isGqa) {
-                    attenOutOffset = constInfo.dSizeV;
-                }
-            }
         } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_SBH) {
             attenOutOffset = constInfo.bN2GDv;
         }
-        if constexpr (isInfer) {
-            if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
- 	            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
-                attenOutOffset = constInfo.n2GDv;
-            }
+        if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
+            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
+            attenOutOffset = constInfo.n2GDv;
         }
     }
 
-    if constexpr (isInfer) {
-        if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND))) {
-            for(int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++){
-                attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
-                dataCopyParams.blockCount = constInfo.gSize;
-                dataCopyParams.dstStride = 0;
-                DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
-                    attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
-            }
-        } else {
-            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
-                attenOut, dataCopyParams);
-        }         
+    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND))) {
+        for(int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++){
+            attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
+            dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            dataCopyParams.blockCount = constInfo.gSize;
+            dataCopyParams.dstStride = 0;
+            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + attenOutOffset],
+                attenOut[i * constInfo.gSize * dSizeAligned64], dataCopyParams);
+        }
     } else {
         DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + vec2S1Idx * runInfo.vec2S1BaseSize * attenOutOffset],
             attenOut, dataCopyParams);
-    }
+    }         
 }
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
@@ -997,7 +957,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
-__aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo<isInfer> &constInfo)
+__aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
 {
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
@@ -1090,9 +1050,9 @@ public:
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     __aicore__ inline BSABlockVecDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, 
-        ConstInfo<isInfer> &constInfo) {}
+        ConstInfo &constInfo) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttentionTilingData *__restrict tiling,
-        CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
@@ -1100,17 +1060,17 @@ public:
         __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
         __gm__ uint8_t *kvPaddingSize,
         __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset,
-        uint32_t aicIdx, ConstInfo<isInfer> &constInfo) {}
+        uint32_t aicIdx, ConstInfo &constInfo) {}
 
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo<isInfer> &constInfo) {}
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo) {}
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
+        ConstInfo &constInfo) {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo<isInfer> &runInfo,
-        ConstInfo<isInfer> &constInfo) {}
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
+        ConstInfo &constInfo) {}
 };
 }
 #endif // QUANT_BLOCK_SPARSE_ATTENTION_BLOCK_VEC_BASE_H_
