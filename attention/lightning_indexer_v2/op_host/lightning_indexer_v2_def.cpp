@@ -98,6 +98,8 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend950", aicore_config);
+        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910c", aicore_config);
     }
 };
 OP_ADD(LightningIndexerV2);

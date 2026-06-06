@@ -16,7 +16,11 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_v2_template_tiling_key.h"
+#if (__CCE_AICORE__ == 310)
 #include "arch35/lightning_indexer_v2_kernel.h"
+#else
+#include "arch22/lightning_indexer_v2_kernel.h"
+#endif
 
 using namespace LIV2Kernel;
 
@@ -47,9 +51,9 @@ __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_
 
     if (ORIG_DTYPE_Q == DT_BF16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerV2Kernel, bfloat16_t, bfloat16_t, int32_t, float, uint32_t,
-            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), true);
+            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
     } else if (ORIG_DTYPE_Q == DT_FLOAT16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerV2Kernel, half, half, int32_t, float, uint32_t,
-            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), true);
+            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
     }
 }

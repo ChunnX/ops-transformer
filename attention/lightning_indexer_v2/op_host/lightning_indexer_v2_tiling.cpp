@@ -156,7 +156,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.topk = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
+    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
 
     if (opParamInfo_.layOut != nullptr) {
@@ -175,7 +175,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "mask mode is:%d", *opParamInfo_.maskMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%lld", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
@@ -200,8 +200,11 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
                 ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
-                        "but now cmpRatio is %ld.",
+                        "but now cmpRatio is %d.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!((*opParamInfo_.returnValue == 0) || (*opParamInfo_.returnValue == 1)),
+               OP_LOGE(opName_, "input attr return_value only supported 0 or 1."),
+               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -298,6 +301,10 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 OP_LOGE(opName_, "when layout_query is TND, input cu_seqlens_q must not be null"),
                 return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr &&
+                opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
                 OP_LOGE(opName_, "when key layout is not PA_BSND, input block_table must be null"),
                 return ge::GRAPH_FAILED);
@@ -399,20 +406,22 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
         // TND
         uint32_t bSizeQuery;
         uint32_t bSizeKey;
-        GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cuSeqlensQ");
-        GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK");
+        // [Fix P1-tiling-1] Check return values of GetActualSeqLenSize for TND path
+        if (ge::GRAPH_SUCCESS != GetActualSeqLenSize(bSizeQuery, opParamInfo_.cuSeqlensQ.tensor, "input cuSeqlensQ")) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != GetActualSeqLenSize(bSizeKey, opParamInfo_.cuSeqlensK.tensor, "input cuSeqlensK")) {
+            return ge::GRAPH_FAILED;
+        }
         if (kLayout_ == DataLayout::TND) {
             OP_CHECK_IF(bSizeQuery != bSizeKey,
                 OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
                         "they must be same.",
                         bSizeQuery, bSizeKey),
                 return ge::GRAPH_FAILED);
-            bSize_ = bSizeQuery;
+            bSize_ = bSizeQuery - 1;
         } else {
-            if (bSizeQuery == bSizeKey + 1) {
-                batchSupperFlag_ = 1;
-            }
-            OP_CHECK_IF((bSizeQuery != bSizeKey) && (batchSupperFlag_ == 0),
+            OP_CHECK_IF((bSizeQuery != bSizeKey) ,
                 OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
                         "they must be same.",
                         bSizeQuery, bSizeKey),
@@ -644,6 +653,8 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
 
     liInfo.inputQType = inputQType_;
     liInfo.inputKType = inputKType_;
+    liInfo.inputWType = weightsType_;
+    liInfo.weightTypeFlag = (weightsType_ == ge::DT_FLOAT) ? 1 : 0;
     liInfo.outputType = outputType_;
 
     liInfo.blockSize = blockSize_;
@@ -656,6 +667,9 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.topk = *opParamInfo_.topk;
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
+    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+        liInfo.cmpResidualK = opParamInfo_.cmpResidualK.tensor->GetData<int32_t>()[0];
+    }
     liInfo.returnValue = *opParamInfo_.returnValue;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
@@ -758,7 +772,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint32_t pageAttentionFlag = static_cast<uint32_t>(tilingInfo->pageAttentionFlag);
     uint32_t inputQLayout = static_cast<uint32_t>(tilingInfo->inputQLayout);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
-    uint32_t weightTypeFlag = 0;
+    uint32_t weightTypeFlag = tilingInfo->weightTypeFlag;
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);

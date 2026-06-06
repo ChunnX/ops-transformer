@@ -395,7 +395,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         K_T zeroK_T = 0;
         int32_t neg = -1;
         if (constInfo_.attenMaskFlag) {
-            validS2Len = ((int32_t)i + cuRealAcSeq) / static_cast<int32_t>(constInfo_.cmpRatio);
+            validS2Len = ((int32_t)i + cuRealAcSeq) / constInfo_.cmpRatio;
         }
         if (validS2Len <= 0) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);

@@ -97,7 +97,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, maskMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
-TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
+TILING_DATA_FIELD_DEF(int32_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
@@ -130,7 +130,7 @@ struct LiV2ParaInfo {
     const int32_t *maxSeqlenQ = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
-    const int64_t *cmpRatio = nullptr;
+    const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
 };
 
@@ -160,14 +160,17 @@ public:
     int32_t maxSeqlenQ = -1;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
-    int64_t cmpRatio = 1;
+    int32_t cmpRatio = 1;
+    int32_t cmpResidualK = 0;
     uint32_t batchSupperFlag = 0;
     uint32_t returnValue = 0;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;
+    ge::DataType inputWType = ge::DT_FLOAT;
     ge::DataType outputType = ge::DT_INT32;
+    uint32_t weightTypeFlag = 1;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
     DataLayout inputKLayout = DataLayout::BnBsND;
