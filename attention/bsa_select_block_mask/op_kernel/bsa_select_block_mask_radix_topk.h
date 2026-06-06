@@ -108,7 +108,7 @@ private:
     int16_t andMask16_;
     int32_t boundaryBin;
     int32_t boundaryBinPrev;
-    int32_t globalHistBoundaryNum_;
+    uint64_t globalHistBoundaryNum_;
     uint64_t totalDefinitelyInTopK_;
     uint64_t remainK_;
     uint64_t blockOffset_;
@@ -723,7 +723,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
             DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
         }
-        globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
+        globalHistBoundaryNum_ = (tileNum_ - 1) * tileLen_ + tailTileLen_;
     } else {
         if (boundaryBin < static_cast<int32_t>(numValue_) - 1) {
             SubTileHistInWsAll(0, boundaryBin * static_cast<uint32_t>(tileNum_),
@@ -734,7 +734,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
     }
 
     SToVSync();
-    globalHist.SetValue(0, globalHistBoundaryNum_);
+    globalHist.SetValue(0, static_cast<int32_t>(globalHistBoundaryNum_));
     ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
                       (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
 }
