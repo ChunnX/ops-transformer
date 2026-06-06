@@ -247,7 +247,7 @@ private:
         LocalTensor<INPUT_TYPE> l0_a_tensor = event_ping_pong_flag ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor;
-        if constexpr (TYPE) {
+        if constexpr (DK) {
             l0_c_tensor = l0_c_dk_tensor_;
         } else {
             l0_c_tensor = l0_c_dv_tensor_;
