@@ -525,6 +525,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
 
+    PipeBarrier<PIPE_ALL>();
     // ============ 清零状态区，为下一次通信做准备 ============
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     uint64_t duplicateMask[2] = { 0x101010101010101, 0 };

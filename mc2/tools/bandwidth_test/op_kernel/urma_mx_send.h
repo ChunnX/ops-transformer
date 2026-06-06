@@ -428,6 +428,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         CalTokenSendExpertCnt(i, axisBS_, curExpertCnt);
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
+    PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
     while(true) {
         for(uint32_t i = startExpert; i < endExpert; ++i) {
@@ -600,7 +601,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
-
+    
+    PipeBarrier<PIPE_ALL>();
     // ============ 清零状态区，为下一次通信做准备 ============
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     uint64_t duplicateMask[2] = { 0x101010101010101, 0 };
