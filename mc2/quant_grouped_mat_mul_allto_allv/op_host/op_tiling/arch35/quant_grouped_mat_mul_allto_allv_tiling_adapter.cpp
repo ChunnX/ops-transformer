@@ -71,6 +71,11 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameter
     inputParams_.perTokenScaleDtype = params.gmmXScaleDtype;
 
     inputParams_.transB = params.isGmmWeightTrans;
+    OP_TILING_CHECK(expertNum > optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(inputParams_.opName, "expertNum",
+            std::to_string(expertNum).c_str(),
+            (std::string("<=") + std::to_string(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+        return ge::GRAPH_FAILED);
     for (uint64_t i = 0; i < expertNum; i++) {
         mList_[i] = static_cast<int32_t>(gmmX);
     }

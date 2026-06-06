@@ -89,6 +89,10 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         maxMSize = std::max(mSize, maxMSize);
     }
     // check expertNum
+    OP_TILING_CHECK(expertNum_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
+            std::to_string(expertNum_).c_str(), "positive value"),
+        return ge::GRAPH_FAILED);
     expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
         Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
     MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, expertNum_));
@@ -168,6 +172,10 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.ubSize = ubSize_;
     tilingData->taskTilingInfo.aivCoreNum = static_cast<uint64_t>(aivCoreNum_);
     tilingData->taskTilingInfo.aicCoreNum = static_cast<uint64_t>(aicCoreNum_);
+    OP_TILING_CHECK(expertNum_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
+            std::to_string(expertNum_).c_str(), "positive value"),
+        return ge::GRAPH_FAILED);
     tilingData->taskTilingInfo.expertNum = expertNum_;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
     tilingData->taskTilingInfo.tailLoopExpertNum =

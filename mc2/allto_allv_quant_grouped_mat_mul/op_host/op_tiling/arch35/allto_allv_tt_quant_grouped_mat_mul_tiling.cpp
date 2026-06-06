@@ -16,6 +16,7 @@
 #include "allto_allv_tt_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
+#include "../../../../3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -46,6 +47,11 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
 {
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
     if (gmmxMSzie != 0) {
+        OP_TILING_CHECK(expertNum > Mc2GroupedMatmul::MAX_TENSOR_CONT,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum",
+                std::to_string(expertNum).c_str(),
+                (std::string("<=") + std::to_string(Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+            return ge::GRAPH_FAILED);
         auto &gmmQuantTilingData = tilingData->gmmQuantTilingData;
         SetGMMQuantParams(gmmQuantTilingData, expertNum);
         SetTilingArray(gmmQuantTilingData, gmmxMSzie, n1_, h1_, expertNum);
