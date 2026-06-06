@@ -401,7 +401,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             if (returnValueFlag) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo.NEG_INF_FLOAT, topkCount_);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.NEG_INF_FLOAT, topkCount_);
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
