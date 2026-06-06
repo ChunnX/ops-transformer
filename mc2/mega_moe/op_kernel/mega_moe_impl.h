@@ -428,12 +428,18 @@ __aicore__ inline void GroupMatmul2Optimize(
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
-    // 单 buffer [64K,128K) 64KB, 128×256 bf16
+    // ping-pong 双 buffer：buf0 @ [64K,128K)、buf1 @ [128K,192K)，各 128×256 bf16 = 64KB。
+    // AIC fixpipe 写 buf[pp] 与 AIV1 combine 读 buf[1-pp] 重叠，互相掩盖。
+    // 整段 [64K,192K) 在 GMM2 期间由 expert 粒度 dispatch↔GMM2 同步保护；combine 的 triple 仍在 200K。
     constexpr int64_t GMM2_UB_BASE = 64 * 1024;
+    constexpr int64_t GMM2_UB_BUF_BYTES = static_cast<int64_t>(MAX_SINGLE_MN_GMM2) * sizeof(ElementC);  // 64KB
 
-    auto l0cOutUb = Te::MakeTensor(
+    auto l0cOutUb0 = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE), layoutC);
-    LocalTensor<ElementC> ubGmm2(TPosition::VECCALC, GMM2_UB_BASE, L1_TILE_M_GMM2 * L1_TILE_N);
+    auto l0cOutUb1 = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::UB, ElementC>(GMM2_UB_BASE + GMM2_UB_BUF_BYTES), layoutC);
+    LocalTensor<ElementC> ubGmm2_0(TPosition::VECCALC, GMM2_UB_BASE, MAX_SINGLE_MN_GMM2);
+    LocalTensor<ElementC> ubGmm2_1(TPosition::VECCALC, GMM2_UB_BASE + GMM2_UB_BUF_BYTES, MAX_SINGLE_MN_GMM2);
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -465,6 +471,9 @@ __aicore__ inline void GroupMatmul2Optimize(
         bool isFirstTile = (loopIdx == coreInGroup);
         bool isLastTile = (loopIdx + coresPerWave >= tileNum);
 
+        // ping-pong 索引：vecSetSyncCom2 在 if/else 外自增，AIC 与 AIV1 对同一 tile 取值一致。
+        int32_t pp = vecSetSyncCom2 & 1;
+
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == coreInGroup) {
                 int64_t schedulerN = static_cast<int64_t>(k);
@@ -486,9 +495,10 @@ __aicore__ inline void GroupMatmul2Optimize(
                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
 
-            // 单 buffer：第一个 tile 无需等，后续等 AIV1 消费完
-            if (vecSetSyncCom2 > 0) {
-                WaitForVector(16);
+            // ping-pong：前两个 tile(buf0/buf1)无需等；第 3 个 tile 起才复用 buf[pp]，
+            // 需等 AIV1 把上一轮 buf[pp] 消费完。这一拍延迟就是 fixpipe 与 combine 的重叠窗口。
+            if (vecSetSyncCom2 >= 2) {
+                WaitForVector(16 + pp);
             }
 
             auto gmBlockA = gmA.Slice(
@@ -497,7 +507,8 @@ __aicore__ inline void GroupMatmul2Optimize(
                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
 
-            auto tensorBlockUb = l0cOutUb.Slice(
+            auto l0cBuf = (pp == 0) ? l0cOutUb0 : l0cOutUb1;
+            auto tensorBlockUb = l0cBuf.Slice(
                 Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
 
             auto gmBlockB = gmB.Slice(
@@ -512,7 +523,7 @@ __aicore__ inline void GroupMatmul2Optimize(
             // toAiv1=true: L0C→UB fixpipe 写到 AIV1 的 UB
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape, true);
 
-            NotifyVector(16);
+            NotifyVector(16 + pp);
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -523,7 +534,7 @@ __aicore__ inline void GroupMatmul2Optimize(
                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
             }
         } else {  // AIV1 (subBlockIdx_==1)
-            WaitForCube(0);
+            WaitForCube(pp);
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -544,14 +555,15 @@ __aicore__ inline void GroupMatmul2Optimize(
             DataCopy(tripleTensor, tripleGm, rowCount * 8);
             SyncFuncStatic<AscendC::HardEvent::MTE2_S, 0>();
 
+            LocalTensor<ElementC> ubCombineBuf = (pp == 0) ? ubGmm2_0 : ubGmm2_1;
             MegaMoeCombineImpl::CombineTokensOptimize<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, expertIdx, rankId, tripleTensor, ubGmm2, actualShape, params);
+                mLoc, nLoc, n, expertIdx, rankId, tripleTensor, ubCombineBuf, actualShape, params);
 
             // MTE3_V 屏障：确保 DataCopyPad(MTE3) 全部完成后才 NotifyCube
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
 
-            NotifyCube(0);
+            NotifyCube(pp);
 
             if (isFirstTile) {
                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -566,10 +578,15 @@ __aicore__ inline void GroupMatmul2Optimize(
         vecSetSyncCom2++;
     }
 
-    // Drain 最后一个 tile
+    // Drain：循环内 WaitForVector 滞后一拍（只等到倒数第 3 个 tile），最后两个在飞的 buffer
+    // 在此各 drain 一次。倒数第二、倒数第一两个 tile 的 pp 必然一奇一偶，分别对应两条通道。
     if constexpr (g_coreType == AscendC::AIC) {
-        if (vecSetSyncCom2 > 0) {
-            WaitForVector(16);
+        int32_t total = vecSetSyncCom2;
+        if (total >= 2) {
+            WaitForVector(16 + ((total - 2) & 1));
+        }
+        if (total >= 1) {
+            WaitForVector(16 + ((total - 1) & 1));
         }
     }
 }
