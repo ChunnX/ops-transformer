@@ -79,12 +79,11 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
-    // 3. Block 类型别名 + Kernel 实例化
+    // 3. Kernel 实例化
 #ifdef __DAV_C310_CUBE__
-    using CubeBlock =
-        BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                                       dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD, hasAttenMask>;
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelCube<CubeBlock>;
+    using Kernel =
+        BaseApi::FANoQuantGqaCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                   dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD, hasAttenMask>;
 #else
     using VecFaBlock =
         BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
