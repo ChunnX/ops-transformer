@@ -114,7 +114,7 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<K_T> valueOutGm;
+    GlobalTensor<float> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
 
@@ -564,7 +564,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
+        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         if (outputIdxOffset != nullptr) {
@@ -744,17 +744,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessInvalid()
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 
-                GlobalTensor<uint16_t> valueOutGmTmp;
-                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
+                GlobalTensor<uint32_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
 
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
             }
         }
     }

@@ -51,7 +51,7 @@ public:
                                       const LIV2TilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<K_T> valueOutGm, GlobalTensor<int32_t> blockTableGm,
+                                              GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -61,7 +61,7 @@ protected:
     GlobalTensor<SCORE_T> scoreGm;
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<K_T> valueOutGm;
+    GlobalTensor<float> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
     // =================================常量区=================================
@@ -95,12 +95,9 @@ private:
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
 
-    // tmp buff for returnValue bfloat16
-    TBuf<TPosition::VECCALC> uIntToBfloat16Buf_;
-    LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
     TBuf<TPosition::VECCALC> valueOutBuf_;
-    LocalTensor<K_T> valueOutLocal_;
+    LocalTensor<float> valueOutLocal_;
     // tmp buff for topk
     TBuf<TPosition::VECCALC> mrgValueBuf_;
     LocalTensor<SCORE_T> mrgValueLocal_;
@@ -151,14 +148,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     // out
     vec1OutUB_ = outBuf_.Get<SCORE_T>();
     // returnvalue
-    // 大小：topK * sizeof(bfloat16_t)
-    pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
-    // returnValue bfloat16
-    uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>();
     // 大小：topK * sizeof(float)
-    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
+    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(float));
     // returnValue float
-    valueOutLocal_ = valueOutBuf_.Get<K_T>();
+    valueOutLocal_ = valueOutBuf_.Get<float>();
     // Topk
     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
@@ -206,7 +199,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(const st
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecInputTensor(GlobalTensor<W_T> weightsGm,
                                                            GlobalTensor<int32_t> indiceOutGm,
-                                                           GlobalTensor<K_T> valueOutGm,
+                                                           GlobalTensor<float> valueOutGm,
                                                            GlobalTensor<int32_t> blockTableGm,
                                                            GlobalTensor<int32_t> outputIdxOffsetGm)
 {
@@ -268,21 +261,21 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
-        uint16_t negInf = 0;
-        if constexpr (std::is_same_v<K_T, float16_t>) {
-            negInf = 0xFC00;
-        }else {
-            negInf = 0xFF80;
-        }
+        // uint16_t negInf = 0;
+        // if constexpr (std::is_same_v<K_T, float16_t>) {
+        //     negInf = 0xFC00;
+        // }else {
+        //     negInf = 0xFF80;
+        // }
         
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, constInfo_.topk);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), (uint32_t)0, constInfo_.topk);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
         AscendC::DataCopyParams copyOutValueParams;
         copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.topk * sizeof(K_T);
+        copyOutValueParams.blockLen = constInfo_.topk * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
@@ -392,7 +385,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         }
         
         SCORE_T zero = 0;
-        K_T zeroK_T = 0;
+        uint32_t zeroUInt32 = 0;
         int32_t neg = -1;
         if (constInfo_.attenMaskFlag) {
             validS2Len = ((int32_t)i + cuRealAcSeq) / static_cast<int32_t>(constInfo_.cmpRatio);
@@ -407,20 +400,15 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValueFlag) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, topkCount_);
+
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo.NEG_INF_FLOAT, topkCount_);
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
                 AscendC::DataCopyParams copyOutValueParams;
                 copyOutValueParams.blockCount = 1;
-                copyOutValueParams.blockLen = topkCount_ * sizeof(K_T);
+                copyOutValueParams.blockLen = topkCount_ * sizeof(float);
                 copyOutValueParams.srcStride = 0;
                 copyOutValueParams.dstStride = 0;
                 AscendC::DataCopyPad(
@@ -516,7 +504,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
                                     (int32_t)(zero + outputIdxOffset), validS2Len);
             if (returnValueFlag) {
-                copyInParams.blockLen = LIV2Common::Align(validS2Len, (int32_t)32) * sizeof(uint16_t);
+                copyInParams.blockLen = LIV2Common::Align(validS2Len, (int32_t)32) * sizeof(uint32_t);
                 AscendC::DataCopyPad(scoreOutLocal_,
                             scoreGm[vecOffset * LIV2Common::Align(
                                 (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
@@ -548,34 +536,32 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         
         // 是否返回Value值
-        if (returnValueFlag && (std::is_same<SCORE_T, uint16_t>::value)) {
+        if (returnValueFlag) {
             // uint16_t -> bfloat16
-            LocalTensor<uint16_t> scoreOutLocal1_ = scoreOutLocal_.template ReinterpretCast<uint16_t>();
-            liV2Vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal1_, topkCountAlign256_);
-            // bfloat16 -> K_T
-            Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_NONE, topkCountAlign256_);
+            // LocalTensor<uint16_t> scoreOutLocal1_ = scoreOutLocal_.template ReinterpretCast<uint16_t>();
+            liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
             // 无效值刷0
             if (validS2Len < topkCount_) {
                 uint64_t mask[1];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_[validS2Len / 16 * 16], zeroK_T, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template Reinterpret<uint32_t>()[validS2Len / 16 * 16], zeroUInt32, mask, 1, 1, 0);
             }
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_[validS2Len / 16 * 16 + 64], zeroK_T,
+                Duplicate(valueOutLocal_.template Reinterpret<uint32_t>()[validS2Len / 16 * 16 + 64], zeroUInt32,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             AscendC::DataCopyParams copyOutValueParams;
             copyOutValueParams.blockCount = 1;
-            copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
+            copyOutValueParams.blockLen = topkCount_ * sizeof(float); // bytes
             copyOutValueParams.srcStride = 0;
             copyOutValueParams.dstStride = 0;
             // 搬运到GM
             AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
-            valueOutLocal_, copyOutValueParams);
+                valueOutLocal_, copyOutValueParams);
         }
     }
 }
