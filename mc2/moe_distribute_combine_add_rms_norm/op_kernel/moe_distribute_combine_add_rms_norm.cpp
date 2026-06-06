@@ -72,7 +72,7 @@ template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag> __
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        ExecMoeDistributeCombineAddRmsNorm<MoeDistributeCombineV2Impl::HcclContextHolderV2, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT, true>(
+        ExecMoeDistributeCombineAddRmsNorm<MoeDistributeCombineV2Impl::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT, true>(
             contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
             sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM, &pipe);
 #endif
