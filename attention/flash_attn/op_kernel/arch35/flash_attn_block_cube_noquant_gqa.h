@@ -165,6 +165,7 @@ public:
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
+    static constexpr bool HAS_PREFIX = false;
     static constexpr bool SPLITD = splitD;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
@@ -911,6 +912,7 @@ public:
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
+    static constexpr bool HAS_PREFIX = false;
     static constexpr bool SPLITD = splitD;
 
     using ROPE_T = INPUT_T;

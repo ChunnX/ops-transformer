@@ -63,6 +63,13 @@ public:
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr bool USE_DN = useDn;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool HAS_PREFIX = false;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr LayOutTypeEnum LAYOUT = layout;
 
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
@@ -86,6 +93,8 @@ public:
     using flashdecodeGmType = GlobalTensor<float>;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using Q_T = INPUT_T;
+    using MM_T = T;
 
     // gm
     TPipe *tPipe;
