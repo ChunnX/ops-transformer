@@ -645,7 +645,7 @@ void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxWorkspaceSize  is %ld.",
               mlaTilingData.get_maxWorkspaceSize());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheBlockSize  is %ld.",
-              mlaTilingData.get_kvCacheBlockSize());
+            mlaTilingData.get_kvCacheBlockSize());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheStride0    is %ld.",
             mlaTilingData.get_kvCacheStride0());
     OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheRopeStride0 is %ld.",
