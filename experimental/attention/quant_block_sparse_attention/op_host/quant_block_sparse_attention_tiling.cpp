@@ -179,6 +179,7 @@ void QuantBlockSparseAttentionTiling::FillInputParams()
     inputParams.set_attenMaskS1Size(info.s1Size);
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
     inputParams.set_isRowInvalid(0);
+}
 
 void QuantBlockSparseAttentionTiling::FillMultiCoreParams()
 {

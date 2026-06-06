@@ -32,7 +32,8 @@ constexpr size_t DIM_B = 0U;
 constexpr size_t DIM_S = 1U;
 constexpr size_t DIM_N = 2U;
 constexpr size_t DIM_D = 3U;
-constexpr size_t DIM_BLOCK_SIZE = 1U;
+constexpr size_t DIM_PA_N = 1U;
+constexpr size_t DIM_PA_BLOCK_SIZE = 2U;
 constexpr size_t DIM_BLOCK_TABLE_MAX = 1U;
 constexpr size_t DIM_SPARSE_QB = 3U;
 constexpr size_t DIM_SPARSE_COUNT = 4U;
@@ -91,8 +92,8 @@ ge::graphStatus QuantBlockSparseAttentionInfoParser::ParseKeyValue(QuantBlockSpa
 {
     uint32_t physicalKvBlockSize = 0;
     uint32_t kvDSize = 0;
-    if (keyShape.GetDimNum() != DIM_NUM_4 || !BSAGetDimAsU32(keyShape, DIM_BLOCK_SIZE, physicalKvBlockSize) ||
-        !BSAGetDimAsU32(keyShape, DIM_N, tilingInfo.n2Size) || !BSAGetDimAsU32(keyShape, DIM_SPARSE_QB, kvDSize) ||
+    if (keyShape.GetDimNum() != DIM_NUM_4 || !BSAGetDimAsU32(keyShape, DIM_PA_BLOCK_SIZE, physicalKvBlockSize) ||
+        !BSAGetDimAsU32(keyShape, DIM_PA_N, tilingInfo.n2Size) || !BSAGetDimAsU32(keyShape, DIM_SPARSE_QB, kvDSize) ||
         physicalKvBlockSize != tilingInfo.kvBlockSizeVal || kvDSize != BSA_D_SIZE) {
         return ge::GRAPH_FAILED;
     }

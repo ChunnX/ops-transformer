@@ -288,6 +288,10 @@ def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, n2_i
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
                          sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths):
+    query = query.to(torch.float32)
+    dense_key = dense_key.to(torch.float32)
+    dense_value = dense_value.to(torch.float32)
+    
     layout_q = case["layout_q"]
     batch = case["B"]
     n1 = case["N1"]
