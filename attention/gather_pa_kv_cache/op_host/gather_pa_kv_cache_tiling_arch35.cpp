@@ -243,7 +243,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
                     OP_LOGE(context_, "value_cache format should be ND when cache_mode is Norm, please check."),
                     return ge::GRAPH_FAILED);
     }
-    for (size_t i = 0; i < vCacheDimNum_ - 1; i++) {
+    // key_cache与value_cache的num_blocks(dim0)数值无需相等: kernel用同一blockId分别乘
+    // 各自的stride索引, 不依赖dim0相等(与scatter Norm模式CheckNormal行为对齐)。
+    // 此处仅校验非尾轴中除dim0外的维度(ND: dim1/dim2; NZ: dim2, 跳过dim1)。
+    for (size_t i = 1; i < vCacheDimNum_ - 1; i++) {
         if (!isCacheModeNorm_ && i == DIM_ONE) {
             continue;
         }
