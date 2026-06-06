@@ -170,7 +170,7 @@ TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_interleave_fp16)
     uint64_t expectTilingKey = 2000;
     string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
                               "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-                              "0 0 0 0 0 0 0 0 0 0 0 0 0 1 64 2 64 16 8 3 2 3 1 0 2 1 0 0 0 0 0 0 0 ";
+                              "0 0 0 0 0 0 0 0 0 0 0 0 0 1 64 2 64 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
