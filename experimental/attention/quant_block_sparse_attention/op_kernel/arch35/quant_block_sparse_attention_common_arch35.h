@@ -23,11 +23,22 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "stdarg.h"
-#include "common/pse.h"
 #include "common/util_regbase.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
+
+namespace regbaseutil {
+enum class PseTypeEnum {
+    PSE_OUTER_MUL_ADD_TYPE = 0,
+    PSE_OUTER_ADD_MUL_TYPE,
+    PSE_INNER_MUL_ADD_TYPE,
+    PSE_INNER_MUL_ADD_SQRT_TYPE,
+    PSE_INVALID_TYPE,
+    PSE_NONE_TYPE = 9
+};
+}
+
 using namespace regbaseutil;
 
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
@@ -64,77 +75,51 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
-                  !IsSameType<INPUT_T, hifloat8_t>::value) {
-        return false;
-    }
-    if (hasRope) {
-        return true;
-    }
+    (void)hasRope;
     return false;
 }
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
-        return false;
-    }
-    if (hasRope) {
-        return true;
-    }
+    (void)hasRope;
     return false;
 }
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8OnlyWithAttenMask(
     regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
-                  !IsSameType<INPUT_T, hifloat8_t>::value) {
-        return false;
-    }
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
-        return true;
-    }
-    return false;
+    return pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop &&
+        (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
+         IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+         IsSameType<INPUT_T, hifloat8_t>::value);
 }
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsInt8OnlyWithAttenMask(
     regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
-        return false;
-    }
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
-        return true;
-    }
-    return false;
+    return pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop &&
+        IsSameType<INPUT_T, int8_t>::value;
 }
 
 __aicore__ constexpr bool ContainOptionalInput(
     regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && !hasAtten && !hasDrop) {
-        return false;
-    } else {
-        return true;
-    }
+    return pseMode != regbaseutil::PseTypeEnum::PSE_NONE_TYPE || hasAtten || hasDrop;
 }
 
 __aicore__ constexpr bool IsDn(
     bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
     regbaseutil::DTemplateType dTemplateType, bool hasRope, bool enableKVPrefix, bool isInfer, bool isHiFp8) {
-    if (enableKVPrefix) {
-        return false;
-    }
-    if (!isInfer && isHiFp8) {
-        return false;
-    }
-    if (((!isFp32 && !ContainOptionalInput(pseMode, hasAtten, hasDrop)) ||
-        (isValidFp8 && !hasDrop && pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE)) && !isS1Base64 &&
-        (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256 && !hasRope) {
-        return true;
-    }
+    (void)isFp32;
+    (void)isValidFp8;
+    (void)pseMode;
+    (void)hasAtten;
+    (void)hasDrop;
+    (void)isS1Base64;
+    (void)dTemplateType;
+    (void)hasRope;
+    (void)enableKVPrefix;
+    (void)isInfer;
+    (void)isHiFp8;
     return false;
 }
 
@@ -156,17 +141,12 @@ __aicore__ constexpr bool UbOutCondition(
 }
 
 __aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition, bool isNdS2Size256, bool isMlaFullQuant, bool isMlaNoQuant = false) {
-    if (isMlaNoQuant) {
-        return TPosition::VECCALC;
-    }
-    if ((uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned128 ||
-        (ubOutCondition && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned192) ||
-        (ubOutCondition && isMlaFullQuant) ||
-        isNdS2Size256) {
-        return TPosition::VECCALC;
-    } else {
-        return TPosition::GM;
-    }
+    (void)dTemplateType;
+    (void)ubOutCondition;
+    (void)isNdS2Size256;
+    (void)isMlaFullQuant;
+    (void)isMlaNoQuant;
+    return TPosition::VECCALC;
 }
 }
 

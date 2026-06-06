@@ -106,7 +106,6 @@ public:
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr bool isFp8 = CubeBlockType::isFp8;
-    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
     /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
@@ -334,9 +333,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernelBase<ChildClass, CubeBlock
         mm1OutDtype = sizeof(half);
     }
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-    if constexpr (isMxfp8FullQuant) {
-        mm1ResultSize /= 2;
-    }
     constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(INPUT_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
@@ -695,15 +691,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter ProcessMainLoop aicIdx=%d coreNum=%d paBlockStride=%u combineDim=%u\n",
-            this->aicIdx, actualCoreNums, this->constInfo.paBlockStride, this->constInfo.combineDim);
-    }
     if (this->aicIdx >= actualCoreNums) {
-        if (this->aicIdx == 0) {
-            printf("[BSA_DEBUG] exit ProcessMainLoop by inactive core aicIdx=%d coreNum=%d\n",
-                this->aicIdx, actualCoreNums);
-        }
         return;
     }
     // 确定核内切分起点
@@ -825,10 +813,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::Process()
 {
-    if (this->aicIdx == 0) {
-        printf("[BSA_DEBUG] enter Process aicIdx=%d needInit=%d\n", this->aicIdx,
-            static_cast<int32_t>(this->sharedParams.needInit));
-    }
     // SyncAll Cube和Vector都需要调用
     if (this->sharedParams.needInit) {
         SyncAll<false>();

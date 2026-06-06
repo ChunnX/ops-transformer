@@ -22,7 +22,7 @@ namespace FaVectorApi {
 static constexpr MicroAPI::CastTrait castTraitFp16_32_update = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                    MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
     __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
@@ -30,7 +30,6 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ floa
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
     RegTensor<float> vreg_input_pre;
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_mul;
@@ -41,16 +40,10 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ floa
     // dstTensor = preTensor * expMaxTensor + curTensor
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);  // [m,8]
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
 
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
@@ -70,7 +63,7 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ floa
 /* **************************************************************************************************
  * FlashUpdate, fp32
  * ************************************************************************************************* */
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
     const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor,
     const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
@@ -81,7 +74,7 @@ __aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const L
     __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
     __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
 
-    FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
+    FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(
         dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
 }
 
@@ -179,7 +172,7 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T>& dstTensor, const
  * @param [in] m, input rows
  * @param [in] d, input colums, should be 32 bytes aligned
  */
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
     const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
@@ -188,7 +181,7 @@ __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const Loc
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr(srcD % floatRepSize == 0) {
-        FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor,
+        FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor,
         m, d, deScaleV, deScaleVPre);
     } else {
 
@@ -197,13 +190,12 @@ __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const Loc
     }
 }
 
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
     __ubuf__ float * expMaxUb, __ubuf__ float * expSumUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
 {
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
     RegTensor<float> vreg_input_pre;
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_mul;
@@ -222,15 +214,9 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
@@ -243,22 +229,13 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
-            if constexpr (isMlaFullQuant) {
-                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
-                } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
-                }
-            }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_all);
         }
     }
 }
 
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor,
     const LocalTensor<T>& curTensor, const LocalTensor<T>& preTensor,
     const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const LocalTensor<T>& expSumTensor,
@@ -271,7 +248,7 @@ __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor,
     __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
     __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
 
-    FlashUpdateLastBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
+    FlashUpdateLastBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(
         dstUb, curUb, preUb, expMaxUb, expSumUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
 }
 
@@ -377,7 +354,7 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor,
  * @param [in] m, input rows
  * @param [in] d, input colums, 32 bytes align
  */
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
     const LocalTensor<T>& curTensor, const LocalTensor<T>& preTensor,
     const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const LocalTensor<T>& expSumTensor,
@@ -387,7 +364,7 @@ __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr(srcD % floatRepSize == 0) {
-        FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre, isMlaFullQuant>(
+        FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(
             dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
     } else {
         FlashUpdateLastGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(
@@ -395,7 +372,7 @@ __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
     }
 }
 
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
 __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * expSumUb,
     const uint16_t m, const uint16_t d, const float deScaleV)
 {
@@ -423,15 +400,6 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
             }
             Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
-            if constexpr (isMlaFullQuant) {
-                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
-                } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
-                }
-            }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_update);
         }
@@ -439,7 +407,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
 }
 
 // dstTensor = curTensor / expSumTensor, curTensor: [64,128], expSumTensor: [64,8]
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD, bool isMlaFullQuant>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
 __aicore__ inline void LastDivNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
     const LocalTensor<T>& expSumTensor, const uint16_t m, const uint16_t d, const float deScaleV)
 {
@@ -447,7 +415,7 @@ __aicore__ inline void LastDivNew(const LocalTensor<T>& dstTensor, const LocalTe
     __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
     __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
-    LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD, isMlaFullQuant>(dstUb, curUb, expSumUb, m, d, deScaleV);
+    LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD>(dstUb, curUb, expSumUb, m, d, deScaleV);
 }
 
 template <typename T, uint32_t srcD>
@@ -550,116 +518,6 @@ __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T>& dstTensor, const
     __ubuf__ T * dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
 
     ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount);
-}
-
-template <typename T>
-__simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, const T sinkValue, const uint32_t dealCount)
-{
-    MicroAPI::RegTensor<T> vregSum;
-    MicroAPI::RegTensor<T> vregMax;
-    MicroAPI::RegTensor<T> vregRes;
-    MicroAPI::RegTensor<T> vregSink;
-
-    constexpr uint32_t floatRepSize = 64;
-
-    uint16_t updateLoops = dealCount / floatRepSize;
-    uint16_t tailSize = dealCount % floatRepSize;
-    uint32_t pltTail = static_cast<uint32_t>(tailSize);
-
-    //mask
-    MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
-
-    Duplicate(vregSink, sinkValue);
-
-    for (uint16_t i = 0; i < updateLoops; ++i) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSum, srcSumUb + (i * floatRepSize));
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMax, srcMaxUb + (i * floatRepSize));
-
-        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregSink, vregMax, pregAll);
-        MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, pregAll);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregAll);
-
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(srcSumUb + (i * floatRepSize), vregSum, pregAll);
-    }
-
-    for (uint16_t i = 0; i < tailSize; i = i + tailSize) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSum, srcSumUb + (updateLoops * floatRepSize));
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMax, srcMaxUb + (updateLoops * floatRepSize));
-
-        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregSink, vregMax, pregTail);
-        MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, pregTail);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregTail);
-        
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum, pregTail);
-    }
-}
-
-template <typename T>
-__aicore__ inline void SinkSubExpAddVF(const LocalTensor<T>& softmaxSumTensor, const LocalTensor<T>& softmaxMaxTensor, 
-    const T sinkValue, uint32_t dealCount)
-{
-    __ubuf__ T * srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
-    __ubuf__ T * srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
-    
-    SinkSubExpAddVF<T>(srcSumUb, srcMaxUb, sinkValue, dealCount);
-}
-
-template <typename T, typename SINK_T>
-__simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ uint16_t *sinkUb, const uint32_t dealCount)
-{
-    MicroAPI::RegTensor<T> vregSum;
-    MicroAPI::RegTensor<T> vregMax;
-    MicroAPI::RegTensor<T> vregRes;
-    MicroAPI::RegTensor<SINK_T> vregSink;
-    MicroAPI::RegTensor<T> vregSinkCast;
-
-    constexpr uint32_t floatRepSize = 64;
-
-    uint16_t updateLoops = dealCount / floatRepSize;
-    uint16_t tailSize = dealCount % floatRepSize;
-    uint32_t pltTail = static_cast<uint32_t>(tailSize);
-
-    //mask
-    MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
-    MicroAPI::MaskReg pregSinkAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>((MicroAPI::RegTensor<uint16_t>&)vregSink, sinkUb);
-    MicroAPI::Cast<T, SINK_T, castTraitFp16_32_update>(vregSinkCast, vregSink, pregSinkAll);
-
-    for (uint16_t i = 0; i < updateLoops; ++i) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSum, srcSumUb + (i * floatRepSize));
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMax, srcMaxUb + (i * floatRepSize));
-
-        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregSinkCast, vregMax, pregAll);
-        MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, pregAll);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregAll);
-
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(srcSumUb + (i * floatRepSize), vregSum, pregAll);
-    }
-
-    if (tailSize != 0) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSum, srcSumUb + (updateLoops * floatRepSize));
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMax, srcMaxUb + (updateLoops * floatRepSize));
-
-        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregSinkCast, vregMax, pregTail);
-        MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, pregTail);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregTail);
-        
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum, pregTail);
-    }
-}
-
-template <typename T, typename SINK_T>
-__aicore__ inline void SinkSubExpAddGSFusedVF(const LocalTensor<SINK_T>& dstTensor, const LocalTensor<T>& softmaxSumTensor,
-    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount)
-{
-    __ubuf__ T * srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
-    __ubuf__ T * srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
-    __ubuf__ uint16_t * dstUb = (__ubuf__ uint16_t *)dstTensor.GetPhyAddr();
-
-    SinkSubExpAddGSFusedVF<T, SINK_T>(srcSumUb, srcMaxUb, dstUb, dealCount);
 }
 
 template <typename T>
