@@ -886,10 +886,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
             static_cast<int32_t>(dataNum) : safeSumTileNum;
         for (int32_t segOff = 0; segOff < static_cast<int32_t>(dataNum); segOff += segSize) {
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
-            // TODO: 下面三行放开会卡住
-            // ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
-            // VToSSync();
-            // reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
+            ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
+            VToSSync();
+            reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
         }
     }
 
