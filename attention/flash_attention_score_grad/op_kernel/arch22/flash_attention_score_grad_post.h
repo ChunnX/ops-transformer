@@ -50,6 +50,7 @@ public:
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign);
 
     constexpr static uint32_t BUFFER_NUM = 1;
+    __aicore__ inline void ReduceDsinkSum(TQue<QuePosition::VECIN, 1> &inQ, TQue<QuePosition::VECOUT, 1> &outQ);
     TPipe *pipe;
     TQue<QuePosition::VECIN, BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> outQueue;
@@ -1026,57 +1027,51 @@ public:
         }
 
         // reduce dsinksum
-
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-            AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
-            AscendC::LocalTensor<float> vecOut = outQueue.template AllocTensor<float>();
-            int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int coreNumForSink = tilingData->postTilingData.coreNum;
-            int dsinkSumMaxCopyTimePerHead = (coreNumForSink * sizeof(float) + 2 * ubBaseSize - 1) / (2 * ubBaseSize);
-            int tailDsinkSumSize = (coreNumForSink * sizeof(float)) % (2 * ubBaseSize);
-            for (int n1temp = 0; n1temp < N1; n1temp++) {
-                float dsinkCalc = 0.0;
-                for (int coreLoop = 0; coreLoop < dsinkSumMaxCopyTimePerHead; coreLoop++) {
-                    int currentCopyDataSize = (coreLoop == dsinkSumMaxCopyTimePerHead - 1) ? tailDsinkSumSize : 2 * ubBaseSize;
-                    int itemNum = currentCopyDataSize / sizeof(float);
-                    int copyOffset = n1temp * coreNumForSink + coreLoop * (2 * ubBaseSize / sizeof(float));
-
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = 1;
-                    copyParams.blockLen = currentCopyDataSize;
-                    copyParams.srcStride = 0;
-                    copyParams.dstStride = 0;
-                    copyParams.rsv = 0;
-                    DataCopyPadExtParams<float> copyPadParams;
-                    copyPadParams.isPad = ((itemNum % 8) == 0) ? false : true;
-                    copyPadParams.leftPadding = 0;
-                    copyPadParams.rightPadding = 8 - (itemNum % 8);
-                    copyPadParams.paddingValue = 0.0;
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams, copyPadParams);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    inQueue.EnQue(vecIn);
-                    inQueue.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    outQueue.EnQue(vecOut);
-                    outQueue.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    dsinkCalc += vecOut.GetValue(0);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                }
-                AscendC::PipeBarrier<PIPE_ALL>();
-                dsinkGm.SetValue(n1temp, -dsinkCalc);
-                AscendC::PipeBarrier<PIPE_ALL>();
-            }
-            inQueue.FreeTensor(vecIn);
-            outQueue.FreeTensor(vecOut);
+            ReduceDsinkSum(inQueue, outQueue);
         }
+    }
+    __aicore__ inline void ReduceDsinkSum(TQue<QuePosition::VECIN, 1> &inQ, TQue<QuePosition::VECOUT, 1> &outQ)
+    {
+        int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
+        int coreNumForSink = tilingData->postTilingData.coreNum;
+        int headsPerCore = (N1 + usedCoreNum - 1) / usedCoreNum;
+        int headStart = cBlockIdx * headsPerCore;
+        int myHeads = AscendC::Min(N1 - headStart, headsPerCore);
+        if (myHeads <= 0) {
+            return;
+        }
+        int headsPerBatch = AscendC::Max((2 * ubBaseSize) / (coreNumForSink * sizeof(float)), 1);
+        AscendC::LocalTensor<float> vecIn = inQ.template AllocTensor<float>();
+        AscendC::LocalTensor<float> vecOut = outQ.template AllocTensor<float>();
+
+        int processedHeads = 0;
+        while (processedHeads < myHeads) {
+            int curHeads = (myHeads - processedHeads > headsPerBatch) ? headsPerBatch : (myHeads - processedHeads);
+            int curItems = curHeads * coreNumForSink;
+            int curBytes = curItems * sizeof(float);
+            int curItemsAlign = (curItems + 7) / 8 * 8;
+            int curHeadOffset = headStart + processedHeads;
+
+            DataCopyPad(vecIn, dsinksumWorkSpaceGm[curHeadOffset * coreNumForSink],
+                {1, (uint32_t)curBytes, 0, 0, 0},
+                {curItemsAlign != curItems, 0, (uint8_t)(8 - curItems % 8), 0});
+            inQ.EnQue(vecIn);
+            inQ.template DeQue<float>();
+
+            uint32_t srcShape[] = {(uint32_t)curHeads, (uint32_t)coreNumForSink};
+            AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR>(vecOut, vecIn, srcShape, (coreNumForSink % 8 == 0));
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls<float>(vecOut, vecOut, -1.0f, curHeads);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            outQ.EnQue(vecOut);
+            outQ.template DeQue<float>();
+            DataCopyPad(dsinkGm[curHeadOffset], vecOut, {1, (uint32_t)(curHeads * sizeof(float)), 0, 0, 0});
+            processedHeads += curHeads;
+        }
+        inQ.FreeTensor(vecIn);
+        outQ.FreeTensor(vecOut);
     }
     __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
                           uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
@@ -1327,56 +1322,7 @@ public:
             AscendC::PipeBarrier<PIPE_ALL>();
         }
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-            AscendC::LocalTensor<float> vecIn = inQueuePing.template AllocTensor<float>();
-            AscendC::LocalTensor<float> vecOut = outQueuePing.template AllocTensor<float>();
-
-            int N1 = tilingData->postTilingData.n2 * tilingData->postTilingData.g;
-            int coreNumForSink = tilingData->postTilingData.coreNum;
-            int dsinkSumMaxCopyTimePerHead = (coreNumForSink * sizeof(float) + 2 * ubBaseSize - 1) / (2 * ubBaseSize);
-            int tailDsinkSumSize = (coreNumForSink * sizeof(float)) % (2 * ubBaseSize);
-
-            for (int n1temp = 0; n1temp < N1; n1temp++) {
-                float dsinkCalc = 0.0;
-                for (int coreLoop = 0; coreLoop < dsinkSumMaxCopyTimePerHead; coreLoop++) {
-                    int currentCopyDataSize = (coreLoop == dsinkSumMaxCopyTimePerHead - 1) ? tailDsinkSumSize : 2 * ubBaseSize;
-                    int itemNum = currentCopyDataSize / sizeof(float);
-                    int copyOffset = n1temp * coreNumForSink + coreLoop * (2 * ubBaseSize / sizeof(float));
-
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = 1;
-                    copyParams.blockLen = currentCopyDataSize;
-                    copyParams.srcStride = 0;
-                    copyParams.dstStride = 0;
-                    copyParams.rsv = 0;
-                    DataCopyPadExtParams<float> copyPadParams;
-                    copyPadParams.isPad = ((itemNum % 8) == 0) ? false : true;
-                    copyPadParams.leftPadding = 0;
-                    copyPadParams.rightPadding = 8 - (itemNum % 8);
-                    copyPadParams.paddingValue = 0.0;
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    DataCopyPad(vecIn, dsinksumWorkSpaceGm[copyOffset], copyParams, copyPadParams);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    inQueuePing.EnQue(vecIn);
-                    inQueuePing.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::ReduceSum<float>(vecOut, vecIn[0], vecIn[0], itemNum);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-
-                    outQueuePing.EnQue(vecOut);
-                    outQueuePing.template DeQue<float>();
-
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    dsinkCalc += vecOut.GetValue(0);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                }
-                AscendC::PipeBarrier<PIPE_ALL>();
-                dsinkGm.SetValue(n1temp, -dsinkCalc);
-                AscendC::PipeBarrier<PIPE_ALL>();
-            }
-            inQueuePing.FreeTensor(vecIn);
-            outQueuePing.FreeTensor(vecOut);
+            ReduceDsinkSum(inQueuePing, outQueuePing);
         }
     }
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign)
