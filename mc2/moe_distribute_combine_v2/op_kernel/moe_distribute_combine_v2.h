@@ -48,9 +48,6 @@ namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
-// 复用 dispatch v2 中定义的 context holder（hccl 路径 / mc2 路径）
-using HcclContextHolder = MoeDistributeDispatchV2Impl::HcclContextHolder;
-using Mc2MoeContextHolder = MoeDistributeDispatchV2Impl::Mc2MoeContextHolder;
 #define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
     uint8_t QuantMode, bool HasAddRmsNorm
 #define CombineMC2TypeFunc ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
