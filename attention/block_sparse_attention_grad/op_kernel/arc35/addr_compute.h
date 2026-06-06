@@ -95,7 +95,7 @@ public:
     {
         return is_finish;
     }
-    __aicore__ inline bool SetBaseBlock(uin32_t base_size)
+    __aicore__ inline bool SetBaseBlock(uint32_t base_size)
     {
         this->s1_base_size = base_size;
     }
