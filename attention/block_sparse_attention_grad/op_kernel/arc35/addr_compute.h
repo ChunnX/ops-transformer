@@ -48,6 +48,7 @@ public:
         this->runTimeInfoBak_.s2LenAlign = runTimeInfo.s2LenAlign;
     }
 
+    template <uint32_t INPUT_LAYOUT>
     __aicore__ inline void UpdateRunTimeInfo(RunTimeInfo &runTimeInfo, const int32_t q_head_num,
                                              const int32_t kv_head_num, const int32_t head_dim)
     {
@@ -184,7 +185,7 @@ public:
 
         if (!single_block_.IsFinish()) {
             // 处理完Single块，更新RunTimeInfo
-            single_block_.UpdateRunTimeInfo(runTimeInfo, q_head_num_, kv_head_num_, head_dim_);
+            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(runTimeInfo, q_head_num_, kv_head_num_, head_dim_);
             return;
         }
 
