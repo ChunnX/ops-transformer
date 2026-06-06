@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
         indexer_compress_epilog_def.cpp
     )
 
@@ -31,5 +31,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE indexer_compress_epilog ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE indexer_compress_epilog ACLNNTYPE aclnn_exclude)
 endif()

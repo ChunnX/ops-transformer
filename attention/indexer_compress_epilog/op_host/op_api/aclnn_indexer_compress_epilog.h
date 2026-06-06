@@ -22,15 +22,13 @@ extern "C" {
  * @domain aclnn_ops_train
  */
 aclnnStatus aclnnIndexerCompressEpilogGetWorkspaceSize(
-    const aclTensor *indexerCompressCache,
-    const aclTensor *indexerCompressCacheScale,
+    aclTensor *indexerCompressCacheRef,
+    aclTensor *indexerCompressCacheScaleRef,
     const aclTensor *x,
     const aclTensor *slotMapping,
     int64_t quantMode,
     bool roundScale,
-    float scale,
-    const aclTensor *indexerCompressCacheOut,
-    const aclTensor *indexerCompressCacheScaleOut,
+    double scale,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
@@ -41,7 +39,7 @@ aclnnStatus aclnnIndexerCompressEpilog(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
-    const aclrtStream stream);
+    aclrtStream stream);
 
 #ifdef __cplusplus
 }

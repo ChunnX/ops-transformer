@@ -14,6 +14,8 @@
  */
 
 #include <sstream>
+#include "log/log.h"
+#include "err/ops_err.h"
 #include "indexer_compress_epilog_tiling.h"
 
 using namespace ge;
@@ -58,7 +60,7 @@ ge::graphStatus IndexerCompressEpilogTiling::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<IndexerCompressEpilogCompileInfo>();
-        OPS_ERR_IF(compileInfoPtr == nullptr, OPS_LOG_E(context_, "compile info is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
                       return ge::GRAPH_FAILED);
         coreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
@@ -76,7 +78,7 @@ ge::graphStatus IndexerCompressEpilogTiling::GetPlatformInfo()
 ge::graphStatus IndexerCompressEpilogTiling::GetAttr()
 {
     auto* attrs = context_->GetAttrs();
-    OPS_LOG_E_IF_NULL(context_, attrs, return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     auto quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     quantMode_ = quantMode == nullptr ? 1 : *quantMode;
@@ -93,19 +95,19 @@ ge::graphStatus IndexerCompressEpilogTiling::GetAttr()
 ge::graphStatus IndexerCompressEpilogTiling::GetShapeAttrsInfoInner()
 {
     auto shapeX = context_->GetInputShape(INPUT_X_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, shapeX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeX);
     auto shapeSlotMapping = context_->GetInputShape(INPUT_SLOT_MAPPING_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, shapeSlotMapping);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeSlotMapping);
     auto xStorageShape = shapeX->GetStorageShape();
-    auto slotMappingShape = shapeX->GetStorageShape();
-    uint32_t xDims = xStorageShape.GetDims();
-    uint32_t slotMappingDims = slotMappingShape.GetDims();
-    OPS_CHECK(xDims - 1 != slotMappingDims,
+    auto slotMappingShape = shapeSlotMapping->GetStorageShape();
+    uint32_t xDims = xStorageShape.GetDimNum();
+    uint32_t slotMappingDims = slotMappingShape.GetDimNum();
+    OP_CHECK_IF(xDims - 1 != slotMappingDims,
         OP_LOGE(context_->GetNodeName(), "slotMappingDims should equal xDims - 1"), return ge::GRAPH_FAILED);
     int64_t bs = 1;
     for (uint32_t i = 0; i < slotMappingDims; i++) {
         int64_t temp = xStorageShape.GetDim(i);
-        OPS_CHECK(temp != slotMappingShape.GetDim(i), OP_LOGE(context_->GetNodeName(),
+        OP_CHECK_IF(temp != slotMappingShape.GetDim(i), OP_LOGE(context_->GetNodeName(),
             "slotMappingShape should equal xStorageShape in dim %d", i), return ge::GRAPH_FAILED);
         bs *= temp;
     }
@@ -113,8 +115,8 @@ ge::graphStatus IndexerCompressEpilogTiling::GetShapeAttrsInfoInner()
     bs_ = bs;
 
     scaleCol_ = CeilDiv(d_, PER_BLOCK_FP16);
-    OPS_ERR_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                  OPS_LOG_E(context_->GetNodeName(), "get attr failed."),
+    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
+                  OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -238,7 +240,7 @@ ge::graphStatus TilingPrepareForIndexerCompressEpilog(gert::TilingParseContext *
 
 ge::graphStatus TilingForIndexerCompressEpilog(gert::TilingContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("IndexerCompressEpilog", "Tiling context is null"),
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("IndexerCompressEpilog", "Tiling context is null"),
                return ge::GRAPH_FAILED);
     IndexerCompressEpilogTiling IndexerCompressEpilogTiling(context);
     return IndexerCompressEpilogTiling.DoOpTiling();

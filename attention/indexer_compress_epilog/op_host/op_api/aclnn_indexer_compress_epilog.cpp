@@ -9,8 +9,13 @@
  */
 
 #include "aclnn_indexer_compress_epilog.h"
+#include "indexer_compress_epilog.h"
+
+#include "aclnn_kernels/common/op_error_check.h"
+#include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
+#include "opdev/op_log.h"
 
 using namespace op;
 
@@ -19,35 +24,43 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnIndexerCompressEpilogGetWorkspaceSize(
-    const aclTensor *indexerCompressCache,
-    const aclTensor *indexerCompressCacheScale,
+    aclTensor *indexerCompressCacheRef,
+    aclTensor *indexerCompressCacheScaleRef,
     const aclTensor *x,
     const aclTensor *slotMapping,
     int64_t quantMode,
     bool roundScale,
-    float scale,
-    const aclTensor *indexerCompressCacheOut,
-    const aclTensor *indexerCompressCacheScaleOut,
+    double scale,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    L0_DFX(IndexerCompressEpilog, indexerCompressCache, indexerCompressCacheScale, x, slotMapping,
-           quantMode, roundScale, scale, indexerCompressCacheOut, indexerCompressCacheScaleOut);
+    L2_DFX_PHASE_1(aclnnIndexerCompressEpilog,
+                   DFX_IN(indexerCompressCacheRef, indexerCompressCacheScaleRef,
+                          x, slotMapping, quantMode, roundScale, scale),
+                   DFX_OUT());
 
-    if (indexerCompressCache == nullptr || indexerCompressCacheScale == nullptr ||
-        x == nullptr || slotMapping == nullptr ||
-        indexerCompressCacheOut == nullptr || indexerCompressCacheScaleOut == nullptr) {
-        return ACLNN_ERR_PARAM_NULL;
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    OP_CHECK_NULL(indexerCompressCacheRef, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(indexerCompressCacheScaleRef, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(slotMapping, return ACLNN_ERR_PARAM_NULLPTR);
+
+    if (indexerCompressCacheRef->IsEmpty() || x->IsEmpty() || slotMapping->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnIndexerCompressEpilog do not support empty tensor!");
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
-    OP_MAKE_EXECUTOR(
-        "aclnnIndexerCompressEpilog",
-        IndexerCompressEpilog, executor,
-        indexerCompressCache, indexerCompressCacheScale,
+    auto output = l0op::IndexerCompressEpilog(
+        indexerCompressCacheRef, indexerCompressCacheScaleRef,
         x, slotMapping,
-        indexerCompressCacheOut, indexerCompressCacheScaleOut,
-        quantMode, roundScale, scale);
+        quantMode, roundScale, scale,
+        uniqueExecutor.get());
+    CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
 
@@ -55,15 +68,11 @@ aclnnStatus aclnnIndexerCompressEpilog(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
-    const aclrtStream stream)
+    aclrtStream stream)
 {
-    if (executor == nullptr) {
-        return ACLNN_ERR_EXECUTOR_NULL;
-    }
-    if (executor->ExecuteAsync(workspace, workspaceSize, stream) != OP_RUN_SUCCESS) {
-        return ACLNN_ERR_EXECUTOR_EXECUTE_FAIL;
-    }
-    return ACLNN_SUCCESS;
+    L2_DFX_PHASE_2(aclnnIndexerCompressEpilog);
+
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

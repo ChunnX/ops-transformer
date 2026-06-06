@@ -35,16 +35,10 @@ int main()
     aclTensor *slotMapping = aclCreateTensor(
         slotShape, 1, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
-    // 输出 tensor（原地操作，与输入相同）
-    aclTensor *indexerCompressCacheOut = aclCreateTensor(
-        cacheShape, 2, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, ACL_FORMAT_ND);
-    aclTensor *indexerCompressCacheScaleOut = aclCreateTensor(
-        scaleShape, 2, ACL_FLOAT, ACL_FORMAT_ND, ACL_FORMAT_ND);
-
     // 2. 设置属性
     int64_t quantMode = 1;   // Normal block quantization
     bool roundScale = true;
-    float scale = 1.0f;
+    double scale = 1.0;
 
     // 3. 第一阶段：获取 workspace 大小和 executor
     uint64_t workspaceSize = 0;
@@ -54,7 +48,6 @@ int main()
         indexerCompressCache, indexerCompressCacheScale,
         x, slotMapping,
         quantMode, roundScale, scale,
-        indexerCompressCacheOut, indexerCompressCacheScaleOut,
         &workspaceSize, &executor);
 
     if (status != ACLNN_SUCCESS) {
@@ -84,8 +77,6 @@ int main()
     aclDestroyTensor(indexerCompressCacheScale);
     aclDestroyTensor(x);
     aclDestroyTensor(slotMapping);
-    aclDestroyTensor(indexerCompressCacheOut);
-    aclDestroyTensor(indexerCompressCacheScaleOut);
     aclrtFree(workspace);
     aclrtDestroyStream(stream);
 
