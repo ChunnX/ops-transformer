@@ -120,15 +120,19 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::CopyOut(
     int64_t offset = innerLoop * onceUbIndicesCols;
     for (int32_t tokensId = 0; tokensId < outTokenNum; tokensId++) {
         for (int32_t topKId = 0; topKId < topK; topKId++) {
+            auto indicesValue = indicesLocal.GetValue(offset);
 #ifndef __CCE_KT_TEST__
+            if (indicesValue == -1) {
+                offset++;
+                continue;
+            }
             if constexpr (ifNumOutTokens == true) {
-                auto indicesValue = indicesLocal.GetValue(offset);
                 if (indicesValue < numOutTokens) {
                     DataCopyPadCustom(dstGm[indicesValue * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
                 }
             } else {
                 DataCopyPadCustom(
-                    dstGm[indicesLocal.GetValue(offset) * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
+                    dstGm[indicesValue * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
             }
 #endif
             offset++;

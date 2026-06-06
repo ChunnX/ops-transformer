@@ -175,7 +175,7 @@ public:
         offsetLocal = offsetBuf.Get<int32_t>();
     }
 
-    __aicore__ inline void Process(GM_ADDR y, GM_ADDR sortedIndices)
+    __aicore__ inline void Process(GM_ADDR y, GM_ADDR sortedIndices, int32_t& actualOutTokens)
     {
         if (this->blockIdx < needCoreNum) {
             int32_t loopCount = this->tileNum;
@@ -184,7 +184,6 @@ public:
 
             PipeBarrier<PIPE_V>();
 
-            // GYW 先处理可以整分的。
             maskHalfLocal = outQueueIndex.AllocTensor<half>();
             if (tokenNum == tileLength) {
                 PipeBarrier<PIPE_V>();
@@ -199,17 +198,22 @@ public:
             outQueueIndex.FreeTensor(maskHalfLocal);
             VToMTE3Sync();
             DataCopyExtParams copyParams{1, static_cast<uint32_t>(1 * sizeof(int32_t)), 0, 0, 0};
-            DataCopyPad(offsetGlobal[blockIdx], offsetLocal, copyParams); // workspace 写入 offset
+            DataCopyPad(offsetGlobal[blockIdx], offsetLocal, copyParams);
         }
         SyncAll();
-        if (this->blockIdx < needCoreNum) {
-            PipeBarrier<PIPE_ALL>();
-            DataCopyExtParams copyParams{1, static_cast<uint32_t>(numBlocks * sizeof(int32_t)), 0, 0, 0};
-            uint64_t ind = 0;
-            DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
-            DataCopyPad(offsetLocal, offsetGlobal, copyParams, padParams); // workspace 写入 offset
-            PipeBarrier<PIPE_ALL>();
+        PipeBarrier<PIPE_ALL>();
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(numBlocks * sizeof(int32_t)), 0, 0, 0};
+        uint64_t ind = 0;
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(offsetLocal, offsetGlobal, copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
 
+        actualOutTokens = 0;
+        for (int32_t i = 0; i < needCoreNum; i++) {
+            actualOutTokens += offsetLocal.GetValue(i);
+        }
+
+        if (this->blockIdx < needCoreNum) {
             for (int32_t i = 0; i < blockIdx; i++) {
                 ind += offsetLocal.GetValue(i);
             }

@@ -157,7 +157,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <td>routingMap</td>
       <td>输入</td>
       <td>token到expert的映射关系。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非dropAndPad模式要求每行中包含topK个true或1。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非dropAndPad模式要求每行中包含小于topK个true或1。</li></ul></td>
       <td>INT8、BOOL</td>
       <td>ND</td>
       <td>2</td>
