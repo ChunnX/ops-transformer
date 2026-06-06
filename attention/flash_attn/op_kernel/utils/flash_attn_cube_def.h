@@ -19,8 +19,6 @@
 #include "flash_attn_common_def.h"
 
 struct RunInfoXCube {
-    uint32_t loop = 0;
-    uint32_t mloop = 0;
     bool isValid = false;
     bool isChangeBatch = false;
     bool isFirstS2Loop = false;
@@ -29,15 +27,9 @@ struct RunInfoXCube {
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
     uint32_t gS1Idx = 0;
-    uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
-    uint64_t actS1Size = 1;
-    uint64_t actS2Size = 1;
     uint32_t actMSize = 0;
     uint32_t actSingleLoopS2Size = 0;
-
-    int64_t preTokensLeftUp = 0;
-    int64_t nextTokensLeftUp = 0;
 };
 
 struct CommonConstInfoCube {
