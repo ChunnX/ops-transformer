@@ -492,10 +492,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             }
             int64_t viewDim0 = transX2->GetViewShape().GetDim(0);
             int64_t viewDim1 = transX2->GetViewShape().GetDim(1);
-            int64_t contiguousStride0 = viewDim0 * viewDim1;
-            int64_t contiguousStride1 = 1;
             int64_t viewDims[2] = {viewDim0, viewDim1};
-            int64_t viewStrides[2] = {contiguousStride0, contiguousStride1};
+            int64_t viewStrides[2] = {viewDim1, 1};
             uint64_t storageDimNum = transX2->GetStorageShape().GetDimNum();
             std::vector<int64_t> storageDims(storageDimNum);
             for (uint64_t i = 0; i < storageDimNum; i++) {
