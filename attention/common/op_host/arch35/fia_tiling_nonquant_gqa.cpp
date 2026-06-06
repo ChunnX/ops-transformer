@@ -355,6 +355,16 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
     actualSeqLength -= preTokensError;
 }
 
+/*
+ * 计算同时参与计算所需的L2 cache大小
+ * 算法思路：
+ * 1. 同时最多只有aicNum个核在计算，每个核处理一个(batch, head)组合
+ * 2. 每个batch有n2Size个head，因此每个batch最多有n2Size个核同时处理
+ * 3. 为最大化L2占用，优先给actualSeqLenKV最大的batch分配核
+ * 4. 分配策略：按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
+ * 5. 如果同时参与计算的KV块超过L2CacheSize的一半就开启S1外切分核
+ * 计算公式：L2Size = sum(分配核数 * actualSeqLenKV) * (qkHeadDim + vHeadDim) * dataTypeSize
+ */
 int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
 {
     const int64_t dataTypeSize = 2U;
