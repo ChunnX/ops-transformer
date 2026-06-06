@@ -44,7 +44,7 @@ public:
           shape_out(*(context->GetOutputShape(0))),
           shape_bias(context->GetOptionalInputShape(batch_matmul_bias_index))
     {
-        num_dima = shape_a.GetDimNum();
+        num_dima = shape_a.GetDimNum(); // test
         num_dimb = shape_b.GetDimNum();
         num_dim = std::max(num_dima, num_dimb);
         num_dim_bias = 0;
