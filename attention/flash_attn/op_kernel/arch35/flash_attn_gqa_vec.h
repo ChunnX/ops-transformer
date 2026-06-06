@@ -890,9 +890,9 @@ public:
                                       RunInfoXVec &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (hasAtten) {
-            int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
-            int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
-            s1LastValidToken = Max(s1LastValidToken - 1, 0);
+            int64_t s1FirstValidToken = AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = ((constInfoXVec.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
                                         hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
@@ -1221,7 +1221,7 @@ public:
         maskInfo.batchIdx = (constInfoXVec.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfoXVec.attenMaskS1Size * constInfoXVec.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfoXVec.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32;
+        maskInfo.attenMaskDstStride = (s2BaseSize - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = 0;
         maskInfo.s2LeftPaddingSize = 0;
@@ -1420,7 +1420,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.gSize = this->tilingData->flashAttnBaseParams.gSize;
         constInfoXVec.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
         constInfoXVec.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfoXVec.dSize = this->tilingData->flashAttnBaseParams.dSize;
         constInfoXVec.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
         constInfoXVec.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
         constInfoXVec.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
@@ -1429,7 +1428,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
         constInfoXVec.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfoXVec.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfoXVec.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
         constInfoXVec.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
 
         constInfoXVec.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
@@ -1438,7 +1436,6 @@ __aicore__ inline void InitConstInfo()
         constInfoXVec.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
         constInfoXVec.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
         constInfoXVec.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfoXVec.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
 
         constInfoXVec.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
         constInfoXVec.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
@@ -1629,7 +1626,7 @@ __aicore__ inline void InitConstInfo()
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfoXVec.gSize)) -
                                1;
         int64_t s1FirstToken = 0;
@@ -1673,11 +1670,11 @@ __aicore__ inline void InitConstInfo()
 
         if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
             headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
-            curS2Start = Max(s2StartWithSparse, s2OStart_);
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
         if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
             tailS2Split = s2OEnd_ > 0U ? true : false;
-            curS2End = s2OEnd_ > 0U ? Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
+            curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
         return;
     }
@@ -1741,7 +1738,7 @@ __aicore__ inline void InitConstInfo()
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
