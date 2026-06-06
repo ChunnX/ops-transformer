@@ -56,7 +56,7 @@ public:
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace) {}
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-        __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
+        __gm__ uint8_t *pScale,
         __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
         __gm__ uint8_t *softmaxMax,
@@ -175,14 +175,14 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *softmaxMax,
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
     ConstInfo<isInfer> &constInfo)
 {
     BaseClass::InitCommonGlobalBuffer(
-        deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, blockTable,
+        deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable,
         workspace, constInfo);
 }
 

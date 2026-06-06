@@ -81,7 +81,7 @@ public:
     }
     __aicore__ inline void InitCommonGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-        __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+        __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
         ConstInfo<isInfer> &constInfo);
     __aicore__ inline float GetPaKScaleValue(
@@ -181,7 +181,7 @@ private:
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
     ConstInfo<isInfer> &constInfo)
 {
@@ -1096,7 +1096,7 @@ public:
         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-        __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,__gm__ uint8_t *prefix,
+        __gm__ uint8_t *prefix,
         __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
         __gm__ uint8_t *kvPaddingSize,
         __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset,

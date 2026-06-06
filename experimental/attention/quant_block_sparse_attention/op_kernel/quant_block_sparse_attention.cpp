@@ -39,7 +39,6 @@ using namespace AscendC;
             attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
-            /*postQuantScale*/nullptr, /*postQuantOffset*/nullptr,                                       \
             /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
             /*queryRope*/nullptr, /*keyRope*/nullptr, /*learnableSink*/nullptr,                          \
             /*softmaxMax*/nullptr, /*softmaxSum*/nullptr, /*softmaxOut*/nullptr,                         \
@@ -87,14 +86,13 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr LayOutTypeEnum bsaLayout = (LAYOUT_T == BSA_LAYOUT_TND) ? LayOutTypeEnum::LAYOUT_TND : LayOutTypeEnum::None;
+    constexpr BSALayout qLayout = BSALayout::TND;
+    constexpr BSAKvLayout kvLayout = BSAKvLayout::PA_BNSD;
     // isPa: KV 连续 -> false; PA_ND -> true
-    constexpr bool bsaIsPa = (KV_LAYOUT_T == BSA_KV_LAYOUT_PA_ND);
-
+    constexpr bool bsaIsPa = true;
     // TODO: 是否新增模板参数
-    constexpr bool isInfer = true;
     constexpr bool HAS_ATTENTION = true;
-    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, bsaLayout,
+    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, kvLayout, kvLayout,
         S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
-        HAS_ATTENTION, isInfer, bsaIsPa);
+        HAS_ATTENTION, bsaIsPa);
 }

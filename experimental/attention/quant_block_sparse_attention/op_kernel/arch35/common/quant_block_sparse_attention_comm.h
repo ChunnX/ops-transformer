@@ -43,13 +43,13 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(layout, LayOutTypeEnum, LayOutTypeEnum::None) \
+    X(qLayout, BSALayout, BSALayout::TND) \
+    X(kvLayout, BSAKvLayout, BSAKvLayout::PA_BNSD) \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128) \
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
     X(hasAtten, bool, false) \
-    X(isInfer, bool, false) \
     X(isPa, bool, false) \
 
 /* 1. 生成带默认值的模版Template */
