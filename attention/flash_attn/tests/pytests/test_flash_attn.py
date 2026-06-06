@@ -23,7 +23,7 @@ from utils.io import save_tensor_to_txt, load_tensor_from_txt
 
 _DEFAULT_CASE_FILES = ["base", "fia_stc", "functional_stc",
                         "functional_redline_train_tnd", "functional_redline_train",
-                        "functional_redline_infer", "performance_redline_infer", "functional_fia_stc"]
+                        "functional_redline_infer", "performance_redline_infer", "functional_fia_stc", "functional_redline_06"]
 
 # ─────────────────── 动态导入 GPU / NPU 实现 ───────────────────
 GPU_AVAILABLE = False
