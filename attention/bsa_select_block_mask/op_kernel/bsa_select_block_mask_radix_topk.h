@@ -1042,7 +1042,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
 
-    LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
+    LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
                true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
