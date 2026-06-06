@@ -298,16 +298,16 @@ private:
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = RoundUp(base_s2_len, 16);
         runTimeInfo.queryGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num, head_dim,
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_, head_dim_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.keyGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num, head_dim,
-                                         runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num_,
+                                         head_dim_, runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
         runTimeInfo.lseGmOffset =
-            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.sftgGmOffset =
-            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
         single_block_.RecordRunTimeInfo(runTimeInfo);
