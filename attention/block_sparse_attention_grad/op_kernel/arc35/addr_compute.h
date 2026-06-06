@@ -237,8 +237,9 @@ private:
             return;
         }
         int32_t base_s1_idx, base_s1_len;
-        int32_t single_s2 = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
-        single_block_.Record(s1Idx_, s1Len_);
+        int32_t single_s1_len = GetSingleBlock(s1Idx_, cur_q_seq_len_, s1_single_size);
+        int32_t single_s2_len = GetSingleBlock(s2Idx_, cur_kv_seq_len_, s2_single_size);
+        single_block_.Record(s1Idx_, single_s1_len);
         single_block_.Update(base_s1_idx, base_s1_len);
 
         int32_t n2Idx = n1Idx_ / q_group_;
@@ -248,9 +249,9 @@ private:
         runTimeInfo.n1Idx = n1Idx_;
         runTimeInfo.n2Idx = n2Idx;
         runTimeInfo.s1Len = base_s1_len;
-        runTimeInfo.s2Len = single_s2;
-        runTimeInfo.s1LenAlign = RoundUp(s1Len_, 16);
-        runTimeInfo.s2LenAlign = RoundUp(single_s2, 16);
+        runTimeInfo.s2Len = single_s2_len;
+        runTimeInfo.s1LenAlign = RoundUp(single_s1_len, 16);
+        runTimeInfo.s2LenAlign = RoundUp(single_s2_len, 16);
         runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
                                                                  head_dim_, bIdx_, s1Idx_, n1Idx_);
         runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
