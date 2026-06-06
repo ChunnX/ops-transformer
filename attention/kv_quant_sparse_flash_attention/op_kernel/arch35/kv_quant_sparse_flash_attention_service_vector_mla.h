@@ -126,7 +126,11 @@ private:
         int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
+    __aicore__ inline void CalcNeedInit(CVSharedParams &sharedParams);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
+    __aicore__ inline void ProcessVec1VfDispatch(LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes,
+        LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, LocalTensor<T> &apiTmpBuffer,
+        RunInfo &runInfo, ConstInfo &constInfo);
 
     TPipe *tPipe;
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
@@ -214,7 +218,7 @@ QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64
         return;
     }
     DataCopyExtParams intriParams;
-    
+
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
@@ -290,11 +294,53 @@ static constexpr MicroAPI::CastTrait castTraitint8_1 = {MicroAPI::RegLayout::ZER
 static constexpr MicroAPI::CastTrait castTraithalf_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                         MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
+template <typename KV_T>
+__simd_vf__ void AntiquantVFImplFp8D448Load(
+    MicroAPI::RegTensor<KV_T> &vKvData0, MicroAPI::RegTensor<KV_T> &vKvData1,
+    MicroAPI::RegTensor<float> &vScale0,
+    __ubuf__ int8_t* ubSrcTemp, __ubuf__ float* ubScaleSrcAddrTemp,
+    uint32_t combineDim, uint32_t tileSize)
+{
+    MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+        (MicroAPI::RegTensor<int8_t>&)vKvData0, ubSrcTemp, tileSize / 2);
+    MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+        (MicroAPI::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize / 2);
+    MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
+        (MicroAPI::RegTensor<float>&)vScale0, ubScaleSrcAddrTemp, combineDim / 4);
+}
+
 template <typename Q_T, typename KV_T>
-__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr, // output first
+__simd_vf__ void AntiquantVFImplFp8D448CastMul(
+    MicroAPI::RegTensor<KV_T> &vKvData0, MicroAPI::RegTensor<KV_T> &vKvData1,
+    MicroAPI::RegTensor<float> &vCastFp32Res0, MicroAPI::RegTensor<float> &vCastFp32Res1,
+    MicroAPI::RegTensor<float> &vMulRes0, MicroAPI::RegTensor<float> &vMulRes1,
+    MicroAPI::RegTensor<float> &vScale0,
+    MicroAPI::RegTensor<Q_T> &vCastRes0, MicroAPI::RegTensor<Q_T> &vCastRes1,
+    MicroAPI::MaskReg int8MaskAll, MicroAPI::MaskReg fp32MaskAll)
+{
+    static constexpr bool isKvInt8 = (IsSameType<KV_T, int8_t>::value);
+    if constexpr (isKvInt8) {
+        MicroAPI::RegTensor<half> vCastHalfRes0;
+        MicroAPI::RegTensor<half> vCastHalfRes1;
+        MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes0, vKvData0, int8MaskAll);
+        MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes1, vKvData1, int8MaskAll);
+        MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res0, vCastHalfRes0, fp32MaskAll);
+        MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res1, vCastHalfRes1, fp32MaskAll);
+    } else {
+        MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
+        MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
+    }
+    MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes0, vCastFp32Res0, vScale0, fp32MaskAll);
+    MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes1, vCastFp32Res1, vScale0, fp32MaskAll);
+    MicroAPI::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vMulRes0, fp32MaskAll);
+    MicroAPI::Cast<Q_T, float, castTraitFp8_3>(vCastRes1, vMulRes1, fp32MaskAll);
+}
+
+template <typename Q_T, typename KV_T>
+__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr,
     __ubuf__ float* ubScaleSrcAddr, uint32_t dealRowCount)
 {
-    uint32_t combineDim = 672; // 128对齐 640->672
+    uint32_t combineDim = 672;
     MicroAPI::RegTensor<KV_T> vKvData0;
     MicroAPI::RegTensor<KV_T> vKvData1;
     MicroAPI::RegTensor<half> vKvDataHalf0;
@@ -316,48 +362,25 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
     MicroAPI::MaskReg kvRopeTypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg int8MaskAll = MicroAPI::CreateMask<half, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg fp32MaskAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    uint32_t blockStride = 17; // +1 to solve bank confict
+    uint32_t blockStride = 17;
     uint32_t repeatStride = 1;
-    const uint32_t nopeDim = 512;  // 448->512 64
+    const uint32_t nopeDim = 512;
     const uint32_t kvNumPerLoop = 128;
     const uint32_t scaleNumPerLoop = 1;
     const uint32_t tileSize = 128;
-    static constexpr bool isKvInt8 = (IsSameType<KV_T, int8_t>::value);
-    // tilesize is 128, deal 128 b8 kv, deal 1 fp32 scale
     for (uint16_t j = 0; j < (nopeDim / kvNumPerLoop); j++) {
         __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + j * kvNumPerLoop;
         __ubuf__ float* ubScaleSrcAddrTemp = ubScaleSrcAddr + j * scaleNumPerLoop;
         __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + j * kvNumPerLoop * blockStride;
         for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
-            // load scale
-            MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                (MicroAPI::RegTensor<int8_t>&)vKvData0, ubSrcTemp, tileSize / 2);
-            MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                (MicroAPI::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize / 2);
+            AntiquantVFImplFp8D448Load<KV_T>(vKvData0, vKvData1, vScale0, ubSrcTemp, ubScaleSrcAddrTemp,
+                combineDim, tileSize);
 
-            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
-                (MicroAPI::RegTensor<float>&)vScale0, ubScaleSrcAddrTemp, combineDim / 4);
+            AntiquantVFImplFp8D448CastMul<Q_T, KV_T>(vKvData0, vKvData1, vCastFp32Res0, vCastFp32Res1,
+                vMulRes0, vMulRes1, vScale0, vCastRes0, vCastRes1, int8MaskAll, fp32MaskAll);
 
-            if constexpr (isKvInt8) {
-                // int8 -> half
-                MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes0, vKvData0, int8MaskAll);
-                MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes1, vKvData1, int8MaskAll);
-                // half -> float
-                MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res0, vCastHalfRes0, fp32MaskAll);
-                MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res1, vCastHalfRes1, fp32MaskAll);
-            } else {
-                MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
-                MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
-            }
+            MicroAPI::DeInterLeave(vCastResPack0, vCastResPack1, vCastRes0, vCastRes1);
 
-            MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes0, vCastFp32Res0, vScale0, fp32MaskAll);
-            MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes1, vCastFp32Res1, vScale0, fp32MaskAll);
-
-            MicroAPI::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vMulRes0, fp32MaskAll);
-            MicroAPI::Cast<Q_T, float, castTraitFp8_3>(vCastRes1, vMulRes1, fp32MaskAll);
-
-            MicroAPI::DeInterleave(vCastResPack0, vCastResPack1, vCastRes0, vCastRes1);
-            
             MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ubDstAddrTmp, vCastResPack0, blockStride, repeatStride, kvRopeTypeMaskAll);
         }
@@ -546,6 +569,43 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1VfDispatch(
+    LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes,
+    LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, LocalTensor<T> &apiTmpBuffer,
+    RunInfo &runInfo, ConstInfo &constInfo)
+{
+    if (runInfo.s2LoopCount == 0) {
+        if (likely(runInfo.s2RealSize == 128)) {
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if(runInfo.s2RealSize <= 64) {
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if(runInfo.s2RealSize < 128) {
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        }
+    } else {
+        if (likely(runInfo.s2RealSize == 128)) {
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if (runInfo.s2RealSize <= 64) {
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if(runInfo.s2RealSize < 128) {
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
@@ -562,38 +622,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
 
-    if (runInfo.s2LoopCount == 0) {
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        }
-    } else {
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        }
-    }
+    ProcessVec1VfDispatch(stage1CastTensor, mmRes, sumUb, maxUb, apiTmpBuffer, runInfo, constInfo);
+
     bmm1ResBuf.SetCrossCore();
 
-    // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
 
@@ -623,7 +655,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
         bmm2ResBuf.SetCrossCore();
         return;
     }
-    
+
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
     int64_t qsfaVec2CalcSize = runInfo.vec2MRealSize * qsfaDTemplateAlign64;
@@ -774,31 +806,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalcNeedInit(
+    CVSharedParams &sharedParams)
 {
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
-    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
-    sharedParams.n2Size = 1;
-    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
-    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
-    sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
-    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
-    sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
-    sharedParams.dSizeRope = 64; // 64: 编码维度
-    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
-    sharedParams.dSize = 576; // 576: 模型特征维度(dSize)
-    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
-    sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
-    if constexpr (isPa) {
-        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
-        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
-    }
-
-    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
-    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
-
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
         int64_t s2Size;
@@ -811,7 +821,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
                 s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
             }
         }
-        
+
         int64_t s1Size;
         if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
             s1Size = bIdx == 0 ? cuSeqlensQGm.GetValue(bIdx) : cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1);
@@ -827,10 +837,38 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
             break;
         }
     }
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
+    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+{
+    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
+    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
+    sharedParams.n2Size = 1;
+    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
+    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
+    sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
+    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
+    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
+    sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
+    sharedParams.dSizeRope = 64;
+    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
+    sharedParams.dSize = 576;
+    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
+    sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
+    if constexpr (isPa) {
+        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
+        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
+    }
+
+    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
+    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
+
+    CalcNeedInit(sharedParams);
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0);
             auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
             #pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
