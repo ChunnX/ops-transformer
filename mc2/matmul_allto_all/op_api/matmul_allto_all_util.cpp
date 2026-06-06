@@ -313,14 +313,8 @@ op::Shape GetWeightNzShape(const aclTensor *x2, bool transposeX2)
     int64_t viewK = transposeX2 ? viewShape.GetDim(viewDimNum - 1) : viewShape.GetDim(viewDimNum - 2);
     int64_t viewN = transposeX2 ? viewShape.GetDim(viewDimNum - 2) : viewShape.GetDim(viewDimNum - 1);
 
-    auto originalShape = x2->GetOriginalShape();
-    int64_t origK = (originalShape.GetDimNum() >= viewDimNum) ?
-        (transposeX2 ? originalShape.GetDim(viewDimNum - 1) : originalShape.GetDim(viewDimNum - 2)) : viewK;
-    int64_t origN = (originalShape.GetDimNum() >= viewDimNum) ?
-        (transposeX2 ? originalShape.GetDim(viewDimNum - 2) : originalShape.GetDim(viewDimNum - 1)) : viewN;
-
-    int64_t n1 = CeilDiv(origN, nzK0Value);
-    int64_t k1 = CeilDiv(origK, NZ_K0_VALUE_BMM_BLOCK_NUM);
+    int64_t n1 = CeilDiv(viewN, nzK0Value);
+    int64_t k1 = CeilDiv(viewK, NZ_K0_VALUE_BMM_BLOCK_NUM);
 
     op::Shape weightNzShape;
     weightNzShape.AppendDim(n1);
