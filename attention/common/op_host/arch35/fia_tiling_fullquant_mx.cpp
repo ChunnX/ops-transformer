@@ -377,10 +377,11 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
             outerBlockNums = fiaInfo_->n2Size;
         }
         totalSize += outerBlockNums;
-        OP_LOGD(fiaInfo_->opName, "bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
-            "actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
-            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
-            outerBlockNums);
+        OP_LOGD(fiaInfo_->opName,
+                "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
+                "actualSeqLengthsTmp:%lld, outerBlockNums:%lld, totalSize:%lld\n",
+                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
+                outerBlockNums, totalSize);
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
