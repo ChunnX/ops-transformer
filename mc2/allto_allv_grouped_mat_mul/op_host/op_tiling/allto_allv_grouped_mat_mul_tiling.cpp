@@ -833,7 +833,10 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     }
 
     if (maxMSize != 0) {
-        // check
+        OP_TILING_CHECK(expertNum_ == 0,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
+                std::to_string(expertNum_).c_str(), "positive value"),
+            return ge::GRAPH_FAILED);
         expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
             Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
         AlltoAllvGmmTilingHelper gmmHelper(*this);
@@ -899,6 +902,11 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
     OP_TILING_CHECK(N > static_cast<uint64_t>(INT32_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "N",
             std::to_string(N).c_str(), "should be less than 2147483647"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertNum > Mc2GroupedMatmul::MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum",
+            std::to_string(expertNum).c_str(),
+            (std::string("<=") + std::to_string(Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
         return ge::GRAPH_FAILED);
     for (uint32_t i = 0; i < expertNum; i++) {
         mList_[i] = static_cast<int32_t>(M);

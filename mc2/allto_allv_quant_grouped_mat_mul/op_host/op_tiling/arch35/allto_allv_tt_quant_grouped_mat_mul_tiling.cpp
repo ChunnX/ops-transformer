@@ -83,6 +83,11 @@ void AlltoAllvTTQuantGmmTiling::SetTilingArray(
     Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
     uint64_t K, uint32_t expertNum) const
 {
+    OP_TILING_CHECK(expertNum > Mc2GroupedMatmul::MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum",
+            std::to_string(expertNum).c_str(),
+            (std::string("<=") + std::to_string(Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+        return );
     for (uint32_t i = 0; i < expertNum; i++) {
         gmmQuantTilingData.gmmArray.mList[i] = static_cast<int32_t>(M);
     }
