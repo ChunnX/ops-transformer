@@ -56,11 +56,13 @@ extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_AD
         RotateHalfRopeFullLoadXd<half, float> op;
         op.Init(x, cos, sin, y, tilingData);
         op.Process();
+#if !(((defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) || (defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)))
     } else if (TILING_KEY_IS(1113) || TILING_KEY_IS(1123) || TILING_KEY_IS(1133) || TILING_KEY_IS(1143) ||
                TILING_KEY_IS(1153) || TILING_KEY_IS(1163)) {
         RotateHalfRopeFullLoadXd<bfloat16_t, float> op;
         op.Init(x, cos, sin, y, tilingData);
         op.Process();
+#endif
         // Regular rotate_half path: tilingKey(10xx)
     } else if (TILING_KEY_IS(1011)) {
         RotateHalf<float> rotateHalfOp;
