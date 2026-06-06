@@ -31,7 +31,6 @@
 #include "common/matmul.h"
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
-#include "common/quant_block_sparse_attention_tiling_regbase.h"
 
 #include "common/quant_block_sparse_attention_kvcache.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -39,7 +38,6 @@
 
 using matmul::MatmulType;
 using namespace AscendC;
-using namespace optiling;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
