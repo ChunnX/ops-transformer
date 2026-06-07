@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_MRGSORT_H
-#define MC2_MOE_V2_MRGSORT_H
+#ifndef MC2_MOE_V2_QUANT_MRGSORT_H
+#define MC2_MOE_V2_QUANT_MRGSORT_H
 
 #include "moe_v2_common.h"
 #include "kernel_operator.h"
@@ -200,4 +200,4 @@ __aicore__ inline void MoeV2Mrgsort::Process()
     ClearCache();
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_MRGSORT_H
+#endif // MC2_MOE_V2_QUANT_MRGSORT_H

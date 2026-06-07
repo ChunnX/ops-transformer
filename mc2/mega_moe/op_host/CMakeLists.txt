@@ -22,12 +22,23 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(mega_moe_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    add_ops_compile_options(
-        OP_NAME MegaMoe
-        OPTIONS --cce-auto-sync=off
-        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api
-        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
-    )
+    if ("${CONDITION_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MegaMoe
+            OPTIONS --cce-auto-sync=off
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME MegaMoe
+            OPTIONS --cce-auto-sync=off
+            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
+            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
+            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
+            OPTIONS -DHCCL_COMM
+        )
+    endif()
 
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE mega_moe ACLNNTYPE aclnn_inner)
