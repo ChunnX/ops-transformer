@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef SPARSE_ATTN_SHAREDKV_COMMON_H
-#define SPARSE_ATTN_SHAREDKV_COMMON_H
+#ifndef SPARSE_FLASH_MLA_COMMON_H
+#define SPARSE_FLASH_MLA_COMMON_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -22,28 +22,24 @@
 
 namespace SMLAKernel {
 using namespace AscendC;
+// 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
+constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
-enum class SMLATemplateMode {
-    SWA_TEMPLATE_MODE = 0,
-    CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2,
-    ORI_SCFA_TEMPLATE_MODE = 3,
-    ORI_CMP_SCFA_TEMPLATE_MODE = 4
+enum class SMLA_RUN_MODE {
+    SWA_MODE = 0,
+    SCFA_MODE = 1,
+    CFA_MODE = 2,
 };
 
 enum class SMLA_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BNBD = 2
+    PA_ND = 2
 };
 
-#if (__CCE_AICORE__ != 310)
-// 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
-constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
-
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
-          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BNBD,
-          int TEMPLATE_MODE = 0, typename... Args>
+          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_ND, int TEMPLATE_MODE = 0,
+          typename... Args>
 struct SMLAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -51,7 +47,7 @@ struct SMLAType {
     static constexpr bool flashDecode = FLASH_DECODE;
     static constexpr SMLA_LAYOUT layout = LAYOUT_T;
     static constexpr SMLA_LAYOUT kvLayout = KV_LAYOUT_T;
-    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD);
+    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_ND);
     static constexpr int templateMode = TEMPLATE_MODE;
 };
 
@@ -94,6 +90,7 @@ struct PAShape {
     uint32_t blockSize;
     uint32_t headNum;             // 一般为kv的head num，对应n2
     uint32_t headDim;             // 512 对应d
+    uint32_t kvStride;
     uint32_t maxblockNumPerBatch; // block table 每一行的最大个数
     uint32_t actHeadDim;          // 实际拷贝col大小,考虑到N切块   s*d, 对应d
     uint32_t copyRowNum;          // 总共要拷贝的行数
@@ -136,7 +133,7 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     BSH\BSND\TND 为BBH
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
-template <typename T, SMLA_LAYOUT SRC_LAYOUT>
+template <typename T, SMLA_LAYOUT SRC_LAYOUT = SMLA_LAYOUT::PA_ND>
 __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   GlobalTensor<T> &srcTensor, // gm
                                   GlobalTensor<int32_t> &blockTableGm,
@@ -156,8 +153,8 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
-
+        // uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        uint64_t offset = idInBlockTable * shape.kvStride; // PA的偏移
         uint64_t dStride = shape.headDim;
         if constexpr (SRC_LAYOUT == SMLA_LAYOUT::BSND || SRC_LAYOUT == SMLA_LAYOUT::TND) {
             offset += (uint64_t)(startPos.n2Idx * shape.headDim) + reaminRowCnt * shape.headDim * shape.headNum +
@@ -186,11 +183,13 @@ struct RunInfo {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
+    uint32_t n2IdxReal = 0;
     uint32_t relativeS2Idx = 0;
     uint32_t bn2IdxInCurCore = 0;
     uint32_t curSInnerLoopTimes = 0;
     uint64_t tndBIdxOffsetForQ = 0;
     uint64_t tndBIdxOffsetForKV = 0;
+    uint64_t tensorCmpBOffset = 0;
     uint64_t tensorAOffset = 0;
     uint64_t tensorBOffset = 0;
     uint64_t attenOutOffset = 0;
@@ -198,7 +197,10 @@ struct RunInfo {
     uint64_t topKBaseOffset = 0;
     uint32_t actualSingleProcessSInnerSize = 0;
     uint32_t actualSingleProcessSInnerSizeAlign = 0;
-    bool isFirstSInnerLoop = false;
+    uint32_t actualSingleProcessSInnerOriSize = 0;
+    uint32_t actualSingleProcessSInnerOriAlignSize = 0;
+    uint32_t actualSingleProcessSInnerCmpSize = 0;
+    uint32_t actualSingleProcessSInnerCmpAlignSize = 0;
     uint32_t s2BatchOffset = 0;
     uint32_t gSize = 0;
     uint32_t s1Size = 0;
@@ -208,26 +210,33 @@ struct RunInfo {
     uint32_t mSizeVStart = 0;
     uint32_t tndIsS2SplitCore = 0;
     uint32_t tndCoreStartKVSplitPos = 0;
+    bool isFirstSInnerLoop = false;
     bool isBmm2Output = false;
     bool isValid = false;
+    bool isLastS2Loop = 0;
+    int64_t inValidRowCount = 0;
 
-    static constexpr uint32_t n2Idx = 0;
     uint64_t actS1Size = 1;
     uint64_t actS2SizeOri = 0ULL;
+    static constexpr uint32_t n2Idx = 0;
     uint32_t gS1Idx = 0;
     uint64_t actS2Size = 1;
     uint64_t actOriS2Size = 1;
     uint32_t actMBaseSize = 0;
-    bool isLastS2Loop = 0;
     int32_t nextTokensPerBatch = 0;
     int64_t threshold = 0;
-    uint32_t curTopKIdx = 0;
     uint64_t curOffsetInSparseBlock = 0;
-    bool isOri = true; // 判断当前块是在Ori部分还是Cmp部分
+    uint32_t curTopKIdx = 0;
+    bool isOriOnly = true; // 判断当前块是在Ori部分还是Cmp部分
+    bool isOriCmpMix = false;
+    uint8_t resv[2];
     uint64_t s2StartPoint = 0;
+    int64_t cmpS2IdStart = 0;
     int64_t cmpS2IdLimit = 0;
     int32_t v0S2DealSize = 0;
     int32_t v0S2Start = 0;
+    uint32_t oriDealSize = 0;
+    int32_t cmpMaskRight = 0;
 };
 
 struct ConstInfo {
@@ -278,6 +287,8 @@ struct ConstInfo {
     SMLA_LAYOUT outputLayout;  // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
+    uint64_t oriKvStride0 = 0;
+    uint64_t cmpKvStride0 = 0;
     bool needInit = false;
     uint32_t templateMode = 0;
 
@@ -314,6 +325,8 @@ struct ConstInfo {
     // win
     int32_t oriWinRight = 0;
     int32_t oriWinLeft = 128;
+
+    bool returnSoftmaxLse = false;
 };
 
 struct MSplitInfo {
@@ -323,6 +336,5 @@ struct MSplitInfo {
     uint32_t vecStartM = 0U;
     uint32_t vecDealM = 0U;
 };
-#endif
 } // namespace SMLAKernel
-#endif // SPARSE_ATTN_SHAREDKV_COMMON_H
+#endif // SPARSE_FLASH_MLA_COMMON_H
