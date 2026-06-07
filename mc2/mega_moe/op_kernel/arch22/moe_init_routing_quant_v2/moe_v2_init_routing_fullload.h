@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_INIT_ROUTING_FULLLOAD_H
-#define MC2_MOE_V2_INIT_ROUTING_FULLLOAD_H
+#ifndef MC2_MOE_V2_QUANT_INIT_ROUTING_FULLLOAD_H
+#define MC2_MOE_V2_QUANT_INIT_ROUTING_FULLLOAD_H
 
 #include "moe_v2_mrgsort.h"
 
@@ -319,4 +319,4 @@ __aicore__ inline void MoeV2FullLoad<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_INIT_ROUTING_FULLLOAD_H
+#endif // MC2_MOE_V2_QUANT_INIT_ROUTING_FULLLOAD_H
