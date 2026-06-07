@@ -136,8 +136,7 @@ def get_call_attrs(case):
         "stem_block_size": int(case["stem_block_size"]),
         "stem_stride": int(case["stem_stride"]),
         "alpha": float(case["alpha"]),
-        # Current torch extension schema temporarily spells this attr as "inital_blocks".
-        "inital_blocks": int(case["initial_blocks"]),
+        "initial_blocks": int(case["initial_blocks"]),
         "window_size": int(case["window_size"]),
         "k_block_num_rate_medium": K_BLOCK_NUM_RATE_MEDIUM,
         "k_block_num_bias_medium": K_BLOCK_NUM_BIAS_MEDIUM,
