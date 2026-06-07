@@ -25,19 +25,5 @@ class BlockEpilogue {
 
 }  // namespace Catlass::Epilogue::Block
 
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_elemwise_no_source.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_elemwise_one_source.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_fa_softmax.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_fa_rescale_o.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_mla_softmax.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_mla_rescale_o.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_mla_fd_rescale_o.hpp"
 #include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_per_token_dequant.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_gemm.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_gemv.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_mla_tp1_softmax.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_mla_tp1_rescale_o.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_online_softmax_no_mask.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_rescale_o_no_split_row.hpp"
-#include "../../../template_linear_algebra_v2/epilogue/block/block_epilogue_w4a4_per_token_per_channel_dequant.hpp"
 #endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP

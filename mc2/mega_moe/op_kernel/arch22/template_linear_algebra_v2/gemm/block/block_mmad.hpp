@@ -65,32 +65,5 @@ struct BlockMmadAiv {
 
 } // namespace Catlass::Gemm::Block
 
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_pingpong.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fa_qk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fa_pv.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_mla_qk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_mla_pv.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_mla_qk_tp1_spec.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_mla_pv_tp1_spec.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_preload.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_preload_async.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_preload_async_with_callback.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_gemm.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_pingpong_bias.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fai_qk_head_tail.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fai_qk_normal.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fai_pv_head_tail.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_fai_pv_normal.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_pingpong_full_loadA.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_pingpong_with_prologue.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_pingpong_slice_k_with_prologue.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_dynamic_common.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_dynamic_small.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_dynamic_streamk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_dynamic_single_core_splitk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_small.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_single_core_splitk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_dynamic_aiv.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_streamk.hpp"
-#include "../../../template_linear_algebra_v2/gemm/block/block_mmad_w4a4_per_token_per_channel_dequant.hpp"
+
 #endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_HPP
