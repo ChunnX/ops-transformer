@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_SRC_TO_DST_WITH_CAPACITY_H
-#define MC2_MOE_V2_SRC_TO_DST_WITH_CAPACITY_H
+#ifndef MC2_MOE_V2_QUANT_SRC_TO_DST_WITH_CAPACITY_H
+#define MC2_MOE_V2_QUANT_SRC_TO_DST_WITH_CAPACITY_H
 
 #include "moe_v2_common.h"
 
@@ -278,4 +278,4 @@ __aicore__ inline void MoeV2SrcToDstWithCapacity<T, TilingData>::Process()
     this->SyncAll();
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_SRC_TO_DST_WITH_CAPACITY_H
+#endif // MC2_MOE_V2_QUANT_SRC_TO_DST_WITH_CAPACITY_H

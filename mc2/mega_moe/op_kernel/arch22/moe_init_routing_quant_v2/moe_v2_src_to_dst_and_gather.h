@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_SRC_TO_DST_AND_GATHER_H
-#define MC2_MOE_V2_SRC_TO_DST_AND_GATHER_H
+#ifndef MC2_MOE_V2_QUANT_SRC_TO_DST_AND_GATHER_H
+#define MC2_MOE_V2_QUANT_SRC_TO_DST_AND_GATHER_H
 
 #include "moe_v2_common.h"
 
@@ -573,4 +573,4 @@ __aicore__ inline void MoeV2SrcToDstAndGather<T, TilingData>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_SRC_TO_DST_AND_GATHER_H
+#endif // MC2_MOE_V2_QUANT_SRC_TO_DST_AND_GATHER_H
