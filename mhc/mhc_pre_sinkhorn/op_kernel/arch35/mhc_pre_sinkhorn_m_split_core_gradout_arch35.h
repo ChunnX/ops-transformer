@@ -184,8 +184,10 @@ public:
                 rmsNormLocal = rmsNormBuf.Get<float>();
                 WaitFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
                 if (GetBlockIdx() % 2 != 0) {
-                    xSplitOffset = (mL1RealSize / 2) * tilingData->hcMult * tilingData->d;
-                    // sinkhorn阶段计算时，偶数Vector核多处理一行，x的split offset和matmul阶段不同
+                    // odd-bs fix: matmul stage must use the SAME split as the sinkhorn stage
+                    // (even core -> ceil rows, odd core -> floor rows). The odd core therefore
+                    // reads x starting after the even core's ceil rows -> CeilDiv, not floor.
+                    xSplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->hcMult * tilingData->d;
                     xOutSplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->hcMult * tilingData->d;
                     ySplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->d;
                     postSplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->hcMult;
@@ -232,10 +234,13 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
                     int64_t rowFactor = mL1RealSize / 2;
                     int64_t tailRowFactor = mL1RealSize - rowFactor;
-                    int64_t curRowFactor = rowFactor;
+                    // odd-bs fix: even core processes the larger (ceil) half, odd core the floor
+                    // half -- matching the sinkhorn-stage split (currentRow) and the CeilDiv output
+                    // offsets, so rmsNorm/x rows line up across the two stages when mL1RealSize is odd.
+                    int64_t curRowFactor = tailRowFactor;
                     int64_t mL1SizeAlign = CeilAlign(mL1RealSize, AscendC::BLOCK_CUBE);
                     if (curBlockIdx % 2 == 1) {
-                        curRowFactor = tailRowFactor;
+                        curRowFactor = rowFactor;
                     }
                     float coeff = 1 / static_cast<float>(tilingData->hcMult * tilingData->d);
                     for (int64_t cvLoopIdx = 0; cvLoopIdx < cvLoopKSize; cvLoopIdx++) {
@@ -282,8 +287,9 @@ public:
                             dataCopyXParams.blockLen = curRowFactor * C0_SIZE * sizeof(float) / BLOCK_SIZE;
                             dataCopyXParams.srcStride = CeilAlign(curRowFactor, C0_SIZE) - curRowFactor;
                             dataCopyXParams.dstStride = CeilAlign(mL1RealSize, 16) - curRowFactor;
+                            // odd-bs fix: odd core's rows go after the even core's ceil rows in L1
                             CopyToL1(xNd2NzLocal[nd2NzBufSize * (bufferIdx & 1)],
-                                     xL1_[(aL1BufferID_ * L1_BUF_OFFSET) + rowFactor * (BLOCK_SIZE / sizeof(float)) +
+                                     xL1_[(aL1BufferID_ * L1_BUF_OFFSET) + tailRowFactor * (BLOCK_SIZE / sizeof(float)) +
                                           cvLoopIdx * tilingData->kUbSize * mL1SizeAlign],
                                      dataCopyXParams);
                         }
