@@ -30,6 +30,24 @@ using namespace op;
 extern "C" {
 #endif
 
+// 将int4打包为int32输入的Tensor还原回int4
+aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor* executor)
+{
+    constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 每个int32包含8个int4
+    std::vector<aclTensor *> tensors;
+    for (int i = 0; i < input->Size(); i++) {
+        auto tensor = (*input)[i];
+        auto viewShape = tensor->GetViewShape();
+        viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+        auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
+        inputTemp->SetDataType(DataType::DT_INT4);
+        tensors.push_back(inputTemp);
+    }
+    aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
+    OP_LOGD("The conversion from int32 to int4 is completed.");
+    return newInput;
+}
+
 static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList,
                               aclTensorList *&outList, aclOpExecutor *executor)
 {
@@ -77,6 +95,16 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
+
+    // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
+            weight1 = ConvertTensorListToInt4(weight1, *executor);
+        }
+        if (weight2 != nullptr && weight2->Size() > 0 && (*weight2)[0]->GetDataType() == DataType::DT_INT32) {
+            weight2 = ConvertTensorListToInt4(weight2, *executor);
+        }
+    }
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_FULLLOAD_QUANT_BASE_H
-#define MC2_MOE_V2_FULLLOAD_QUANT_BASE_H
+#ifndef MC2_MOE_V2_QUANT_FULLLOAD_QUANT_BASE_H
+#define MC2_MOE_V2_QUANT_FULLLOAD_QUANT_BASE_H
 
 #include "kernel_operator.h"
 
@@ -284,4 +284,4 @@ __aicore__ inline void MoeV2FullLoadQuantBase::ProcessBase()
 }
 
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_FULLLOAD_QUANT_BASE_H
+#endif // MC2_MOE_V2_QUANT_FULLLOAD_QUANT_BASE_H
