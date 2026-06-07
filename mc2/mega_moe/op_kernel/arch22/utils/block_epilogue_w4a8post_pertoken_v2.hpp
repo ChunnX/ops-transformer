@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_V2_HPP
 
-#include "../catlass/catlass.hpp"
-#include "../catlass/arch/resource.hpp"
-#include "../catlass/epilogue/dispatch_policy.hpp"
-#include "../catlass/gemm_coord.hpp"
-#include "../catlass/matrix_coord.hpp"
-#include "../catlass/layout/layout.hpp"
-#include "../catlass/detail/callback.hpp"
+#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/arch/resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/detail/callback.hpp"
 
 #include "dispatch_policy_custom.hpp"
 #include "get_tensor_addr.hpp"

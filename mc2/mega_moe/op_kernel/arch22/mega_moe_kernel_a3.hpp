@@ -24,14 +24,14 @@
 
 #include "utils/copy_l0c_to_gm_custom.hpp"
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/cross_core_sync.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/coord.hpp"
-#include "catlass/detail/callback.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/epilogue/tile/tile_copy.hpp"
+#include "template_linear_algebra_v2/catlass.hpp"
+#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "template_linear_algebra_v2/arch/resource.hpp"
+#include "template_linear_algebra_v2/coord.hpp"
+#include "template_linear_algebra_v2/detail/callback.hpp"
+#include "template_linear_algebra_v2/gemm_coord.hpp"
+#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
 
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
