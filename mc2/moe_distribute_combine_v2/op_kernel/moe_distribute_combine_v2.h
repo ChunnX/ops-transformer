@@ -44,9 +44,8 @@
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
-namespace MoeDistributeCombineV2Impl {
+namespace Mc2Kernel {
 using namespace MoeDistributeV2Base;
-using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
 #define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
     uint8_t QuantMode, bool HasAddRmsNorm
@@ -1555,5 +1554,5 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
     }
 }
 
-} // MoeDistributeCombineV2Impl
+} // Mc2Kernel
 #endif // MOE_DISTRIBUTE_COMBINE_IMPL_H

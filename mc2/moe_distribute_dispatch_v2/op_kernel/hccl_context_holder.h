@@ -29,7 +29,7 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
 
-namespace MoeDistributeDispatchV2Impl {
+namespace Mc2Kernel {
 
 using namespace AscendC;
 
@@ -79,6 +79,6 @@ private:
     __gm__ Mc2Kernel::HcclOpParam *epContext_{nullptr};
 };
 
-} // namespace MoeDistributeDispatchV2Impl
+} // namespace Mc2Kernel
 
 #endif // HCCL_CONTEXT_HOLDER_H

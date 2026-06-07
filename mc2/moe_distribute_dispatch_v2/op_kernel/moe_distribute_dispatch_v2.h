@@ -39,13 +39,12 @@
 #include "mc2_moe_context_holder.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
-namespace MoeDistributeDispatchV2Impl {
+namespace Mc2Kernel {
 #define TemplateDispatchV2TypeClass typename ContextHolder, typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
 #define TemplateDispatchV2TypeFunc ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
-using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
@@ -1580,5 +1579,5 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         }
     }
 }
-} // MoeDistributeDispatchV2Impl
+} // Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_H
