@@ -16,14 +16,14 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
-#include "catlass/epilogue/block/block_epilogue.hpp"
+#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/arch/resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/detail/callback.hpp"
+#include "../template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
 
