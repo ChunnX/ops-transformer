@@ -156,7 +156,7 @@ class TestCustomStemIndexer(TestCase):
         npu_indices, npu_seq_len = npu_stem_indexer(
             qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata,
             causal=causal, stem_block_size=stem_block_size, stem_stride=stem_stride, alpha=alpha,
-            inital_blocks=initial_blocks, window_size=window_size,
+            initial_blocks=initial_blocks, window_size=window_size,
             k_block_num_rate_medium=0.2, k_block_num_bias_medium=30,
             k_block_num_rate_large=0.1, k_block_num_bias_large=30
         )
