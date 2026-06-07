@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_FULLLOAD_QUANT_H
-#define MC2_MOE_V2_FULLLOAD_QUANT_H
+#ifndef MC2_MOE_V2_QUANT_FULLLOAD_QUANT_H
+#define MC2_MOE_V2_QUANT_FULLLOAD_QUANT_H
 
 #include "moe_v2_fullload_quant_base.h"
 
@@ -158,4 +158,4 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_FULLLOAD_QUANT_H
+#endif // MC2_MOE_V2_QUANT_FULLLOAD_QUANT_H

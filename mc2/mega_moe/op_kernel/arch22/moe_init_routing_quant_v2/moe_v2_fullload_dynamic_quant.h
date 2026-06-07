@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_FULLLOAD_DYNAMIC_QUANT_H
-#define MC2_MOE_V2_FULLLOAD_DYNAMIC_QUANT_H
+#ifndef MC2_MOE_V2_QUANT_FULLLOAD_DYNAMIC_QUANT_H
+#define MC2_MOE_V2_QUANT_FULLLOAD_DYNAMIC_QUANT_H
 
 #include "moe_v2_mrgsort.h"
 #include "moe_v2_sort_base.h"
@@ -329,7 +329,11 @@ MoeV2FullLoadDynamicQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expande
     this->k_ = tilingData->k;
     this->n_ = tilingData->n;
     this->cols_ = tilingData->cols;
-    this->cols_scale_ = this->cols_ + ALIGN_512;
+    if constexpr (IsSameType<DTYPE_WEIGHT1, int4b_t>::value) {
+        this->cols_scale_ = this->cols_ + ALIGN_512;
+    } else {
+        this->cols_scale_ = this->cols_ + UB_ALIGN;
+    }
     this->needCoreNum_ = this->gatherOutTilingData_->needCoreNum;
     this->perCoreRows_ = this->gatherOutTilingData_->perCoreRows;
     this->activateRows_ = this->gatherOutTilingData_->activateRows;
@@ -404,4 +408,4 @@ __aicore__ inline void MoeV2FullLoadDynamicQuant<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_FULLLOAD_DYNAMIC_QUANT_H
+#endif // MC2_MOE_V2_QUANT_FULLLOAD_DYNAMIC_QUANT_H

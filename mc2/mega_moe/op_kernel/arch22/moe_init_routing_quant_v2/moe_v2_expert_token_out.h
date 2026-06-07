@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_EXPERT_TOKEN_OUT_H
-#define MC2_MOE_V2_EXPERT_TOKEN_OUT_H
+#ifndef MC2_MOE_V2_QUANT_EXPERT_TOKEN_OUT_H
+#define MC2_MOE_V2_QUANT_EXPERT_TOKEN_OUT_H
 
 #include "moe_v2_common.h"
 
@@ -322,4 +322,4 @@ __aicore__ inline void MoeV2ExpertTokenOut::Process()
 }
 
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_EXPERT_TOKEN_OUT_H
+#endif // MC2_MOE_V2_QUANT_EXPERT_TOKEN_OUT_H
