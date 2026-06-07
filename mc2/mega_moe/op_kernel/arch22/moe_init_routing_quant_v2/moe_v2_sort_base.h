@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_SORT_BASE_H
-#define MC2_MOE_V2_SORT_BASE_H
+#ifndef MC2_MOE_V2_QUANT_SORT_BASE_H
+#define MC2_MOE_V2_QUANT_SORT_BASE_H
 
 #include "kernel_operator.h"
 
@@ -70,4 +70,4 @@ __aicore__ inline void MoeV2SortBase::SyncAll()
 }
 
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_SORT_BASE_H
+#endif // MC2_MOE_V2_QUANT_SORT_BASE_H

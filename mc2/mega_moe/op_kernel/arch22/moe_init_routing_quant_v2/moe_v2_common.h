@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_COMMON_H
-#define MC2_MOE_V2_COMMON_H
+#ifndef MC2_MOE_V2_QUANT_COMMON_H
+#define MC2_MOE_V2_QUANT_COMMON_H
 
 #include "kernel_operator.h"
 
@@ -101,4 +101,4 @@ __aicore__ inline void SetWaitFlag(HardEvent evt)
 }
 
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_COMMON_H
+#endif // MC2_MOE_V2_QUANT_COMMON_H

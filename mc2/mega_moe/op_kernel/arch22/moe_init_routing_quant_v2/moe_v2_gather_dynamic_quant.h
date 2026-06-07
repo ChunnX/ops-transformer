@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H
-#define MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H
+#ifndef MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
+#define MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
 
 #include "moe_v2_common.h"
 
@@ -557,4 +557,4 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H
+#endif // MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
