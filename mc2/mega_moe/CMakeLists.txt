@@ -8,6 +8,31 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+find_package(Git QUIET)
+
+set(CATLASS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/3rdparty/catlass/include")
+if(NOT EXISTS "${CATLASS_INCLUDE_DIR}/catlass/catlass.hpp")
+    if(NOT GIT_FOUND)
+        message(FATAL_ERROR
+            "catlass submodule is not initialized and Git is not available. "
+            "Please run manually: git submodule update --init 3rdparty/catlass"
+        )
+    endif()
+    message(STATUS "catlass submodule not initialized, attempting to initialize...")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init 3rdparty/catlass
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        RESULT_VARIABLE GIT_SUBMODULE_RESULT
+    )
+    if(NOT GIT_SUBMODULE_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "Failed to initialize catlass submodule. "
+            "Please run manually: git submodule update --init 3rdparty/catlass"
+        )
+    endif()
+    message(STATUS "catlass submodule initialized successfully.")
+endif()
+
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 if(NOT ENABLE_TEST)
     list(REMOVE_ITEM CURRENT_DIRS tests)
