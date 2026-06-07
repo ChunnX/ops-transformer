@@ -153,6 +153,22 @@ class TestCustomStemIndexer(TestCase):
         num_prompt_tokens = num_prompt_tokens.npu()
         metadata = metadata.npu()
 
+        expected_g_size = q_heads // kv_heads
+        expected_score_scale = 1.0 / ((stem_block_size // stem_stride) ** 2)
+        expected_score_workspace_bytes = 96 * 256 * 4 * 2
+        print(
+            "[StemIndexer Expected Init] "
+            f"bSize={b} qHeadNum={q_heads} kvHeadNum={kv_heads} gSize={expected_g_size} "
+            f"maxQb={max_qb} maxKb={max_kb} flattenDim={flatten_dim} causal={int(causal)} "
+            f"stemBlockSize={stem_block_size} stemStride={stem_stride} "
+            f"initialBlocks={initial_blocks} windowSize={window_size} "
+            f"mBaseSize=96 nBaseSize=256 scoreScale={expected_score_scale:.6f} alpha={alpha:.6f} "
+            "kBlockNumRateMedium=0.200000 kBlockNumBiasMedium=30 "
+            "kBlockNumRateLarge=0.100000 kBlockNumBiasLarge=30 "
+            f"scoreWorkspaceBytes={expected_score_workspace_bytes}",
+            flush=True
+        )
+
         npu_indices, npu_seq_len = npu_stem_indexer(
             qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata,
             causal=causal, stem_block_size=stem_block_size, stem_stride=stem_stride, alpha=alpha,

@@ -58,11 +58,12 @@ template <typename SIT>
 class SIPreload {
 public:
     __aicore__ inline SIPreload(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
-                                __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengthsQ,
-                                __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-                                __gm__ uint8_t *workspace, const SITilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
+                                __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
+                                __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
+                                __gm__ uint8_t *workspace, const StemIndexerTilingData *__restrict tiling,
+                                TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -115,6 +116,16 @@ protected:
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
+    GlobalTensor<Q_T> qflatGm;
+    GlobalTensor<K_T> kflatGm;
+    GlobalTensor<float> vbiasGm;
+    GlobalTensor<int32_t> qSeqLensGm;
+    GlobalTensor<int32_t> kvSeqLensGm;
+    GlobalTensor<int32_t> numPromptTokensGm;
+    GlobalTensor<int32_t> sparseIndicesGm;
+    GlobalTensor<int32_t> sparseSeqLenGm;
+    __gm__ uint8_t *workspaceGm = nullptr;
+    __gm__ uint8_t *scoreWorkspaceGm = nullptr;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -128,7 +139,7 @@ protected:
     QLICommon::LdSplitCoreInfo ldInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const SITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     // ================================Split Core================================
@@ -154,21 +165,37 @@ protected:
 };
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::InitTilingData(const SITilingData *__restrict tilingData)
+__aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingData *__restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
+    constInfo.usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
-    constInfo.qHeadNum = constInfo.gSize = tilingData->gSize;
-    constInfo.kSeqSize = tilingData->s2Size;
-    constInfo.qSeqSize = tilingData->s1Size;
-    constInfo.attenMaskFlag = (tilingData->sparseMode == 3);
-    constInfo.kCacheBlockSize = tilingData->blockSize;
-    constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
-    constInfo.sparseCount = tilingData->sparseCount;
-    constInfo.cmpRatio = tilingData->cmpRatio;
-    constInfo.batchSupperFlag = tilingData->batchSupperFlag;
-    constInfo.keyStride0 = tilingData->keyStride0;
-    constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
+    constInfo.qHeadNum = tilingData->qHeadNum;
+    constInfo.kvHeadNum = tilingData->kvHeadNum;
+    constInfo.kHeadNum = tilingData->kvHeadNum;
+    constInfo.gSize = tilingData->gSize;
+    constInfo.maxQb = tilingData->maxQb;
+    constInfo.maxKb = tilingData->maxKb;
+    constInfo.flattenDim = tilingData->flattenDim;
+    constInfo.qSeqSize = tilingData->maxQb;
+    constInfo.kSeqSize = tilingData->maxKb;
+    constInfo.headDim = tilingData->flattenDim;
+    constInfo.sparseCount = tilingData->maxKb;
+    constInfo.causal = tilingData->causal;
+    constInfo.stemBlockSize = tilingData->stemBlockSize;
+    constInfo.stemStride = tilingData->stemStride;
+    constInfo.initialBlocks = tilingData->initialBlocks;
+    constInfo.windowSize = tilingData->windowSize;
+    constInfo.mBaseSize = tilingData->mBaseSize;
+    constInfo.nBaseSize = tilingData->nBaseSize;
+    constInfo.s2BaseSize = tilingData->nBaseSize;
+    constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
+    constInfo.scoreScale = tilingData->scoreScale;
+    constInfo.alpha = tilingData->alpha;
+    constInfo.kBlockNumRateMedium = tilingData->kBlockNumRateMedium;
+    constInfo.kBlockNumBiasMedium = tilingData->kBlockNumBiasMedium;
+    constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
+    constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -176,13 +203,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const SITilingData *__rest
     if (K_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS2 = true;
     }
-
-    constInfo.kHeadNum = K_HEAD_NUM;
-    constInfo.headDim = HEAD_DIM;
-
-    constInfo.mBaseSize = M_BASE_SIZE;
-    constInfo.s2BaseSize = S2_BASE_SIZE;
-    constInfo.s1BaseSize = (constInfo.mBaseSize + constInfo.gSize - 1) / constInfo.gSize;
 }
 
 template <typename SIT>
@@ -408,12 +428,12 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
-                                              __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
-                                              __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
-                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *metadata,
-                                              __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                              const SITilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
+                                            __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
+                                            __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
+                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
+                                            __gm__ uint8_t *workspace,
+                                            const StemIndexerTilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
@@ -423,49 +443,47 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
         aiCoreIdx = tmpBlockIdx;
     }
 
-    InitTilingData(tiling);
-    InitActualSeqLen(actualSeqLengthsQ, actualSeqLengthsK);
-
-    // 获取分核信息
-    metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
-    SplitCoreByAICPU(aiCoreIdx, tmpBlockIdx, metadataGm);
-
     pipe = tPipe;
+    InitTilingData(tiling);
 
-    uint64_t offset = 0;
-    uint32_t topkCountAlign16_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)16); // topkCount对齐到16
-    // vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
-    GlobalTensor<SCORE_T> scoreGm; // 存放vec核写出的score
-    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * QLICommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize)  * sizeof(SCORE_T);
-    scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
-    offset += GetBlockNum() * singleCoreScoreSize;
-    // vec 存储需要LD的s1对应的s2的score与index，大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
-    GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
-    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
-    GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
-    ldIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
+    qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+    kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+    vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
+    qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
+    kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
+    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+    metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
+    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
 
-    if ASCEND_IS_AIV {
-        vectorService.InitParams(constInfo, ldInfo, tiling);
-        indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        weightsGm.SetGlobalBuffer((__gm__ float *)weights);
-        qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
-        kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
-        vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
-    } else {
-        matmulService.InitParams(constInfo);
-        queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
-        if constexpr (PAGE_ATTENTION) {
-            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        }
-        keyGm.SetGlobalBuffer((__gm__ K_T *)key);
-        matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
+    queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+    keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+    weightsGm.SetGlobalBuffer((__gm__ float *)vbias);
+    actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)qSeqLens);
+    actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)kvSeqLens);
+    indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+
+    workspaceGm = workspace;
+    uint64_t singleCoreScoreWorkspaceBytes =
+        static_cast<uint64_t>(constInfo.mBaseSize) * constInfo.nBaseSize * sizeof(SCORE_T) * WS_DOUBLE;
+    scoreWorkspaceGm = workspace + static_cast<uint64_t>(aiCoreIdx) * singleCoreScoreWorkspaceBytes;
+
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[StemIndexer Init] bSize=%u qHeadNum=%u kvHeadNum=%u gSize=%u maxQb=%u maxKb=%u "
+                        "flattenDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
+                        "initialBlocks=%u windowSize=%u mBaseSize=%u nBaseSize=%u scoreScale=%f alpha=%f "
+                        "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
+                        "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
+                        static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
+                        static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
+                        static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
+                        static_cast<uint32_t>(constInfo.flattenDim), constInfo.usedCoreNum, constInfo.causal,
+                        constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
+                        constInfo.mBaseSize, constInfo.nBaseSize, constInfo.scoreScale, constInfo.alpha,
+                        constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
+                        constInfo.kBlockNumBiasLarge, static_cast<uint32_t>(singleCoreScoreWorkspaceBytes));
     }
-    InitBuffers();
 }
 
 template <typename SIT>

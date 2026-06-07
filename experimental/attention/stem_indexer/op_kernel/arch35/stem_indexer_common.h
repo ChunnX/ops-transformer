@@ -29,8 +29,13 @@ struct SIType {
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
+    using queryKeyType = float;
+    using scoreType = float;
 
     static constexpr bool causalFlag = CAUSAL;
+    static constexpr bool pageAttention = false;
+    static constexpr LI_LAYOUT layout = LI_LAYOUT::BSND;
+    static constexpr LI_LAYOUT keyLayout = LI_LAYOUT::BSND;
 };
 
 struct RunInfo {
@@ -94,15 +99,32 @@ struct ConstInfo {
     uint32_t mBaseSize = 1ULL;
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
+    uint32_t nBaseSize = 1ULL;
 
     uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
+    uint64_t kvHeadNum = 0ULL;
     uint64_t kHeadNum;
     uint64_t headDim;
+    uint64_t maxQb = 0ULL;
+    uint64_t maxKb = 0ULL;
+    uint64_t flattenDim = 0ULL;
     uint64_t sparseCount;              // topK选取大小
     uint64_t kSeqSize = 0ULL;          // kv最大S长度
     uint64_t qSeqSize = 1ULL;          // q最大S长度
+    uint32_t usedCoreNum = 0U;
+    uint32_t causal = 1U;
+    uint32_t stemBlockSize = 128U;
+    uint32_t stemStride = 16U;
+    uint32_t initialBlocks = 4U;
+    uint32_t windowSize = 4U;
+    float scoreScale = 1.0f / 64.0f;
+    float alpha = 1.0f;
+    float kBlockNumRateMedium = 0.2f;
+    uint32_t kBlockNumBiasMedium = 30U;
+    float kBlockNumRateLarge = 0.1f;
+    uint32_t kBlockNumBiasLarge = 30U;
     uint32_t kCacheBlockSize = 0;      // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;            // 输出的格式

@@ -45,7 +45,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct QLICommon::ConstInfo &constInfo,
                                       const struct QLICommon::LdSplitCoreInfo &ldInfo,
-                                      const QLITilingData *__restrict tilingData);
+                                      const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                     GlobalTensor<SCORE_T> ldScoreGm,
                                                     GlobalTensor<int32_t> ldIndexGm);
@@ -199,7 +199,7 @@ __aicore__ inline void QLIVector<QLIT>::InitLDBuffers(TPipe *pipe, const struct 
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::ConstInfo &constInfo,
                                                    const struct QLICommon::LdSplitCoreInfo &ldInfo,
-                                                   const QLITilingData *__restrict tilingData)
+                                                   const StemIndexerTilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
     this->ldInfo_ = ldInfo;
