@@ -16,7 +16,7 @@
 #ifndef SELECT_HELPER_HPP
 #define SELECT_HELPER_HPP
 
-#include "catlass/layout/layout.hpp"
+#include "../catlass/layout/layout.hpp"
 using namespace AscendC;
 using namespace Catlass;
 

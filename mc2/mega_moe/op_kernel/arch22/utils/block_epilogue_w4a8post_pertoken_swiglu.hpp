@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_SWIGLU_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8_POST_PER_TOKEN_SWIGLU_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
+#include "../catlass/catlass.hpp"
+#include "../catlass/arch/resource.hpp"
+#include "../catlass/epilogue/dispatch_policy.hpp"
+#include "../catlass/gemm_coord.hpp"
+#include "../catlass/matrix_coord.hpp"
+#include "../catlass/layout/layout.hpp"
+#include "../catlass/detail/callback.hpp"
 #include "get_tensor_addr.hpp"
 
 

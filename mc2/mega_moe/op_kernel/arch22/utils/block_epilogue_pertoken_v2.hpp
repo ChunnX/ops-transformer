@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
+#include "../catlass/catlass.hpp"
+#include "../catlass/arch/resource.hpp"
+#include "../catlass/epilogue/dispatch_policy.hpp"
+#include "../catlass/gemm_coord.hpp"
+#include "../catlass/matrix_coord.hpp"
+#include "../catlass/layout/layout.hpp"
+#include "../catlass/detail/callback.hpp"
 
 #include "const_args.hpp"
 #include "hccl_shmem.hpp"

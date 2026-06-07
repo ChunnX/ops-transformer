@@ -16,12 +16,12 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/coord.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
-#include "catlass/gemm/helper.hpp"
+#include "../catlass/catlass.hpp"
+#include "../catlass/arch/resource.hpp"
+#include "../catlass/coord.hpp"
+#include "../catlass/gemm_coord.hpp"
+#include "../catlass/gemm/dispatch_policy.hpp"
+#include "../catlass/gemm/helper.hpp"
 #include "dispatch_policy_custom.hpp"
 
 
