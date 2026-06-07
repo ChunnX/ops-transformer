@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_GATHER_OUT_H
-#define MC2_MOE_V2_GATHER_OUT_H
+#ifndef MC2_MOE_V2_QUANT_GATHER_OUT_H
+#define MC2_MOE_V2_QUANT_GATHER_OUT_H
 
 #include "moe_v2_common.h"
 #include "kernel_operator.h"
@@ -185,4 +185,4 @@ __aicore__ inline void MoeV2GatherOut<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_GATHER_OUT_H
+#endif // MC2_MOE_V2_QUANT_GATHER_OUT_H
