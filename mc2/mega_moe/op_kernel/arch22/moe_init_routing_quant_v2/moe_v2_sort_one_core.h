@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_SORT_ONE_CORE_H
-#define MC2_MOE_V2_SORT_ONE_CORE_H
+#ifndef MC2_MOE_V2_QUANT_SORT_ONE_CORE_H
+#define MC2_MOE_V2_QUANT_SORT_ONE_CORE_H
 
 #include "moe_v2_mrgsort.h"
 #include "moe_v2_sort_base.h"
@@ -167,4 +167,4 @@ __aicore__ inline void MoeV2SortOneCore::Process()
     this->SyncAll();
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_SORT_ONE_CORE_H
+#endif // MC2_MOE_V2_QUANT_SORT_ONE_CORE_H

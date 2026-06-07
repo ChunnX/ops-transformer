@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_INIT_ROUTING_V2_TILING_H
-#define MC2_MOE_INIT_ROUTING_V2_TILING_H
+#ifndef MC2_MOE_INIT_ROUTING_V2_QUANT_TILING_H
+#define MC2_MOE_INIT_ROUTING_V2_QUANT_TILING_H
 
 #include "../moe_init_routing_v2/moe_init_routing_v2_tiling.h"
 #include <cmath>
@@ -380,4 +380,4 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
 }
 
 } // namespace Mc2Tiling
-#endif // MC2_MOE_INIT_ROUTING_V2_TILING_H
+#endif // MC2_MOE_INIT_ROUTING_V2_QUANT_TILING_H
