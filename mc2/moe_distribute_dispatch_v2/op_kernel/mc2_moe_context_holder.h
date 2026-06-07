@@ -24,7 +24,7 @@
 #include "moe_distribute_v2_constant.h"
 #include "../common/op_kernel/mc2_moe_context.h"
 
-namespace MoeDistributeDispatchV2Impl {
+namespace Mc2Kernel {
 
 using namespace AscendC;
 
@@ -76,6 +76,6 @@ private:
     uint32_t epWorldSize_{0};
 };
 
-} // namespace MoeDistributeDispatchV2Impl
+} // namespace Mc2Kernel
 
 #endif // MC2_MOE_CONTEXT_HOLDER_H

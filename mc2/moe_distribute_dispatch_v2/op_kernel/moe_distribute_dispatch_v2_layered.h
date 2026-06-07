@@ -1427,5 +1427,5 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         SyncAll<true>();
     }
 }
-} // MoeDistributeDispatchV2Impl
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_LAYERED_H

@@ -37,7 +37,6 @@ using namespace MoeDistributeCombineV2A5MteImpl;
 using namespace MoeDistributeCombineA2Impl;
 #endif // __NPU_ARCH__ == 3510
 
-using namespace MoeDistributeCombineV2Impl;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -92,7 +91,7 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
         op.Process();
     } else if constexpr ((ArchTag == TILINGKEY_TPL_A5) && (LayeredMode == TILINGKEY_TPL_MTE)) {
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        ExecMoeDistributeCombineV2<MoeDistributeDispatchV2Impl::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode, false>(
+        ExecMoeDistributeCombineV2<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode, false>(
         contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, xActiveMask, sharedExpertX,
         elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM,
         tilingGM, &pipe);
@@ -137,7 +136,7 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
 #endif
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_MTE)) {
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        ExecMoeDistributeCombineV2<MoeDistributeDispatchV2Impl::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode, false>(
+        ExecMoeDistributeCombineV2<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode, false>(
         contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, xActiveMask, sharedExpertX,
         elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM, tilingGM, &pipe);
     } else if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_HIERARCHY)) {
