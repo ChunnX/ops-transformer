@@ -11,16 +11,16 @@
 #ifndef CATLASS_GEMM_KERNEL_PADDING_SPLITK_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_PADDING_SPLITK_MATMUL_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/copy_gm_to_ub.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/copy_ub_to_gm.hpp"
-#include "template_linear_algebra_v2/gemm/kernel/padding_matmul.hpp"
-#include "template_linear_algebra_v2/gemm/kernel/splitk_matmul.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../../../template_linear_algebra_v2/gemm/kernel/padding_matmul.hpp"
+#include "../../../template_linear_algebra_v2/gemm/kernel/splitk_matmul.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

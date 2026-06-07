@@ -12,12 +12,12 @@
 #define CATLASS_CONV_TILE_TILE_COPY_HPP
 
 #include <type_traits>
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/conv/tile/copy_gm_to_l1.hpp"
-#include "template_linear_algebra_v2/conv/tile/copy_l0c_to_gm.hpp"
-#include "template_linear_algebra_v2/conv/tile/copy_l1_to_l0a.hpp"
-#include "template_linear_algebra_v2/conv/tile/copy_l1_to_l0b.hpp"
-#include "template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/conv/tile/copy_gm_to_l1.hpp"
+#include "../../../template_linear_algebra_v2/conv/tile/copy_l0c_to_gm.hpp"
+#include "../../../template_linear_algebra_v2/conv/tile/copy_l1_to_l0a.hpp"
+#include "../../../template_linear_algebra_v2/conv/tile/copy_l1_to_l0b.hpp"
+#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
 
 namespace Catlass::Conv::Tile {
 

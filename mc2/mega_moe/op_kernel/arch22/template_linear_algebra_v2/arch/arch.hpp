@@ -11,7 +11,7 @@
 #ifndef CATLASS_ARCH_ARCH_HPP
 #define CATLASS_ARCH_ARCH_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
 
 namespace Catlass::Arch {
 

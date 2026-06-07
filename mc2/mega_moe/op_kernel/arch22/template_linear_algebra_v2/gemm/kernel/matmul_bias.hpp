@@ -11,10 +11,10 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_BIAS_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_BIAS_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

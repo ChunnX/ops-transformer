@@ -11,7 +11,7 @@
 #ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_COLUMN_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_COLUMN_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
 
 namespace Catlass::Epilogue::Tile {
 

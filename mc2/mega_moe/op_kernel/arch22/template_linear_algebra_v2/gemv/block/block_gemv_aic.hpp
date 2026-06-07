@@ -11,15 +11,15 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_AIC_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_AIC_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/gemm/tile/tile_mmad.hpp"
-#include "template_linear_algebra_v2/gemv_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm/dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/tile/tile_copy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/tile/tile_mmad.hpp"
+#include "../../../template_linear_algebra_v2/gemv_coord.hpp"
 
-#include "template_linear_algebra_v2/gemv/helper.hpp"
+#include "../../../template_linear_algebra_v2/gemv/helper.hpp"
 
 namespace Catlass::Gemv::Block {
 

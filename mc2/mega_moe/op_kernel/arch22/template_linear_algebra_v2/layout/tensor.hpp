@@ -11,9 +11,9 @@
 #ifndef CATLASS_LAYOUT_TENSOR_HPP
 #define CATLASS_LAYOUT_TENSOR_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/detail/alignment.hpp"
-#include "template_linear_algebra_v2/conv_coord.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../../template_linear_algebra_v2/conv_coord.hpp"
 
 namespace Catlass::layout {
 

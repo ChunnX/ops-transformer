@@ -11,11 +11,11 @@
 #ifndef CATLASS_CONV_BLOCK_BLOCK_CONV2D_PINGPONG_HPP
 #define CATLASS_CONV_BLOCK_BLOCK_CONV2D_PINGPONG_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/conv_coord.hpp"
-#include "template_linear_algebra_v2/conv/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/conv_coord.hpp"
+#include "../../../template_linear_algebra_v2/conv/dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
 
 namespace Catlass::Conv::Block {
 

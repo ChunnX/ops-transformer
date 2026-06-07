@@ -11,11 +11,11 @@
 #ifndef CATLASS_GEMV_KERNLE_GEMV_AIV_HPP
 #define CATLASS_GEMV_KERNLE_GEMV_AIV_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
-#include "template_linear_algebra_v2/gemv_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/layout/layout.hpp"
+#include "../../../template_linear_algebra_v2/gemv_coord.hpp"
 
 namespace Catlass::Gemv::Kernel {
 

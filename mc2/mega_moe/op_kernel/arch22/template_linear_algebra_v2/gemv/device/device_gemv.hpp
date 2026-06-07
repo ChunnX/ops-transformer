@@ -12,12 +12,12 @@
 #define CATLASS_GEMV_DEVICE_GEMV_UNIVERSAL_ADAPTER_HPP
 
 #include <acl/acl.h>
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/status.hpp"
-#include "template_linear_algebra_v2/detail/kernel_adapter.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/status.hpp"
+#include "../../../template_linear_algebra_v2/detail/kernel_adapter.hpp"
 
 #if defined(ENABLE_ASCENDC_DUMP)
-#include "template_linear_algebra_v2/debug.hpp"
+#include "../../../template_linear_algebra_v2/debug.hpp"
 #endif
 
 namespace Catlass::Gemv::Device {

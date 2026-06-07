@@ -11,11 +11,11 @@
 #ifndef CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
 #define CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/numeric_size.hpp"
-#include "template_linear_algebra_v2/arch/arch.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/numeric_size.hpp"
+#include "../../../template_linear_algebra_v2/arch/arch.hpp"
+#include "../../../template_linear_algebra_v2/layout/layout.hpp"
+#include "../../../template_linear_algebra_v2/gemm/gemm_type.hpp"
 
 namespace Catlass::Gemm::Tile {
 

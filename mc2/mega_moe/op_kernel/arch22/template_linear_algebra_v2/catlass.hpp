@@ -17,9 +17,9 @@
 #include <kernel_operator.h>
 #endif
 
-#include "template_linear_algebra_v2/detail/alignment.hpp"
-#include "template_linear_algebra_v2/detail/dependent_false.hpp"
-#include "template_linear_algebra_v2/detail/macros.hpp"
+#include "../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../template_linear_algebra_v2/detail/dependent_false.hpp"
+#include "../template_linear_algebra_v2/detail/macros.hpp"
 
 namespace Catlass {
 

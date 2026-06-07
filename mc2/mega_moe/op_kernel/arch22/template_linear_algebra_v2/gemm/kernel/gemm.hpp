@@ -11,14 +11,14 @@
 #ifndef CATLASS_GEMM_KERNEL_GEMM_HPP
 #define CATLASS_GEMM_KERNEL_GEMM_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/copy_gm_to_ub.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/copy_ub_to_gm.hpp"
-#include "template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
 
 namespace Catlass::Gemm::Kernel{
 

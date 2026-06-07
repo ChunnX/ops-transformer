@@ -11,9 +11,9 @@
 #ifndef CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/detail/alignment.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Tile {
 

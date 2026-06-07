@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_GEMM_TYPE_HPP
 #define CATLASS_GEMM_GEMM_TYPE_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
 
 namespace Catlass::Gemm {
 

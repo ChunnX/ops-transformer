@@ -11,10 +11,10 @@
 #ifndef CATLASS_CONV_BLOCK_BLOCK_CONV_HPP
 #define CATLASS_CONV_BLOCK_BLOCK_CONV_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/conv/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/gemm/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/gemm/tile/tile_mmad.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/conv/tile/tile_copy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/tile/tile_copy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/tile/tile_mmad.hpp"
 
 namespace Catlass::Conv::Block {
 
@@ -53,7 +53,7 @@ struct BlockConv2d {
 
 } // namespace Catlass::Conv::Block
 
-#include "template_linear_algebra_v2/conv/block/block_conv3d_pingpong_bias.hpp"
-#include "template_linear_algebra_v2/conv/block/block_conv2d_pingpong.hpp"
+#include "../../../template_linear_algebra_v2/conv/block/block_conv3d_pingpong_bias.hpp"
+#include "../../../template_linear_algebra_v2/conv/block/block_conv2d_pingpong.hpp"
 
 #endif // CATLASS_CONV_BLOCK_BLOCK_CONV_HPP

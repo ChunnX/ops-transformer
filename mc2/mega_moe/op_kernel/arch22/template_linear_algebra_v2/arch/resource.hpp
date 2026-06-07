@@ -11,8 +11,8 @@
 #ifndef INCLUDE_CATLASS_ARCH_RESOURCE_HPP
 #define INCLUDE_CATLASS_ARCH_RESOURCE_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/local_tensor_buffer.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/arch/local_tensor_buffer.hpp"
 
 namespace Catlass::Arch {
 

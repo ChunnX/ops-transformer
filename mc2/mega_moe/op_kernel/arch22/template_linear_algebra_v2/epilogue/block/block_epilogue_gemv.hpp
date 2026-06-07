@@ -11,14 +11,14 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMV_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMV_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/helper.hpp"
-#include "template_linear_algebra_v2/gemv/helper.hpp"
-#include "template_linear_algebra_v2/gemv_coord.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/gemv/helper.hpp"
+#include "../../../template_linear_algebra_v2/gemv_coord.hpp"
+#include "../../../template_linear_algebra_v2/layout/layout.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Block {
 

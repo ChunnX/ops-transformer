@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_GEMV_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_GEMV_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
 namespace Catlass::Gemv::Block {
 
 template <
@@ -23,7 +23,7 @@ struct BlockGemv {
 };
 }  // namespace Catlass::Gemv::Block
 
-#include "template_linear_algebra_v2/gemv/block/block_gemv_aiv.hpp"
-#include "template_linear_algebra_v2/gemv/block/block_gemv_aic.hpp"
+#include "../../../template_linear_algebra_v2/gemv/block/block_gemv_aiv.hpp"
+#include "../../../template_linear_algebra_v2/gemv/block/block_gemv_aic.hpp"
 
 #endif

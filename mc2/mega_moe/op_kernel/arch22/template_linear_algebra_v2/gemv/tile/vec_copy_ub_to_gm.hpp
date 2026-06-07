@@ -11,10 +11,10 @@
 #ifndef CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_HPP
 #define CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/arch.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/arch.hpp"
+#include "../../../template_linear_algebra_v2/layout/layout.hpp"
+#include "../../../template_linear_algebra_v2/gemm/gemm_type.hpp"
 
 namespace Catlass::Gemv::Tile {
 

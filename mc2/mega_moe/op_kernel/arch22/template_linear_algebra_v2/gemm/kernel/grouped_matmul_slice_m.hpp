@@ -11,11 +11,11 @@
 #ifndef CATLASS_GEMM_KERNEL_GROUPED_MATMUL_M_HPP
 #define CATLASS_GEMM_KERNEL_GROUPED_MATMUL_M_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

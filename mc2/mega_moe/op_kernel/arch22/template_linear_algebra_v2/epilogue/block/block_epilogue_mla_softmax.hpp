@@ -11,13 +11,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_SOFTMAX_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_SOFTMAX_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Block {
 

@@ -11,9 +11,9 @@
 #ifndef CATLASS_GEMV_HELPER_HPP
 #define CATLASS_GEMV_HELPER_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/layout/layout.hpp"
+#include "../../template_linear_algebra_v2/gemm/gemm_type.hpp"
 
 namespace Catlass::Gemv::helper {
 

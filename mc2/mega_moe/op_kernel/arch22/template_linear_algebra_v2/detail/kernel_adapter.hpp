@@ -11,10 +11,10 @@
 #ifndef CATLASS_DETAIL_KERNEL_ADAPTER_HPP
 #define CATLASS_DETAIL_KERNEL_ADAPTER_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/catlass.hpp"
 
 #if defined(ENABLE_ASCENDC_DUMP)
-#include "template_linear_algebra_v2/debug.hpp"
+#include "../../template_linear_algebra_v2/debug.hpp"
 namespace Catlass {
 /// Generic Catlass kernel template
 template <class Operator>

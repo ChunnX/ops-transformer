@@ -11,12 +11,12 @@
 #ifndef CATLASS_GEMM_TILE_CAST_INT8_TO_FP16_HPP
 #define CATLASS_GEMM_TILE_CAST_INT8_TO_FP16_HPP
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm/dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
 
 namespace Catlass::Gemm::Tile {
 

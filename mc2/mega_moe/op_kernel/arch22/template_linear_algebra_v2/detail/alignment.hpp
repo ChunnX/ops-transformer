@@ -11,7 +11,7 @@
 #ifndef CATLASS_ALIGNMENT_HPP
 #define CATLASS_ALIGNMENT_HPP
 
-#include "template_linear_algebra_v2/detail/macros.hpp"
+#include "../../template_linear_algebra_v2/detail/macros.hpp"
 
 template <uint32_t ALIGN, typename T>
 CATLASS_HOST_DEVICE
