@@ -397,6 +397,18 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ComputeGradXVector(
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::Process()
 {
+    // grad_phi/grad_alpha/grad_bias are accumulated via atomic-add across cores/tiles,
+    // so the output GM must be zero-initialized before any accumulation. The output
+    // memory provided by the framework (or test harness) is not guaranteed to be zero.
+    if ASCEND_IS_AIV {
+        if (blkIdx_ == 0) {
+            InitOutput<T>(gradPhiGlobal_, (n_ * n_ + 2 * n_) * n_ * c_, 0);
+            InitOutput<T>(gradAlphaGlobal_, 3, 0);
+            InitOutput<T>(gradBiasGlobal_, n_ * n_ + 2 * n_, 0);
+        }
+    }
+    SyncAll<false>();
+
     if ASCEND_IS_AIV {
         int8_t ping = 0;
         GetAlphaAndBias();
@@ -509,7 +521,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul1(
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(phiGlobal_);
-    mm1_.SetHF32(true, 1);
+    mm1_.SetHF32(false, 0);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<false> (gradXGlobal_[taskOffset * (n_ * c_)], 1);
     mm1_.End();
@@ -524,7 +536,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul2(
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
     mm2_.SetTensorB(xFp32Global_[taskOffset * mm2N_]);
-    mm2_.SetHF32(true, 1);
+    mm2_.SetHF32(false, 0);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     mm2_.template IterateAll<false> (gradPhiGlobal_, 1);
     mm2_.End();

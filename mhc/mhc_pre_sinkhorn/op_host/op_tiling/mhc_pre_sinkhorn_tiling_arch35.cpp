@@ -260,7 +260,11 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpGradoutTiling()
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
     hcMultAlign_ = RoundUp(hcMult_, BLOCK_SIZE / sizeof(float));
-    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+    // mixesBuf is allocated in the kernel as rowInnerFactor * RoundUp<float>(hcMix) * sizeof(float)
+    // (see m_split_core_gradout_arch35.h). The size accounting must include sizeof(float); omitting
+    // it under-counts mixesBuf by 4x and lets rowFactor grow one step too far, overflowing
+    // bufferPool1 and corrupting mixesLocal (hPre) -> garbage y/hin (seen at d=3072/it=16).
+    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
     int64_t xSize = rowOnceLoop * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
     int64_t ySize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t postSize = rowOnceLoop * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -320,7 +324,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpGradoutTiling()
     // d全载,尝试搬入更多的bs
     if (dFactor_ == d_) {
         while (rowFactor_ <= mUbSize) {
-            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+            mixSize = rowFactor_ * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
             xSize = rowFactor_ * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
             ySize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
             postSize = rowFactor_ * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
