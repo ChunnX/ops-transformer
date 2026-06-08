@@ -42,7 +42,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream *stream) {
-    // Fixed writing method, AscendCL initialization.
+    // Fixed writing method, AscendCL initialization.w
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
