@@ -125,6 +125,40 @@ inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inp
     return isContiguous ? defaultStride0 : actualStride0;
 }
 
+// 校验 cache tensor 的非首轴必须保持连续：仅首轴允许 stride 与连续布局不一致
+// 其余轴的 stride 必须等于按 shape 计算的连续布局应有的值。
+inline bool ValidateCacheNonFirstAxisContiguous(gert::TilingContext *context,
+                                                const uint64_t inputIndex,
+                                                const gert::Shape &shape,
+                                                const char *tensorName)
+{
+    auto *stride = context->GetRequiredInputStride(inputIndex);
+    if (stride == nullptr) {
+        stride = context->GetInputStride(inputIndex);
+    }
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        // 没有 stride 描述，按连续处理，通过校验
+        return true;
+    }
+
+    // 从最后一维倒推连续布局下各轴应有的 stride：stride[i] = product(shape[i+1..N-1])
+    uint64_t expectedStride = 1;
+    for (int64_t i = static_cast<int64_t>(shape.GetDimNum()) - 1; i >= 1; --i) {
+        auto dim = static_cast<size_t>(i);
+        uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(dim));
+        if (actualStride != expectedStride) {
+            OP_LOGE(context,
+                    "Tensor %s (irIdx=%lu) dim%ld is non-contiguous: "
+                    "actual stride=%lu, expected contiguous stride=%lu. "
+                    "Only the first axis (dim0) may be non-contiguous.",
+                    tensorName, inputIndex, i, actualStride, expectedStride);
+            return false;
+        }
+        expectedStride *= static_cast<uint64_t>(shape.GetDim(dim));
+    }
+    return true;
+}
+
 template <typename T = uint64_t> inline T Max(const T a, const T b)
 {
     return a > b ? a : b;
@@ -655,6 +689,16 @@ void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
 ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
 {
     OpParam::MlaPreprocessParam param = MlaPreprocessTiling::GetParam(context);
+
+    // 校验 cache tensor 的非首轴 stride 必须连续，仅首轴允许非连续
+    auto kvCacheShape = context->GetInputShape(INDEX_KV_CACHE)->GetStorageShape();
+    auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
+    OP_CHECK_IF(!ValidateCacheNonFirstAxisContiguous(context, INDEX_KV_CACHE, kvCacheShape, "kvCache"),
+                OP_LOGE(context, "kvCache has non-contiguous axis beyond dim0, which is not supported."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!ValidateCacheNonFirstAxisContiguous(context, INDEX_KV_CACHE_ROPE, kvCacheRopeShape, "kvCacheRope"),
+                OP_LOGE(context, "kvCacheRope has non-contiguous axis beyond dim0, which is not supported."),
+                return ge::GRAPH_FAILED);
 
     // headNum 限制：范围 1~128
     OP_CHECK_IF(param.headNum <= 0 || param.headNum > 128,
