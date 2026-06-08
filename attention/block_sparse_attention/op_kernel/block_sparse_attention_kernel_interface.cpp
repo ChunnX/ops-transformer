@@ -119,11 +119,14 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
 
 using namespace BsaKernelArch35;
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat>
+template <
+    class InDtype, class SMDtype, class REDtype,
+    Format qFormat, Format kvFormat,
+    Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat>
 __global__ __aicore__ void BsaInferIntfRegular(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
     GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR blockSparseMask, GM_ADDR workspace,
+    GM_ADDR blockSparseMask, GM_ADDR workspace, GM_ADDR lse,
     GM_ADDR tiling
 ) {
     using ArchTag = Arch::AtlasA5;
@@ -178,7 +181,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using BlockMmadPV = Gemm::Block::BlockMmadTla<
         DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
     // rescale O
-    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO;
+    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
         ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
@@ -187,17 +190,20 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using BsaRegularKernelArch35 = BsaRegularKernelArch35<
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
     BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
-        actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, tiling};
+        actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, lse, tiling};
     BsaRegularKernelArch35 bsaRegularKernelArch35;
     bsaRegularKernelArch35(params);
 }
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat>
+template <
+    class InDtype, class SMDtype, class REDtype,
+    Format qFormat, Format kvFormat,
+    Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat>
 __global__ __aicore__ void BsaInferInterfaceFullQuant(
                            GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask,
                            GM_ADDR blockTable, GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv,
                            GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale, GM_ADDR attentionOut,
-                           GM_ADDR workspace, GM_ADDR tiling)
+                           GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
 {
     using ArchTag = Arch::AtlasA5;
     using ElementSparseMask = uint8_t;
@@ -254,7 +260,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
                                                   ElementOTmp, void, TileCopyPV>;
     // rescale o
-    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO;
+    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
                                                             TileCopyRescaleO, Arch::PositionL0C>;
@@ -270,6 +276,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                                           kDequantScale,
                                           vDequantScale,
                                           attentionOut,
+                                          lse,
                                           workspace,
                                           tiling};
     using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
