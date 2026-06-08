@@ -80,6 +80,8 @@ const constexpr uint64_t DECODE_BS_THRESHOLD = 512;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
 const constexpr uint32_t DECODE_ALIGN_16 = 16;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;
+const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
+const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
 static constexpr size_t OUT_H_POST_INDEX = 1;
@@ -612,7 +614,9 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        dynamicBufferSize += static_cast<size_t>(D_) * floatSize;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
+                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
     size_t totalUbRequired = fixedBufferSize + dynamicBufferSize;
