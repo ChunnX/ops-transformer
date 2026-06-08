@@ -49,7 +49,6 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
     const BlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtrArch35 = &tiling_data_in;
     using ARC35_TILING_CLASS =  BlockSparseAttentionGradTilingDataArch35;
     TPipe tPipe;
-    tPipe.Init();
     if (TILING_KEY_IS(1000)) {
         using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t,
                                             BSA_ARC35::BSND,
