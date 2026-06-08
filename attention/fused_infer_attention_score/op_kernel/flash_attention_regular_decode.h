@@ -298,7 +298,8 @@ namespace SplitFuse {
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
                                 static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset;
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
+                                sWorkspaceIncreOffset;
                             GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                             LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
@@ -371,7 +372,8 @@ namespace SplitFuse {
                             uint64_t oWorkspaceIncreOffset = static_cast<uint64_t>(kvNIncreIdx) * rowNum * embedRoundV;
                             uint64_t gmOffsetOTmp =
                                 static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + oWorkspaceIncreOffset;
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
+                                oWorkspaceIncreOffset;
                             GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
                             LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
@@ -549,7 +551,8 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                                 uint64_t gmOffsetS =
                                     static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset;
+                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
+                                    sWorkspaceIncreOffset;
                                 GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                                 LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
