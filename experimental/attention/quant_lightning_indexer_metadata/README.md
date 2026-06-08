@@ -181,7 +181,6 @@
 ## 约束说明
 -   该接口支持推理场景下使用。
 -   该接口支持aclgraph模式。
--   Tensor不能全传None。
 
 ## Atlas A3 推理系列产品 调用说明
 - 支持单算子模式调用和aclgraph模式调用，作为QuantLightningIndexer算子的前序算子，调用示例见[QuantLightningIndexer调用示例](../quant_lightning_indexer/README.md)。

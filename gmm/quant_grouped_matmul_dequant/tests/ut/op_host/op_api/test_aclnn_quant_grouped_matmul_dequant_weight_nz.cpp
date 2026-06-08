@@ -28,6 +28,7 @@ class aclnnQuantGroupedMatmulDequantWeightNz_test : public testing::Test
 protected:
     static void SetUpTestCase()
     {
+        SetPlatformSocVersion(SocVersion::ASCEND310P);
         cout << "aclnnQuantGroupedMatmulDequantWeightNz_test SetUp" << endl;
     }
 

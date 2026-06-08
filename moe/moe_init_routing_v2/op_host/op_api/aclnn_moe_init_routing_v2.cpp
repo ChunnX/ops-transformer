@@ -66,6 +66,7 @@ static inline bool CheckDtypeValid(const aclTensor *x, const aclTensor *expertId
     }
     if (expandedXOut != nullptr && expandedXOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(x, expandedXOut, return false);
     }
     if (expandedRowIdxOut != nullptr && expandedRowIdxOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdxOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
@@ -96,6 +97,7 @@ static inline bool CheckDtypeValid310P(const aclTensor *x, const aclTensor *expe
     }
     if (expandedXOut != nullptr && expandedXOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(x, expandedXOut, return false);
     }
     if (expandedRowIdxOut != nullptr && expandedRowIdxOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdxOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
@@ -126,6 +128,7 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     }
     if (expandedXOut != nullptr && expandedXOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(x, expandedXOut, return false);
     }
     if (expandedRowIdxOut != nullptr && expandedRowIdxOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdxOut, MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_ROW_IDX, return false);

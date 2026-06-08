@@ -13,12 +13,16 @@
  * \brief
  */
 
+#ifndef NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
+#define NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
+
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
 #include <string>
 #include <sstream>
 #include <cstdlib>
+#include <climits>
 #include <functional>
 #include <type_traits>
 #include <ATen/Tensor.h>
@@ -304,12 +308,17 @@ inline std::vector<void *> GetCustOpApiHandlers()
             if (path.empty()) {
                 continue;
             }
-            std::string soPath = path + "/op_api/lib/" + GetCustOpApiLibName();
-            auto handler = dlopen(soPath.c_str(), RTLD_LAZY);
+            std::string soPathStr = path + "/op_api/lib/" + GetCustOpApiLibName();
+            char soPath[PATH_MAX] = {0};
+            if (realpath(soPathStr.c_str(), soPath) == nullptr) {
+                ASCEND_LOGW("realpath failed for %s.", soPathStr.c_str());
+                continue;
+            }
+            auto handler = dlopen(soPath, RTLD_LAZY);
             if (handler != nullptr) {
                 handlers.push_back(handler);
             } else {
-                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath.c_str(), dlerror());
+                ASCEND_LOGW("dlopen %s failed, error:%s.", soPath, dlerror());
             }
         }
     }
@@ -409,7 +418,7 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return nullptr;
     }
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
-    aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    aclDataType acl_data_type = ConvertToAclDataType(scalar_data_type);
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     c10::SmallVector<int64_t, 5> storageDims;
@@ -473,7 +482,7 @@ inline aclScalar *ConvertType(const at::Scalar &at_scalar)
     }
 
     at::ScalarType scalar_data_type = at_scalar.type();
-    aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    aclDataType acl_data_type = ConvertToAclDataType(scalar_data_type);
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     aclScalar *acl_scalar = nullptr;
@@ -582,7 +591,7 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
-    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+    return ConvertToAclDataType(scalarType);
 }
 
 inline const char* ConvertType(const string& str)
@@ -911,3 +920,5 @@ auto DecodeDevice(Ts&... args) -> at::Device
             unInitMemFunc(nullptr, false);                                                                  \
         }                                                                                                   \ 
     } while (false)
+
+#endif  // NPU_OPS_TRANSFORMER_ACLNN_COMMON_H

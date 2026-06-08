@@ -238,4 +238,173 @@ INSTANTIATE_TEST_SUITE_P(AlltoAllvQuantGroupedMatMul, AlltoAllvQuantGroupedMatMu
                          [](const testing::TestParamInfo<AlltoAllvQuantGroupedMatMulInfershape::ParamType>& info) {
                              return info.param.test_name;
                          });
+
+// Negative infershape tests for wrong dims
+TEST_F(AlltoAllvQuantGroupedMatMulInfershape, gmmx_wrong_dim_3d)
+{
+    auto tiling_params = TilingParamss{};
+    gert::InfershapeContextPara infershapeContextPara(
+        "AlltoAllvQuantGroupedMatMul",
+        {
+            {{{tiling_params.BSK, tiling_params.H1, 1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.e, tiling_params.gmm_weight_dim1, tiling_params.N1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{tiling_params.BS, tiling_params.H2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.mm_weight_dim0, tiling_params.N2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tiling_params.group)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tiling_params.ep_world_size)},
+            {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.send_counts)},
+            {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.recv_counts)},
+            {"gmm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"gmm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_gmm_weight)},
+            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_mm_weight)},
+            {"permute_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.permute_out_flag)},
+            {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(AlltoAllvQuantGroupedMatMulInfershape, gmmweight_wrong_dim_2d)
+{
+    auto tiling_params = TilingParamss{};
+    gert::InfershapeContextPara infershapeContextPara(
+        "AlltoAllvQuantGroupedMatMul",
+        {
+            {{{tiling_params.BSK, tiling_params.H1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.e, tiling_params.N1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{tiling_params.BS, tiling_params.H2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.mm_weight_dim0, tiling_params.N2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tiling_params.group)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tiling_params.ep_world_size)},
+            {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.send_counts)},
+            {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.recv_counts)},
+            {"gmm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"gmm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_gmm_weight)},
+            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_mm_weight)},
+            {"permute_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.permute_out_flag)},
+            {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(AlltoAllvQuantGroupedMatMulInfershape, mmx_wrong_dim_3d)
+{
+    auto tiling_params = TilingParamss{};
+    gert::InfershapeContextPara infershapeContextPara(
+        "AlltoAllvQuantGroupedMatMul",
+        {
+            {{{tiling_params.BSK, tiling_params.H1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.e, tiling_params.gmm_weight_dim1, tiling_params.N1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{tiling_params.BS, tiling_params.H2, 1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.mm_weight_dim0, tiling_params.N2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tiling_params.group)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tiling_params.ep_world_size)},
+            {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.send_counts)},
+            {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.recv_counts)},
+            {"gmm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"gmm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_gmm_weight)},
+            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_mm_weight)},
+            {"permute_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.permute_out_flag)},
+            {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(AlltoAllvQuantGroupedMatMulInfershape, mmweight_wrong_dim_3d)
+{
+    auto tiling_params = TilingParamss{};
+    gert::InfershapeContextPara infershapeContextPara(
+        "AlltoAllvQuantGroupedMatMul",
+        {
+            {{{tiling_params.BSK, tiling_params.H1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.e, tiling_params.gmm_weight_dim1, tiling_params.N1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{tiling_params.BS, tiling_params.H2}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{tiling_params.mm_weight_dim0, tiling_params.N2, 1}, {}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tiling_params.group)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tiling_params.ep_world_size)},
+            {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.send_counts)},
+            {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tiling_params.recv_counts)},
+            {"gmm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"gmm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_gmm_weight)},
+            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.trans_mm_weight)},
+            {"permute_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(tiling_params.permute_out_flag)},
+            {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, {});
+}
 } // AlltoAllvQuantGroupedMatMulUT

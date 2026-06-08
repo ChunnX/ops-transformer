@@ -18,6 +18,7 @@
 #include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_shape_context_faker.h"
 
 namespace MoeDistributeCombineSetupInferShapeUT {
 
@@ -214,6 +215,27 @@ TEST_F(MoeDistributeCombineSetupInferShapeTest, InferShapeNormal6)
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{4096, 10752}, {65568}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeDistributeCombineSetupInferShapeTest, InferDataTypeNormal)
+{
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .SetOpType(OP_NAME)
+        .NodeIoNum(3, 2)
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl(OP_NAME.c_str());
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDtypeFunc = opImpl->infer_datatype;
+    ASSERT_NE(inferDtypeFunc, nullptr);
+    auto ret = inferDtypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>());
+    ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_INT8);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_INT32);
 }
 
 } // namespace MoeDistributeCombineSetupInferShapeUT

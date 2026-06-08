@@ -55,6 +55,7 @@ constexpr uint32_t ATTR_MM_WEIGHT_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 11;
 constexpr uint32_t ATTR_Y_DTYPE = 12;
 constexpr uint32_t ATTR_MM_DTYPE = 13;
+constexpr uint32_t ATTR_COMM_MODE = 14;
 // dim index
 constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
@@ -103,6 +104,7 @@ protected:
     ge::graphStatus CheckCommonPlatformInfo();
     ge::graphStatus GetCommonShapeAttrsInfo();
     ge::graphStatus CheckCommonShapeAttrsInfo();
+    ge::graphStatus GetShapeInfo();
 
     // platform info
     platform_ascendc::SocVersion socVersion_;
@@ -155,7 +157,6 @@ protected:
 private:
     // get
     ge::graphStatus GetAttrsInfo();
-    ge::graphStatus GetShapeInfo();
     ge::graphStatus GetGmmXShapeInfo();
     ge::graphStatus GetGmmWeightShapeInfo();
     ge::graphStatus GetCountsTensorShapeInfo();

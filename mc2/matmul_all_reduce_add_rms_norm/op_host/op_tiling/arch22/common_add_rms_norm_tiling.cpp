@@ -71,7 +71,7 @@ void SetTilingData(const TilingInfo& tilingInfo, AddRMSNormTilingOutput& addRmsN
 ge::graphStatus AssembleX1Shape(const AddRMSNormTilingDepend& addRmsNormTilingDepend, gert::Shape& xShape)
 {
     if (!addRmsNormTilingDepend.useMmOutputAsX1Input) {
-        GE_ASSERT_NOTNULL(addRmsNormTilingDepend.arnCtxInfo.x1_shape);
+        MC2_CHECK_NOTNULL_RET(addRmsNormTilingDepend.nodeName, addRmsNormTilingDepend.arnCtxInfo.x1_shape);
         xShape = addRmsNormTilingDepend.arnCtxInfo.x1_shape->GetStorageShape();
     } else {
         xShape = {
@@ -83,7 +83,7 @@ ge::graphStatus AssembleX1Shape(const AddRMSNormTilingDepend& addRmsNormTilingDe
 ge::graphStatus AssembleX1Dtype(const AddRMSNormTilingDepend& addRmsNormTilingDepend, ge::DataType& xDtype)
 {
     if (!addRmsNormTilingDepend.useMmOutputAsX1Input) {
-        GE_ASSERT_NOTNULL(addRmsNormTilingDepend.arnCtxInfo.x1);
+        MC2_CHECK_NOTNULL_RET(addRmsNormTilingDepend.nodeName, addRmsNormTilingDepend.arnCtxInfo.x1);
         xDtype = addRmsNormTilingDepend.arnCtxInfo.x1->GetDataType();
     } else {
         xDtype = addRmsNormTilingDepend.addRmsNormTilingInputFromMm.x1Dtype;
@@ -97,17 +97,23 @@ ge::graphStatus CheckAddRmsNormInputDtype(
     // residual和gamma数据类型相同
     OP_TILING_CHECK(
         x2Type != gammaType,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "type of residual and gamma should be same"),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and gamma",
+            (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(gammaType)).c_str(),
+            "The dtypes of residual and gamma must be the same"),
         return ge::GRAPH_FAILED);
     // residual和normOut数据类型相同
     OP_TILING_CHECK(
         x2Type != yType,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "type of residual and normOut should be same"),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and normOut",
+            (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(yType)).c_str(),
+            "The dtypes of residual and normOut must be the same"),
         return ge::GRAPH_FAILED);
     // residual和输出y数据类型相同
     OP_TILING_CHECK(
         x2Type != xType,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "type of residual and y should be same"),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "residual and y",
+            (Ops::Base::ToString(x2Type) + " and " + Ops::Base::ToString(xType)).c_str(),
+            "The dtypes of residual and y must be the same"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -119,60 +125,56 @@ ge::graphStatus CheckAddRmsNormInputShape(
     // residual shape
     OP_TILING_CHECK(
         x2Shape->GetStorageShape().GetDimNum() != DIM_THREE,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(), "Expect dim of residual to be 3, but got residual_dim:[%lu].",
-            x2Shape->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "residual",
+            (std::to_string(x2Shape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
         return ge::GRAPH_FAILED);
     // gamma shape
     OP_TILING_CHECK(
         gammaShape->GetStorageShape().GetDimNum() != DIM_ONE,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(), "Expect dim of gamma from arn to be 1, but got gamma_dim:[%lu].",
-            gammaShape->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "gamma",
+            (std::to_string(gammaShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
         return ge::GRAPH_FAILED);
     // normOut shape
     OP_TILING_CHECK(
         yShape->GetStorageShape().GetDimNum() != DIM_THREE,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(),
-            "Expect dim of normOut from arn to be 3, but got"
-            " normOut_dim:[%lu].",
-            yShape->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "normOut",
+            (std::to_string(yShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
         return ge::GRAPH_FAILED);
     // y shape
     OP_TILING_CHECK(
         xShape->GetStorageShape().GetDimNum() != DIM_THREE,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(), "Expect dim of y from arn to be 3, but got y_dim:[%lu].",
-            xShape->GetStorageShape().GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "y",
+            (std::to_string(xShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
         return ge::GRAPH_FAILED);
     // residual和gamma的n值
     OP_TILING_CHECK(
         x2Shape->GetStorageShape().GetDim(2) != gammaShape->GetStorageShape().GetDim(0),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(),
-            "Expect n of residual and gamma from arn to be same, but got"
-            " reisudal_n:[%ld], gamma_n:[%ld].",
-            x2Shape->GetStorageShape().GetDim(2), gammaShape->GetStorageShape().GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context->GetNodeName(), "residual",
+            (std::to_string(x2Shape->GetStorageShape().GetDim(2)) + " vs " +
+             std::to_string(gammaShape->GetStorageShape().GetDim(0))).c_str(),
+            "The shape of residual n dimension must be the same as the n dimension of gamma"),
         return ge::GRAPH_FAILED);
     // residual和y，normOut的shape
     OP_TILING_CHECK(
         x2Shape->GetStorageShape() != yShape->GetStorageShape(),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(),
-            "Expect shape of residual and normOut from arn to be same,"
-            " but got residual:[%s], normOut:[%s].",
-            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-            Ops::Base::ToString(yShape->GetStorageShape()).c_str()),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context->GetNodeName(), "residual and normOut",
+            (Ops::Base::ToString(x2Shape->GetStorageShape()) + " and " +
+             Ops::Base::ToString(yShape->GetStorageShape())).c_str(),
+            "The shapes of residual and normOut must be the same"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         x2Shape->GetStorageShape() != xShape->GetStorageShape(),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context->GetNodeName(),
-            "Expect shape of residual and y from arn to be same, but"
-            " got residual:[%s], y:[%s].",
-            Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-            Ops::Base::ToString(xShape->GetStorageShape()).c_str()),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context->GetNodeName(), "residual and y",
+            (Ops::Base::ToString(x2Shape->GetStorageShape()) + " and " +
+             Ops::Base::ToString(xShape->GetStorageShape())).c_str(),
+            "The shapes of residual and y must be the same"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -190,11 +192,12 @@ ge::graphStatus CommonAddResNormTiling::CheckAddRmsNormInput(
     const gert::StorageShape* gammaShape = arnCtxInfo.gamma_shape;
     const gert::StorageShape* yShape = arnCtxInfo.y_shape;
     const gert::StorageShape* xShape = arnCtxInfo.x_shape;
-    GE_ASSERT_GRAPH_SUCCESS(CheckAddRmsNormInputDtype(context, x2Type, gammaType, yType, xType));
-    GE_ASSERT_GRAPH_SUCCESS(CheckAddRmsNormInputShape(context, x2Shape, gammaShape, yShape, xShape));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), CheckAddRmsNormInputDtype(context, x2Type, gammaType, yType, xType));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), CheckAddRmsNormInputShape(context, x2Shape, gammaShape, yShape, xShape));
     OP_TILING_CHECK(
         (epsilon != nullptr && (*epsilon <= 0 || *epsilon >= 1)),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Expect epsilon to be in range (0, 1)."),
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "epsilon",
+            std::to_string(*epsilon).c_str(), "(0, 1)"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -204,7 +207,7 @@ ge::graphStatus CommonAddResNormTiling::SetAddRmsNormTilingData(
     const uint32_t blockFactor, AddRMSNormTilingOutput& addRmsNormTilingOutput)
 {
     ge::DataType dataType;
-    GE_ASSERT_GRAPH_SUCCESS(AssembleX1Dtype(addRmsNormTilingDepend, dataType));
+    MC2_CHECK_LOG_RET(addRmsNormTilingDepend.nodeName, AssembleX1Dtype(addRmsNormTilingDepend, dataType));
 
     uint32_t dtypeKey = DTYPE_KEY_FP16;
     uint32_t ubFactor = UB_FACTOR_B16;
@@ -236,8 +239,8 @@ ge::graphStatus CommonAddResNormTiling::SetAddRmsNormTilingData(
         ubFactor = rowFactor * numColAlign;
     } else if (dataType == ge::DT_FLOAT16 && numCol == numColAlign) {
         modeKey = ModeKey::K_MULTI_N;
-        GE_ASSERT_TRUE(ubSize >= VALUE_1024 + VALUE_256 + numColAlign * VALUE_2);
-        GE_ASSERT_TRUE(numColAlign * VALUE_16 + VALUE_64 != 0);
+        MC2_CHECK_TRUE_RET(addRmsNormTilingDepend.nodeName, ubSize >= VALUE_1024 + VALUE_256 + numColAlign * VALUE_2);
+        MC2_CHECK_TRUE_RET(addRmsNormTilingDepend.nodeName, numColAlign * VALUE_16 + VALUE_64 != 0);
         // reserve 1024byte
         rowFactor = (ubSize - VALUE_1024 - VALUE_256 - numColAlign * VALUE_2) / (numColAlign * VALUE_16 + VALUE_64);
         ubFactor = rowFactor * numColAlign;
@@ -247,7 +250,7 @@ ge::graphStatus CommonAddResNormTiling::SetAddRmsNormTilingData(
             ubFactor = UB_FACTOR_B16;
         }
     }
-    GE_ASSERT_NOTNULL(addRmsNormTilingDepend.arnCtxInfo.epsilon);
+    MC2_CHECK_NOTNULL_RET(addRmsNormTilingDepend.nodeName, addRmsNormTilingDepend.arnCtxInfo.epsilon);
     const float epsilon = *addRmsNormTilingDepend.arnCtxInfo.epsilon;
     float avgFactor = (numCol == 0) ? 0 : 1.0F / numCol;
     SetTilingData(
@@ -269,15 +272,15 @@ ge::graphStatus CommonAddResNormTiling::Tiling4AddRmsNorm(
     }
     OP_LOGD(node, "Core Num: %u, use half %d", numCore, addRmsNormTilingDepend.useHalfNumBlocks);
     uint32_t blockFactor = 1U;
-    GE_ASSERT_NOTNULL(addRmsNormTilingDepend.arnCtxInfo.gamma_shape);
+    MC2_CHECK_NOTNULL_RET(addRmsNormTilingDepend.nodeName, addRmsNormTilingDepend.arnCtxInfo.gamma_shape);
     const auto& gammaShape = addRmsNormTilingDepend.arnCtxInfo.gamma_shape->GetStorageShape();
     int64_t numCol = gammaShape.GetShapeSize();
     gert::Shape xShape;
-    GE_ASSERT_GRAPH_SUCCESS(AssembleX1Shape(addRmsNormTilingDepend, xShape));
+    MC2_CHECK_LOG_RET(addRmsNormTilingDepend.nodeName, AssembleX1Shape(addRmsNormTilingDepend, xShape));
 
     size_t xDimNum = xShape.GetDimNum();
     size_t gammaDimNum = gammaShape.GetDimNum();
-    GE_ASSERT_TRUE(xDimNum >= gammaDimNum);
+    MC2_CHECK_TRUE_RET(addRmsNormTilingDepend.nodeName, xDimNum >= gammaDimNum);
     uint32_t numRow = 1U;
     for (size_t i = 0; i < xDimNum - gammaDimNum; i++) {
         numRow *= xShape.GetDim(i);
@@ -289,7 +292,7 @@ ge::graphStatus CommonAddResNormTiling::Tiling4AddRmsNorm(
     // block dim的值小于等于num_core
     SetNumBlocks(numRow, blockFactor, addRmsNormTilingOutput);
     SetWorkSpaceSize(addRmsNormTilingOutput);
-    GE_ASSERT_GRAPH_SUCCESS(
+    MC2_CHECK_LOG_RET(addRmsNormTilingDepend.nodeName, 
         SetAddRmsNormTilingData(addRmsNormTilingDepend, numRow, numCol, blockFactor, addRmsNormTilingOutput));
 
     OP_LOGI(node, "Tiling Key: %u", addRmsNormTilingOutput.tilingOut.tilingKey);

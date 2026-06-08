@@ -64,6 +64,7 @@ private:
                                               GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
                                               GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
                                               GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut);
+    __aicore__ inline void InitCommContext(GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void TpGroupInit(GM_ADDR tpSendCount, GM_ADDR XOut, const MoeDistributeCombineV2TilingData *tilingData);
@@ -419,10 +420,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAtt
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context,
-    const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitCommContext(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
-    InitTilingAttrs(tilingData);
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
     if (isMc2Context_) {
@@ -438,10 +438,26 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
         epRankIdHccl = Mc2Kernel::GetRankId(epWinContext_);
         epWorldSizeHccl = Mc2Kernel::GetRankDim(epWinContext_);
     }
-    selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
+#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
+    for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
+        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempEpRankId, EP_DOMAIN)), totalWinSizeEp_);
+        OOMCheckAddrRange<float>((__gm__ float*)(GetWinStateAddrByRankId(tempEpRankId, EP_DOMAIN)), STATE_SIZE);
+    }
+#endif
+    selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET +
+                                                                coreIdx_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
+    dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_,
+                                moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
+}
+
+template <CombineMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context,
+    const MoeDistributeCombineV2TilingData *tilingData)
+{
+    InitTilingAttrs(tilingData);
+    InitCommContext(mc2Context, tilingData);
     if (hasElasticInfoFlag_) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(elasticInfoGM_);
         isScalingDownFlag_ = elasticInfoGM_.GetValue(0);
@@ -460,6 +476,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
     uint32_t hFloatSize = axisH_ * static_cast<uint32_t>(sizeof(float));
     hFloatAlign32Size_ = Ceil(hFloatSize, UB_ALIGN) * UB_ALIGN;
     hFloatAlign256Size_ = Ceil(hFloatSize, ALIGNED_LEN) * ALIGNED_LEN;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // A5 INT8/MXFP8 融合反量化每轮固定访问 128 floats，工作区按 512B 对齐避免尾段越界
+    if constexpr ((QuantMode == INT8_COMM_QUANT) || (QuantMode == MXFP8_E5M2_COMM_QUANT) ||
+        (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+        constexpr uint32_t kA5FusedQuantAlign = ALIGNED_LEN * INT8_DIVIVE;
+        uint32_t hFloatA5FusedQuantSize = Ceil(hFloatSize, kA5FusedQuantAlign) * kA5FusedQuantAlign;
+        hFloatAlign32Size_ = hFloatA5FusedQuantSize;
+        hFloatAlign256Size_ = hFloatA5FusedQuantSize;
+    }
+#endif
     hExpandXTypeSize_ = axisH_ * sizeof(ExpandXType);
     hExpandXAlign32Size_ = Ceil(hExpandXTypeSize_, UB_ALIGN) * UB_ALIGN;
     hAlignWinSize_ = Ceil(hExpandXTypeSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -528,12 +554,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     winDataSizeOffsetEp_ = static_cast<uint64_t>(dataState_) * (tilingData->moeDistributeCombineV2Info.totalWinSizeEp / 2UL);
     winStatusOffset_ = COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET; // 前面的预留给dispatch使用
     epWindowGM_ = GetWinAddrByRankId(epRankIdOriginal_, EP_DOMAIN);
-#if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
-        OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempepRankId, EP_DOMAIN)), totalWinSizeEp_);
-        OOMCheckAddrRange<float>((__gm__ float*)(GetWinStateAddrByRankId(tempepRankId, EP_DOMAIN)), STATE_SIZE);
-    }
-#endif
     if (isShareExpertRankFlag_) {
         DataCacheCleanAndInvalid<ExpandIdxType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(epSendCountGM_[epWorldSize_ - 1]);
         selfSendCnt_ = epSendCountGM_(epWorldSize_ - 1);
@@ -1289,18 +1309,24 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
     tmpUb = moeSumQueue_.DeQue<XType>();
     LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
     if constexpr (QuantMode > UNQUANT) {
-        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_);
+        quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
+        // 非 A5 在外层完成 INT8 加权求和
         if constexpr (QuantMode == INT8_COMM_QUANT) {
             Cast(rowTmpFloatLocal_, outLocalTensor, AscendC::RoundMode::CAST_NONE, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
         }
+#endif
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+        PipeBarrier<PIPE_V>();
+        AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
+        PipeBarrier<PIPE_V>();
+        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
     }
-
-    PipeBarrier<PIPE_V>();
-    AscendC::Muls(mulBufLocal_, rowTmpFloatLocal_, scaleVal, processLen);
-    PipeBarrier<PIPE_V>();
-    AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
     moeSumQueue_.FreeTensor<XType>(tmpUb);
 }
 
@@ -1396,16 +1422,22 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
         tmpUb = moeSumQueue_.DeQue<XType>();
         LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
         if constexpr (QuantMode > UNQUANT) {
-            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_);
+            quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, 1.0f);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
+            // 非 A5 在外层完成 INT8 求和累加
             if constexpr (QuantMode == INT8_COMM_QUANT) {
                 Cast(rowTmpFloatLocal_, outLocalTensor, AscendC::RoundMode::CAST_NONE, processLen);
+                PipeBarrier<PIPE_V>();
+                AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
+                PipeBarrier<PIPE_V>();
             }
+#endif
         } else {
             Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-        AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
-        PipeBarrier<PIPE_V>();
         moeSumQueue_.FreeTensor<XType>(tmpUb);
     }
 

@@ -997,6 +997,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     SetOutputDtype();
     multiCoreParamsRegbase_->set_s1OuterSize(CeilDivision(s1Size, s1BasicBlock));
     int64_t totalSize = CalcTotalSize();
+    AnalyzeOptionalDn();
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     SetSplitCoreModeParam();
     SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
