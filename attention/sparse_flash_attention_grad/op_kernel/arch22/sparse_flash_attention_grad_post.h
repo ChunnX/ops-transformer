@@ -209,11 +209,11 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
     if constexpr (LAYOUT == TND) {
         uint64_t totalLen = 0;
         for (int64_t bDimIdx = 0; bDimIdx < b; bDimIdx++) {
-            totalLen = n2 * curG * ((__gm__ int64_t *)seqS)[bDimIdx] * headDim;
+            totalLen = n2 * curG * ((__gm__ int32_t *)seqS)[bDimIdx] * headDim;
             if (totalLen > startIdx) {
                 bIdx = bDimIdx;
-                curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                     (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
+                curS = (bIdx == 0) ? ((__gm__ int32_t *)seqS)[bIdx] :
+                                     (((__gm__ int32_t *)seqS)[bIdx] - ((__gm__ int32_t *)seqS)[bIdx - 1]);
                 uint64_t bTail = startIdx - (totalLen - n2 * curG * curS * headDim);
                 nIdx = bTail / (curS * headDim);
                 uint64_t nTail = bTail % (curS * headDim);
@@ -403,7 +403,7 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_
             if constexpr (LAYOUT == TND) {
                 scrOffsetBase += curS * n2 * curG * headDimAlign;
                 dstOffsetBase += curS * n2 * curG * headDim;
-                curS = ((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1];
+                curS = ((__gm__ int32_t *)seqS)[bIdx] - ((__gm__ int32_t *)seqS)[bIdx - 1];
             }
         } else {
             sIdx = 0;
