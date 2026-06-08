@@ -1629,7 +1629,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         (!fBaseParams.isDeterministic);
     bool bn2S2RouteLimit = !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
         (fBaseParams.layoutType == INPUT_FORMAT_TND || (fBaseParams.isAllSame && !fBaseParams.isDeterministic) ||
-        bn2S2NotTndLimit) &&
+        bn2S2NotTndLimit) && fBaseParams.keepProb >= 1 &&
         (fBaseParams.n1 == fBaseParams.n2) &&
         (fBaseParams.queryType != ge::DT_FLOAT) &&
         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
