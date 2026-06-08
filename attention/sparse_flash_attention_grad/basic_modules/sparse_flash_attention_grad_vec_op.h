@@ -38,13 +38,14 @@ public:
     static constexpr bool HAS_ROPE = SFAGT::has_rope;
     static constexpr bool IS_BSND = SFAGT::is_bsnd;
     static constexpr bool IS_DETERMINISTIC = SFAGT::is_deterministic;
+    static constexpr bool KV_MERGE = SFAGT::kv_merge;
 
     __aicore__ inline VecOp(){};
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out,
                                 GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
                                 GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
                                 GM_ADDR key_rope,
-                                GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, bool kv_merge,
+                                GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
                                 const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
@@ -197,7 +198,6 @@ protected:
     DataCopyExtParams scatterParams;
     uint32_t mergePingPong{0};
     int32_t pingPongIdx = 0;
-    bool kvMerge{false};
 };
 
 template <typename SFAGT>
@@ -205,10 +205,9 @@ __aicore__ inline void VecOp<SFAGT>::Init(GM_ADDR query, GM_ADDR key, GM_ADDR va
                                           GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
                                           GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
                                           GM_ADDR key_rope,
-                                          GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, bool kv_merge,
+                                          GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
                                           const TILING_CLASS *__restrict ordTilingData, TPipe *pipe)
 {
-    kvMerge = kv_merge;
     InitParams(ordTilingData, actual_seq_qlen, actual_seq_kvlen);
     InitGMBuffer(key, value, dv, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices, key_rope, workspace);
     InitUB(pipe);
@@ -471,7 +470,7 @@ __aicore__ inline void VecOp<SFAGT>::AtomicClean()
 
     DumpGmZero(dqWorkspaceGm, dqSize);
     DumpGmZero(dkWorkspaceGm, dkSize);
-    if (!kvMerge) {
+    if constexpr (!KV_MERGE) {
         DumpGmZero(dvWorkspaceGm, dvSize);
     }
 }
@@ -1188,7 +1187,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
                 doBatch = (s2Idx >= 0 && s2Idx2 > s2Idx);
             }
             if (doBatch) {
-                if (kvMerge) {
+                if constexpr (KV_MERGE) {
                     for (int32_t subRow = row; subRow < row + 2 * curProcessRow; subRow++) {
                         Add(dkInUb[subRow * dimDAlign], dkInUb[subRow * dimDAlign],
                             dvInUb[subRow * dimD2Align], dimD2Align);
@@ -1198,7 +1197,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
                 SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                 WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                 DataCopyPad(dkOutGm[s2Idx * selectedBlockSizeDimDAlign], dkInUb[row * dimDAlign], scatterParams);
-                if (!kvMerge) {
+                if constexpr (!KV_MERGE) {
                     scatterParams.blockLen = curProcessRow * dimD2Align * sizeof(float);
                     scatterParams.dstStride = (s2Idx2 - s2Idx - 1) * selectedBlockSizeDimD2Align * sizeof(float);
                     DataCopyPad(dvOutGm[s2Idx * selectedBlockSizeDimD2Align], dvInUb[row * dimD2Align], scatterParams);
@@ -1216,7 +1215,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
                                         runInfo.lastBlockSize % curProcessRow :
                                         curProcessRow;
                     }
-                    if (kvMerge) {
+                    if constexpr (KV_MERGE) {
                         for (int32_t subRow = row; subRow < row + curProcessRow; subRow++) {
                             Add(dkInUb[subRow * dimDAlign], dkInUb[subRow * dimDAlign],
                                 dvInUb[subRow * dimD2Align], dimD2Align);
@@ -1226,7 +1225,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
                         SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                         WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
                         DataCopy(dkOutGm[s2Idx * selectedBlockSizeDimDAlign + (curRow % selectedBlockSize) * dimDAlign], dkInUb[row * dimDAlign],  curProcessRow * dimDAlign);
-                        if (!kvMerge) {
+                        if constexpr (!KV_MERGE) {
                             DataCopy(dvOutGm[s2Idx * selectedBlockSizeDimD2Align + (curRow % selectedBlockSize) * dimD2Align], dvInUb[row * dimD2Align], curProcessRow * dimD2Align);
                         }
                     }
@@ -1242,7 +1241,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddUnDeter(const RunInfo &runInfo)
             int64_t baseRow = loop * UB_ROW_SIZE + subBlockIdx * firstCoreKSize * selectedBlockSize +
                               runInfo.blkCntOffset * selectedBlockSize;
             DataCopy(dkOutGm[baseRow * dimDAlign], dkInUb, curUbRowSizeDAlign);
-            if (!kvMerge) {
+            if constexpr (!KV_MERGE) {
                 DataCopy(dvOutGm[baseRow * dimD2Align], dvInUb, totalRows * dimD2Align);
             }
         }
@@ -1317,7 +1316,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
-        if (kvMerge) {
+        if constexpr (KV_MERGE) {
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 Add(dkInUb[row * dimDAlign], dkInUb[row * dimDAlign], dvInUb[row * dimD2Align], dimD2Align);
             }
@@ -1328,7 +1327,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
         if (runInfo.isSmallS2) {
             int64_t baseRow = loop * UB_ROW_SIZE + vecBlockIdx * firstCoreKSize * selectedBlockSize;
             DataCopy(dkOutGm[baseRow * dimDAlign], dkInUb, ubRowSizeDAlign);
-            if (!kvMerge) {
+            if constexpr (!KV_MERGE) {
                 DataCopy(dvOutGm[baseRow * dimD2Align], dvInUb, ubRowSizeD2Align);
             }
         } else {
@@ -1339,7 +1338,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
                 }
                 if (s2Idx >= 0) {
                     DataCopy(dkOutGm[s2Idx * selectedBlockSize * dimDAlign + (curRow % selectedBlockSize) * dimDAlign], dkInUb[row * dimDAlign], curProcessRow * dimDAlign);
-                    if (!kvMerge) {
+                    if constexpr (!KV_MERGE) {
                         DataCopy(dvOutGm[s2Idx * selectedBlockSize * dimD2Align + (curRow % selectedBlockSize) * dimD2Align], dvInUb[row * dimD2Align], curProcessRow * dimD2Align);
                     }
                 }
@@ -1363,7 +1362,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
     SetFlag<AscendC::HardEvent::MTE2_V>(event);
     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
-    if (kvMerge) {
+    if constexpr (KV_MERGE) {
         for (int64_t row = 0; row < tailRows; row++) {
             Add(dkInUb[row * dimDAlign], dkInUb[row * dimDAlign], dvInUb[row * dimD2Align], dimD2Align);
         }
@@ -1376,7 +1375,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
     if (runInfo.isSmallS2) {
         int64_t baseRow = (maxLoops - 1) * UB_ROW_SIZE + vecBlockIdx * firstCoreKSize * selectedBlockSize;
         DataCopy(dkOutGm[baseRow * dimDAlign], dkInUb, tailRows * dimDAlign);
-        if (!kvMerge) {
+        if constexpr (!KV_MERGE) {
             DataCopy(dvOutGm[baseRow * dimD2Align], dvInUb, tailRows * dimD2Align);
         }
     } else {
@@ -1392,7 +1391,7 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
                                     curProcessRow;
                 }
                 DataCopy(dkOutGm[s2Idx * selectedBlockSize * dimDAlign + (curRow % selectedBlockSize) * dimDAlign], dkInUb[row * dimDAlign], curProcessRow * dimDAlign);
-                if (!kvMerge) {
+                if constexpr (!KV_MERGE) {
                     DataCopy(dvOutGm[s2Idx * selectedBlockSize * dimD2Align + (curRow % selectedBlockSize) * dimD2Align], dvInUb[row * dimD2Align], curProcessRow * dimD2Align);
                 }
             }

@@ -29,14 +29,13 @@ protected:
 };
 
 namespace {
-// 基本 host 模板 GetTilingKey() 由 (attenEnable, ropeDim!=0, BSND) 拼出
-// key = ((10 + atten) * 10 + (ropeDim!=0 ? 1 : 0)) * 10 + (BSND ? 1 : 0)
-constexpr uint64_t kTilingKeyBsndAttenNoRope = 1101UL;   // sparse_mode=3, no rope, BSND
-constexpr uint64_t kTilingKeyBsndAttenWithRope = 1111UL; // sparse_mode=3, rope,    BSND
-constexpr uint64_t kTilingKeyTndAttenNoRope = 1100UL;    // sparse_mode=3, no rope, TND
+// key = ((((10 + atten) * 10 + hasRope) * 10 + isBsnd) * 10 + deterministic) * 10 + kvMerge
+constexpr uint64_t kTilingKeyBsndAttenNoRope = 110100UL;   // sparse_mode=3, no rope, BSND, non-deter, non-kv-merge
+constexpr uint64_t kTilingKeyBsndAttenWithRope = 111100UL; // sparse_mode=3, rope,    BSND, non-deter, non-kv-merge
+constexpr uint64_t kTilingKeyTndAttenNoRope = 110000UL;    // sparse_mode=3, no rope, TND,  non-deter, non-kv-merge
 } // namespace
 
-// =================== A1: BSND + sparse_mode=3 + no rope, fp16 (正例, key=1101) ===================
+// =================== A1: BSND + sparse_mode=3 + no rope, fp16 (正例) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A1_bsnd_fp16_norope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
@@ -76,7 +75,7 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A1_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenNoRope);
 }
 
-// =================== A2: BSND + sparse_mode=3 + no rope, bf16 (正例, key=1101) ===================
+// =================== A2: BSND + sparse_mode=3 + no rope, bf16 (正例) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A2_bsnd_bf16_norope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
@@ -116,7 +115,7 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A2_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenNoRope);
 }
 
-// =================== A3: BSND + sparse_mode=3 + rope (正例, key=1111) ===================
+// =================== A3: BSND + sparse_mode=3 + rope (正例) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A3_bsnd_bf16_rope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
@@ -156,7 +155,7 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A3_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenWithRope);
 }
 
-// =================== A4: TND + sparse_mode=3 + no rope (正例, key=1100) ===================
+// =================== A4: TND + sparse_mode=3 + no rope (正例) ===================
 // TND 下 actual_seq_lengths_query / actual_seq_lengths_kv 必须实例化（GetBaseShapeInfo 强校验）
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A4_tnd_bf16_norope)
 {

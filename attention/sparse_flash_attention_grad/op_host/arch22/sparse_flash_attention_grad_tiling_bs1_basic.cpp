@@ -285,6 +285,10 @@ uint64_t SparseFlashAttentionGradBasicTiling::GetTilingKey() const
     if (tmpData.deterministic) {
         tilingKey += 1;
     }
+    tilingKey *= 10;
+    if (tmpData.kvMerge) {
+        tilingKey += 1;
+    }
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
