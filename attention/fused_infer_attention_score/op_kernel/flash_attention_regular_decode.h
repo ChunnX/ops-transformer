@@ -297,8 +297,8 @@ namespace SplitFuse {
                             uint64_t sWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
-                                static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset);
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset;
                             GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                             LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
@@ -325,8 +325,8 @@ namespace SplitFuse {
                         LayoutP layOutP(rowNum * kvNBlockSize, stackSeqTile, stackSeqTilePad);
 
                         uint64_t gmOffsetSBase =
-                            static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                            curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                            static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                            static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         uint64_t gmOffsetPBase = gmOffsetSBase;
                         LayoutS layOutS(rowNum * kvNBlockSize, stackSeqTile, stackSeqTilePad);
 
@@ -370,8 +370,8 @@ namespace SplitFuse {
 
                             uint64_t oWorkspaceIncreOffset = static_cast<uint64_t>(kvNIncreIdx) * rowNum * embedRoundV;
                             uint64_t gmOffsetOTmp =
-                                static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + oWorkspaceIncreOffset);
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + oWorkspaceIncreOffset;
                             GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
                             LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
@@ -379,8 +379,8 @@ namespace SplitFuse {
                             uint64_t pWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * stackSeqTilePad;
                             uint64_t gmOffsetP =
-                                static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
-                                                      curStackTileMod * WORKSPACE_BLOCK_SIZE_DB) +
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB) +
                                 pWorkspaceIncreOffset;
                             LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                             blockMmadPV(
@@ -417,9 +417,10 @@ namespace SplitFuse {
                         Arch::CrossCoreWaitFlag(pvReady);
 
                         uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset;
-                        uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
-                        uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                        uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
+                        uint64_t gmOffsetOTmp =
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         uint64_t gmOffsetLse = lseBOffset + lseTokenOffset + qNStartIdx;
 
                         epilogueRescaleO(
@@ -547,10 +548,10 @@ namespace SplitFuse {
                                 uint64_t sWorkspaceIncreOffset =
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                                 uint64_t gmOffsetS =
-                                    static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                    curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset);
-                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTileTemp, embed};
-                                LayoutS layOutS(rowNum, stackSeqTileTemp, stackSeqTilePad);
+                                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset;
+                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
+                                LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                                 if constexpr (PAGED_CACHE_FLAG) {
                                     blockMmadQK(
@@ -577,8 +578,8 @@ namespace SplitFuse {
 #ifdef __DAV_C220_VEC__
                             LayoutP layOutP(rowNum * tailKvNBlockSize, stackSeqTileTemp, stackSeqTilePad);
                             uint64_t gmOffsetSBase =
-                                static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                             uint64_t gmOffsetPBase = gmOffsetSBase;
                             LayoutS layOutS(rowNum * tailKvNBlockSize, stackSeqTileTemp, stackSeqTilePad);
                             GemmCoord actualBlockShapeQK{rowNum * tailKvNBlockSize, stackSeqTileTemp, embed};
@@ -621,16 +622,17 @@ namespace SplitFuse {
                                 uint64_t oWorkspaceIncreOffset =
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * embedRoundV;
                                 uint64_t gmOffsetOTmp =
-                                    static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                    curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + oWorkspaceIncreOffset);
-                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTileTemp};
+                                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
+                                    oWorkspaceIncreOffset;
+                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
                                 LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
                                 uint64_t pWorkspaceIncreOffset =
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * stackSeqTilePad;
                                 uint64_t gmOffsetP =
-                                    static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
-                                                          curStackTileMod * WORKSPACE_BLOCK_SIZE_DB) +
+                                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
+                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB) +
                                     pWorkspaceIncreOffset;
                                 LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
 
@@ -666,10 +668,10 @@ namespace SplitFuse {
                             Arch::CrossCoreWaitFlag(pvReady);
 
                             uint64_t gmOffsetO = tailOBOffset + oSOffset + oNStartOffset;
-                            uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
+                            uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
                             uint64_t gmOffsetOTmp =
-                                static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                                curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                                static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                             uint64_t gmOffsetLse = tailLseBOffset + lseTokenOffset + tailQNStartIdx;
 
                             epilogueRescaleO(
