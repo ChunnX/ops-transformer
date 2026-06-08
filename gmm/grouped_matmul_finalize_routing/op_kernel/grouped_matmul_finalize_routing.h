@@ -319,7 +319,7 @@ __aicore__ inline void QuantGroupMatmul<P>::Process()
         uint32_t thresholdMDimN = thresholdBlockNum * mnConfig.blockDimN;
 
         while (curBlock < curCount) {
-            MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdMDimN, tiling->deterministicFlag);
+            MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdMDimN, static_cast<uint32_t>(tiling->deterministicFlag));
             MMCompute(groupIdx, mnConfig);
             VectorSync(mnConfig, syncConfig);
             VectorCompute(groupIdx, mnConfig, syncConfig);
