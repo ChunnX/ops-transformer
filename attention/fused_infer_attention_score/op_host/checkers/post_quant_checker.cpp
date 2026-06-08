@@ -58,9 +58,12 @@ ge::graphStatus PostQuantChecker::CheckExistenceQuantScale2(const FiaTilingInfo 
                     OP_LOGE(fiaInfo.opName, "Desc of quant_scale2 is nullptr in post quant scenario!"),
                     return ge::GRAPH_FAILED);
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
-        OP_CHECK_IF(quantScale2ShapeSize <= 0,
-                    OP_LOGE(fiaInfo.opName, "Shape size of quant_scale2 is nonpositive in post quant scenario!"),
-                    return ge::GRAPH_FAILED);
+        if (quantScale2ShapeSize <= 0) {
+            std::string reasonMsg = "Shape size of quant_scale2 must be positive in post quant scenario!";
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
+                std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -108,11 +111,12 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         // per-tensor or per-channel verification
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
-                OP_CHECK_IF((static_cast<uint64_t>(quantScale2ShapeSize) != 1U),
-                            OP_LOGE(fiaInfo.opName,
-                                    "For post quant per-tensor, quant scale/offset only support [1], now is [%d]",
-                                    quantScale2ShapeSize),
-                            return ge::GRAPH_FAILED);
+                if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
+                    std::string reasonMsg = "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
+                        std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             }
         } else {
             if (isSupportedLayout) {
@@ -291,9 +295,13 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
         OP_CHECK_IF(quantOffset2Dim != quantScale2Dim,
                     OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dim!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(quantOffset2ShapeSize != quantScale2ShapeSize,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same shape size!"),
-                    return ge::GRAPH_FAILED);
+        if (quantOffset2ShapeSize != quantScale2ShapeSize) {
+            std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                fiaInfo.opName, "quant_scale2 and quant_offset2", shapeMsg.c_str(),
+                "The shape sizes of quant_scale2 and quant_offset2 must be the same.");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

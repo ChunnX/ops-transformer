@@ -295,35 +295,31 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
     } else if (attenMaskDim == MASK_DIM_BSS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
         // attenMask的shape应为(B, >=Q_S, >=KV_S + systemPrefixLen)或(1, >=Q_S, >=KV_S + systemPrefixLen)
-        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+        if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
-                    "[B(%u) or 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
-                    "but got [%u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_0),
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_1),
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2)),
-                return ge::GRAPH_FAILED);
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
+            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else if (attenMaskDim == MASK_DIM_B1SS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
         // attenMask的shape应为(B, 1, >=Q_S, >=KV_S + systemPrefixLen)或(1, 1, >=Q_S, >=KV_S + systemPrefixLen)
-        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+        if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
-                    "[B(%u) or 1, 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
-                    "but got [%u, %u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_0),
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_1),
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2),
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_3)),
-                return ge::GRAPH_FAILED);
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
+            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_LOGE(fiaInfo.opName, "AttenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim);
+        std::string dimStr = std::to_string(attenMaskDim) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "atten_mask", dimStr.c_str(), "2D 3D or 4D");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -335,10 +331,12 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
     if (fiaInfo.sparseMode == SPARSE_MODE_TREE) {
         if (attenMaskDim != MASK_DIM_S && attenMaskDim != MASK_DIM_BSS) {
- 	        OP_LOGE(fiaInfo.opName, "Attenmask dim num only support 1 or 3 when sparse mode = %u, but got %zu",
- 	                SPARSE_MODE_TREE, attenMaskDim);
- 	            return ge::GRAPH_FAILED;
- 	    }
+            std::string dimStr = std::to_string(attenMaskDim) + "D";
+            std::string reasonMsg =
+                "The shape dim of atten_mask must be 1D or 3D when sparse_mode = " + std::to_string(SPARSE_MODE_TREE);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "atten_mask", dimStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
         uint64_t sSize = 0;
         if (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) {
             // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
@@ -411,7 +409,8 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
                                     std::to_string(maskInfo.attenMaskQSize) + ", " +
                                     std::to_string(maskInfo.attenMaskSize);
         } else {
-            OP_LOGE(fiaInfo.opName, "AttenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim);
+            std::string dimStr = std::to_string(attenMaskDim) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "atten_mask", dimStr.c_str(), "2D 3D or 4D");
             return ge::GRAPH_FAILED;
         }
     }
@@ -464,23 +463,26 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     }
 
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
-        OP_CHECK_IF(
-            !checkMask,
-            OP_LOGE(fiaInfo.opName,
-                    "attenMask batch(%u) must be 1 or %u, "
-                    "attenMask Q_S(%u) must be larger than or equal to Q_S(%u),"
-                    "attenMask KV_S(%u) must be larger than or equal to KV_S + systemPrefixLen(%u), please check",
-                    maskInfo.attenMaskBatch, fiaInfo.bSize, maskInfo.attenMaskQSize, fiaInfo.s1Size,
-                    maskInfo.attenMaskSize, fiaInfo.s2Size + fiaInfo.systemPrefixLen),
-            return ge::GRAPH_FAILED);
+        if (!checkMask) {
+            const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
+            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string reasonMsg = "The shape of atten_mask must be [B(" + std::to_string(fiaInfo.bSize) +
+                                    ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size) + "), >=KV_S(" +
+                                    std::to_string(fiaInfo.s2Size) + ") + systemPrefixLen(" +
+                                    std::to_string(fiaInfo.systemPrefixLen) + ")]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     if (((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
          (fiaInfo.sparseMode == SPARSE_MODE_BAND)) &&
         !checkMask) {
-        OP_LOGE(fiaInfo.opName,
-                "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %u.",
-                fiaInfo.sparseMode);
-        OP_LOGE(fiaInfo.opName, "attenMask shape is (%s).", maskInfo.strMaskShape.c_str());
+        const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
+        std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+        std::string reasonMsg = "The shape of atten_mask must be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
+                                "2048] when the sparse_mode is " +
+                                std::to_string(fiaInfo.sparseMode);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

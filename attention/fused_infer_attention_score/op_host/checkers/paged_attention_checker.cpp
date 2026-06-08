@@ -54,18 +54,23 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
 
     // check dim num
-    OP_CHECK_IF(blockTableShape.GetDimNum() != 2,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, the dim num(%zu) of blockTable should be 2.",
-                blockTableShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+    if (blockTableShape.GetDimNum() != 2) {
+        std::string dimStr = std::to_string(blockTableShape.GetDimNum()) + "D";
+        // TODO: Fix when translation is back
+        std::string reasonMsg = "When blockTable is not empty, the shape of blockTable must be 2D.";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "blockTable", dimStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // check blockTable each dim cannot be 0
-    OP_CHECK_IF(blockTableShape.GetShapeSize() == 0,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockTable each dim can not be 0, now is [%ld, %ld].",
-                blockTableShape.GetDim(0), blockTableShape.GetDim(1)),
-            return ge::GRAPH_FAILED);
+    if (blockTableShape.GetShapeSize() == 0) {
+        std::string shapeStr = Ops::Base::ToString(blockTableShape);
+        // TODO: Fix when translation is back
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            fiaInfo.opName, "blockTable", shapeStr.c_str(),
+            "When page attention enable, all axes of blockTable must be positive numbers.");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -107,10 +112,14 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
             "When page attention enable, system prefix is not supported."),
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
-        OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-            OP_LOGE(fiaInfo.opName,
-                "When page attention enable, the head dim of query and key should be equal."),
-            return ge::GRAPH_FAILED);
+        if (fiaInfo.isQKVDDifferent) {
+            std::string shapeMsg = std::to_string(fiaInfo.qkHeadDim) + " and " + std::to_string(fiaInfo.vHeadDim);
+            // TODO: Fix when translation is back
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                fiaInfo.opName, "query and key", shapeMsg.c_str(),
+                "When page attention enable, the head dim of query should be equal to the same axis of key.");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -162,13 +171,17 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
         const gert::Shape attenMaskShape = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape();
         int64_t maxBlockNumPerBatch = GetMaxBlockNumPerBatch(fiaInfo);
         uint32_t attenMaskDimNum = attenMaskShape.GetDimNum();
-        OP_CHECK_IF(attenMaskDimNum > 0 &&
-            (attenMaskShape.GetDim(attenMaskDimNum-1) < maxBlockNumPerBatch * fiaInfo.blockSize),
-            OP_LOGE(fiaInfo.opName,
-                "When page attention enable and attenMask enable (sparseMode = %u), the last dimension of "
-                "attenMask(%ld) shoule be greater than maxBlockNumPerBatch(%ld) * blockSize(%d).",
-                fiaInfo.sparseMode, attenMaskShape.GetDim(attenMaskDimNum-1), maxBlockNumPerBatch, fiaInfo.blockSize),
-            return ge::GRAPH_FAILED);
+        if (attenMaskDimNum > 0 &&
+            (attenMaskShape.GetDim(attenMaskDimNum - 1) < maxBlockNumPerBatch * fiaInfo.blockSize)) {
+            std::string shapeStr = Ops::Base::ToString(attenMaskShape);
+            // TODO: Fix when translation is back
+            std::string reasonMsg =
+                std::string("When page attention enable and attenMask enable, "
+                            "the last dimension of input atten_mask must be >= maxBlockNumPerBatch(") +
+                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(fiaInfo.blockSize) + ").";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -347,11 +360,13 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
     // 每个batch的 blockNum 小于 blocktable dim2
     int64_t maxBlockNumPerBatch = GetMaxBlockNumPerBatch(fiaInfo);
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
-    OP_CHECK_IF(((blockTableShape.GetDim(0) != fiaInfo.bSize) || (blockTableShape.GetDim(1) < maxBlockNumPerBatch)),
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, block table shape should be [%u, >=%ld], now is [%ld, %ld].",
-            fiaInfo.bSize, maxBlockNumPerBatch, blockTableShape.GetDim(0), blockTableShape.GetDim(1)),
-        return ge::GRAPH_FAILED);
+    if ((blockTableShape.GetDim(0) != fiaInfo.bSize) || (blockTableShape.GetDim(1) < maxBlockNumPerBatch)) {
+        std::string shapeStr = Ops::Base::ToString(blockTableShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            fiaInfo.opName, "block_table", shapeStr.c_str(),
+            "When page attention enable, block_table shape must be [batch_size, >=max_block_num_per_batch]");
+        return ge::GRAPH_FAILED;
+    }
 
     // check key cache shape
     if (ge::GRAPH_SUCCESS != CheckPACacheShape(fiaInfo, fiaInfo.opParamInfo.key.shape->GetStorageShape(), "key") ||
@@ -382,77 +397,98 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
     if (enableNonQuant_) { // 非量化
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
             if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
-                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
-                        "%u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                    fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
+                    // TODO: Fix when translation is back
+                    std::string reasonMsg =
+                        "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(" +
+                        std::to_string(fiaInfo.blockSize) + ") must be a multiple of " +
+                        std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", and must be within the range [" +
+                        std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " + std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) +
+                        "].";
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "blockSize",
+                                                          std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                    fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                        "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + " in range of [" +
+                            std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                            std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                    return ge::GRAPH_FAILED;
+                }
             } else {
                 // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
-                OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128,
-                        BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if ((fiaInfo.s1Size > NUM1) &&
+                    (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
+                     fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                    return ge::GRAPH_FAILED;
+                }
                 // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-                OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
-                    return ge::GRAPH_FAILED);
+                if ((fiaInfo.s1Size == NUM1) &&
+                    (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                     fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX) + "]");
+                    return ge::GRAPH_FAILED;
+                }
             }
         } else {
             if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
-                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant MLA scenario, when page attention enable, blockSize(%d) should be a multiple of "
-                        "%u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                    fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                    return ge::GRAPH_FAILED;
+                }
             } else if (fiaInfo.qkHeadDim == NUM_64 || fiaInfo.qkHeadDim == NUM_128) { // GQA D =64/128场景 [16, 1024]且16对齐
-                OP_CHECK_IF(fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || 
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA(D = %u) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.qkHeadDim, fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16,
-                        BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                    fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                    return ge::GRAPH_FAILED;
+                }
             } else {
                 // GQA D != 64/128, QS > 1 [128, 1024]且128对齐
-                OP_CHECK_IF((fiaInfo.s1Size > NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT ||
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0),
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA (QS > 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_128, BLOCK_SIZE_ALIGN_SIZE_128,
-                        BLOCK_SIZE_MAX_FOR_NO_QUANT),
-                    return ge::GRAPH_FAILED);
+                if ((fiaInfo.s1Size > NUM1) &&
+                    (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
+                     fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                    return ge::GRAPH_FAILED;
+                }
                 // GQA D != 64/128, QS = 1 [16, 512]且16对齐
-                OP_CHECK_IF((fiaInfo.s1Size == NUM1) && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-                    fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 || fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0),
-                    OP_LOGE(fiaInfo.opName,
-                        "In no quant GQA (QS = 1) scenario, when page attention enable, blockSize(%d) should be a multiple "
-                        "of %u, and should be in range of [%u, %u].",
-                        fiaInfo.blockSize, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_ALIGN_SIZE_16, BLOCK_SIZE_MAX),
-                    return ge::GRAPH_FAILED);
+                if ((fiaInfo.s1Size == NUM1) &&
+                    (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
+                     fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
+                    // TODO: Fix when translation is back
+                    OP_LOGE_WITH_INVALID_ATTR(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+                                                  " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                                                  std::to_string(BLOCK_SIZE_MAX) + "]");
+                    return ge::GRAPH_FAILED;
+                }
             }
         }
     } else if (enableAntiQuant_) {
