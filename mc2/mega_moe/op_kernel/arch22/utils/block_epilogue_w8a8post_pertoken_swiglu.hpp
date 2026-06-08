@@ -227,7 +227,6 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Adds(ubCFp32ChunkN, ubCFp32ChunkN, 1.0f, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
-            // TODO: confirm whether the division impacts subsequent data
             AscendC::Div(ubCFp32ChunkN, ubCFp32, ubCFp32ChunkN, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Mul(ubCFp32ChunkN, ubCFp32ChunkN, ubCFp32[ChunkTileLen], ChunkTileLen);
@@ -243,7 +242,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
 
-            // TODO: compare the efficiency of the two calculation methods
             ElementPerTokenScale GMubDequantScale = ubReduceMax.GetValue(0);
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
 
@@ -262,7 +260,6 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
             AscendC::Cast(ubD, ubQuantF16, AscendC::RoundMode::CAST_RINT, ChunkTileLen);
-            // AscendC::Muls(ubD, ubCFp32ChunkN, 127.f / GMubDequantScale, ChunkTileLen);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
 
             LayoutD layoutUbD{1, ChunkTileLen};
