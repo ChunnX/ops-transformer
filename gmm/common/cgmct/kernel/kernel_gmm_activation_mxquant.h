@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file kernel_gmm_gelu_tanh_mxquant.h
+ * \file kernel_gmm_activation_mxquant.h
  * \brief
  */
 
-#ifndef MATMUL_KERNEL_KERNEL_GMM_GELU_TANH_MXQUANT_H
-#define MATMUL_KERNEL_KERNEL_GMM_GELU_TANH_MXQUANT_H
+#ifndef MATMUL_KERNEL_KERNEL_GMM_ACTIVATION_MXQUANT_H
+#define MATMUL_KERNEL_KERNEL_GMM_ACTIVATION_MXQUANT_H
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -25,7 +25,7 @@
 
 #include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "../block/block_scheduler_utils.h"
-#include "../epilogue/block_epilogue_gelu_tanh_mx_quant.h"
+#include "../epilogue/block_epilogue_activation_mx_quant.h"
 #include "../utils/common_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/grouped_matmul_constant.h"
@@ -61,18 +61,18 @@ constexpr uint64_t SCALE_L1_BUFFER_NUM = 2UL;
 } // namespace
 
 template <class ProblemShape_, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, typename Enable_ = void>
-class KernelGmmGeluTanhMixOnlineDynamic {
+class KernelGmmActivationMixOnlineDynamic {
     static_assert(AscendC::Std::always_false_v<BlockScheduler_>,
-                  "KernelGmmGeluTanhMixOnlineDynamic is not implemented for this scheduler");
+                  "KernelGmmActivationMixOnlineDynamic is not implemented for this scheduler");
 };
 
 template <class ProblemShape_, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
-class KernelGmmGeluTanhMixOnlineDynamic<
+class KernelGmmActivationMixOnlineDynamic<
     ProblemShape_, BlockMmad_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelGmmGeluTanhMixOnlineDynamic() {}
-    __aicore__ inline ~KernelGmmGeluTanhMixOnlineDynamic() {}
+    __aicore__ inline KernelGmmActivationMixOnlineDynamic() {}
+    __aicore__ inline ~KernelGmmActivationMixOnlineDynamic() {}
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmad = BlockMmad_;
@@ -394,4 +394,4 @@ public:
 } // namespace Kernel
 } // namespace Gemm
 } // namespace Cgmct
-#endif // MATMUL_KERNEL_KERNEL_GMM_GELU_TANH_MXQUANT_H
+#endif // MATMUL_KERNEL_KERNEL_GMM_ACTIVATION_MXQUANT_H

@@ -18,9 +18,9 @@ constexpr int64_t DEFAULT_SCALE_ALG = 0;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 } // namespace
 
-class GroupedMatmulGeluTanhQuant : public OpDef {
+class GroupedMatmulActivationQuant : public OpDef {
 public:
-    explicit GroupedMatmulGeluTanhQuant(const char *name) : OpDef(name)
+    explicit GroupedMatmulActivationQuant(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -73,6 +73,7 @@ public:
         this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
+        this->Attr("activation_type").AttrType(REQUIRED).Int();
 
         OpAICoreConfig config950;
         config950.DynamicCompileStaticFlag(true)
@@ -83,10 +84,10 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
-            .ExtendCfgInfo("opFile.value", "grouped_matmul_gelu_tanh_quant_apt");
+            .ExtendCfgInfo("opFile.value", "grouped_matmul_activation_quant_apt");
         this->AICore().AddConfig("ascend950", config950);
     }
 };
 
-OP_ADD(GroupedMatmulGeluTanhQuant);
+OP_ADD(GroupedMatmulActivationQuant);
 } // namespace ops

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file block_epilogue_gelu_tanh_mx_quant.h
+ * \file block_epilogue_activation_mx_quant.h
  * \brief
  */
 
-#ifndef EPILOGUE_BLOCK_EPILOGUE_GELU_TANH_MX_QUANT_H
-#define EPILOGUE_BLOCK_EPILOGUE_GELU_TANH_MX_QUANT_H
+#ifndef EPILOGUE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
+#define EPILOGUE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -88,16 +88,16 @@ static constexpr AscendC::MicroAPI::DivSpecificMode DIV_MODE = {
 static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
-#define QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS                                                             \
+#define QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS                                                             \
     template <typename L0TileShape_, typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_,           \
               typename DataTypeX1Scale_, bool IsTensorList_>
 #define QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                   \
     L0TileShape_, DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-class BlockEpilogueGeluTanhQuant {
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+class BlockEpilogueActivationQuant {
 public:
-    __aicore__ inline BlockEpilogueGeluTanhQuant()
+    __aicore__ inline BlockEpilogueActivationQuant()
     {
     }
 
@@ -112,6 +112,7 @@ public:
         uint32_t roundMode;
         uint32_t scaleAlg;
         float dstTypeMax;
+        uint32_t activationType;
         Arguments() = default;
     };
 
@@ -137,11 +138,11 @@ public:
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    __aicore__ inline void VFDoGeluTanhForMX(uint16_t mSize);
+    __aicore__ inline void VFDoActivationForMX(uint16_t mSize);
     __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN);
 
     template <Gmmsg::QuantMode quantMode>
-    __aicore__ inline void VFDoGeluTanhAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
+    __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                      __ubuf__ DataTypeIn *src, uint16_t mSize, uint16_t nSize);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
@@ -175,7 +176,7 @@ private:
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
     AscendC::LocalTensor<int8_t> quantScaleBlockOutput_;
-    AscendC::LocalTensor<bfloat16_t> geluRes_;
+    AscendC::LocalTensor<bfloat16_t> activationRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
 
@@ -198,9 +199,9 @@ private:
     BlockCoord blockCoord_{0, 0, 0, 0, 0};
 };
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
     if ASCEND_IS_AIC {
         return;
@@ -224,8 +225,8 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
         AscendC::TPosition::VECOUT, afterIn + MAX_SINGLE_MN * sizeof(int8_t), MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t afterIO =
         afterIn + MAX_SINGLE_MN * sizeof(int8_t) + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(int8_t);
-    // GeluTanh res
-    geluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, afterIO, MAX_SINGLE_MN);
+    // Activation res
+    activationRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, afterIO, MAX_SINGLE_MN);
     constexpr uint32_t afterIOAndGlu = afterIO + MAX_SINGLE_MN * sizeof(bfloat16_t);
     // sharedExp
     maxExp_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, afterIOAndGlu,
@@ -240,9 +241,9 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
                                      params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if ASCEND_IS_AIV {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
@@ -250,16 +251,16 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Update
     }
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
     n_ = Get<MNK_N>(problemShape);
     scaleN_ = CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
@@ -269,8 +270,8 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     AscendC::DataCopyPad(quantOutputGlobal_[offset], src, ub2GmParams);
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
@@ -282,8 +283,8 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     AscendC::DataCopyPad(quantScaleGlobal_[offset], src, ub2GmParams);
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExp(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExp(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr, uint32_t totalCountInUB, uint16_t loopNum)
 {
     __VEC_SCOPE__
@@ -327,8 +328,8 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScale(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScale(
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
     uint32_t totalScaleInUB, uint16_t loopNumScale)
 {
@@ -380,8 +381,8 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExpcuBLAS(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExpcuBLAS(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr, uint32_t totalCountInUB, uint16_t loopNum)
 {
     (void)totalCountInUB;
@@ -414,8 +415,8 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScalecuBLAS(
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScalecuBLAS(
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
     uint32_t totalScaleInUB, uint16_t loopNumScale)
 {
@@ -510,9 +511,9 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp8(
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp8(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
     uint32_t totalCountInUB, uint16_t loopNum)
 {
@@ -587,9 +588,9 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 template <Gmmsg::QuantMode quantMode>
-__aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoGeluTanhAndQuantForMX(
+__aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *src, uint16_t mSize, uint16_t nSize)
 {
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
@@ -597,7 +598,7 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat));
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE);
-    __ubuf__ bfloat16_t *geluResAddr = (__ubuf__ bfloat16_t *)geluRes_.GetPhyAddr();
+    __ubuf__ bfloat16_t *activationResAddr = (__ubuf__ bfloat16_t *)activationRes_.GetPhyAddr();
 
     // GELU_TANH
     __VEC_SCOPE__
@@ -624,7 +625,7 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(castOut, actOut, mask);
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    geluResAddr + dstUbOffset, castOut, mask);
+                    activationResAddr + dstUbOffset, castOut, mask);
             }
         }
     }
@@ -641,30 +642,30 @@ __aicore__ inline void BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr();
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
     if (params_->scaleAlg == SCALE_ALG_OCP) {
-        ComputeMaxExp(geluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        ComputeMaxExp(activationResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
     } else {
-        ComputeMaxExpcuBLAS(geluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        ComputeMaxExpcuBLAS(activationResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         ComputeScalecuBLAS(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleCublasNum);
     }
-    ComputeDataForQuantTargetFp8(geluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
+    ComputeDataForQuantTargetFp8(activationResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
     return;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoGeluTanhForMX(uint16_t mSize)
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationForMX(uint16_t mSize)
 {
     __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
     __ubuf__ uint16_t *quantScaleOutputInUbAddr = (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr();
     __ubuf__ DataTypeIn *l0cOutUbFirstAddr = (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr();
-    VFDoGeluTanhAndQuantForMX<Gmmsg::QuantMode::MX_PERGROUP_MODE>(quantOutputInUbAddr, quantScaleOutputInUbAddr,
+    VFDoActivationAndQuantForMX<Gmmsg::QuantMode::MX_PERGROUP_MODE>(quantOutputInUbAddr, quantScaleOutputInUbAddr,
                                                                    l0cOutUbFirstAddr, mSize, singleN_);
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxScaleLayout(uint16_t mSize,
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransMxScaleLayout(uint16_t mSize,
                                                                                            uint16_t scaleBlockN)
 {
     __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr();
@@ -685,15 +686,15 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::TransM
     }
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline auto BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline auto BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
 {
     return l0cOutUbFirst_;
 }
 
-QMM_BLOCK_EPILOGUE_GELU_TANH_QUANT_CLASS_LOCAL_PARAMS
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
                                                                                    const BlockCoord &blockCoord)
 {
     singleM_ = Get<MNK_M>(blockShape);
@@ -712,7 +713,7 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operat
     UBBlockSize_ = BLOCK_SIZE;
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;
 
-    VFDoGeluTanhForMX(singleMInVec);
+    VFDoActivationForMX(singleMInVec);
     uint64_t yOffset = Get<Y_IDX>(blockCoord) + subBlockIdx_ * halfSingleM * n_;
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord) + subBlockIdx_ * halfSingleM * scaleN_;
     TransMxScaleLayout(singleMInVec, scaleBlockN_);
@@ -728,5 +729,5 @@ BlockEpilogueGeluTanhQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operat
 } // namespace Gemm
 } // namespace Cgmct
 
-#endif // EPILOGUE_BLOCK_EPILOGUE_GELU_TANH_QUANT_H
+#endif // EPILOGUE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
 #endif

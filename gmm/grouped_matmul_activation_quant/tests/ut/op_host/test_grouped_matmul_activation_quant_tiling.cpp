@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file test_grouped_matmul_gelu_tanh_quant_tiling.cpp
- * \brief CSV-driven unit tests for GroupedMatmulGeluTanhQuant tiling.
+ * \file test_grouped_matmul_activation_quant_tiling.cpp
+ * \brief CSV-driven unit tests for GroupedMatmulActivationQuant tiling.
  */
 
 #include <gtest/gtest.h>
@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "../../../op_host/op_tiling/arch35/grouped_matmul_gelu_tanh_quant_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_matmul_activation_quant_tiling.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "platform/platform_infos_def.h"
 #include "tiling_case_executor.h"
@@ -44,7 +44,7 @@ struct TensorDescParam {
 constexpr size_t INPUT_TENSOR_COUNT = 5U;
 constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
-constexpr size_t SCALAR_FIELD_COUNT = 17U;
+constexpr size_t SCALAR_FIELD_COUNT = 18U;
 constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
                                                            TENSOR_FIELD_COUNT;
 constexpr uint32_t DEFAULT_L1_SIZE = 1048576U;
@@ -56,7 +56,7 @@ constexpr uint32_t DEFAULT_AIC_NUM = 32U;
 constexpr uint32_t DEFAULT_AIV_NUM = 64U;
 constexpr uint64_t DEFAULT_UB_SIZE = 262144UL;
 
-struct GroupedMatmulGeluTanhQuantTilingCase {
+struct GroupedMatmulActivationQuantTilingCase {
     void Run() const
     {
         if (!enable) {
@@ -68,7 +68,7 @@ struct GroupedMatmulGeluTanhQuantTilingCase {
             tuningConfigVec = {0};
         }
         gert::TilingContextPara tilingContextPara(
-            "GroupedMatmulGeluTanhQuant", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
+            "GroupedMatmulActivationQuant", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
                 {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantDtype)},
                 {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
@@ -78,6 +78,7 @@ struct GroupedMatmulGeluTanhQuantTilingCase {
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tuningConfigVec)},
+                {"activation_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activationType)},
             },
             &compileInfo, socVersion, compileInfo.aicNum, compileInfo.ubSize);
 
@@ -108,6 +109,7 @@ struct GroupedMatmulGeluTanhQuantTilingCase {
     int64_t scaleAlg = 0;
     float dstTypeMax = 0.0F;
     string tuningConfig;
+    int64_t activationType = 0;
     vector<TensorDescParam> inputs;
     vector<TensorDescParam> outputs;
 
@@ -140,11 +142,11 @@ private:
     }
 };
 
-vector<GroupedMatmulGeluTanhQuantTilingCase> LoadCases(const string &socVersion)
+vector<GroupedMatmulActivationQuantTilingCase> LoadCases(const string &socVersion)
 {
-    vector<GroupedMatmulGeluTanhQuantTilingCase> cases;
-    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_gelu_tanh_quant_tiling.csv",
-                                                   "gmm/grouped_matmul_gelu_tanh_quant/tests/ut/op_host", __FILE__);
+    vector<GroupedMatmulActivationQuantTilingCase> cases;
+    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_activation_quant_tiling.csv",
+                                                   "gmm/grouped_matmul_activation_quant/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -167,7 +169,7 @@ vector<GroupedMatmulGeluTanhQuantTilingCase> LoadCases(const string &socVersion)
         const string caseName = items.size() > 1U ? Trim(items[1]) : "";
         try {
             size_t idx = 0U;
-            GroupedMatmulGeluTanhQuantTilingCase tc;
+            GroupedMatmulActivationQuantTilingCase tc;
             tc.socVersion = Trim(items[idx++]);
             if (tc.socVersion != socVersion) {
                 continue;
@@ -191,6 +193,7 @@ vector<GroupedMatmulGeluTanhQuantTilingCase> LoadCases(const string &socVersion)
             tc.scaleAlg = stoll(Trim(items[idx++]));
             tc.dstTypeMax = stof(Trim(items[idx++]));
             tc.tuningConfig = Trim(items[idx++]);
+            tc.activationType = stoll(Trim(items[idx++]));
 
             for (size_t tensorIdx = 0U; tensorIdx < INPUT_TENSOR_COUNT; ++tensorIdx) {
                 tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
@@ -210,33 +213,33 @@ vector<GroupedMatmulGeluTanhQuantTilingCase> LoadCases(const string &socVersion)
     return cases;
 }
 
-string MakeParamName(const testing::TestParamInfo<GroupedMatmulGeluTanhQuantTilingCase> &info)
+string MakeParamName(const testing::TestParamInfo<GroupedMatmulActivationQuantTilingCase> &info)
 {
     return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace
 
-namespace GroupedMatmulGeluTanhQuantTilingUT {
+namespace GroupedMatmulActivationQuantTilingUT {
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulGeluTanhQuantTiling950);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulActivationQuantTiling950);
 
-const vector<GroupedMatmulGeluTanhQuantTilingCase> &GetAscend950Cases()
+const vector<GroupedMatmulActivationQuantTilingCase> &GetAscend950Cases()
 {
-    static const vector<GroupedMatmulGeluTanhQuantTilingCase> cases = LoadCases("Ascend950");
+    static const vector<GroupedMatmulActivationQuantTilingCase> cases = LoadCases("Ascend950");
     return cases;
 }
 
-class TestGroupedMatmulGeluTanhQuantTiling950 :
-    public testing::TestWithParam<GroupedMatmulGeluTanhQuantTilingCase> {
+class TestGroupedMatmulActivationQuantTiling950 :
+    public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {
 };
 
-TEST_P(TestGroupedMatmulGeluTanhQuantTiling950, csvDrivenCase)
+TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(GMM_GELU_TANH_QUANT_TILING_950, TestGroupedMatmulGeluTanhQuantTiling950,
+INSTANTIATE_TEST_SUITE_P(GMM_ACTIVATION_QUANT_TILING_950, TestGroupedMatmulActivationQuantTiling950,
                          testing::ValuesIn(GetAscend950Cases()), MakeParamName);
 
-} // namespace GroupedMatmulGeluTanhQuantTilingUT
+} // namespace GroupedMatmulActivationQuantTilingUT

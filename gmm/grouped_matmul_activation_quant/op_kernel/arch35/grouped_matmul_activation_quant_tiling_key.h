@@ -8,30 +8,30 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef __OP_KERNEL_GROUPED_MATMUL_GELU_TANH_QUANT_TILING_KEY_H__
-#define __OP_KERNEL_GROUPED_MATMUL_GELU_TANH_QUANT_TILING_KEY_H__
+#ifndef __OP_KERNEL_GROUPED_MATMUL_ACTIVATION_QUANT_TILING_KEY_H__
+#define __OP_KERNEL_GROUPED_MATMUL_ACTIVATION_QUANT_TILING_KEY_H__
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-#define GMM_GELU_TANH_QUANT_NO_TRANS 0
-#define GMM_GELU_TANH_QUANT_TRANS 1
+#define GMM_ACTIVATION_QUANT_NO_TRANS 0
+#define GMM_ACTIVATION_QUANT_TRANS 1
 
-ASCENDC_TPL_ARGS_DECL(GroupedMatmulGeluTanhQuant,
+ASCENDC_TPL_ARGS_DECL(GroupedMatmulActivationQuant,
                       ASCENDC_TPL_UINT_DECL(QUANT_B_TRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
-                                            GMM_GELU_TANH_QUANT_NO_TRANS, GMM_GELU_TANH_QUANT_TRANS),
+                                            GMM_ACTIVATION_QUANT_NO_TRANS, GMM_ACTIVATION_QUANT_TRANS),
                       ASCENDC_TPL_UINT_DECL(QUANT_A_TRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
-                                            GMM_GELU_TANH_QUANT_NO_TRANS, GMM_GELU_TANH_QUANT_TRANS));
+                                            GMM_ACTIVATION_QUANT_NO_TRANS, GMM_ACTIVATION_QUANT_TRANS));
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANT_B_TRANS, ASCENDC_TPL_UI_LIST,
-                                             GMM_GELU_TANH_QUANT_NO_TRANS),
+                                             GMM_ACTIVATION_QUANT_NO_TRANS),
                          ASCENDC_TPL_UINT_SEL(QUANT_A_TRANS, ASCENDC_TPL_UI_LIST,
-                                             GMM_GELU_TANH_QUANT_NO_TRANS)),
+                                             GMM_ACTIVATION_QUANT_NO_TRANS)),
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANT_B_TRANS, ASCENDC_TPL_UI_LIST,
-                                             GMM_GELU_TANH_QUANT_TRANS),
+                                             GMM_ACTIVATION_QUANT_TRANS),
                          ASCENDC_TPL_UINT_SEL(QUANT_A_TRANS, ASCENDC_TPL_UI_LIST,
-                                             GMM_GELU_TANH_QUANT_NO_TRANS)));
+                                             GMM_ACTIVATION_QUANT_NO_TRANS)));
 
 #endif

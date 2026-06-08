@@ -9,23 +9,23 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    set(grouped_matmul_gelu_tanh_quant_depends gmm/common gmm/grouped_matmul CACHE INTERNAL
-        "Dependencies for grouped_matmul_gelu_tanh_quant")
-    set(grouped_matmul_gelu_tanh_quant_apt_depends gmm/common gmm/grouped_matmul CACHE INTERNAL
-        "Dependencies for grouped_matmul_gelu_tanh_quant_apt")
+    set(grouped_matmul_activation_quant_depends gmm/common gmm/grouped_matmul CACHE INTERNAL
+        "Dependencies for grouped_matmul_activation_quant")
+    set(grouped_matmul_activation_quant_apt_depends gmm/common gmm/grouped_matmul CACHE INTERNAL
+        "Dependencies for grouped_matmul_activation_quant_apt")
     target_sources(op_host_aclnnExc PRIVATE
-        grouped_matmul_gelu_tanh_quant_def.cpp
+        grouped_matmul_activation_quant_def.cpp
     )
 endif()
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
-        OP_NAME GroupedMatmulGeluTanhQuant
+        OP_NAME GroupedMatmulActivationQuant
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
     )
 else()
     add_modules_sources(
-        OPTYPE grouped_matmul_gelu_tanh_quant ACLNNTYPE aclnn_exclude)
+        OPTYPE grouped_matmul_activation_quant ACLNNTYPE aclnn_exclude)
 endif()

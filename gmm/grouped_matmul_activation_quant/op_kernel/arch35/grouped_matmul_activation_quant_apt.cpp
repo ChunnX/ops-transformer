@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file grouped_matmul_gelu_tanh_quant_apt.cpp
+ * \file grouped_matmul_activation_quant_apt.cpp
  * \brief
  */
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "grouped_matmul_gelu_tanh_quant_mxquant.h"
-#include "grouped_matmul_gelu_tanh_quant_tiling_key.h"
+#include "grouped_matmul_activation_quant_mxquant.h"
+#include "grouped_matmul_activation_quant_tiling_key.h"
 
 namespace {
 constexpr uint32_t FLOAT_OVERFLOW_MODE_CTRL = 60U;
@@ -27,20 +27,20 @@ using namespace AscendC;
 using namespace matmul;
 
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
-__global__ __aicore__ void grouped_matmul_gelu_tanh_quant(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList,
+__global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList,
                                                           GM_ADDR weight, GM_ADDR weightScale, GM_ADDR y,
                                                           GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe tPipe;
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
-    if (QUANT_B_TRANS == GMM_GELU_TANH_QUANT_NO_TRANS &&
-        QUANT_A_TRANS == GMM_GELU_TANH_QUANT_NO_TRANS) {
-        GmmGeluTanhMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+    if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS &&
+        QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
+        GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
             x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
-    } else if (QUANT_B_TRANS == GMM_GELU_TANH_QUANT_TRANS &&
-               QUANT_A_TRANS == GMM_GELU_TANH_QUANT_NO_TRANS) {
-        GmmGeluTanhMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+    } else if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_TRANS &&
+               QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
+        GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
             x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);

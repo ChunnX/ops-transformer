@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GROUPED_MATMUL_GELU_TANH_QUANT_TILING_H
-#define GROUPED_MATMUL_GELU_TANH_QUANT_TILING_H
+#ifndef GROUPED_MATMUL_ACTIVATION_QUANT_TILING_H
+#define GROUPED_MATMUL_ACTIVATION_QUANT_TILING_H
 
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
@@ -21,9 +21,10 @@
 namespace optiling {
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
 
-BEGIN_TILING_DATA_DEF(GMMGeluTanhQuantParams)
+BEGIN_TILING_DATA_DEF(GMMActivationQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
+TILING_DATA_FIELD_DEF(uint8_t, activationType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, roundMode);
 TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
@@ -32,23 +33,23 @@ TILING_DATA_FIELD_DEF(uint32_t, rowLen);
 TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
 TILING_DATA_FIELD_DEF(float, dstTypeMax);
 END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMGeluTanhQuantParamsOp, GMMGeluTanhQuantParams)
+REGISTER_TILING_DATA_CLASS(GMMActivationQuantParamsOp, GMMActivationQuantParams)
 
-BEGIN_TILING_DATA_DEF(GMMGeluTanhQuantTilingDataParams)
-TILING_DATA_FIELD_DEF_STRUCT(GMMGeluTanhQuantParams, gmmGeluTanhQuantParams);
+BEGIN_TILING_DATA_DEF(GMMActivationQuantTilingDataParams)
+TILING_DATA_FIELD_DEF_STRUCT(GMMActivationQuantParams, gmmActivationQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(QuantBasicApiMMTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(GroupedMatmulGeluTanhQuant_0, GMMGeluTanhQuantTilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulGeluTanhQuant_1, GMMGeluTanhQuantTilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulActivationQuant_0, GMMActivationQuantTilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulActivationQuant_1, GMMActivationQuantTilingDataParams)
 
-class GroupedMatmulGeluTanhQuantTiling950 : public GroupedQmmBasicApiTiling {
+class GroupedMatmulActivationQuantTiling950 : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedMatmulGeluTanhQuantTiling950(gert::TilingContext *context) : GroupedQmmBasicApiTiling(context)
+    explicit GroupedMatmulActivationQuantTiling950(gert::TilingContext *context) : GroupedQmmBasicApiTiling(context)
     {
         Reset();
     }
-    ~GroupedMatmulGeluTanhQuantTiling950() override = default;
+    ~GroupedMatmulActivationQuantTiling950() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -68,6 +69,7 @@ protected:
 private:
     static constexpr uint8_t DEFAULT_ROUND_MODE_RINT = 4;
     static constexpr uint8_t DEFAULT_SCALE_ALG_OCP = 0;
+    static constexpr uint8_t DEFAULT_ACTIVATION_TYPE_GELU_TANH = 2;
     static constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 
     bool AnalyzeAttrs() override;
@@ -79,9 +81,10 @@ private:
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
     bool IsFp8(ge::DataType dtype) const;
 
-    GMMGeluTanhQuantTilingDataParams tilingData_;
+    GMMActivationQuantTilingDataParams tilingData_;
     uint8_t roundMode_ = DEFAULT_ROUND_MODE_RINT;
     uint8_t scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
+    uint8_t activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     ge::DataType quantDtype_ = ge::DT_FLOAT8_E4M3FN;
 };

@@ -36,7 +36,7 @@ constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 5;
 constexpr int64_t DYNAMIC_DIM = -1;
 } // namespace
 
-static ge::graphStatus InferShape4GroupedMatmulGeluTanhQuant(gert::InferShapeContext *context)
+static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeContext *context)
 {
     const gert::Shape *xShape = context->GetInputShape(X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -71,7 +71,7 @@ static ge::graphStatus InferShape4GroupedMatmulGeluTanhQuant(gert::InferShapeCon
     return GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataType4GroupedMatmulGeluTanhQuant(gert::InferDataTypeContext *context)
+static graphStatus InferDataType4GroupedMatmulActivationQuant(gert::InferDataTypeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     auto attrs = context->GetAttrs();
@@ -83,7 +83,7 @@ static graphStatus InferDataType4GroupedMatmulGeluTanhQuant(gert::InferDataTypeC
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(GroupedMatmulGeluTanhQuant)
-    .InferShape(InferShape4GroupedMatmulGeluTanhQuant)
-    .InferDataType(InferDataType4GroupedMatmulGeluTanhQuant);
+IMPL_OP_INFERSHAPE(GroupedMatmulActivationQuant)
+    .InferShape(InferShape4GroupedMatmulActivationQuant)
+    .InferDataType(InferDataType4GroupedMatmulActivationQuant);
 } // namespace ops

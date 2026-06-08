@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "grouped_matmul_gelu_tanh_quant_tiling.h"
+#include "grouped_matmul_activation_quant_tiling.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,7 +20,7 @@
 #include "platform/platform_infos_def.h"
 #include "register/op_def_registry.h"
 #include "util/math_util.h"
-#include "../../../op_kernel/arch35/grouped_matmul_gelu_tanh_quant_tiling_key.h"
+#include "../../../op_kernel/arch35/grouped_matmul_activation_quant_tiling_key.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace optiling::GmmConstant;
@@ -41,6 +41,7 @@ constexpr uint32_t ATTR_INDEX_SCALE_ALG = 3;
 constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 4;
 constexpr uint32_t ATTR_INDEX_TRANS_W = 5;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 6;
+constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 8;
 constexpr uint32_t WEIGHT_NZ_DIM_NUM = 5;
 constexpr uint32_t X_SCALE_M_DIM_INDEX = 0;
 constexpr uint32_t X_SCALE_K_BLOCK_DIM_INDEX = 1;
@@ -60,28 +61,29 @@ constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
+constexpr int64_t ACTIVATION_TYPE_GELU_TANH = 2;
 constexpr uint64_t MAX_BASE_M = 128UL;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 constexpr float FLOAT_EPS = 1e-6f;
 } // namespace
 
-void GroupedMatmulGeluTanhQuantTiling950::Reset()
+void GroupedMatmulActivationQuantTiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
 }
 
-ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::GetShapeAttrsInfo()
+ge::graphStatus GroupedMatmulActivationQuantTiling950::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
     return GroupedQmmBasicApiTiling::GetShapeAttrsInfo();
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::IsFp8(ge::DataType dtype) const
+bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
 {
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeAttrs()
+bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
@@ -100,8 +102,9 @@ bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeAttrs()
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
     const float *dstTypeMaxPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_DST_TYPE_MAX);
+    const int64_t *activationTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_ACTIVATION_TYPE);
     OP_CHECK_IF(dequantDtypePtr == nullptr || quantDtypePtr == nullptr || roundModePtr == nullptr ||
-                    scaleAlgPtr == nullptr || dstTypeMaxPtr == nullptr,
+                    scaleAlgPtr == nullptr || dstTypeMaxPtr == nullptr || activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto dequantDtype = static_cast<ge::DataType>(*dequantDtypePtr);
     auto quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
@@ -117,15 +120,18 @@ bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "mxfp8 only supports scale_alg 0 or 1."), return false);
     OP_CHECK_IF(std::abs(*dstTypeMaxPtr - DEFAULT_DST_TYPE_MAX) > FLOAT_EPS,
                 OP_LOGE(context_->GetNodeName(), "mxfp8 only supports dst_type_max 0.0."), return false);
+    OP_CHECK_IF(*activationTypePtr != ACTIVATION_TYPE_GELU_TANH,
+                OP_LOGE(context_->GetNodeName(), "activation_type only supports GELU_TANH(2)."), return false);
     roundMode_ = ROUND_MODE_RINT;
     scaleAlg_ = static_cast<uint8_t>(*scaleAlgPtr);
+    activationType_ = static_cast<uint8_t>(*activationTypePtr);
     dstTypeMax_ = *dstTypeMaxPtr;
     quantDtype_ = quantDtype;
     inputParams_.groupType = GroupedMatmul::SPLIT_M;
     return true;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::CheckDtype() const
+bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
 {
     OP_CHECK_IF(!IsFp8(inputParams_.aDtype) || !IsFp8(inputParams_.bDtype),
                 OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
@@ -143,7 +149,7 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckDtype() const
     return true;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeDtype()
+bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     auto wDesc = context_->GetInputDesc(WEIGHT_INDEX);
@@ -164,7 +170,7 @@ bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeDtype()
     return CheckDtype();
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::CheckMxScaleShape(const gert::Shape &xScaleShape,
+bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape &xScaleShape,
                                                             const gert::Shape &wScaleShape) const
 {
     OP_CHECK_IF(xScaleShape.GetDimNum() != MXFP_PER_TOKEN_SCALE_DIM_NUM ||
@@ -191,7 +197,7 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckMxScaleShape(const gert::Shape &x
     return true;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::CheckWeightNzShape(const gert::Shape &wStorageShape) const
+bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape &wStorageShape) const
 {
     OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE(context_->GetNodeName(), "weight must use FRACTAL_NZ format."), return false);
@@ -204,7 +210,7 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckWeightNzShape(const gert::Shape &
     return true;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeInputs()
+bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
@@ -229,7 +235,7 @@ bool GroupedMatmulGeluTanhQuantTiling950::AnalyzeInputs()
     return true;
 }
 
-bool GroupedMatmulGeluTanhQuantTiling950::CheckCoreNum() const
+bool GroupedMatmulActivationQuantTiling950::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GMMCompileInfo>();
     if (compileInfo == nullptr) {
@@ -242,20 +248,21 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckCoreNum() const
     return true;
 }
 
-ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoOpTiling()
+ge::graphStatus GroupedMatmulActivationQuantTiling950::DoOpTiling()
 {
-    tilingData_.gmmGeluTanhQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
-    tilingData_.gmmGeluTanhQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
-    tilingData_.gmmGeluTanhQuantParams.set_quantDtype(
+    tilingData_.gmmActivationQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
+    tilingData_.gmmActivationQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
+    tilingData_.gmmActivationQuantParams.set_activationType(activationType_);
+    tilingData_.gmmActivationQuantParams.set_quantDtype(
         inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE);
-    tilingData_.gmmGeluTanhQuantParams.set_roundMode(roundMode_);
-    tilingData_.gmmGeluTanhQuantParams.set_dequantDtype(static_cast<uint8_t>(ge::DT_FLOAT));
-    tilingData_.gmmGeluTanhQuantParams.set_scaleAlg(scaleAlg_);
-    tilingData_.gmmGeluTanhQuantParams.set_dstTypeMax(dstTypeMax_);
+    tilingData_.gmmActivationQuantParams.set_roundMode(roundMode_);
+    tilingData_.gmmActivationQuantParams.set_dequantDtype(static_cast<uint8_t>(ge::DT_FLOAT));
+    tilingData_.gmmActivationQuantParams.set_scaleAlg(scaleAlg_);
+    tilingData_.gmmActivationQuantParams.set_dstTypeMax(dstTypeMax_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoLibApiTiling()
+ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
     auto baseMModified = std::min(basicTiling_.baseM, MAX_BASE_M);
@@ -281,13 +288,13 @@ ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t GroupedMatmulGeluTanhQuantTiling950::GetTilingKey() const
+uint64_t GroupedMatmulActivationQuantTiling950::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB),
                               static_cast<uint64_t>(inputParams_.transA));
 }
 
-ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::GetWorkspaceSize()
+ge::graphStatus GroupedMatmulActivationQuantTiling950::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
@@ -295,14 +302,14 @@ ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::PostTiling()
+ge::graphStatus GroupedMatmulActivationQuantTiling950::PostTiling()
 {
     return SaveTilingDataToContext(tilingData_);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulGeluTanhQuant, GroupedMatmulGeluTanhQuantTiling950, 0);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulActivationQuant, GroupedMatmulActivationQuantTiling950, 0);
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGroupedMatmulGeluTanhQuant(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGroupedMatmulActivationQuant(gert::TilingParseContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     auto platformInfoPtr = context->GetPlatformInfo();
@@ -323,15 +330,15 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGroupedMatmulGeluTanhQuant(gert
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GroupedMatmulGeluTanhQuantTilingFunc(gert::TilingContext *context)
+static ge::graphStatus GroupedMatmulActivationQuantTilingFunc(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("GroupedMatmulGeluTanhQuant", "tiling context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("GroupedMatmulActivationQuant", "tiling context is nullptr."),
                 return ge::GRAPH_FAILED);
     std::vector<int32_t> registerList = {0};
     return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
 }
 
-IMPL_OP_OPTILING(GroupedMatmulGeluTanhQuant)
-    .Tiling(GroupedMatmulGeluTanhQuantTilingFunc)
-    .TilingParse<GMMCompileInfo>(TilingPrepareForGroupedMatmulGeluTanhQuant);
+IMPL_OP_OPTILING(GroupedMatmulActivationQuant)
+    .Tiling(GroupedMatmulActivationQuantTilingFunc)
+    .TilingParse<GMMCompileInfo>(TilingPrepareForGroupedMatmulActivationQuant);
 } // namespace optiling
