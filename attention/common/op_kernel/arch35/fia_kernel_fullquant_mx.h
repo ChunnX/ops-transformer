@@ -622,8 +622,8 @@ public:
                 bandHeadIntraSkip = ((intraBlockOffset - S2_SPLIT) / MXFP_ALIGN) * MXFP_ALIGN;
             } else {
                 bandHeadSkipOffset = 0U;
-                // bandHeadIntraSkip = 0U;  // disabled for double subLoop until validated
-                bandHeadIntraSkip = (bandHeadSkipOffset / MXFP_ALIGN) * MXFP_ALIGN;
+                // Intra-subLoop waste within subLoop 0 (double subLoop path)
+                bandHeadIntraSkip = (intraBlockOffset / MXFP_ALIGN) * MXFP_ALIGN;
             }
         }
 

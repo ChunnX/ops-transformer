@@ -1035,7 +1035,9 @@ public:
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
-            // Band head intra-skip: reduce V copy/BMM2 for k=0
+            // Band head intra-skip: BMM1 shifted CopyKey by intraSkip, so P columns start from
+            // token (s2Idx+intraSkip). V must also shift to align with P.
+            // P offset stays at 0 (valid data begins at column 0 in L1).
             uint32_t mm2IntraSkip = 0U;
             if (k == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < realK) {
                 mm2IntraSkip = runInfo.bandHeadIntraSkip;
@@ -1060,10 +1062,9 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            uint64_t pL1Offset = k * l1BaseKOffset + static_cast<uint64_t>(mm2IntraSkip) * mBaseSize;
             MatmulFull<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[pL1Offset],
+                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
