@@ -91,8 +91,10 @@ __aicore__ inline void GMMA8W4PreProcess::Init(GM_ADDR x, GM_ADDR y, GM_ADDR gro
     constexpr int BUFFER_SIZE_256B = 128 * sizeof(int16_t);
     pipe->InitBuffer(vecOutQueue0F, BUFFER_NUM_A8W4_PRE, BUFFER_SIZE_256B); // 256 B
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
-    pipe->InitBuffer(vecInQueueG, BUFFER_NUM_A8W4_PRE, Ceil(groupNum * sizeof(int64_t), DATA_BLOCK_SIZE_32));
-    pipe->InitBuffer(vecInQueueGF, BUFFER_NUM_A8W4_PRE, Ceil(groupNum * sizeof(float), DATA_BLOCK_SIZE_32));
+    pipe->InitBuffer(vecInQueueG, BUFFER_NUM_A8W4_PRE,
+        Ceil(groupNum * sizeof(int64_t), DATA_BLOCK_SIZE_32) * DATA_BLOCK_SIZE_32);
+    pipe->InitBuffer(vecInQueueGF, BUFFER_NUM_A8W4_PRE,
+        Ceil(groupNum * sizeof(float), DATA_BLOCK_SIZE_32) * DATA_BLOCK_SIZE_32);
     pipe->InitBuffer(vecInWork, BUFFER_NUM_A8W4_PRE, BUFFER_SIZE_256B * sizeof(float));
 
     if (withOffset == WITH_OFFSET) {
