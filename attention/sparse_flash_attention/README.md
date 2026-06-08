@@ -132,7 +132,7 @@
     <tr>
       <td>layoutKv</td>
       <td>可选属性</td>
-      <td>标识输入key的数据排布格式，默认值为"BSND"，支持传入TND、BSND和PA_BSND，其中PA_BSND在使能PageAttention时使用。</td>
+      <td>标识输入key的数据排布格式，默认值为"BSND"，支持传入TND、BSND和PA_BSND，其中PA_BSND在开启PageAttention时使用。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>

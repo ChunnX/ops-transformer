@@ -357,7 +357,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>不支持空Tensor。</li>
             <li>query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。</li>
             <li>query左padding场景queryPaddingSizeOptional小于0时将被置为0。</li>
-            <li>query左padding场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。</li>
+            <li>query左padding场景需要与actualSeqLengths参数一起开启，否则默认为query右padding场景。</li>
             <li>仅支持Q_S&gt;1的场景，其余场景该参数无效。</li>
         </ul>
         </td>
@@ -375,7 +375,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>不支持空Tensor。</li>
             <li>kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。</li>
             <li>kv左padding场景kvPaddingSize小于0时将被置为0。</li>
-            <li>kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。</li>
+            <li>kv左padding场景需要与actualSeqLengths参数一起开启，否则默认为kv右padding场景。</li>
             <li>不支持Q为BF16/FP16、KV为INT4(INT32)的场景。</li>
         </ul>
         </td>
@@ -975,7 +975,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 <summary><a id="PagedAttention"></a>PagedAttention</summary>
 
-- PagedAttention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
+- PagedAttention的开启必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -997,7 +997,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td rowspan="2">PagedAttention</td>
             <td>blockSize</td>
-            <td>在使能PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
+            <td>在开启PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
             Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024;<br>
             GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；<br>
             其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512。</td>
@@ -1014,7 +1014,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>
             支持key、value dtype为FLOAT16/BFLOAT16/INT8。
             PagedAttention场景下，支持的KV Cache layout有BnBsH（BlockNum，BlockSize，H）、BnNBsD（BlockNum，N，BlockSize，D）、NZ（BlockNum，N，D/16，BlockSize，16），支持Q的layout（BSH/BSND、BNSD、TND、NTD）交叉。</td>
-            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
+            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
         </tr>
         <tr>
             <td>actualSeqLengthsKv</td>
@@ -1037,8 +1037,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 <blockquote>
 BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。<br>
-当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。<br>
-如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。
+当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。<br>
+如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。
 </blockquote>
 
 <div style="overflow-x: auto;">
@@ -1318,7 +1318,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>
                     <ul>
                     <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
-                    <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
+                    <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部开启）：</li>
                         <ul>
                         <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
                         <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
@@ -2019,11 +2019,11 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 </td>
             </tr>
             <tr>
-                <td colspan="2">query左padding场景不支持PagedAttention，不能与blocktable参数一起使能。</td>
+                <td colspan="2">query左padding场景不支持PagedAttention，不能与blocktable参数一起开启。</td>
             </tr>
             <tr>
                 <td rowspan="1">kv左padding场景：</td>
-                <td colspan="2">kv左padding场景不支持PagedAttention，不能与blocktable参数一起使能。</td>
+                <td colspan="2">kv左padding场景不支持PagedAttention，不能与blocktable参数一起开启。</td>
             </tr>
             <tr>
                 <td rowspan="3">INT8量化场景</td>
@@ -2109,10 +2109,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>blockTable</td>
                 <td>
                 <ul>
-                    <li>使能Attention Mask，当sparseMode不为2,3,4时，传入Mask的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能pseShift，传入pseShift的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能伪量化per-token模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能per-token叠加per-head模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize，数据类型固定为FLOAT32。（当key、value数据类型为INT8、INT4(INT32)时支持。）</li>
+                    <li>开启Attention Mask，当sparseMode不为2,3,4时，传入Mask的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启pseShift，传入pseShift的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启伪量化per-token模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启per-token叠加per-head模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize，数据类型固定为FLOAT32。（当key、value数据类型为INT8、INT4(INT32)时支持。）</li>
                 </ul>
                 </td>
             </tr>
@@ -2124,7 +2124,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <tr>
                 <td rowspan="2">kv左padding场景</td>
                 <td>attenMaskOptional</td>
-                <td>kv左padding场景与attenMaskOptional参数一起使能时，需要保证attenMaskOptional含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。</td>
+                <td>kv左padding场景与attenMaskOptional参数一起开启时，需要保证attenMaskOptional含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。</td>
             </tr>
             <tr>
                 <td colspan="2">kv左padding场景不支持PagedAttention、tensorlist，否则默认为kv右padding场景。</td>
