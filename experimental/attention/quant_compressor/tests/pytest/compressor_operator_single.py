@@ -90,7 +90,13 @@ def output_operator(params):
             S_max = max(start_pos) + Seq_len
         else:
             S_max = Seq_len
-    print(f"params = {params}")
+    print(f"params: batch_size={batch_size}, hidden_size={hidden_size}, Seq_len={Seq_len}, head_dim={head_dim}, "
+          f"block_size={block_size}, rope_head_dim={rope_head_dim}, cmp_ratio={cmp_ratio}, coff={coff}, "
+          f"norm_eps={norm_eps}, start_p={start_p}, rotary_mode={rotary_mode}, cache_mode={cache_mode}, "
+          f"layout_x={layout_x}, data_type={data_type}, cu_seqlens={cu_seqlens}, seqused={seqused}, start_pos={start_pos}, "
+          f"x_datarange={x_datarange}, wkv_datarange={wkv_datarange}, wgate_datarange={wgate_datarange}, "
+          f"ape_datarange={ape_datarange}, norm_weight_datarange={norm_weight_datarange}, "
+          f"kv_state_datarange={kv_state_datarange}, score_state_datarange={score_state_datarange}")
 
     run_compressor_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = Seq_len, start_pos = start_pos, \
     seqused = seqused, cu_seqlens = cu_seqlens, block_size = block_size, rotary_mode = rotary_mode, cache_mode = cache_mode, data_type = data_type, \
