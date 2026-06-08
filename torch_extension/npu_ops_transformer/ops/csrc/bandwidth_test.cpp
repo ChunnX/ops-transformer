@@ -44,7 +44,8 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
         y = at::empty({max_recv_cnt, h}, x.options());
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
-
+    std::string group_str = std::string(group);
+    std::string comm_alg_str = std::string(comm_alg);
     char *group_ptr = const_cast<char *>(group.c_str());
     char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
