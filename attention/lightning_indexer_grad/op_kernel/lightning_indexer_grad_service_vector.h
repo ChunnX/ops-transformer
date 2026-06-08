@@ -215,55 +215,46 @@ __aicore__ inline void LIGVector<LIGT>::GatherTopk(GlobalTensor<int32_t> sparseI
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
 
-    constexpr uint8_t splitDataCopyLen = 8;
-    for (uint64_t i = loopBegin; i < loopEnd; ) {
-        uint64_t chunkStart = i;
-        uint64_t chunkIdx = (chunkStart - loopBegin) / splitDataCopyLen;
-        event_t eventIdMte2ToMTE3PingPong = (chunkIdx & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
-        event_t eventIdMte3ToMTE2PingPong = (chunkIdx & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
-        LocalTensor<dataType> &gatherPingPongUb = (chunkIdx & 1) ? gatherPingUb : gatherPongUb;
-
-        uint64_t chunkEnd = chunkStart + splitDataCopyLen;
-        if (chunkEnd > loopEnd) {
-            chunkEnd = loopEnd;
+    uint64_t pingPongOffset = 0;
+    uint8_t splitDataCopyLen = 8;
+    for (uint64_t i = loopBegin, cnt = 0; i < loopEnd; i++, cnt++) {
+        event_t eventIdMte2ToMTE3PingPong = ((cnt / splitDataCopyLen) & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
+        event_t eventIdMte3ToMTE2PingPong = ((cnt / splitDataCopyLen) & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
+        LocalTensor<dataType> &gatherPingPongUb = ((cnt / splitDataCopyLen) & 1) ? gatherPingUb : gatherPongUb;
+        int64_t singleIndice = indiceUb.GetValue(i);
+        bool isDualPrefetch = (i + 1 < loopEnd) && (indiceUb.GetValue(i + 1) == singleIndice + 1)
+            && ((cnt % splitDataCopyLen) < splitDataCopyLen - 1);
+        uint64_t copyLen = isDualPrefetch ? (2 * constInfo.headDim) : constInfo.headDim;
+        // [B, S2, N2, D]
+        uint64_t keyOffset = 0;
+        if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+            keyOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +
+                singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
+        } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+            keyOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +
+                singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
         }
-
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
-
-        uint64_t chunkPos = 0;
-        for (; i < chunkEnd; ) {
-            int64_t idx0 = indiceUb.GetValue(i);
-            uint64_t keyOffset0 = 0;
-            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                keyOffset0 = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +
-                    idx0 * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
-            } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-                keyOffset0 = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +
-                    idx0 * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
-            }
-
-            bool merged = false;
-            if (constInfo.headNumK == 1 && i + 1 < chunkEnd) {
-                int64_t idx1 = indiceUb.GetValue(i + 1);
-                merged = (idx1 == idx0 + 1);
-            }
-
-            uint64_t ubOffset = chunkPos * constInfo.headDim;
-            if (merged) {
-                DataCopy(gatherPingPongUb[ubOffset], keyTensor[keyOffset0], 2 * constInfo.headDim);
-                chunkPos += 2;
-                i += 2;
-            } else {
-                DataCopy(gatherPingPongUb[ubOffset], keyTensor[keyOffset0], constInfo.headDim);
-                chunkPos += 1;
-                i += 1;
+        pingPongOffset = cnt % splitDataCopyLen * constInfo.headDim;
+        if ((cnt % splitDataCopyLen == 0) || (i == loopBegin)) {
+            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
+        }
+        DataCopy(gatherPingPongUb[pingPongOffset], keyTensor[keyOffset], copyLen);
+        // 新增：连续时跳过已合并的下一个索引
+        if (isDualPrefetch) {
+            i++;
+            cnt++;
+        }
+        if (((cnt + 1) % splitDataCopyLen == 0) || (i >= loopEnd - 1)) {
+            uint64_t gatherKOffset = (loopBegin + cnt / splitDataCopyLen * splitDataCopyLen) * constInfo.headDim;
+            uint64_t splitNum = ((cnt + 1) % splitDataCopyLen == 0) ? splitDataCopyLen : ((cnt + 1) % splitDataCopyLen);
+            if (splitNum > 0) {
+                AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+                AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+                // [BW-Opt] 批量 MTE3 写回：一次大 DataCopy 合并 splitDataCopyLen 行
+                DataCopy(gatherKTensor[gatherKOffset], gatherPingPongUb, constInfo.headDim * splitNum);
+                AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
             }
         }
-
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-        DataCopy(gatherKTensor[chunkStart * constInfo.headDim], gatherPingPongUb, chunkPos * constInfo.headDim);
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
     }
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
@@ -299,68 +290,60 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
 
-    uint64_t processed = 0;
+    uint64_t batch = 0;  // 批次计数，每处理一个批次（可能含1或2个索引）递增1
     for (uint64_t i = loopBegin; i < loopEnd; ) {
-        event_t eventIdMte2ToMTE3PingPong = (processed & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
-        event_t eventIdMte3ToMTE2PingPong = (processed & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
-        LocalTensor<float> &gatherPingPongUb = (processed & 1) ? gatherPingUb : gatherPongUb;
+        // 检查是否可以合并下一个索引
+        bool canMerge = (i + 1 < loopEnd) && (indiceUb.GetValue(i + 1) == indiceUb.GetValue(i) + 1);
+        uint64_t copyLen = canMerge ? (2 * constInfo.headDim) : constInfo.headDim;
+        uint64_t step = canMerge ? 2 : 1;
 
-        int64_t idx0 = indiceUb.GetValue(i);
-        uint64_t scatterAddOffset = i * constInfo.headDim;
+        // 根据 batch 奇偶选择 ping/pong buffer 及事件 ID
+        event_t eventIdMte2ToMTE3 = (batch & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
+        event_t eventIdMte3ToMTE2 = (batch & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
+        LocalTensor<float> &gatherPingPongUb = (batch & 1) ? gatherPingUb : gatherPongUb;
 
-        bool merged = false;
-        if (i + 1 < loopEnd) {
-            int64_t idx1 = indiceUb.GetValue(i + 1);
-            if (idx1 == idx0 + 1) {
-                if (unlikely(constInfo.deterministic)) {
-                    merged = true;
-                } else {
-                    merged = (constInfo.headNumK == 1);
-                }
-            }
-        }
+        // 等待上次对该 buffer 的写回完成
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
 
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
-        if (merged) {
-            DataCopy(gatherPingPongUb, scatterAddTensor[scatterAddOffset], 2 * constInfo.headDim);
-        } else {
-            DataCopy(gatherPingPongUb, scatterAddTensor[scatterAddOffset], constInfo.headDim);
-        }
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+        // 合并读取源端（scatterAddTensor 中连续的行）
+        uint64_t srcOffset = i * constInfo.headDim;
+        DataCopy(gatherPingPongUb, scatterAddTensor[srcOffset], copyLen);
 
-        uint64_t dkeyOffset0;
+        // 计算目标偏移（基于第一个索引）
+        int64_t singleIndice = indiceUb.GetValue(i);
+        uint64_t dkeyOffset;
         if (unlikely(constInfo.deterministic)) {
             if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                dkeyOffset0 = idx0 * constInfo.headDim + currentCoreIndex / 2 * constInfo.seqlenK * constInfo.headDim;
+                dkeyOffset = singleIndice * constInfo.headDim + currentCoreIndex / 2 * constInfo.seqlenK * constInfo.headDim;
             } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-                dkeyOffset0 = idx0 * constInfo.headDim + currentCoreIndex / 2 * runInfo.actualSeqK * constInfo.headDim;
+                dkeyOffset = singleIndice * constInfo.headDim + currentCoreIndex / 2 * runInfo.actualSeqK * constInfo.headDim;
             }
         } else {
             if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                dkeyOffset0 = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +
-                    idx0 * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
+                dkeyOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +
+                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
             } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-                dkeyOffset0 = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +
-                    idx0 * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
+                dkeyOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +
+                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
             }
         }
 
+        // 写回目标端（原子加）
+        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
         AscendC::SetAtomicAdd<float>();
-        if (merged) {
-            DataCopy(dkWorkSpaceGmTensor[dkeyOffset0], gatherPingPongUb, 2 * constInfo.headDim);
-        } else {
-            DataCopy(dkWorkSpaceGmTensor[dkeyOffset0], gatherPingPongUb, constInfo.headDim);
-        }
+        DataCopy(dkWorkSpaceGmTensor[dkeyOffset], gatherPingPongUb, copyLen);
         AscendC::SetAtomicNone();
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
+        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
 
-        i += merged ? 2 : 1;
-        processed++;
+        i += step;
+        batch++;  // 每个批次切换一次 buffer
     }
+
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
 }
+
 
 template <typename LIGT>
 __aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM,GlobalTensor<float> dkWorkSpaceGm,
