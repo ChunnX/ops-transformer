@@ -46,7 +46,7 @@ using namespace AscendC;
         op.Process();                                                                                    \
     } while (0)
 
-template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t COMPRESS_MODE,
+template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE,
           bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attention(
     __gm__ uint8_t *query,
@@ -90,7 +90,7 @@ __global__ __aicore__ void quant_block_sparse_attention(
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
     // TODO: 是否新增模板参数
-    constexpr bool HAS_ATTENTION = (COMPRESS_MODE==3);
+    constexpr bool HAS_ATTENTION = (MASK_MODE==3);
     BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout,
         S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
         HAS_ATTENTION, bsaIsPa);
