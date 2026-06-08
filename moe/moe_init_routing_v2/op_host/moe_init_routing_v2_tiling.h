@@ -125,7 +125,13 @@ protected:
 protected:
     ge::graphStatus CheckTokenCount(int64_t num, const char *tag);
     virtual ge::graphStatus CheckOutShape(bool isRegbase);
+
+private:
+    ge::graphStatus ValidateExpandedXShape(const gert::Shape &expandedXShape, bool isRegbase);
     virtual void Tiling4GatherOutCompute();
+
+private:
+    void SetGatherOutLoopParams(int64_t perCoreRows, int64_t lastCoreRows, int64_t rowSize, int64_t colSize);
     void Tiling4SrcToDstCompute();
     virtual void Tiling4SrcToDstCapacityCompute();
     void Tiling4SortOutCompute();
@@ -135,6 +141,18 @@ protected:
     void Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     void Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     virtual bool IsFullLoad();
+
+private:
+    void ShowBasicTilingData();
+    void ShowSortTilingData();
+    void ShowSrcToDstTilingData();
+    void ShowGatherOutTilingData();
+
+    ge::graphStatus GetInputShapes(gert::Shape &xShape, gert::Shape &expertIdxShape);
+    ge::graphStatus GetAttrsParams();
+    ge::graphStatus ValidateInputShapes(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
+    ge::graphStatus ValidateAttrsParams(const gert::Shape &xShape);
+    ge::graphStatus ProcessParamsAndSetTilingData(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
 
     int64_t aivNum;
     int64_t sortLoopMaxElement = 0;
