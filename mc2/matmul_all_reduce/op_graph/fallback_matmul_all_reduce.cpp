@@ -207,9 +207,11 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
+        std::cout << "fallback lin 211 will strcmp" << std::endl;
         isCommMode =
             std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
             std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+        std::cout << "fallback lin 211 finish strcmp" << std::endl;
     }
 
     switch (quant_para.type) {

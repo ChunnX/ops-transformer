@@ -99,10 +99,12 @@ static bool CheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquantGroupSize, const aclTensor* x1)
 {
+    OP_LOGD("laodaima CheckAttr, will strcmp");
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduce", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
+    OP_LOGD("laodaima CheckAttr, finish strcmp");
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduce", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
