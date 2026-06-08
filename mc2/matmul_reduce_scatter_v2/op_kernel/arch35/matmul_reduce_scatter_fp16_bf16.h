@@ -54,12 +54,12 @@ private:
     GM_ADDR cGM_;
     GM_ADDR biasGM_;
     GM_ADDR gmToFloat_;
-    __gm__ HcclCombinOpParam* context_;
+    // __gm__ HcclCombinOpParam* context_;
     uint32_t rankId_;
-    AscendC::HcclDataType dataType_;
+    // AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
-    AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
+    // typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
+    // AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -68,19 +68,21 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, TPipe* tPipe) {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
-    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
-    hccl_.InitV2(contextGM, hcclInitTilingV2);
-    hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
+    // const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    // uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
+    // hccl_.InitV2(contextGM, hcclInitTilingV2);
+    // hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
-    dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
-    debugMode_ = tilingData_->debugMode;
+    // dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
+    // debugMode_ = tilingData_->debugMode;
+    debugMode_ = MC2_DEBUG_ONLY_CUBE; // 强制调试模式为仅Cube
     aGM_ = aGM;
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = context_->rankId;
+    // rankId_ = context_->rankId;
+    rankId_ = 0; // AIC 核上无法获取 rankId，默认设为0
 
     // 划分workspace
     gmToFloat_ = workspaceGM;
@@ -89,15 +91,15 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::PostProcess()
 {
-    auto&& cfg = tilingData_->param;
-    // 等待reducescatter执行完成
-    if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
-        for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
-            hccl_.Wait(handles_[i]);
-        }
-        // 终止hcclserver
-        hccl_.Finalize();
-    }
+    // auto&& cfg = tilingData_->param;
+    // // 等待reducescatter执行完成
+    // if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
+    //     for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
+    //         hccl_.Wait(handles_[i]);
+    //     }
+    //     // 终止hcclserver
+    //     hccl_.Finalize();
+    // }
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -157,7 +159,7 @@ MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMu
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
-    auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
+    auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM_ : gmToFloat_;
     mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
     auto recvCount = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
@@ -172,11 +174,11 @@ MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMu
         mmv3.Process(isLast && (i == (count - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
-        recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.template ReduceScatter<true>(
-            cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
-        cWork += cOffset;
-        recvBuffer += cOffset;
+        // recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
+        // handles_[i + shift] = hccl_.template ReduceScatter<true>(
+        //     cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        // cWork += cOffset;
+        // recvBuffer += cOffset;
     }
     mmv3.End();
 }

@@ -82,7 +82,7 @@ __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PA
         CopyInA1<aType, aTrans>(this->block_, this->blockIdx_, isMMultiCore_, al1Local_, this->aGlobal_);
         mm.Init(&this->block_.tilingData_->matmulTiling, this->pipe_);
     }
-    uint32_t mForSingleVec = DequantBmm::CeilDiv(this->tilingData_->matmulTiling.baseM, CV_RATIO);
+    uint32_t mForSingleVec = DequantBmm::CeilDiv(this->tilingData_->matmulTiling.baseM, AscendC::GetTaskRation());
     this->pipe_->InitBuffer(this->vecQueMMRes_, 1,
                             mForSingleVec * this->tilingData_->matmulTiling.baseN * sizeof(l0cDtype));
     this->l0cOutUb_ = this->vecQueMMRes_.template AllocTensor<l0cDtype>();

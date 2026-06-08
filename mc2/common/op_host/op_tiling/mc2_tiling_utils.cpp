@@ -365,12 +365,13 @@ uint64_t Mc2TilingUtils::GetMaxWindowSize() {
 }
 
 bool GetRankSize(const std::string &opName, const char *group, int64_t &rankSize) {
-  uint32_t rankNum = static_cast<uint32_t>(rankSize);
-  if (Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(group, &rankNum) != HCCL_SUCCESS) {
-      OP_LOGE(opName, " fail to get group ranksize.");
-      return false;
-  }
-  rankSize = static_cast<int64_t>(rankNum);
+  // uint32_t rankNum = static_cast<uint32_t>(rankSize);
+  // if (Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(group, &rankNum) != HCCL_SUCCESS) {
+  //     OP_LOGE(opName, " fail to get group ranksize.");
+  //     return false;
+  // }
+  // rankSize = static_cast<int64_t>(rankNum);
+  rankSize = 2; // 先写死为2p，后续根据实际情况修改
   return true;
 };
 

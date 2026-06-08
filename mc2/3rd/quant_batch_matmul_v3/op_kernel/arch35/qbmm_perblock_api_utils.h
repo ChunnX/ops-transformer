@@ -34,7 +34,9 @@ public:
     __aicore__ inline void WaitForVector(uint16_t &crossPingPongID)
     {
         AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID);
-        AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID + FLAG_ID_MAX);
+        if(static_cast<uint64_t>(AscendC::GetTaskRation()) > 1) {
+            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID + FLAG_ID_MAX);
+        }
     }
     __aicore__ inline void NotifyV2Mte3(uint16_t id)
     {
@@ -44,7 +46,9 @@ public:
     __aicore__ inline void NotifyVector(uint16_t &crossPingPongID)
     {
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID);
-        AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID + FLAG_ID_MAX);
+        if(static_cast<uint64_t>(AscendC::GetTaskRation()) > 1) {
+            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID + FLAG_ID_MAX);
+        }
     }
     template <bool isFirstKLoop>
     __aicore__ inline void AivPerTensor(__ubuf__ l0cDtype *dst, __ubuf__ l0cDtype *l0cOut, float scaleScalar,

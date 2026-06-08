@@ -67,12 +67,12 @@ private:
     GM_ADDR x2ScaleGM_{nullptr};
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR gmToFloat_{nullptr};
-    __gm__ HcclCombinOpParam* context_{nullptr};
+    // __gm__ HcclCombinOpParam* context_{nullptr};
     uint32_t rankId_{0};
-    AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
+    // AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
-    AscendC::HcclHandle handles_[MAX_HANDLE];  // 最大支持64个handleId
+    // typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
+    // AscendC::HcclHandle handles_[MAX_HANDLE];  // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
 };
@@ -83,21 +83,23 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, TPipe* tPipe)
 {
     tilingData_ = tilingData;
-    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
-    hccl_.InitV2(contextGM, hcclInitTilingV2);
-    hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
+    // const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    // uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
+    // hccl_.InitV2(contextGM, hcclInitTilingV2);
+    // hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
-    debugMode_ = tilingData_->debugMode;
-    dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
+    // debugMode_ = tilingData_->debugMode;
+    debugMode_ = MC2_DEBUG_ONLY_CUBE; // 强制调试模式为仅Cube
+    // dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
     aGM_ = aGM;
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
     x1ScaleGM_ = x1ScaleGM;
     x2ScaleGM_ = x2ScaleGM;
-    rankId_ = context_->rankId;
+    // rankId_ = context_->rankId;
+    rankId_ = 0; // AIC 核上无法获取 rankId，默认设为0
     auto&& cfg = tilingData_->param;
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;
@@ -110,15 +112,15 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess()
 {
-    auto&& cfg = tilingData_->param;
-    // 等待reducescatter执行完成
-    if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
-        for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
-            hccl_.Wait(handles_[i]);
-        }
-        // 终止hcclserver
-        hccl_.Finalize();
-    }
+    // auto&& cfg = tilingData_->param;
+    // // 等待reducescatter执行完成
+    // if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
+    //     for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
+    //         hccl_.Wait(handles_[i]);
+    //     }
+    //     // 终止hcclserver
+    //     hccl_.Finalize();
+    // }
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -149,11 +151,11 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     SyncAll<false>();
     uint64_t stride = 0;
     uint8_t repeat = 1;
-    if ASCEND_IS_AIC {
-        recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[0] = hccl_.template ReduceScatter<true>(
-            cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
-    }
+    // if ASCEND_IS_AIC {
+    //     recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
+    //     handles_[0] = hccl_.template ReduceScatter<true>(
+    //         cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+    // }
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -238,7 +240,7 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
     tPipe_->Reset();
     Mc2MatmulV3::Mc2QuantBatchMatmulASWKernel<AType, BType, ScaleType, float, CType, CubeFormat::ND, CubeFormat::ND,
         CubeFormat::ND, ATrans, BTrans> mmv3;
-    auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
+    auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM_ : gmToFloat_;
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(),
         cfg, isTail, false, preCoreNum_);
     for (uint32_t i = 0; i < tileCnt; i++) {
@@ -247,8 +249,8 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.template ReduceScatter<true>(
-            cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        // handles_[i + shift] = hccl_.template ReduceScatter<true>(
+        //     cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;
     }
@@ -288,13 +290,13 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
         op.Init(aAddr, bGM_, biasGM_, x2ScaleGM_, x1ScaleAddr, cWork, workspaceGM_, &qBMmtiling, tPipe_,
                 batchWeight_, strideCount, false);
         op.Process();
-        PipeBarrier<PIPE_V>();
-        SyncAll<false>();
-        if ASCEND_IS_AIC {
-            recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-            handles_[i + shift] = hccl_.template ReduceScatter<true>(
-                cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
-        }
+        // PipeBarrier<PIPE_V>();
+        // SyncAll<false>();
+        // if ASCEND_IS_AIC {
+        //     recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
+        //     handles_[i + shift] = hccl_.template ReduceScatter<true>(
+        //         cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        // }
         aAddr += aOffset;
         cWork += cfg.rankDim * cOffset;
         x1ScaleAddr += x1ScaleOffset;

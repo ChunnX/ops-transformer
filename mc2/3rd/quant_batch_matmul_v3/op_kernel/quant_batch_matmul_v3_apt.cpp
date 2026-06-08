@@ -246,7 +246,11 @@ extern "C" __global__ __aicore__ void quant_batch_matmul_v3(
     }
 
 #if SUPPORT_PERBLOCK
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     if (TILING_KEY_IS(4000)) {
         Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
                                                 false, false> op;

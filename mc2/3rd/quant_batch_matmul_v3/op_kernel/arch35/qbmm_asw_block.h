@@ -116,7 +116,11 @@ public:
     const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
 
 private:
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    const uint64_t WINDOW_LEN = 8;
+#else
     const uint64_t WINDOW_LEN = 4;
+#endif  
     static constexpr uint64_t CUBE_BLOCK = 16UL;
     uint32_t blockIdx_;
 };
