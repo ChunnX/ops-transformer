@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_v2.cpp
@@ -27,9 +27,10 @@ const int DIM_2 = 2;
 const int DIM_3 = 3;
 
 // 工具函数，推导输出shape
-std::tuple<at::Tensor, at::Tensor> construct_quant_lightning_indexer_output_tensor(const at::Tensor& query, const at::Tensor& key,
-                                                                                   int64_t sparse_count, std::string query_layout_str,
-                                                                                   std::string key_layout_str, int64_t return_value)
+std::tuple<at::Tensor, at::Tensor> construct_quant_lightning_indexer_output_tensor(
+    const at::Tensor& query, const at::Tensor& key,
+    int64_t sparse_count, std::string query_layout_str,
+    std::string key_layout_str, int64_t return_value)
 {
     at::SmallVector<int64_t, SIZE> output_size;
     for (size_t i = 0; i < query.sizes().size(); i++) {
@@ -82,8 +83,9 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_lightning_indexer_v2(
     std::string key_layout_str = std::string(layout_k);
 
     // construct the output tensor
-    std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer_output = construct_quant_lightning_indexer_output_tensor(
-                                                                        query, key, topk, query_layout_str, key_layout_str, return_value);
+    std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer_output =
+        construct_quant_lightning_indexer_output_tensor(
+            query, key, topk, query_layout_str, key_layout_str, return_value);
     at::Tensor sparse_indices_out = std::get<0>(quant_lightning_indexer_output);
     at::Tensor sparse_values_out = std::get<1>(quant_lightning_indexer_output);
     // convert str
@@ -93,7 +95,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_lightning_indexer_v2(
     ACLNN_CMD(aclnnQuantLightningIndexerV2, query, key,
         weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
         cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
-        query_layout_ptr, key_layout_ptr, max_seqlen_q, mask_mode, cmp_ratio, return_value, sparse_indices_out, sparse_values_out);
+        query_layout_ptr, key_layout_ptr, max_seqlen_q, mask_mode, cmp_ratio, return_value,
+        sparse_indices_out, sparse_values_out);
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 // Bind the C++ function to Python module
