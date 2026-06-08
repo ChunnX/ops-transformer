@@ -21,6 +21,24 @@
 using namespace AscendC;
 using namespace optiling::detail;
 
+#if __CCE_AICORE__ != 310
+#include "arch22/sparse_flash_mla_scfa_kernel.h"
+#include "arch22/sparse_flash_mla_swa_kernel.h"
+
+using namespace SMLAKernel;
+
+#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                                              \
+    do {                                                                                                               \
+        templateClass<SMLAType<__VA_ARGS__>> op;                                                                       \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
+        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
+        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,                       \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, sinks, metadata, attentionOut, softmaxLse,    \
+                user, tiling_data, tiling, &tPipe);                                                                    \
+        op.Process();                                                                                                  \
+    } while (0)
+#endif
+
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G>
 __global__ __aicore__ void
 sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
@@ -32,9 +50,38 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
                      __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-    return ;
+#if __CCE_AICORE__ == 310
+    return;
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    (void)oriSparseIndices;
+    (void)seqUsedCmpKV;
+    (void)cmpResidualKV;
+    (void)oriTopkLength;
+    (void)cmpTopkLength;
+
+    if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
+        if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
+            SMLA_OP_IMPL(SparseFlashMlaScfa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
+                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
+        } else {
+            SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
+                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
+        }
+    }
+    if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_ATTN_OUT == DT_BF16) {
+        if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
+            SMLA_OP_IMPL(SparseFlashMlaScfa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t,
+                         FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
+                         TEMPLATE_MODE);
+        } else {
+            SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t,
+                         FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
+                         TEMPLATE_MODE);
+        }
+    }
+#endif
 }
