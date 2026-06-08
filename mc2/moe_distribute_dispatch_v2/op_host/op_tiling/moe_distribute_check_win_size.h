@@ -76,9 +76,9 @@ inline ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const 
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName, const CheckWinSizeData winSizeData,
-    const uint64_t maxWindowSizeEp, const uint64_t hcclBufferSizeEp, const uint64_t tokenNeedSizeDispatch,
-    const uint64_t tokenNeedSizeCombine)
+inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName,
+    const CheckWinSizeData winSizeData, const uint64_t maxWindowSizeEp, const uint64_t hcclBufferSizeEp,
+    const uint64_t tokenNeedSizeDispatch, const uint64_t tokenNeedSizeCombine)
 {
     uint64_t h = static_cast<uint64_t>(winSizeData.h);
     uint64_t k = static_cast<uint64_t>(winSizeData.k);
