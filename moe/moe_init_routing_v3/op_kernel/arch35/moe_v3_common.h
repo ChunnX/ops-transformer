@@ -51,6 +51,8 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 constexpr int64_t GATHER = 0;
 constexpr int64_t SCATTER = 1;
 
+// INT4对称量化scale分母，使用2^(n-1)-1=7而非8；
+// 对称量化范围[-7,7]保证每对正负值有对称编码，-8(1000)编码不会被使用。
 constexpr float DYNAMIC_QUANT_INT4_SYM_SCALE = 7.0f;
 constexpr uint32_t MAX_VALUE_NUM = 8;
 constexpr int64_t DROPLESS_MODE = 0LL;

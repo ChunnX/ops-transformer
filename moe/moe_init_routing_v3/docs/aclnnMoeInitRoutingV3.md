@@ -236,7 +236,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>如果不输入表示计算时不使用scale;</li>
         <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2), 类型为FLOAT8_E8M0;</li>
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-        <li>quantMode为1的动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
+        <li>quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>

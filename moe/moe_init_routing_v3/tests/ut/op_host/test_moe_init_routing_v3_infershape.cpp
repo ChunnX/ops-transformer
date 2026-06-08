@@ -1704,6 +1704,24 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_2)
                                  {16}, {-1});
 }
 
+// INT4动态量化+小H
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_3)
+{
+    RunSuccessTestcaseInferShape({32, 2048}, ge::DT_BF16, {32, 8}, {1, 2048}, 256, EXPERT_CAPACITY, 32,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_INT4_DYNAMIC, {16, 32}, ROW_IDX_TYPE_GATHER, {256, 2048}, {256},
+                                 {16}, {256});
+}
+
+// INT4动态量化+大bs
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_int4_dynamic_4)
+{
+    RunSuccessTestcaseInferShape({64, 7168}, ge::DT_FLOAT, {64, 4}, {1, 7168}, 256, EXPERT_CAPACITY, 128,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_INT4_DYNAMIC, {0, 64}, ROW_IDX_TYPE_GATHER, {256, 7168}, {256},
+                                 {64}, {256});
+}
+
 void RunTestcaseInferDataType(ge::DataType xDtype, int64_t quantMode, ge::graphStatus expectRet, ge::DataType expectOutDtype0,
                               ge::DataType expectOutDtype3)
 {
