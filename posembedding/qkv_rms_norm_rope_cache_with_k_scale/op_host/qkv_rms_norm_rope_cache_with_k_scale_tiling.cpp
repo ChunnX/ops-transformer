@@ -10,6 +10,7 @@
 
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
+#include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 #include "log/log.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 #include "register/op_impl_registry.h"
@@ -29,6 +30,7 @@ using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorStrideInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::ValidateAndBuildTiling;
+using namespace QkvRmsNormRopeCacheWithKScaleTiling;
 
 constexpr size_t kQkvIndex = 0;
 constexpr size_t kQGammaIndex = 1;
@@ -46,7 +48,6 @@ constexpr size_t kVScaleIndex = 11;
 constexpr size_t kHeadNumsAttrIndex = 0;
 constexpr size_t kEpsilonAttrIndex = 1;
 
-constexpr uint64_t kTilingKeyArch35D128 = 350128;
 constexpr float kDefaultEpsilon = 1e-6f;
 
 TensorShapeInfo ToShapeInfo(const gert::Shape &shape)
@@ -317,7 +318,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
                 OP_LOGE(context->GetNodeName(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
                 return ge::GRAPH_FAILED);
     context->GetRawTilingData()->SetDataSize(tilingDataSize);
-    context->SetTilingKey(kTilingKeyArch35D128);
+    context->SetTilingKey(GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128));
     context->SetBlockDim(contractTiling.coreGroupNum);
     return ge::GRAPH_SUCCESS;
 }
