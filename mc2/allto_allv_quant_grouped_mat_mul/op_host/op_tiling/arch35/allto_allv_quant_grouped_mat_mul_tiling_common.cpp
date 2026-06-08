@@ -22,6 +22,8 @@ using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 
+constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
+
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetPlatformInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start quant GetPlatformInfo.");
@@ -250,6 +252,38 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }
 
+ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context,
+    uint8_t &commMode) const
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
+    int64_t rankDim = *epWorldSizePtr;
+    const size_t maxLength = 6UL;
+    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (strncmp(commModeStr, "", maxLength) == 0) {
+        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(context->GetNodeName(),
+            "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 {
     uint32_t alltoAllvCmd = 8U;
@@ -269,9 +303,14 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(),

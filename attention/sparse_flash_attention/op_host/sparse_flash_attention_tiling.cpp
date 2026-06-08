@@ -27,13 +27,9 @@ using std::map;
 using std::string;
 using std::pair;
 
-using namespace ge;
 using namespace AscendC;
+using namespace ge;
 namespace optiling {
-
-constexpr uint32_t PRE_LOAD_NUM = 2;
-constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
-constexpr int32_t SPARSE_MODE_BAND = 4;
 
 static const std::string QUERY_NAME = "query";
 static const std::string KEY_NAME = "key";
@@ -45,6 +41,10 @@ static const std::string KEY_ROPE_NAME = "key_rope";
 static const std::string ATTEN_OUT_NAME = "attention_out";
 static const std::string SOFTMAX_MAX_NAME = "softmax_max";
 static const std::string SOFTMAX_SUM_NAME = "softmax_sum";
+
+constexpr uint32_t PRE_LOAD_NUM = 2;
+constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
+constexpr int32_t SPARSE_MODE_BAND = 4;
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -69,39 +69,39 @@ const std::map<std::string, std::vector<SFALayout>> LAYOUT_SUPPORT_MAP = {
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
+    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
-    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
     {ge::DT_INT8, "DT_INT8"},                     // int8 type
+    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
     {ge::DT_INT16, "DT_INT16"},                   // int16 type
     {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
-    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
     {ge::DT_INT32, "DT_INT32"},                   // uint32 type
     {ge::DT_INT64, "DT_INT64"},                   // int64 type
     {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
     {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
-    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
     {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
     {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
     {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
     {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
+    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
     {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
     {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
-    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
     {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
     {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
     {ge::DT_STRING, "DT_STRING"},                 // string type
     {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
     {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
     {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
+    {ge::DT_INT4, "DT_INT4"}                      // dt_variant type
 };
 
 struct SparseFlashAttentionCompileInfo {
@@ -327,22 +327,22 @@ void SFAMlaTiling::CheckUbSpace()
     CalcUbBmm();
 }
 
-void SFAMlaTiling::CalcInnerSize(uint32_t s2Size)
+void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
 {
     sInnerSize_ = 512; // 512:s2默认切分大小
     // FlashDecode时，如果S2的计算量>=256(确保切分后不小于128)但又不足以分2次计算时，则修改sInnerSize_，均分为2份进行计算，确保Nbuffer=2
     if (splitKVFlag_ && sfaInfo_->qLayout != SFALayout::TND) {
-        if (s2Size == 256) {   // 256:s2Size的阈值，判断sInnerSize_是否切分
+        if (sfaS2Size == 256) {   // 256:s2Size的阈值，判断sInnerSize_是否切分
             sInnerSize_ = 128; // 128:sInnerSize_值为s2Size的一半，均分为2份进行计算，
-        } else if (s2Size > 256 && s2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
+        } else if (sfaS2Size > 256 && sfaS2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
             sInnerSize_ = (sInnerSize_ + 1) / 2; // 2:减半
         }
     }
 
-    sInnerLoopTimes_ = (s2Size + sInnerSize_ - 1) / sInnerSize_;
-    sInnerSizeTail_ = s2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
-    if (sInnerSize_ > s2Size) {
-        sInnerSize_ = s2Size;
+    sInnerLoopTimes_ = (sfaS2Size + sInnerSize_ - 1) / sInnerSize_;
+    sInnerSizeTail_ = sfaS2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
+    if (sInnerSize_ > sfaS2Size) {
+        sInnerSize_ = sfaS2Size;
     }
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
 
@@ -515,8 +515,7 @@ ge::graphStatus SFAMlaTiling::DoOpTiling(SFATilingInfo *sfaInfo)
     GetWorkspaceSize();
     GenTilingKey();
 
-    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
@@ -609,18 +608,18 @@ void SFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expec
         name.c_str(), sfaOss.str().c_str(), SFADataTypeToSerialString(actualDtype).c_str());
 }
 
-ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *sfaDesc,
     const std::string &name) const
 {
-    if (desc != nullptr) {
+    if (sfaDesc != nullptr) {
         const auto& sfaIt = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(sfaIt == DTYPE_SUPPORT_MAP.end(),
             OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
             return ge::GRAPH_FAILED);
         auto &sfaExpectDtypeList = sfaIt->second;
         OP_CHECK_IF(std::find(
-            sfaExpectDtypeList.begin(), sfaExpectDtypeList.end(), desc->GetDataType()) == sfaExpectDtypeList.end(),
-            LogErrorDtypeSupport(sfaExpectDtypeList, desc->GetDataType(), name),
+            sfaExpectDtypeList.begin(), sfaExpectDtypeList.end(), sfaDesc->GetDataType()) == sfaExpectDtypeList.end(),
+            LogErrorDtypeSupport(sfaExpectDtypeList, sfaDesc->GetDataType(), name),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -662,15 +661,15 @@ ge::graphStatus SFATilingCheck::CheckDimNumInLayoutSupport(const SFALayout &layo
 }
 
 ge::graphStatus SFATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-    const std::vector<size_t> &expectDimNumList, const std::string &name) const
+    const std::vector<size_t> &sfaExpectDimNumList, const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
-    if (std::find(expectDimNumList.begin(), expectDimNumList.end(),
-        shape->GetStorageShape().GetDimNum()) == expectDimNumList.end()) {
-        LogErrorDimNumSupport(expectDimNumList, shape->GetStorageShape().GetDimNum(), name);
+    if (std::find(sfaExpectDimNumList.begin(), sfaExpectDimNumList.end(),
+        shape->GetStorageShape().GetDimNum()) == sfaExpectDimNumList.end()) {
+        LogErrorDimNumSupport(sfaExpectDimNumList, shape->GetStorageShape().GetDimNum(), name);
         return ge::GRAPH_FAILED;
     }
 
@@ -938,13 +937,13 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
             SFALayoutToSerialString(layout).c_str(), name.c_str());
         return ge::GRAPH_FAILED;
     }
-    int64_t shapeSize = tensor->GetShapeSize();
-    if (shapeSize <= 0) {
+    int64_t sfaShapeSize = tensor->GetShapeSize();
+    if (sfaShapeSize <= 0) {
         OP_LOGE(opName, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), shapeSize);
+            name.c_str(), sfaShapeSize);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize);
+    size = static_cast<uint32_t>(sfaShapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1220,8 +1219,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
-        OP_LOGE(opName_, "actualSeqLengthsQ is not empty,"
-            "but actualSeqLengthsQ's dtype is nullptr.");
+        OP_LOGE(opName_, "actualSeqLengthsQ is not empty, but actualSeqLengthsQ's dtype is nullptr.");
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
@@ -1271,8 +1269,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengths.desc == nullptr) {
-        OP_LOGE(opName_, "actualSeqLengths is not empty,"
-            "but actualSeqLengths's dtype is nullptr.");
+        OP_LOGE(opName_, "actualSeqLengths is not empty, but actualSeqLengths's dtype is nullptr.");
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
@@ -1361,12 +1358,13 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
 
 ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantLayout() const
 {
-    const std::vector<std::string> layoutSupportList = {
+    const std::vector<std::string> sfaLayoutSupportList = {
         "BSND",
         "TND"
     };
     std::string layoutQuery = opParamInfo_.layoutQuery;
-    OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutQuery) == layoutSupportList.end(),
+    OP_CHECK_IF(std::find(sfaLayoutSupportList.begin(),
+        sfaLayoutSupportList.end(), layoutQuery) == sfaLayoutSupportList.end(),
         OP_LOGE(opName_, "layoutQuery only supports BSND/TND, but got %s", layoutQuery.c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -1468,10 +1466,8 @@ void SFATilingCheck::Init()
 ge::graphStatus SFATilingCheck::Process()
 {
     Init();
-    if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
-        CheckParaExistence() != ge::GRAPH_SUCCESS ||
-        CheckFeature() != ge::GRAPH_SUCCESS ||
-        CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
+    if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckParaExistence() != ge::GRAPH_SUCCESS ||
+        CheckFeature() != ge::GRAPH_SUCCESS || CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1556,9 +1552,9 @@ ge::graphStatus SFAInfoParser::CheckRequiredAttrExistence() const
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr, OP_LOGE(opName_, "attr sparseBlockSize is nullptr"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE(opName_, "attr scaleValue is nullptr"),
-               return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE(opName_, "attr sparseMode is nullptr"),
+               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE(opName_, "attr scaleValue is nullptr"),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1632,10 +1628,10 @@ void SFAInfoParser::GetInputParaInfo()
     opParamInfo_.query.shape = context_->GetInputShape(QUERY_INPUT_INDEX);
     opParamInfo_.key.desc = context_->GetInputDesc(KEY_INPUT_INDEX);
     opParamInfo_.key.shape = context_->GetInputShape(KEY_INPUT_INDEX);
-    opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
-    opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
     opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
     opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
+    opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
+    opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
     GetOptionalInputParaInfo();
 }
 
@@ -2016,18 +2012,14 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
         return ge::GRAPH_FAILED;
     }
     
-    if (ge::GRAPH_SUCCESS != GetOpName() ||
-        ge::GRAPH_SUCCESS != GetNpuInfo() ||
-        ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
+        ge::GRAPH_SUCCESS != GetOpParaInfo() || ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetInOutDataType() ||
-        ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||
-        ge::GRAPH_SUCCESS != GetTopkLayout() ||
-        ge::GRAPH_SUCCESS != GetSoftmaxMaxAndSumLayout() ||
-        ge::GRAPH_SUCCESS != GetKvLayout() ||
+        ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetTopkLayout() ||
+        ge::GRAPH_SUCCESS != GetSoftmaxMaxAndSumLayout() || ge::GRAPH_SUCCESS != GetKvLayout() ||
         ge::GRAPH_SUCCESS != GetKvStorageMode()) {
         return ge::GRAPH_FAILED;
     }

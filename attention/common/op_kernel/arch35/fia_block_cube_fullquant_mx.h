@@ -924,6 +924,9 @@ public:
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
+            if (unlikely(runInfo.isLastS2Loop)) {
+                InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
+            }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
@@ -938,7 +941,7 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFullMX<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
@@ -1019,12 +1022,10 @@ public:
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
-            if (realK % 64 != 0) {
-                LocalTensor<uint16_t> mm2BFakeTensor = mm2B.GetTensor<uint16_t>();
-                InitConstValue(mm2BFakeTensor, {1, mBaseSize * s2BaseSize / 2 / 32, 0, 0});
-                PipeBarrier<PIPE_MTE2>();
-            }
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
+            if (unlikely(runInfo.isLastS2Loop)) {
+                InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
+            }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
@@ -1039,7 +1040,7 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFullMX<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
@@ -1059,6 +1060,48 @@ public:
         mm2ResL0C.Set<HardEvent::FIX_M>();
 
         outputBuf.SetCrossCore();
+    }
+
+    __aicore__ inline void InitValueL1BufferNoTrans(const LocalTensor<KV_T> &valueL1,
+        const uint32_t realK, const uint32_t curN)
+    {
+        InitConstValueParams<half> initConstValueParams;
+        uint64_t offset = 0;
+        uint32_t curPadK = (realK + 63) >> 6 << 6;
+        // nd2nz pading to k 64 align, (k,n)->(n1,k1,k0,n0)
+        uint32_t movK = realK;
+        if (KvLayoutType == 3) { // 3:PA_NZ
+            movK = Align(realK, 16U);
+        }
+        if (curPadK == movK) {
+            return;
+        }
+        offset = movK * 16U;
+        initConstValueParams.repeatTimes = Align(curN, 16U) / 32U;
+        initConstValueParams.blockNum = curPadK - movK;
+        initConstValueParams.dstGap = movK;
+        initConstValueParams.initValue = 0;
+        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
+    }
+
+    __aicore__ inline void InitValueL1BufferTrans(const LocalTensor<KV_T> &valueL1,
+        const uint32_t realK, const uint32_t curN)
+    {
+        InitConstValueParams<half> initConstValueParams;
+        uint64_t offset = 0;
+        uint32_t curPadK = ((realK) + 63) >> 6 << 6;
+        // nd2nz pading to 64 align, (n,k)->(k1,n1,n0,k0)
+        if (curPadK - realK < 32U) {
+            return;
+        }
+        // pad n1, n0, 16 for half
+        initConstValueParams.repeatTimes = 1;
+        initConstValueParams.blockNum = Align(curN, 16U);
+        initConstValueParams.dstGap = 0;
+        initConstValueParams.initValue = 0;
+        uint64_t kAlign = Align(realK, 16U) / 32U * 16U;
+        offset = curN * kAlign;
+        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
     }
 }; // FAFullQuantMxBlockCube
 

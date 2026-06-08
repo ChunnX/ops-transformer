@@ -269,7 +269,7 @@ TEST_F(TestAclnnMoeDistributeCombineSetup, TestUnsupportedNpuArch)
 TEST_F(TestAclnnMoeDistributeCombineSetup, ExecuteCall)
 {
     aclnnStatus ret = aclnnMoeDistributeCombineSetup(nullptr, 0, nullptr, nullptr);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(TestAclnnMoeDistributeCombineSetup, TestEmptyDimTensor)

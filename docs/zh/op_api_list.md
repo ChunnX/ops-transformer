@@ -6,12 +6,12 @@
 
 - **头文件、库文件**
 
-  调用算子API时，需引用依赖的头文件和库文件，一般头文件默认在```${INSTALL_DIR}/include/aclnnop```，库文件默认在```${INSTALL_DIR}/lib64```，具体文件如下：
+  调用算子API时，需引用依赖的头文件和库文件，一般头文件默认在`${INSTALL_DIR}/include/aclnnop`，库文件默认在`${INSTALL_DIR}/lib64`，具体文件如下：
 
-  - 依赖的头文件：①方式1 （推荐）：引用算子总头文件aclnn\_ops\_\$\{ops\_project\}.h。②方式2：按需引用单算子API头文件aclnn\_\*.h。
-  - 依赖的库文件：按需引用算子总库文件libopapi\_\$\{ops\_project\}.so。
+  - 头文件：方式1 （推荐）：引用算子仓总头文件aclnn\_ops\_\$\{ops\_project\}.h。方式2：引用单个算子API的头文件aclnn\_\*.h。
+  - 库文件：引用算子仓对应的库文件libopapi_${ops_project}.so。注意，原所有算子仓总库文件libopapi.so后续会废弃，不推荐使用，也不支持与单个算子仓库文件同时使用。
 
-  其中${INSTALL_DIR}表示CANN安装后文件路径；\$\{ops\_project\}表示算子仓（如math、nn、cv、transformer），请配置为实际算子仓名。
+  ${INSTALL_DIR}表示CANN安装后文件路径；\$\{ops\_project\}表示算子仓名（如math、nn、cv、transformer），请改为实际算子仓名。
 
 - **V版本演进说明**
 
@@ -155,8 +155,8 @@
 |[aclnnMhcPreBackward](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackward.md)|[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)的反向传播。|默认确定性实现|默认确定性实现|
 |[aclnnMhcPost](../../mhc/mhc_post/docs/aclnnMhcPost.md)|基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcPostBackward](../../mhc/mhc_post_backward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向。|默认确定性实现| 默认确定性实现 |
-|[aclnnMhcSinkhornBackward](../../mhc/mhc_sinkhorn_backward/docs/aclnnMhcSinkhornBackward.md)|[aclnnMhcSinkhorn](../../mhc\mhc_sinkhorn\docs\aclnnMhcSinkhorn.md)的反向传播。| - | 默认确定性实现 |
-|[aclnnMhcPreSinkhornBackward](../../mhc/mhc_pre/docs/aclnnMhcPreSinkhornBackward.md)|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)的反向传播。|默认非确定性实现，支持配置开启|
+|[aclnnMhcSinkhornBackward](../../mhc/mhc_sinkhorn_backward/docs/aclnnMhcSinkhornBackward.md)|[aclnnMhcSinkhorn](../../mhc/mhc_sinkhorn/docs/aclnnMhcSinkhorn.md)的反向传播。| - | 默认确定性实现 |
+|[aclnnMhcPreSinkhornBackward](../../mhc/mhc_pre_sinkhorn_backward/docs/aclnnMhcPreSinkhornBackward.md)|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)的反向传播。|默认非确定性实现，支持配置开启|
 |[aclnnNormRopeConcat](../../posembedding/norm_rope_concat/docs/aclnnNormRopeConcat.md)|transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）。|默认确定性实现| 默认确定性实现 |
 |[aclnnNormRopeConcatBackward](../../posembedding/norm_rope_concat_grad/docs/aclnnNormRopeConcatBackward.md)|transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnNsaCompress](../../attention/nsa_compress/docs/aclnnNsaCompress.md)|训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。|默认确定性实现| - |
