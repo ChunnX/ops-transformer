@@ -61,7 +61,7 @@ bool CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs, const TensorStri
     return lhs.stride0 == rhs.stride0 && lhs.stride1 == rhs.stride1 && lhs.stride2 == rhs.stride2;
 }
 
-uint64_t CalcQkL0cRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads)
+uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads)
 {
     return AlignUp(tokenTile * numQHeads, 16) + AlignUp(tokenTile * numKHeads, 16);
 }
@@ -83,20 +83,22 @@ void LogContractInputSummary(const char *opName, const ContractInput &input, uin
             input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, input.aicNum);
     OP_LOGD(opName,
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
-            "ubOutputRowsPerAiv=%lu l0cMaxRows=%lu aivPerAic=%lu.",
-            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kL0cMaxRows, kAivPerAic);
+            "ubOutputRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
+            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kL0aMaxRows, kL0cMaxRows, kAivPerAic);
 }
 
 void LogTokenTileCandidate(const char *opName, uint64_t tokenTilePerAiv, uint64_t tokenTile, uint64_t rowTile,
-                           uint64_t rowTileAligned, uint64_t qkL0cRows, bool accepted)
+                           uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsL0a, bool fitsL0c,
+                           bool accepted)
 {
     if (!ShouldLog(opName)) {
         return;
     }
     OP_LOGD(opName,
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
-            "rowTileAligned=%lu qkL0cRows=%lu accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkL0cRows, accepted ? 1U : 0U);
+            "rowTileAligned=%lu qkAlignedRows=%lu fitsL0a=%u fitsL0c=%u accepted=%u.",
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsL0a ? 1U : 0U,
+            fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
 }
 
 } // namespace
@@ -372,10 +374,13 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         const uint64_t tokenTile = 2 * tokenTilePerAiv;
         const uint64_t rowTile = tokenTile * hqk;
         const uint64_t rowTileAligned = AlignUp(rowTile, 16);
-        const uint64_t qkL0cRows = CalcQkL0cRows(tokenTile, input.numQHeads, input.numKHeads);
-        const bool accepted =
-            rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows && qkL0cRows <= kL0cMaxRows;
-        LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkL0cRows, accepted);
+        const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input.numQHeads, input.numKHeads);
+        const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
+        const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
+                             qkAlignedRows <= kL0cMaxRows;
+        const bool accepted = fitsL0a && fitsL0c;
+        LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsL0a,
+                              fitsL0c, accepted);
         if (accepted) {
             break;
         }
