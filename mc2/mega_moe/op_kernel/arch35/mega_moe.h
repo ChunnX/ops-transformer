@@ -55,9 +55,6 @@ struct QuantTraits<E2M1_QUANT> {
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
-    static constexpr uint32_t GMM1_INDEX = 0;
-    static constexpr uint32_t GMM2_INDEX = 1;
-
     using QuantOutType = typename QuantTraits<QuantMode>::OutType;
     using ActivationType = typename std::conditional<
         Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value,
