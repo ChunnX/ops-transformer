@@ -192,10 +192,10 @@ public:
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
-class QLIInfoParser {
+class QLIV2InfoParser {
 public:
-    explicit QLIInfoParser(gert::TilingContext *context) : context_(context) {}
-    ~QLIInfoParser() = default;
+    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context) {}
+    ~QLIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
