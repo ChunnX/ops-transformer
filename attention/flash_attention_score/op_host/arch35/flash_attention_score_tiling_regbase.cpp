@@ -347,7 +347,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         t1Size < accumS1 || t2Size < accumS2,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
             (std::to_string(t1Size) + ", " + std::to_string(t2Size)).c_str(),
-            "The T dim of input query and key must be greater than the sum of actual_seq_qlen and actual_seq_kvlen"), #dj
+            "The dim of query and key must be greater than the sum of actual_seq_qlen and actual_seq_kvlen"),
         return false);
     uint32_t firstValidIndex = 0;
     uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1);
@@ -683,13 +683,13 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse",
                             "unknown",
                             "The value of shape of input pse is invalid in TND layout mode"
-                        ),// todo
+                        ),
                         return false);
         } else {
             OP_CHECK_IF(!AnalyzeGeneralPseOptionalInput(pseShapeType, pseShapeDims, pseDimNum, pseBSize),
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse",
                             "unknown",
-                            "The shape of input pse is invalid in general layout mode"),// todo
+                            "The shape of input pse is invalid in general layout mode"),
                         return false);
         }
         inputParamsRegbase_->set_pseBSize(static_cast<uint32_t>(pseBSize));
@@ -791,17 +791,13 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
         auto &attenMaskStorageShape = attenMaskShape->GetStorageShape();
         size_t attenMaskDimNum = attenMaskStorageShape.GetDimNum();
         if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_4) {
-         OP_CHECK_IF(!Analyze4DimAttenOptionalInput(attenMaskShapeType, attenMaskStorageShape),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "atten_mask",
-                        "4D",
-                        "The shape of input atten_mask is invalid for 4D layout"), //todo
-                    return false);
+            OP_CHECK_IF(!Analyze4DimAttenOptionalInput(attenMaskShapeType, attenMaskStorageShape),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze dim 4 attenmask shape fail."),
+                       return false);
         } else if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_2) {
-         OP_CHECK_IF(!Analyze2DimAttenOptionalInput(attenMaskShapeType, attenMaskStorageShape),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "atten_mask",
-                        "2D",
-                        "The shape of input atten_mask is invalid for 2D layout"), //todo
-                    return false);
+            OP_CHECK_IF(!Analyze2DimAttenOptionalInput(attenMaskShapeType, attenMaskStorageShape),
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze dim 2 attenmask shape fail."),
+                       return false);
         } else {
             OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "atten_mask",
                 "2D or 4D", (std::to_string(attenMaskDimNum) + "D").c_str());
@@ -852,7 +848,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
         if (dropMaskShapeSize < shapeSize) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), "drop_mask",
                 std::to_string(dropMaskShapeSize).c_str(),
-                "The shape size of input drop_mask should not be less than " + std::to_string(shapeSize)); //dj
+                "The shape size of drop_mask must be less than " + std::to_string(shapeSize));
             return false;
         }
         dropMaskOuter = true;
@@ -1415,9 +1411,7 @@ bool FlashAttentionScoreTilingRegbase::SparseModeProcess(SparseEnum &sparseType)
                 static_cast<uint8_t>(AttenMaskShapeType::ATTEN_B_N2_G_S1_S2) &&
             inputParamsRegbase_->get_attenMaskShapeType() !=
                 static_cast<uint8_t>(AttenMaskShapeType::ATTEN_B_1_1_S1_S2) && bSize != 1) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
-                "unknown",
-                "The shape of input atten_mask should be [BNSS] or [B1SS] in prefix mode");// todo
+            OP_LOGE(context_, "Prefix mode get invalid atten_mask shape, should be [BNSS] or [B1SS].");
             return false;
         }
     }
