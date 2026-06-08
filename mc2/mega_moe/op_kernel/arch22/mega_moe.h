@@ -27,8 +27,6 @@
 #ifndef MEGA_MOE_H
 #define MEGA_MOE_H
 
-using namespace AscendC;
-
 #include "kernel_operator.h"
 
 #include "../../../common/op_kernel/moe_distribute_base.h"
@@ -56,14 +54,14 @@ using namespace AscendC;
 #include "mc2_moe_context.h"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 #include "mega_moe_kernel_a3.hpp"
-// #include "mega_moe_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
-using namespace Catlass;
+namespace MegaMoeImpl {
+using namespace AscendC;
 using namespace AscendC::HcclContextDef;
+using namespace Catlass;
 using namespace Mc2Tiling;
 
-namespace MegaMoeImpl {
 // Template parameter pack used by the unified MegaMoe class.
 //   AType_ : input X element type (DTYPE_X)
 //   BType_ : weight element type   (DTYPE_WEIGHT1)
@@ -75,7 +73,6 @@ namespace MegaMoeImpl {
 #define MegaMoeClass typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
 #define MegaMoeFunc AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
 
-using namespace AscendC;
 template <MegaMoeClass>
 class MegaMoe {
 public:
@@ -234,12 +231,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     constexpr uint32_t l0BStages = 2;
     constexpr uint32_t l0CStages = 1;
 
-    // Single dispatch-policy alias: the W4A4-vs-Fixpipe choice is encapsulated
-    // inside `MmadDispatchPolicyFor_t` (dispatch_policy_custom.hpp) and is driven
-    // purely by the weight element type. The caller now spells one name only,
-    // and there's no `MmadAtlasA2W4A4MatmulPerChannelDequant` branch visible
-    // here -- isolation between W4A4 and Fixpipe is achieved through the
-    // `BType_` data type alone.
     using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<BElement, preloadStages, l1Stages, l0AStages, l0BStages,
                                                          l0CStages, enableUnitFlag, enableShuffleK>;
 
@@ -288,18 +279,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    // FIXME: A2 path temporarily disabled until mega_moe_kernel_a2.hpp is ready.
-    // Select the correct kernel implementation at compile time based on the
-    // platform: A2 (910B) uses MegaMoeKernelA2 with push-based
-    // SendTokensV3/RecvTokensV3; A3 (910_93) uses MegaMoeKernel
-    // with pull-based direct peer-memory access.
-    // using MatmulKernel = std::conditional_t<
-    //     IS_A2_,
-    //     Gemm::Kernel::MegaMoeKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
-    //                                               BlockEpilogue1, BlockEpilogue3>,
-    //     Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList,
-    //                                             BlockEpilogue1, BlockEpilogue2, BlockEpilogue3>
-    // >;
+
     using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
                                                      BlockEpilogue2, BlockEpilogue3>;
 
@@ -312,11 +292,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     GemmCoord problemShape{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
 
-    // Epilogue scheduling depends on the data-type path, matching the
-    // historic per-path tuning carried over from the three legacy kernels:
-    //   - W4A8 : `epilogueCoreNum = aivNum`, no granularity throttle.
-    //   - INT8 : `epilogueCoreNum = aivNum / 2`, granularity = expertPerRank - 1.
-    //   - BF16 : `epilogueCoreNum = aivNum`,    granularity = expertPerRank - 2.
     uint32_t epilogueCoreNum;
     uint32_t epilogueGranularity;
     if constexpr (isW4A8) {
@@ -337,7 +312,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 
     typename MatmulKernel::Params params;
     if constexpr (kRoutingIsQuant) {
-        // 缺少bias
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
