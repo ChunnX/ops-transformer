@@ -27,6 +27,7 @@
 
 namespace optiling {
 namespace {
+constexpr const char *kOpName = "QuantBlockSparseAttention";
 constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
 constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
@@ -247,8 +248,6 @@ void QuantBlockSparseAttentionTiling::CalcWorkspaceSize()
 
 void QuantBlockSparseAttentionTiling::PrintAllTilingData()
 {
-    constexpr const char *kOpName = "QuantBlockSparseAttention";
-
     auto &baseParams = tilingData_.baseParams;
     OP_LOGD(kOpName, "===== BaseParams =====");
     OP_LOGD(kOpName, "bSize:%u", baseParams.get_bSize());
@@ -362,6 +361,7 @@ void QuantBlockSparseAttentionTiling::PrintAllTilingData()
 ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAttentionTilingInfo *tilingInfo)
 {
     if (tilingInfo == nullptr || context_ == nullptr) {
+        OP_LOGE(kOpName, "DoOpTiling: tilingInfo=%p or context=%p is nullptr", tilingInfo, context_);
         return ge::GRAPH_FAILED;
     }
     tilingInfo_ = tilingInfo;
@@ -369,6 +369,9 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
     const uint32_t bnCount = tilingInfo_->bSize * tilingInfo_->n2Size;
     totalTaskNum_ = static_cast<uint64_t>(bnCount) * tilingInfo_->gS1OuterSize;
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "bSize * n2Size * gS1OuterSize", std::to_string(totalTaskNum_),
+                                              "total task num must be in range [1, " +
+                                                  std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;
     }
 
@@ -389,6 +392,7 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
 
     auto rawTilingData = context_->GetRawTilingData();
     if (rawTilingData == nullptr) {
+        OP_LOGE(kOpName, "DoOpTiling: rawTilingData is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -403,6 +407,7 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
 ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
 {
     if (context == nullptr) {
+        OP_LOGE(kOpName, "Tiling: tiling context is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -426,7 +431,11 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
 namespace ge {
 graphStatus TilingPrepareQuantBlockSparseAttention(gert::TilingParseContext *context)
 {
-    return context == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    if (context == nullptr) {
+        OP_LOGE("QuantBlockSparseAttention", "TilingPrepare: context is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 } // namespace ge
 
