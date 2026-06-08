@@ -1037,11 +1037,11 @@ public:
         int coreNumForSink = tilingData->postTilingData.coreNum;
         int headsPerCore = (N1 + usedCoreNum - 1) / usedCoreNum;
         int headStart = cBlockIdx * headsPerCore;
-        int myHeads = AscendC::Min(N1 - headStart, headsPerCore);
+        int myHeads = Min(N1 - headStart, headsPerCore);
         if (myHeads <= 0) {
             return;
         }
-        int headsPerBatch = AscendC::Max((2 * ubBaseSize) / (coreNumForSink * sizeof(float)), 1);
+        int headsPerBatch = Max((2 * ubBaseSize) / (coreNumForSink * sizeof(float)), 1);
         AscendC::LocalTensor<float> vecIn = inQ.template AllocTensor<float>();
         AscendC::LocalTensor<float> vecOut = outQ.template AllocTensor<float>();
 
