@@ -90,7 +90,7 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, c
 }
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* dstRankId,
+    const aclTensor* context, const aclTensor* x, const aclTensor* dstRankId,
     char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
     char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
@@ -101,17 +101,17 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    aclTensor *mc2Context = nullptr;
-    uint64_t hcclBuffSize = 0;
-    const char *opName = "bandwidth_test";
-    if ((commAlg != nullptr && std::strcmp(commAlg, "urma") == 0)) { // uraMA
-        aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context,CommProtocol::COMM_PROTOCOL_UBC_CTP);
-    } else {
-        aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
-    }
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    // aclTensor *mc2Context = nullptr;
+    // uint64_t hcclBuffSize = 0;
+    // const char *opName = "bandwidth_test";
+    // if ((commAlg != nullptr && std::strcmp(commAlg, "urma") == 0)) { // uraMA
+    //     aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context,CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    // } else {
+    //     aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
+    // }
+    // CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
-        mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
+        context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
         y, receiveCnt, workspaceSize, executor);
 #endif
     if (NnopbaseSetHcclServerType) {
