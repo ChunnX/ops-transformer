@@ -590,7 +590,6 @@ private:
             TPosition::LCM, QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_OUT_DB_POOL_OFFSET, QKV_RRC_V_OUT_DB_POOL_ELEMENTS);
     }
 
-
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
         qkvGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qkv);
