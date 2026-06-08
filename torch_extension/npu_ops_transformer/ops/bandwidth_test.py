@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -60,49 +60,14 @@ op_module = bandwidth_test_op_builder.load()
 
 
 @impl(AS_LIBRARY, bandwidth_test_op_builder.name, "PrivateUse1")
-def npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+def _npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
     """
     Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
     return op_module.npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)
 
+def npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
 
-# GE Converter for Graph Mode
-try:
-    import torchair
-    from torchair._ge_concrete_graph import ge_apis as ge
-    from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
-    from torchair._ge_concrete_graph.supported_declaration import Support
-    _TORCHAIR_AVAILABLE = True
-except ImportError:
-    _TORCHAIR_AVAILABLE = False
-
-if _TORCHAIR_AVAILABLE:
-    @declare_supported([
-        Support(torch.float16, (8, 128)),
-        Support(torch.bfloat16, (8, 128)),
-        Support(torch.float32, (8, 128)),
-    ])
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_bandwidth_test.default)
-    def converter_bandwidth_test(
-        x: Tensor,
-        dstrank_id: Tensor,
-        group: str,
-        world_size: int,
-        max_bs: int,
-        mode: int,
-        comm_alg: str,
-        aiv_num: int,
-        *,
-        meta_outputs: TensorSpec = None):
-        return ge.BandwidthTest(
-                                x,
-                                dstrank_id,
-                                group=group,
-                                world_size=world_size,
-                                max_bs=max_bs,
-                                mode=mode,
-                                comm_alg=comm_alg,
-                                aiv_num=aiv_num)
+    return torch.ops.npu_ops_transformer.npu_bandwidth_test(
+        x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)

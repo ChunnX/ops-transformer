@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -22,7 +22,8 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
 tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id,
-                               std::string group, int64_t world_size, int64_t max_bs, int64_t mode, std::string comm_alg, int64_t aiv_num)
+                               std::string group, int64_t world_size, int64_t max_bs,
+                               int64_t mode, std::string comm_alg, int64_t aiv_num)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
     TORCH_CHECK((dstrank_id.dim() == 1), "The expert_id should be 1D");
@@ -44,10 +45,11 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
 
-    std::string group_ptr = group;
-    std::string comm_alg_ptr = comm_alg;
+    char *group_ptr = const_cast<char *>(group.c_str());
+    char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
-    ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size, max_bs, mode, comm_alg_ptr, aiv_num, y, receive_cnt);
+    ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size,
+              max_bs, mode, comm_alg_ptr, aiv_num, y, receive_cnt);
 
     return std::tie(y, receive_cnt);
 }
