@@ -56,6 +56,9 @@ __attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
     const aclTensor *valueAntiquantScaleOptional,
     const aclTensor *keyRopeOptional);
 
+// 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
+bool NnopbaseSupportTensorV2() __attribute__((weak));
+
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
     const aclTensor *pseShiftOptional,
@@ -245,8 +248,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
     aclnnStatus ret = CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
-    // 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
-    bool NnopbaseSupportTensorV2() __attribute__((weak));
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         return ret;
     }
