@@ -341,41 +341,45 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+                    this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+                    this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         } else {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+                    this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    pScaleSubLoop0Tensor, ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6,
-                    runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK,
-                    pScaleValue, negativeFloatScalar, 0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+                    this->vselrIndexesBuf, attenMaskUb, pScaleSubLoop0Tensor,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
+                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
+                    0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_MASK) {
             this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
         }
-
+        
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         //-------------------------Data copy to l1-------------------------
-        uint64_t pScaleL1Offset = mBaseSize * s2BaseSize;  // PScale在L1P的偏移量（单位：元素）
+        uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
@@ -388,7 +392,7 @@ public:
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                         {4, 1, 0, dstStride});
+                    {4, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
             for (uint16_t i = 0; i < 2; i++) {
@@ -450,7 +454,7 @@ public:
         if constexpr (!USE_DN) {
             return;
         }
-        float minValue = *((float *)&min);
+        float minValue = *((float*)&min);
         minValue *= constInfo.scaleValue;
         float tmp = minValue / LN2;
         // int64_t 最大能表示约 9e18。
