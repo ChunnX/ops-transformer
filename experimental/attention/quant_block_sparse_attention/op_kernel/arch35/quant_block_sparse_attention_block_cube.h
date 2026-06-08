@@ -38,13 +38,13 @@ using namespace regbaseutil;
 using namespace fa_base_matmul;
 namespace BaseApi {
 namespace QuantBlockSparseAttentionCube {
-template <LayOutTypeEnum LAYOUT>
+template <BSALayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
     return GmFormat::TNGD;
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <BSAKvLayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
     return GmFormat::TND;
@@ -165,7 +165,7 @@ private:
     __gm__ uint8_t *blocktablePtr; // pageattention需要
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
     static constexpr GmFormat Q_FORMAT = QuantBlockSparseAttentionCube::GetQueryGmFormat<qLayout>();
-    static constexpr GmFormat KV_FORMAT = QuantBlockSparseAttentionCube::GetKVGmFormat<qLayout>();
+    static constexpr GmFormat KV_FORMAT = QuantBlockSparseAttentionCube::GetKVGmFormat<kvLayout>();
     FaGmTensor<INPUT_T, Q_FORMAT> queryGm;
     FaGmTensor<INPUT_T, KV_FORMAT> keyGm;
     FaGmTensor<INPUT_T, KV_FORMAT> valueGm;
