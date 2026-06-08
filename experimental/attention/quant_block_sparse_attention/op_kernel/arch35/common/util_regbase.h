@@ -79,6 +79,8 @@ struct RunParamStr;
     int32_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineEndIdx;          /* S2方向按行的结束位置 */ \
+    int64_t sparseBase = 0;        /* BSA: sparseIndices 当前 (b,n2,g,qb) 基址 */ \
+    int32_t actSparseLen = 0;      /* BSA: sparseSeqLen 当前实际选块数 */ \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \

@@ -46,7 +46,7 @@ constexpr uint8_t BSA_LAYOUT_TYPE_BSH = 1U;
 constexpr uint8_t BSA_LAYOUT_TYPE_TND = 4U;
 constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
-constexpr uint8_t BSA_COMPAT_MASK_LEFT_UP_CAUSAL = 1U;
+constexpr uint8_t BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
 constexpr uint32_t BSA_COMBINE_ALIGN_BYTES = 32U;
 constexpr uint32_t BSA_K_SCALE_BYTES = sizeof(float);
 
@@ -316,7 +316,7 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
     tilingData.sparseParams.set_sparseSeqLenStride(qbMax);
     tilingData.sparseParams.set_sparseIndicesStride(sparseCount);
 
-    const uint8_t compatMaskMode = (maskMode == 3U) ? BSA_COMPAT_MASK_LEFT_UP_CAUSAL : BSA_COMPAT_MASK_NONE;
+    const uint8_t compatMaskMode = (maskMode == 3U) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
     auto &inputParams = tilingData.inputParamsRegbase;
     inputParams.set_bSize(bSize);
     inputParams.set_t1Size(qTokenNum);

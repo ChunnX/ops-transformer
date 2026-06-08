@@ -82,7 +82,9 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
                 // IFA GS1合轴后, s1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
                 for (uint32_t i = 0; i < s1Size; ++i) {
                     // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                    DataCopy(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyParams);
+                    uint32_t srcRowOffset = constInfo.s1Size > 1 ? i / constInfo.gSize : 0;
+                    DataCopy(dstTensor[i * s2BaseSize],
+                        srcTensor[srcOffset + srcRowOffset * totalS2Size], dataCopyParams);
                 }
                 return;
             }
@@ -101,7 +103,9 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
                 // IFA GS1合轴后, 1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
                 for (uint32_t i = 0; i < s1Size; ++i) {
                     // 需要用 s2BaseSize, 兼容S2方向有尾块情况
-                    DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
+                    uint32_t srcRowOffset = constInfo.s1Size > 1 ? i / constInfo.gSize : 0;
+                    DataCopyPad(dstTensor[i * s2BaseSize],
+                        srcTensor[srcOffset + srcRowOffset * totalS2Size], dataCopyExtParams, dataCopyPadParams);
                 }
                 return;
             }
@@ -203,7 +207,7 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo<isInfer> &run
                 s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
             }
         } else {
-            s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+            s2Offset = runInfo.sparseS2TokenOffset;
         }
         if constexpr (isInfer) {
             if (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
@@ -362,7 +366,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                     s1Offset = s1Offset % constInfo.s1Size;
                 }
             }
-            int64_t s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+            int64_t s2Offset = runInfo.sparseS2TokenOffset;
             if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)) {
                 delta = s1Offset - s2Offset;
             } else if (attenMaskInfo.compressMode ==
@@ -435,7 +439,11 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
         if constexpr (isInfer) {
             if (constInfo.isGqa) {
-                s1Offset = s1Offset % constInfo.s1Size;
+                if (constInfo.s1Size > 1) {
+                    s1Offset = runInfo.sOuterOffset / constInfo.gSize;
+                } else {
+                    s1Offset = s1Offset % constInfo.s1Size;
+                }
             }
         }
         if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576) && isInfer) {
@@ -456,7 +464,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 s2Offset = runInfo.s2StartIdx + (runInfo.s2LoopCount - constInfo.prefixLoopCount) * constInfo.s2BaseSize + constInfo.actualKVPrefixSize;
             }
         } else {
-            s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
+            s2Offset = runInfo.sparseS2TokenOffset;
         }
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset;
@@ -527,7 +535,8 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
 {
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, hasRope, isInfer>(
+            runInfo, constInfo, attenMaskInfo);
         BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
                           attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
@@ -542,7 +551,8 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
 {
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix>(runInfo, constInfo, attenMaskInfo);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, hasRope, isInfer>(
+            runInfo, constInfo, attenMaskInfo);
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
                 maskOffset = 4194304; // 2048*2048

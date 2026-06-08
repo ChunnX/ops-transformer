@@ -46,7 +46,7 @@ using namespace AscendC;
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, /*dropMask*/nullptr, /*paddingMask*/nullptr,   \
             attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
-            blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
+            blockTable, sparseIndices, sparseSeqLen, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr, \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
             /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
             /*queryRope*/nullptr, /*keyRope*/nullptr, /*learnableSink*/nullptr,                          \
@@ -81,12 +81,9 @@ __global__ __aicore__ void quant_block_sparse_attention(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // TODO: 待实现 - 以下 BSA 专有输入暂未接入 InitBaseAPI（其形参无对应位），随 sparse 流水后续接入：
-    //   cuSeqlensQ/cuSeqlensKv（变长 TND）、sparseIndices/sparseSeqLen（稀疏块寻址）、metadata（调度）。
+    // cuSeqlensQ/cuSeqlensKv（变长 TND）与 metadata 暂未接入本轮 PA_BNSD 主路径。
     (void)cuSeqlensQ;
     (void)cuSeqlensKv;
-    (void)sparseIndices;
-    (void)sparseSeqLen;
     (void)metadata;
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)COMPRESS_MODE;

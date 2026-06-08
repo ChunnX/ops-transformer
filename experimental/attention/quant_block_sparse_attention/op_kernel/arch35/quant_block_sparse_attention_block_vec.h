@@ -244,7 +244,7 @@ TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline float BSABlockVecBase<TEMPLATE_BASE_ARGS>::GetPaKScaleValue(
     const RunInfo<isInfer> &runInfo, const ConstInfo<isInfer, hasRope> &constInfo)
 {
-    const uint64_t logicalToken = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
+    const uint64_t logicalToken = runInfo.sparseS2TokenOffset;
     const uint64_t logicalBlock = logicalToken / constInfo.blockSize;
     const uint64_t tokenInBlock = logicalToken % constInfo.blockSize;
     const uint64_t physicalBlock =
@@ -789,6 +789,13 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUb(
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
+        }
+        if (runInfo.boIdx == 0 && runInfo.n2oIdx == 0 && runInfo.goIdx == 0 && runInfo.s1oIdx == 0 &&
+            constInfo.subBlockIdx == 0 && constInfo.aivIdx == 0 && constInfo.isSoftmaxLseEnable) {
+            GetDerived()->softmaxLseGm.SetValue(0, vec2ResUb.GetValue(0));
+            GetDerived()->softmaxLseGm.SetValue(1, vec2ResUb.GetValue(1));
+            GetDerived()->softmaxLseGm.SetValue(2, vec2ResUb.GetValue(2));
+            GetDerived()->softmaxLseGm.SetValue(3, vec2ResUb.GetValue(3));
         }
         GetDerived()->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
@@ -1368,7 +1375,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.preTokens = inputParamsRegbase.preTokens;
     sharedParams.nextTokens = inputParamsRegbase.nextTokens;
     sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;
-    sharedParams.s2SparseValidSize = inputParamsRegbase.s2SparseValidSize;
+    // BSA sparseIndices last dim is sparseCount; AIC reads it through sharedParams after SSBUF sync.
+    sharedParams.s2SparseValidSize = this->tilingData->baseParams.sparseCount;
     sharedParams.bandIndex = inputParamsRegbase.bandIndex;
     sharedParams.implMode = static_cast<uint8_t>(implMode);
     sharedParams.layoutType = inputParamsRegbase.layoutType;
@@ -1544,6 +1552,29 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
         intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;
+    }
+    if constexpr (isInfer && q_layout == LayOutTypeEnum::LAYOUT_BSH) {
+        if (constInfo.isGqa) {
+            const int64_t batchOffset = runInfo.boIdx * constInfo.n2G * constInfo.s1Size;
+            int64_t rowIdx = 0;
+            while (rowIdx < runInfo.halfS1RealSize) {
+                const int64_t gs1Offset = runInfo.sOuterOffset + rowIdx;
+                const int64_t gIdx = gs1Offset % constInfo.gSize;
+                const int64_t sIdx = gs1Offset / constInfo.gSize;
+                const int64_t copyRows = Min(constInfo.gSize - gIdx, runInfo.halfS1RealSize - rowIdx);
+                DataCopyExtParams gqaParams;
+                gqaParams.blockCount = copyRows;
+                gqaParams.blockLen = sizeof(float);
+                gqaParams.srcStride = 0;
+                gqaParams.dstStride = (constInfo.s1Size - 1) * sizeof(float);
+                const int64_t headIdx = runInfo.n2oIdx * constInfo.gSize + gIdx;
+                const int64_t dstOffset = batchOffset + headIdx * constInfo.s1Size + sIdx;
+                DataCopyPad(this->softmaxLseGm[dstOffset], lseUb[rowIdx], gqaParams);
+                rowIdx += copyRows;
+            }
+            softmaxLseQueue.FreeTensor(lseUb);
+            return;
+        }
     }
     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
     softmaxLseQueue.FreeTensor(lseUb);

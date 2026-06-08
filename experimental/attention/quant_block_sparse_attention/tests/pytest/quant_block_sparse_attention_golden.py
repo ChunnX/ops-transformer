@@ -273,6 +273,19 @@ def _mask_positions(case, q_idx, positions, q_len, kv_len):
     return torch.tensor([pos <= limit for pos in positions], dtype=torch.bool)
 
 
+def _make_atten_mask(case):
+    atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
+    if case["mask_mode"] == 0:
+        return atten_mask
+    if case["mask_mode"] != 3:
+        raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
+
+    mask_size = case["S2"]
+    compact_causal = torch.triu(torch.ones((mask_size, mask_size), dtype=torch.uint8), diagonal=1)
+    atten_mask.view(-1)[:mask_size * mask_size] = compact_causal.view(-1)
+    return atten_mask
+
+
 def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, n2_idx, group_idx, qb_idx, kv_len):
     block_count = int(sparse_seq_len[batch_idx, n2_idx, group_idx, qb_idx].item())
     positions = []
@@ -394,7 +407,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         case["pa_block_padding_bytes"], case["layout_kv"])
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     case["pa_block_stride"] = kv_cache_meta["pa_block_stride"]
-    atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
+    atten_mask = _make_atten_mask(case)
     sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
 
     attention_out, softmax_lse = _reference_attention(

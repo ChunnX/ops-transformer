@@ -434,7 +434,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
+    coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.sparseS2TokenOffset;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
     if constexpr (isInfer) {
         coordInfo[runInfo.taskIdMod3].s2Coord += runInfo.kvLeftPaddingSize;  // 左padding
@@ -492,7 +492,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
             startPos.n2Idx = runInfo.n2oIdx;
-            startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+            startPos.s2Offset = runInfo.sparseS2TokenOffset;
             startPos.dIdx = 0;
             PAShape shape;
             shape.blockSize = kvCacheBlockSize;
@@ -978,7 +978,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+        startPos.s2Offset = runInfo.sparseS2TokenOffset;
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
@@ -1110,7 +1110,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+        startPos.s2Offset = runInfo.sparseS2TokenOffset;
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
