@@ -473,8 +473,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
 
     int32_t cumSumOne = 0;
     for (int16_t binMask = numValue_ - 1; binMask > 0; binMask--) {
-        int32_t involvedMaskTemp = static_cast<int32_t>(
-            involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
+        // 使用 uint32_t 避免符号扩展问题
+        uint32_t involvedMaskTempU32 = static_cast<uint32_t>(involvedMask16_) | 
+                                       (static_cast<uint32_t>(binMask) << (roundId * bitsPerRound_));
+        int32_t involvedMaskTemp = static_cast<int32_t>(involvedMaskTempU32);
 
         // === DUMP 460: involvedMaskTemp (first round, first tile, first 3 bins) ===
         if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask >= 1) {
