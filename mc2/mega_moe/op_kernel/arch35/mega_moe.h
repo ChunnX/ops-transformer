@@ -44,6 +44,11 @@ public:
     using QuantOutType = typename std::conditional<((QuantMode >= E5M2_QUANT) && (QuantMode != E4M3_QUANT)),
         fp8_e5m2_t, fp8_e4m3fn_t>::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
+    struct ExpertLoopState {
+        TupleShape problemShape;
+        BlockOffset baseOffset;
+        int64_t preOffset;
+    };
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -86,6 +91,7 @@ private:
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
     uint32_t expertPerRank_ = 0;
+    int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
@@ -165,6 +171,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
         static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
     Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
+    hiddenDim_ = tilingData->hiddenDim;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
