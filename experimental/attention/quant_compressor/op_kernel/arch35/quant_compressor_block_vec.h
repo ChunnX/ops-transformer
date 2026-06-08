@@ -131,7 +131,9 @@ private:
                                    const GlobalTensor<int32_t> &blockTableGm, const GlobalTensor<T> &cacheTcGm,
                                    const Vec1RunInfo &info, const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
                                    uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize);
-    template <bool IS_SCORE>
+    template <bool IS_SINGLE>
+    __aicore__ inline void Dequant(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, float xDescale,
+                                   const LocalTensor<float> &wDescale, uint32_t row, uint32_t col, uint32_t actualCol);
     __aicore__ inline void FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
                                              const Vec1SliceInfo &sliceInfo, const StatisticInfo &statisticInfo,
                                              uint32_t dStartIdx, uint32_t dDealSize);
@@ -677,7 +679,22 @@ QuantCompressorBlockVector<COMP>::OverLap(const LocalTensor<T> &dstLocal, const 
 }
 
 template <typename COMP>
-template <bool IS_SCORE>
+template <bool IS_SINGLE>
+__aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::Dequant(const LocalTensor<T> &dstLocal,
+                                                                         const LocalTensor<T> &srcLocal, float xDescale,
+                                                                         const LocalTensor<float> &wDescale,
+                                                                         uint32_t row, uint32_t col, uint32_t actualCol)
+{
+    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
+        if constexpr (IS_SINGLE) {
+            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCole);
+        } else {
+            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCol);
+        }
+    }
+}
+
+template <typename COMP>
 __aicore__ inline void
 QuantCompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
                                                const Vec1SliceInfo &sliceInfo, const StatisticInfo &statisticInfo,
@@ -695,13 +712,6 @@ QuantCompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLoc
     } else {
         AddMultiDataToUb(dstLocal, srcGm[srcGmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount,
                          constInfo_.kBaseNum, constInfo_.mm1KvResSize);
-    }
-    if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
-        if constexpr (IS_SCORE) {
-            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale_, wGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt, dDealSize, constInfo_.headDim, dDealSize);
-        } else {  
-            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale_, wKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt, dDealSize, constInfo_.headDim, dDealSize);
-        }
     }
 }
 
@@ -758,13 +768,12 @@ QuantCompressorBlockVector<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dstLoc
             AddMultiDataToUb(dstLocal[dstLocalOffset], srcGm[srcLocalOffset], copyRowCount, dDealSize,
                              srcSingleRowElemNum, coff_ * dDealSize, constInfo_.kBaseNum, constInfo_.mm1KvResSize);
         }
-        if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
-            // 使用COFF::DISABLE，反量化只会处理新搬入的左半部分
-            if constexpr (IS_SCORE) {
-                DequantVF<COFF::DISABLE>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wGateDescaleUb[dStartIdx], copyRowCount, dDealSize, constInfo_.headDim, coff_ * dDealSize);
-            } else {  
-                DequantVF<COFF::DISABLE>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wKvDescaleUb[dStartIdx], copyRowCount, dDealSize, constInfo_.headDim, coff_ * dDealSize);
-            }
+        if constexpr (IS_SCORE) {
+            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wGateDescaleUb[dStartIdx],
+                            copyRowCount, dDealSize, coff_ * dDealSize);
+        } else {
+            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wKvDescaleUb[dStartIdx],
+                            copyRowCount, dDealSize, coff_ * dDealSize);
         }
     } else { // 从UB中获取
         uint32_t srcSingleRowElemNum = dDealSize * coff_;
@@ -1023,6 +1032,9 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
     FromWokrSpaceToUb<true>(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
+    Dequant<false>(scoreUb, scoreUb, xDescale_, wGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
+                    dDealSize, dDealSize);
+    PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
@@ -1046,6 +1058,9 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
     FromWokrSpaceToUb<false>(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
+    Dequant<false>(kvUb, kvUb, xDescale_, wKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
+                    dDealSize, dDealSize);
+    PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
 
