@@ -505,6 +505,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
                 binMask, involvedMaskTemp, involvedMaskTemp);
         }
 
+        // === DUMP 465: xLocalInt32 before Compares (first round, first tile, bin 2 only) ===
+        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
+            AscendC::printf("[DUMP465] xLocalInt32 before Compares:\n");
+            AscendC::DumpTensor(xLocalInt32, 465, 32);
+        }
+
         uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
