@@ -539,30 +539,32 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         uint32_t blockSizeAlign = static_cast<uint32_t>(BYTE_BLOCK / dataTypeSizeValue);
 
         // 伪量化, 与Dtype相关
-        OP_CHECK_IF((fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-            fiaInfo.blockSize < blockSizeAlign || fiaInfo.blockSize % blockSizeAlign != 0),
-            OP_LOGE(fiaInfo.opName,
-                "In antiquant scenario, when page attention enable, if kvCache datatype is %s, "
-                "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
-                fiaInfo.blockSize, blockSizeAlign, blockSizeAlign, BLOCK_SIZE_MAX),
-            return ge::GRAPH_FAILED);
+        if (fiaInfo.blockSize > BLOCK_SIZE_MAX ||
+            fiaInfo.blockSize < blockSizeAlign || fiaInfo.blockSize % blockSizeAlign != 0) {
+            std::string reasonMsg = "In antiquant scenario, when page attention is enabled, block_size must be a multiple of " +
+                std::to_string(blockSizeAlign) + " and in range of [" +
+                std::to_string(blockSizeAlign) + ", " + std::to_string(BLOCK_SIZE_MAX) +
+                "] if kvCache datatype is " + DataTypeToSerialString(fiaInfo.inputKvType);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
+                std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else { // 全量化
-        OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.blockSize != NUM_128,
-            OP_LOGE(fiaInfo.opName,
-                "In MLA fullquant scenario, when page attention enable, blockSize(%d) should be 128.",
-                fiaInfo.blockSize),
-            return ge::GRAPH_FAILED);
+        if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.blockSize != NUM_128) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
+                std::to_string(fiaInfo.blockSize).c_str(),
+                "In MLA fullquant scenario, when page attention is enabled, block_size must be 128");
+            return ge::GRAPH_FAILED;
+        }
 
         // mxfp8 仅支持blocksize等于512或者1024
-        OP_CHECK_IF(
-            fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
-            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
-            OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant scenario, when page attention enable, "
-                    "blockSize(%d) should be %u or %u.",
-                    fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8),
-            return ge::GRAPH_FAILED);
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
+            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
+                std::to_string(fiaInfo.blockSize).c_str(),
+                "In MXFP8 fullquant scenario, when page attention is enabled, block_size must be 512 or 1024");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
