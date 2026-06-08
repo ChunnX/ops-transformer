@@ -91,20 +91,20 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
-    const aclTensor* permuteTokens, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
+    const aclTensor* permuteTokensOptional, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
     const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
     aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermuteGrad,
-        DFX_IN(permuteTokens, unpermutedTokensGrad, sortedIndices,
+        DFX_IN(permuteTokensOptional, unpermutedTokensGrad, sortedIndices,
             probsOptional, paddedMode, restoreShapeOptional),
         DFX_OUT(permutedTokensGradOut, probsGradOut));
 
     bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2Grad) {
         return aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
-            permuteTokens, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional,
+            permuteTokensOptional, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional,
             permutedTokensGradOut, probsGradOut, workspaceSize, executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
@@ -133,9 +133,16 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     }
 
     // 获取activeNum
-    auto permuteTokensShape = permuteTokens->GetViewShape();
-    CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
-    int64_t activeNum = permuteTokensShape.GetDim(0);
+    int64_t activeNum = 0;
+    if (permuteTokensOptional != nullptr) {
+        auto permuteTokensShape = permuteTokensOptional->GetViewShape();
+        CHECK_RET(permuteTokensShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
+        activeNum = permuteTokensShape.GetDim(0);
+    } else {
+        auto sortedIndicesShape = sortedIndicesContiguous->GetViewShape();
+        CHECK_RET(sortedIndicesShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
+        activeNum = sortedIndicesShape.GetDim(0);
+    }
 
     // 调用l0接口进行计算
     auto result = l0op::MoeFinalizeRoutingV2Grad(unpermutedTokensGradContiguous, sortedIndicesContiguous,
