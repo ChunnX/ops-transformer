@@ -50,6 +50,16 @@ private:
     __aicore__ inline void DynamicQuantApplyScale(
         LocalTensor<float>& floatLocal, LocalTensor<float>& tempLocal, LocalTensor<int8_t>& int8Local,
         float scaleValue, int64_t elements);
+    __aicore__ inline void DynamicQuantEHSingleCol(
+        int64_t row, int32_t newPos, int32_t expertOffset,
+        LocalTensor<T>& xBuf0, LocalTensor<float>& quantFloatLocal,
+        LocalTensor<float>& quantTempLocal, LocalTensor<int8_t>& quantInt8Local,
+        LocalTensor<float>& scBuf0);
+    __aicore__ inline void DynamicQuantEHMultiCol(
+        int64_t row, int32_t newPos, int32_t expertOffset,
+        LocalTensor<T>& xBuf0, LocalTensor<float>& quantFloatLocal,
+        LocalTensor<float>& quantTempLocal, LocalTensor<int8_t>& quantInt8Local,
+        LocalTensor<float>& scBuf0);
 
 private:
     static constexpr int64_t DST_REP_STRIDE = 8;
@@ -1439,11 +1449,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 
                     WaitFlag<HardEvent::MTE2_MTE3>(evMte2[bc]);
 
-                    // InputScale passthrough: read once per row on first colsLoop
-                    if (isInputScale_ && colsLoop == 0) {
-                        DataCopyPad(scBuf0, scaleGm_[row], scaleCopyInParams, scalePadParams);
-                    }
-
                     while (curLoopRow < batchSize && (initialRow + curLoopRow) / k_ == row) {
                         int32_t newPos = gatheredIdxLocal.GetValue(curLoopRow);
                         curLoopRow++;
@@ -1451,10 +1456,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                             continue;
                         }
                         DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_ + colsOff], curBuf, xCp);
-                        if (isInputScale_ && colsLoop == 0) {
-                            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-                            DataCopyPad(expandedScaleGm_[newPos], scBuf0, scaleCopyOutParams);
-                        }
                     }
 
                     SetFlag<HardEvent::MTE3_MTE2>(evMte3[bc]);
@@ -1473,236 +1474,150 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                     WaitFlag<HardEvent::MTE3_MTE2>(evMte3[1 - ((totalRows - 1) & 1)]);
                 }
             }
-        } else {
-            // === Quantized path: serial row-based processing ===
-            int64_t colsAlignedInt8 = colsAligned_;
+        } else if (quantMode_ == 0) {
+            // === 静态量化：整行共享量化结果 ===
             int64_t curLoopRow = 0;
             for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
                 int64_t row = currentLoopStartRow + rowIdx;
-
-                // Collect all valid newPos for this row
-                int32_t rowNewPos[64];
-                int32_t rowValidCount = 0;
-                int64_t rowFirstPairIdx = curLoopRow;  // remember start index for expert lookup
+                int64_t rowStart = curLoopRow;
                 while (curLoopRow < batchSize && (initialRow + curLoopRow) / k_ == row) {
-                    int32_t newPos = gatheredIdxLocal.GetValue(curLoopRow);
                     curLoopRow++;
-                    if (newPos != -1) {
-                        rowNewPos[rowValidCount++] = newPos;
+                }
+                int64_t rowEnd = curLoopRow;
+
+                int64_t curLoopCols = perLoopCols_;
+                for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                    if (cl == colsLoops_ - 1) {
+                        curLoopCols = lastLoopCols_;
+                    }
+                    int64_t curLoopAligned = OpsBaseCeilAlign(
+                        curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                        static_cast<int64_t>(sizeof(T));
+                    int64_t colsOff = cl * perLoopCols_;
+                    
+                    DataCopyExtParams int8Out{
+                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
+                    StaticQuantCompute(quantFloatLocal, quantInt8Local, curLoopAligned);
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+                    for (int64_t r = rowStart; r < rowEnd; r++) {
+                        int32_t newPos = gatheredIdxLocal.GetValue(r);
+                        if (newPos == -1) continue;
+                        DataCopyPad(
+                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
+                            quantInt8Local, int8Out);
                     }
                 }
-                if (rowValidCount == 0) {
-                    continue;
+            }
+        } else if (smoothType_ != SCALE_EH) {
+            // === 动态量化 NO_SCALE/SCALE_1H：整行共享 ===
+            int64_t curLoopRow = 0;
+            for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
+                int64_t row = currentLoopStartRow + rowIdx;
+                int64_t rowStart = curLoopRow;
+                while (curLoopRow < batchSize && (initialRow + curLoopRow) / k_ == row) {
+                    curLoopRow++;
                 }
+                int64_t rowEnd = curLoopRow;
 
-                if (quantMode_ == 0) {
-                    // === Static quantization: per colsLoop independently ===
-                    int64_t curLoopCols = perLoopCols_;
-                    for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                        if (cl == colsLoops_ - 1) {
-                            curLoopCols = lastLoopCols_;
-                        }
-                        int64_t curLoopAligned = OpsBaseCeilAlign(
-                            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                            static_cast<int64_t>(sizeof(T));
-                        int64_t colsOff = cl * perLoopCols_;
-                        DataCopyExtParams xIn{
-                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                        DataCopyExtParams int8Out{
-                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+                // Pass 1: absmax
+                float globalMaxAbs = 0.0f;
+                int64_t curLoopCols = perLoopCols_;
+                for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                    if (cl == colsLoops_ - 1) {
+                        curLoopCols = lastLoopCols_;
+                    }
+                    int64_t curLoopAligned = OpsBaseCeilAlign(
+                        curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                        static_cast<int64_t>(sizeof(T));
+                    int64_t colsOff = cl * perLoopCols_;
 
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
+                    if (smoothType_ == SCALE_1H) {
+                        DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
+                            static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
                         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                        LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                            row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                        StaticQuantCompute(quantFloatLocal, quantInt8Local, curLoopAligned);
-                        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-
-                        for (int32_t vi = 0; vi < rowValidCount; vi++) {
-                            DataCopyPad(
-                                expandedXInt8Gm_[static_cast<int64_t>(rowNewPos[vi]) * cols_ + colsOff],
-                                quantInt8Local, int8Out);
-                        }
+                        DataCopyPad(scBuf0, scaleGm_[colsOff], smoothIn, scalePadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                        Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+                        PipeBarrier<PIPE_V>();
                     }
-                } else {
-                    // === Dynamic quantization (quantMode_ == 1) ===
-                    // When SCALE_EH: each pair in the same row may have different expert smooth,
-                    // so we must quantize per-pair independently.
-                    // When NO_SCALE or SCALE_1H: row-grouped (all pairs share same smooth).
-                    if (smoothType_ == SCALE_EH) {
-                        // Per-pair two-pass dynamic quant with SCALE_EH
-                        for (int32_t vi = 0; vi < rowValidCount; vi++) {
-                            int32_t pairIdx = rowFirstPairIdx;
-                            // Find the vi-th valid pair's index in gatheredExpertLocal
-                            int32_t validSeen = 0;
-                            for (int64_t p = rowFirstPairIdx; p < curLoopRow; p++) {
-                                if (gatheredIdxLocal.GetValue(p) != -1) {
-                                    if (validSeen == vi) {
-                                        pairIdx = p;
-                                        break;
-                                    }
-                                    validSeen++;
-                                }
-                            }
-                            int32_t expertOffset = gatheredExpertLocal.GetValue(pairIdx);
-                            int32_t newPos = rowNewPos[vi];
-
-                            // Pass 1: compute absMax for this pair
-                            float globalMaxAbs = *((float *)&INF);
-                            int64_t curLoopCols = perLoopCols_;
-                            for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                                if (cl == colsLoops_ - 1) {
-                                    curLoopCols = lastLoopCols_;
-                                }
-                                int64_t curLoopAligned = OpsBaseCeilAlign(
-                                    curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                                    static_cast<int64_t>(sizeof(T));
-                                int64_t colsOff = cl * perLoopCols_;
-                                DataCopyExtParams xIn{
-                                    static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-
-                                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                                    row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                                int64_t smoothGmIdx = static_cast<int64_t>(expertOffset) * cols_ + colsOff;
-                                DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
-                                                           static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
-                                SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-                                Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
-                                PipeBarrier<PIPE_V>();
-
-                                float chunkMax = DynamicQuantComputeAbsMax(quantFloatLocal, quantTempLocal, curLoopCols);
-                                if (chunkMax > globalMaxAbs) {
-                                    globalMaxAbs = chunkMax;
-                                }
-                            }
-                            float scaleValue = globalMaxAbs / MAX_INT8;
-
-                            // Pass 2: quantize and write for this pair
-                            curLoopCols = perLoopCols_;
-                            for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                                if (cl == colsLoops_ - 1) {
-                                    curLoopCols = lastLoopCols_;
-                                }
-                                int64_t curLoopAligned = OpsBaseCeilAlign(
-                                    curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                                    static_cast<int64_t>(sizeof(T));
-                                int64_t colsOff = cl * perLoopCols_;
-                                DataCopyExtParams xIn{
-                                    static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                                DataCopyExtParams int8Out{
-                                    static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
-
-                                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                                    row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                                int64_t smoothGmIdx = static_cast<int64_t>(expertOffset) * cols_ + colsOff;
-                                DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
-                                                           static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
-                                SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-                                Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
-                                PipeBarrier<PIPE_V>();
-
-                                DynamicQuantApplyScale(
-                                    quantFloatLocal, quantTempLocal, quantInt8Local, scaleValue, curLoopCols);
-                                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                                DataCopyPad(
-                                    expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
-                                    quantInt8Local, int8Out);
-                            }
-                            // Write per-pair scale
-                            quantTempLocal.SetValue(0, scaleValue);
-                            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-                            DataCopyPad(expandedScaleGm_[newPos], quantTempLocal, quantScaleCopyOutParams);
-                        }
-                    } else {
-                        // NO_SCALE or SCALE_1H: row-grouped (all pairs share same smooth)
-                        // Pass 1: compute globalMaxAbs across all cols
-                        float globalMaxAbs = *((float *)&INF);
-                        int64_t curLoopCols = perLoopCols_;
-                        for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                            if (cl == colsLoops_ - 1) {
-                                curLoopCols = lastLoopCols_;
-                            }
-                            int64_t curLoopAligned = OpsBaseCeilAlign(
-                                curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                                static_cast<int64_t>(sizeof(T));
-                            int64_t colsOff = cl * perLoopCols_;
-                            DataCopyExtParams xIn{
-                                static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-
-                            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                            LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                                row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                            if (smoothType_ == SCALE_1H) {
-                                int64_t smoothGmIdx = colsOff;
-                                DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
-                                                           static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
-                                SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-                                Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
-                                PipeBarrier<PIPE_V>();
-                            }
-                            float chunkMax = DynamicQuantComputeAbsMax(quantFloatLocal, quantTempLocal, curLoopCols);
-                            if (chunkMax > globalMaxAbs) {
-                                globalMaxAbs = chunkMax;
-                            }
-                        }
-                        float scaleValue = globalMaxAbs / MAX_INT8;
-
-                        // Pass 2: quantize and write
-                        curLoopCols = perLoopCols_;
-                        for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                            if (cl == colsLoops_ - 1) {
-                                curLoopCols = lastLoopCols_;
-                            }
-                            int64_t curLoopAligned = OpsBaseCeilAlign(
-                                curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                                static_cast<int64_t>(sizeof(T));
-                            int64_t colsOff = cl * perLoopCols_;
-                            DataCopyExtParams xIn{
-                                static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                            DataCopyExtParams int8Out{
-                                static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
-
-                            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                            LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                                row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                            if (smoothType_ == SCALE_1H) {
-                                int64_t smoothGmIdx = colsOff;
-                                DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
-                                                           static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
-                                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                                DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
-                                SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-                                Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
-                                PipeBarrier<PIPE_V>();
-                            }
-                            DynamicQuantApplyScale(
-                                quantFloatLocal, quantTempLocal, quantInt8Local, scaleValue, curLoopCols);
-                            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-
-                            for (int32_t vi = 0; vi < rowValidCount; vi++) {
-                                DataCopyPad(
-                                    expandedXInt8Gm_[static_cast<int64_t>(rowNewPos[vi]) * cols_ + colsOff],
-                                    quantInt8Local, int8Out);
-                            }
-                        }
-                        // Write per-row scale to all valid positions
-                        quantTempLocal.SetValue(0, scaleValue);
-                        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-                        for (int32_t vi = 0; vi < rowValidCount; vi++) {
-                            DataCopyPad(expandedScaleGm_[rowNewPos[vi]], quantTempLocal, quantScaleCopyOutParams);
-                        }
+                    float chunkMax = DynamicQuantComputeAbsMax(quantFloatLocal, quantTempLocal, curLoopCols);
+                    if (chunkMax > globalMaxAbs) {
+                        globalMaxAbs = chunkMax;
                     }
+                }
+                float scaleValue = globalMaxAbs / MAX_INT8;
+
+                // Pass 2: quantize + 搬出
+                curLoopCols = perLoopCols_;
+                for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                    if (cl == colsLoops_ - 1) {
+                        curLoopCols = lastLoopCols_;
+                    }
+                    int64_t curLoopAligned = OpsBaseCeilAlign(
+                        curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                        static_cast<int64_t>(sizeof(T));
+                    int64_t colsOff = cl * perLoopCols_;
+                    
+                    DataCopyExtParams int8Out{
+                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
+                    if (smoothType_ == SCALE_1H) {
+                        DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
+                            static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(scBuf0, scaleGm_[colsOff], smoothIn, scalePadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                        Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+                        PipeBarrier<PIPE_V>();
+                    }
+                    DynamicQuantApplyScale(
+                        quantFloatLocal, quantTempLocal, quantInt8Local, scaleValue, curLoopCols);
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+                    for (int64_t r = rowStart; r < rowEnd; r++) {
+                        int32_t newPos = gatheredIdxLocal.GetValue(r);
+                        if (newPos == -1) continue;
+                        DataCopyPad(
+                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
+                            quantInt8Local, int8Out);
+                    }
+                }
+                // 写 scale
+                quantTempLocal.SetValue(0, scaleValue);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                for (int64_t r = rowStart; r < rowEnd; r++) {
+                    int32_t newPos = gatheredIdxLocal.GetValue(r);
+                    if (newPos == -1) continue;
+                    DataCopyPad(expandedScaleGm_[newPos], quantTempLocal, quantScaleCopyOutParams);
+                }
+            }
+        } else {
+            // === SCALE_EH：逐 pair 独立量化，无需按 row 分组 ===
+            if (colsLoops_ == 1) {
+                for (int64_t r = 0; r < batchSize; r++) {
+                    int32_t newPos = gatheredIdxLocal.GetValue(r);
+                    if (newPos == -1) continue;
+                    int32_t expertOffset = gatheredExpertLocal.GetValue(r);
+                    int64_t row = (initialRow + r) / k_;
+                    DynamicQuantEHSingleCol(row, newPos, expertOffset,
+                        xBuf0, quantFloatLocal, quantTempLocal, quantInt8Local, scBuf0);
+                }
+            } else {
+                for (int64_t r = 0; r < batchSize; r++) {
+                    int32_t newPos = gatheredIdxLocal.GetValue(r);
+                    if (newPos == -1) continue;
+                    int32_t expertOffset = gatheredExpertLocal.GetValue(r);
+                    int64_t row = (initialRow + r) / k_;
+                    DynamicQuantEHMultiCol(row, newPos, expertOffset,
+                        xBuf0, quantFloatLocal, quantTempLocal, quantInt8Local, scBuf0);
                 }
             }
         }
@@ -1779,6 +1694,116 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
         }
     }
     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+}
+
+// ========================== DynamicQuantEHSingleCol ==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginT<T>::DynamicQuantEHSingleCol(
+    int64_t row, int32_t newPos, int32_t expertOffset,
+    LocalTensor<T>& xBuf0, LocalTensor<float>& quantFloatLocal,
+    LocalTensor<float>& quantTempLocal, LocalTensor<int8_t>& quantInt8Local,
+    LocalTensor<float>& scBuf0)
+{
+    int64_t curLoopAligned = OpsBaseCeilAlign(
+        lastLoopCols_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+        static_cast<int64_t>(sizeof(T));
+    DataCopyExtParams int8Out{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(lastLoopCols_ * sizeof(int8_t)), 0, 0, 0};
+    DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
+
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+    LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_, lastLoopCols_, curLoopAligned);
+    int64_t smoothGmIdx = static_cast<int64_t>(expertOffset) * cols_;
+    DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
+        static_cast<uint32_t>(lastLoopCols_ * sizeof(float)), 0, 0, 0};
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+    DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
+    SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+    Mul(quantFloatLocal, quantFloatLocal, scBuf0, lastLoopCols_);
+    PipeBarrier<PIPE_V>();
+
+    float maxVal = DynamicQuantComputeAbsMax(quantFloatLocal, quantTempLocal, lastLoopCols_);
+    float scaleValue = maxVal / MAX_INT8;
+
+    DynamicQuantApplyScale(quantFloatLocal, quantTempLocal, quantInt8Local, scaleValue, lastLoopCols_);
+    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+    DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], quantInt8Local, int8Out);
+
+    quantTempLocal.SetValue(0, scaleValue);
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    DataCopyExtParams quantScaleCp{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    DataCopyPad(expandedScaleGm_[newPos], quantTempLocal, quantScaleCp);
+}
+
+// ========================== DynamicQuantEHMultiCol ==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginT<T>::DynamicQuantEHMultiCol(
+    int64_t row, int32_t newPos, int32_t expertOffset,
+    LocalTensor<T>& xBuf0, LocalTensor<float>& quantFloatLocal,
+    LocalTensor<float>& quantTempLocal, LocalTensor<int8_t>& quantInt8Local,
+    LocalTensor<float>& scBuf0)
+{
+    DataCopyPadExtParams<T> xPadParams{false, 0, 0, 0};
+    DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
+
+    // Pass 1: absmax
+    float globalMaxAbs = 0.0f;
+    int64_t curLoopCols = perLoopCols_;
+    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+        if (cl == colsLoops_ - 1) curLoopCols = lastLoopCols_;
+        int64_t curLoopAligned = OpsBaseCeilAlign(
+            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+            static_cast<int64_t>(sizeof(T));
+        int64_t colsOff = cl * perLoopCols_;
+        
+
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
+        int64_t smoothGmIdx = static_cast<int64_t>(expertOffset) * cols_ + colsOff;
+        DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
+            static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
+        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+        PipeBarrier<PIPE_V>();
+        float chunkMax = DynamicQuantComputeAbsMax(quantFloatLocal, quantTempLocal, curLoopCols);
+        if (chunkMax > globalMaxAbs) globalMaxAbs = chunkMax;
+    }
+    float scaleValue = globalMaxAbs / MAX_INT8;
+
+    // Pass 2: quantize + write
+    curLoopCols = perLoopCols_;
+    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+        if (cl == colsLoops_ - 1) curLoopCols = lastLoopCols_;
+        int64_t curLoopAligned = OpsBaseCeilAlign(
+            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+            static_cast<int64_t>(sizeof(T));
+        int64_t colsOff = cl * perLoopCols_;
+        
+        DataCopyExtParams int8Out{
+            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
+        int64_t smoothGmIdx = static_cast<int64_t>(expertOffset) * cols_ + colsOff;
+        DataCopyExtParams smoothIn{static_cast<uint16_t>(1),
+            static_cast<uint32_t>(curLoopCols * sizeof(float)), 0, 0, 0};
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        DataCopyPad(scBuf0, scaleGm_[smoothGmIdx], smoothIn, scalePadParams);
+        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+        PipeBarrier<PIPE_V>();
+        DynamicQuantApplyScale(quantFloatLocal, quantTempLocal, quantInt8Local, scaleValue, curLoopCols);
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+        DataCopyPad(
+            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
+            quantInt8Local, int8Out);
+    }
+    quantTempLocal.SetValue(0, scaleValue);
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    DataCopyExtParams quantScaleCp{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    DataCopyPad(expandedScaleGm_[newPos], quantTempLocal, quantScaleCp);
 }
 
 } // namespace MoeInitRoutingV3
