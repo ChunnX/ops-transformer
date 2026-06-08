@@ -109,7 +109,7 @@ std::string ShapeDimsToString(const Dims &...dims)
 }
 
 template <typename... Args>
-std::string StrCat(const Args &...args)
+std::string BuildString(const Args &...args)
 {
     std::ostringstream oss;
     using Expander = int[];
