@@ -115,41 +115,34 @@ struct FusedInferHostTensorParams {
 static graphStatus FiaFillTensorParams(const OpExecuteContext *host_api_ctx, FusedInferHostTensorParams &fiaTensors)
 {
     fiaTensors.query = host_api_ctx->GetInputTensor(QUERY_INDEX);
-    OP_CHECK_IF(fiaTensors.query == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "query is null"), return GRAPH_FAILED);
     if (fiaTensors.query == nullptr) {
-        // TODO EZ0037
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "query");
         return GRAPH_FAILED;
     }
-    if (fiaTensors.key == nullptr) {
-        // TODO EZ0037
-        return GRAPH_FAILED;
-    }
-    if (fiaTensors.value == nullptr) {
-        // TODO EZ0037
-        return GRAPH_FAILED;
-    }
-    if (fiaTensors.output == nullptr) {
-        // TODO EZ0037
-        return GRAPH_FAILED;
-    }
-    if (fiaTensors.softmaxLse == nullptr) {
-        // TODO EZ0037
-        return GRAPH_FAILED;
-    }
-    
+
     fiaTensors.key = host_api_ctx->GetDynamicInputTensor(KEY_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.key == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "key is null"), return GRAPH_FAILED);
+    if (fiaTensors.key == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "key");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.value = host_api_ctx->GetDynamicInputTensor(VALUE_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.value == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "value is null"), return GRAPH_FAILED);
+    if (fiaTensors.value == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "value");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.output = host_api_ctx->GetOutputTensor(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF(fiaTensors.output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return GRAPH_FAILED);
+    if (fiaTensors.output == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "output");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.softmaxLse = host_api_ctx->GetOutputTensor(SOFTMAX_LSE_INDEX);
-    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "softmaxLse is null"), return GRAPH_FAILED);
+    if (fiaTensors.softmaxLse == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "softmaxLse");
+        return GRAPH_FAILED;
+    }
 
     fiaTensors.pseShiftGe = host_api_ctx->GetOptionalInputTensor(PSE_SHIFT_INDEX);
     fiaTensors.attenMaskGe = host_api_ctx->GetOptionalInputTensor(ATTEN_MASK_INDEX);

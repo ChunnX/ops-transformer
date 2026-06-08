@@ -54,28 +54,54 @@ ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.numHeads == nullptr, OP_LOGE(opName_, "attr numHeads is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE(opName_, "attr scaleValue is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.kvHeadNums == nullptr, OP_LOGE(opName_, "attr kvHeadNums is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE(opName_, "attr layout is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.blockSize == nullptr, OP_LOGE(opName_, "attr blockSize is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.antiquantMode == nullptr, OP_LOGE(opName_, "attr antiquantMode is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxLseFlag == nullptr, OP_LOGE(opName_, "attr softmaxLseFlag is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.keyAntiquantMode == nullptr, OP_LOGE(opName_, "attr keyAntiquantMode is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valueAntiquantMode == nullptr, OP_LOGE(opName_, "attr valueAntiquantMode is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.innerPrecise == nullptr, OP_LOGE(opName_, "attr innerPrecise is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, OP_LOGE(opName_, "attr queryQuantMode is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"), return ge::GRAPH_FAILED);
+    if (opParamInfo_.numHeads == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "num_heads");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.scaleValue == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "scale");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.kvHeadNums == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "num_key_value_heads");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.layOut == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "input_layout");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.blockSize == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "block_size");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.antiquantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "antiquant_mode");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.softmaxLseFlag == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "softmax_lse_flag");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.keyAntiquantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "key_antiquant_mode");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.valueAntiquantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "value_antiquant_mode");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.innerPrecise == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "inner_precise");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.queryQuantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "query_quant_mode");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.pseType == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "pse_type");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -110,7 +136,9 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
     if (*opParamInfo_.softmaxLseFlag) {
         if ((opParamInfo_.lseOut.shape == nullptr) ||
             (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(opName_, "lse Flag is %u, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag);
+            std::string reason = "The shape size of softmax_lse should be greater than 0 when lse Flag is 1.";
+            OP_LOGE_FOR_INVALID_SHAPESIZE(opName_, "softmax_lse", std::to_string(0).c_str(),
+                reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -168,8 +196,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
     }
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 0.", ACTUAL_SEQ_Q_LEN_NAME.c_str(),
-                shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE(opName_, "actual_seq_lengths", std::to_string(shapeSize).c_str(), "greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -630,9 +657,9 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
         } else if (keyDimNum == 5U) {
             kvLayout_ = FiaLayout::NZ;
         } else {
-            OP_LOGE(opName_,
-                    "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.",
-                    KEY_NAME.c_str(), keyDimNum);
+            std::string reason = "The shape dim of key in the 1st tensor must be within the range {3, 4, 5} when page attention is enabled.";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key in the 1st tensor",
+                std::to_string(keyDimNum).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -754,7 +781,7 @@ ge::graphStatus FiaInfoParser::GetBlockSize()
     }
     blockSize_ = *(opParamInfo_.blockSize);
     if (blockSize_ <= 0) {
-        OP_LOGE(opName_, "blockSize is %d, it should be > 0.", blockSize_);
+        OP_LOGE_WITH_INVALID_ATTR(opName_, "block_size", std::to_string(blockSize_).c_str(), "greater than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -828,13 +855,19 @@ ge::graphStatus FiaInfoParser::GetRopeMode()
         return ge::GRAPH_SUCCESS;
     }
     if (qkHeadDim_ < vHeadDim_) {
-        OP_LOGE(opName_, "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)",
-                qkHeadDim_, vHeadDim_);
+        std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+            ToString(opParamInfo_.value.shape->GetStorageShape());
+        std::string reason = "D of query must be greater than or equal to axis D of value.";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and value", shapeStr.c_str(),
+            reason.c_str());
         return ge::GRAPH_FAILED;
     } else if (qkHeadDim_ > vHeadDim_) {
         if (existSplitRopeTensor) {
-            OP_LOGE(opName_, "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ",
-                    QUERY_ROPE_NAME.c_str(), qkHeadDim_, vHeadDim_);
+            std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                ToString(opParamInfo_.value.shape->GetStorageShape());
+            std::string reason = "D of query must be equal to the same axis of value when query_rope exists.";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and value", shapeStr.c_str(),
+ 	            reason.c_str());
             return ge::GRAPH_FAILED;
         } else {
             ropeMode_ = RopeMode::ROPE_COMBINE;
@@ -963,8 +996,10 @@ ge::graphStatus FiaInfoParser::GetGSize()
 {
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "%s(%u) should be a multiple of %s(%u).", QUERY_HEADS_NUM_NAME.c_str(), n1Size_,
-                KV_HEADS_NUM_NAME.c_str(), n2Size_);
+        std::string reason = "The value of num_heads must be a multiple of num_key_value_heads(" +
+            std::to_string(n2Size_) + ").";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_heads", std::to_string(n1Size_).c_str(),
+ 	        reason.c_str());
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -1028,22 +1063,21 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
     if (tmpAntiquantMode == 6) {
         if (systemPrefixFlag_) {
             if (tmpAntiquant.GetDimNum() != 5) {
-                OP_LOGE(opName_,
-                        "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.",
-                        tmpAntiquant.GetDimNum());
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant", std::to_string(tmpAntiquant.GetDimNum()).c_str(),
+                    "The shape dim of antiquant must be 5 when per-token-group mode is enabled.");
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
     } else if (tmpAntiquantMode == 1) {
         if (tmpAntiquant.GetDimNum() != 2 && tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.",
-                    tmpAntiquant.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant", std::to_string(tmpAntiquant.GetDimNum()).c_str(),
+                "The shape dim of antiquant must be 2 or 3 when per-token mode is enabled.");
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
         if (tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.",
-                    tmpAntiquant.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant", std::to_string(tmpAntiquant.GetDimNum()).c_str(),
+                "The shape dim of antiquant must be 3 when per-token-head mode is enabled.");
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }
@@ -1176,7 +1210,9 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
             opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0) {
             gert::Shape prefixShape{1};
             if (prefixShape != opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()) {
-                OP_LOGE(opName_, "System prefix is enabled but actualSharedPrefixLen shape is not {1}");
+                std::string reason = "The shape of actual_shared_prefix_len must be {1} when system prefix is enabled."
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "actual_shared_prefix_len",
+ 	                ToString(opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.actualSharedPrefixLen.tensor->GetData<int64_t>() != nullptr) {

@@ -360,11 +360,11 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
         return ge::GRAPH_FAILED);
     // 后量化仅支持INT8
     if (fiaInfo.isOutQuantEnable) {
-        OP_CHECK_IF((fiaInfo.outputType != ge::DT_INT8),
-            OP_LOGE(fiaInfo.opName,
-                "Invalid output type. The datatype of output only support INT8 when "
-                "prefix is enabled."),
-            return ge::GRAPH_FAILED);
+        if (fiaInfo.outputType != ge::DT_INT8) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "output", ToString(fiaInfo.outputType).c_str(),
+                "The dtype of output must be INT8 when prefix is enabled."),
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -387,22 +387,21 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
     if (fiaInfo.s1Size > 1) {
         // Q_S > 1，per-channel(per-tensor)模式，key/value，仅支持INT8
         if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                OP_LOGE(fiaInfo.opName,
-                    "The datatype of key/value(%s) is not INT8. "
-                    "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1 and "
-                    "keyAntiquantMode is per-channel(per-tensor) mode and valueAntiquantMode is "
-                    "per-channel(per-tensor) mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8) {
+                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
+                    "keyAntiquantMode is per-channel(per-tensor) mode and valueAntiquantMode is per-channel(per-tensor) mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
         } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                OP_LOGE(fiaInfo.opName,
-                    "The datatype of key/value(%s) is not INT8. "
-                    "The datatype of key/value only support INT8 when prefix is enabled, Q_S > 1, "
-                    "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8) {
+                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
+                    "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
         } else {
             // 其余量化模式在Q_S > 1时均为非法
             OP_LOGE(fiaInfo.opName, "keyAntiquantMode(%ld) and valueAntiquantMode(%ld) is not supported when "
@@ -422,90 +421,82 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
         if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
             if (keyAntiquantScaleTensorDimNum == DIM_NUM_1) {
                 // per-tensor模式，仅支持INT8
-                OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of key/value(%s) is not INT8. "
-                            "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
-                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.inputKvType != ge::DT_INT8) {
+                    std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
+                        "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.";
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                        ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             } else {
                 // per-channel模式，支持INT8或INT4(INT32)
-                OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                            "The datatype of key/value only support INT8 or INT4(INT32) when "
-                            "prefix is enabled, Q_S = 1, "
-                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-channel mode.",
-                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
+                    std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
+                        ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode is per-channel mode.";
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                        ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             }
         }else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
             // per-token模式，支持INT8或INT4(INT32)
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
+                std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
+                    ", S of query is 1, keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
             // per-tensor-head模式，仅支持INT8
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is "
-                        "per-tensor-head mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8) {
+                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
+                    "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is per-tensor-head mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
             // per-token-head模式，支持INT8或INT4(INT32)
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token-head mode and valueAntiquantMode is per-token-head mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
+                std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
+                    ", S of query is 1, keyAntiquantMode is per-token-head mode and valueAntiquantMode is per-token-head mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
             // per-token模式使用page attention管理scale/offset，仅支持INT8
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is "
-                        "per-tensor-PA mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8) {
+                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
+                    "keyAntiquantMode is per-tensor-PA mode and valueAntiquantMode is per-tensor-PA mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
             // per-token叠加per-head模式并使用page attention管理scale/offset，仅支持INT8
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8. "
-                        "The datatype of key/value only support INT8 when prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is "
-                        "per-token-head-PA mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8) {
+                std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
+                    "keyAntiquantMode is per-token-head-PA mode and valueAntiquantMode is per-token-head-PA mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
             // key支持per-channel叠加value支持per-token，支持INT8或INT4(INT32)
-            OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4,
-                OP_LOGE(fiaInfo.opName,
-                        "The datatype of key/value(%s) is not INT8 or INT4(INT32). "
-                        "The datatype of key/value only support INT8 or INT4(INT32) when "
-                        "prefix is enabled, Q_S = 1, "
-                        "keyAntiquantMode is per-channel mode and valueAntiquantMode is "
-                        "per-token mode.",
-                    DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                return ge::GRAPH_FAILED);
+            if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
+                std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
+                    ", S of query is 1, keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                    ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
             return ge::GRAPH_SUCCESS;
         } else {
             // 其余量化模式在Q_S=1均为非法

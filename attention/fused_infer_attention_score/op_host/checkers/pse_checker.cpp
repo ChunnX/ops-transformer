@@ -68,34 +68,31 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     auto &pseShiftDesc = fiaInfo.opParamInfo.pseShift.desc;
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi，pseShift的数据类型必须为FLOAT32
-        OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of pseShift(%s) is not FLOAT32. "
-                            "The datatype of pseShift must be FLOAT32 when "
-                            "pseType is 2 or 3.",
-                            DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+        if (pseShiftDesc->GetDataType() != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
+                ToString(pseShiftDesc->GetDataType()).c_str(),
+                "The dtype of pse_shift must be FLOAT32 when pse_type is 2 or 3.");
+            return ge::GRAPH_FAILED;
+        }
     } else {
         // 不使能alibi
         // query的datatype为FLOAT16、INT8时，pseShift的datatype应为FLOAT16
         if (fiaInfo.inputQType == ge::DT_FLOAT16 || fiaInfo.inputQType == ge::DT_INT8) {
-            OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT16),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of pseShift(%s) is not FLOAT16. "
-                                "The datatype of pseShift must be FLOAT16 when "
-                                "the datatype of query is FLOAT16 or INT8 and pseType is 0.",
-                                DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
+            if (pseShiftDesc->GetDataType() != ge::DT_FLOAT16) {
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
+                    ToString(pseShiftDesc->GetDataType()).c_str(),
+                    "The dtype of pse_shift must be FLOAT16 when the dtype of query is FLOAT16 or INT8 and pse_type is 0.");
+                return ge::GRAPH_FAILED;
+            }
         }
         // query的datatype为BFLOAT16时，pseShift的datatype应为BFLOAT16
         if (fiaInfo.inputQType == ge::DT_BF16) {
-            OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_BF16),
-                        OP_LOGE(fiaInfo.opName,
-                                "The datatype of pseShift(%s) is not BFLOAT16. "
-                                "The datatype of pseShift must be BFLOAT16 when "
-                                "the datatype of query is BFLOAT16 and pseType is 0.",
-                                DataTypeToSerialString(pseShiftDesc->GetDataType()).c_str()),
-                        return ge::GRAPH_FAILED);
+            if (pseShiftDesc->GetDataType() != ge::DT_BF16) {
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
+                    ToString(pseShiftDesc->GetDataType()).c_str(),
+                    "The dtype of pse_shift must be BFLOAT16 when the dtype of query is BFLOAT16 and pseType is 0.");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -127,12 +124,11 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         int64_t s2Size = fiaInfo.s2Size;
         // pseShift的维度必须为4
         uint32_t pseShiftDimNum = pseShiftShape.GetDimNum();
-        OP_CHECK_IF(pseShiftDimNum != DIM_NUM_4,
-                    OP_LOGE(fiaInfo.opName,
-                            "The dimension number of pseShift must be 4 when pseType is 0, but "
-                            "the current dimensioin number of pseShift is %u.",
-                            pseShiftDimNum),
-                    return ge::GRAPH_FAILED);
+        if (pseShiftDimNum != DIM_NUM_4) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "pse_shift",
+                std::to_string(pseShiftDimNum).c_str(), "The shape dim of pse_shift must be 4 when pse_type is 0.");
+            return ge::GRAPH_FAILED;
+        }
         uint32_t pseShiftBatch = pseShiftShape.GetDim(DIM_NUM_0);
         uint32_t pseShiftN = pseShiftShape.GetDim(DIM_NUM_1);
         uint32_t pseShiftS1 = pseShiftShape.GetDim(DIM_NUM_2);
@@ -200,14 +196,13 @@ ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
         uint32_t pseShiftS2 = fiaInfo.pseShiftS2;
         int32_t blockSize = fiaInfo.blockSize;
         uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
-        OP_CHECK_IF(pseShiftS2 < maxBlockNumPerBatch * blockSize,
-                    OP_LOGE(fiaInfo.opName,
-                            "The last dimension(%u) of pseShift is less than "
-                            "maxBlockNumPerBatch(%u) * blockSize(%u). The last dimension of pseShift should be "
-                            "larger than or equal to maxBlockNumPerBatch * blockSize when "
-                            "page attention is enabled.",
-                            pseShiftS2, maxBlockNumPerBatch, blockSize),
-                    return ge::GRAPH_FAILED);
+        if (pseShiftS2 < maxBlockNumPerBatch * blockSize) {
+            std::string reason = "The last axis of pse_shift must be greater than or equal to maxBlockNumPerBatch(" +
+                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) + ") when page attention is enabled.";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift",
+                ToString(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
