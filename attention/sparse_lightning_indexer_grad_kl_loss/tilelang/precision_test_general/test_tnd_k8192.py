@@ -8,103 +8,59 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 
-t1 = 1
-t2 = 8192
-n1 = 128
-n2 = 1
-n_query_index = 64
-d_query = 512
-d_query_index = 128
-d_rope = 64
-topk = 8192
-G = n1 // n2
 
-print(f"泛化精度测试 - TND K={topk}")
-print(f"  t1={t1}, t2={t2}, n1={n1}, n2={n2}, nQueryIndex={n_query_index}")
-print(f"  d_query={d_query}, d_query_index={d_query_index}, d_rope={d_rope}, topk={topk}, G={G}")
+def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed=42):
+    G = N1 // N2; output_dtype = torch.float16; torch.manual_seed(seed)
+    q = torch.randn(B, S1, N1, D, dtype=output_dtype, device=torch.device('npu'))
+    k = torch.randn(B, S2, N2, D, dtype=output_dtype, device=torch.device('npu'))
+    q_index = torch.randn(B, S1, Nidx1, DIndex, dtype=output_dtype, device=torch.device('npu'))
+    k_index = torch.randn(B, S2, N2, DIndex, dtype=output_dtype, device=torch.device('npu'))
+    if DR != 0:
+        q_rope = torch.randn(B, S1, N1, DR, dtype=output_dtype, device=torch.device('npu'))
+        k_rope = torch.randn(B, S2, N2, DR, dtype=output_dtype, device=torch.device('npu'))
+    else: q_rope, k_rope = None, None
+    weights = torch.randn(B, S1, Nidx1, dtype=output_dtype, device=torch.device('npu'))
+    a, b, kk = -0.05, 0.05, 3.0; scale_w = (b - a) / (2 * kk); shift_w = (a + b) / 2
+    weights = weights * scale_w + shift_w
+    sparse_indices = torch.zeros(B, S1, N2, topk).to(torch.int32).npu()
+    for s1Idx in range(S1):
+        s2RealSize = (int)(S2 - S1 + s1Idx + 1)
+        if s2RealSize <= 0: s2RealSize = S2
+        s2RealLen = min(s2RealSize, topk)
+        sparse_indices[:, s1Idx, 0, 0:s2RealLen] = (torch.randint(0, s2RealSize, (s2RealLen,)).to(torch.int32)).npu()
+        sparse_indices[:, s1Idx, 0, s2RealLen:topk] = -1
+    softmax_max = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
+    softmax_sum = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
+    if is_tnd:
+        return (q.squeeze(0), k.squeeze(0), q_index.squeeze(0), k_index.squeeze(0),
+                q_rope.squeeze(0) if q_rope is not None else None, k_rope.squeeze(0) if k_rope is not None else None,
+                weights.squeeze(0), sparse_indices.squeeze(0), softmax_max.squeeze(0), softmax_sum.squeeze(0))
+    return (q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum)
 
-torch.manual_seed(42)
 
-query = torch.randn(t1, n1, d_query, dtype=torch.float16).npu()
-key = torch.randn(t2, n2, d_query, dtype=torch.float16).npu()
-query_index = torch.randn(t1, n_query_index, d_query_index, dtype=torch.float16).npu()
-key_index = torch.randn(t2, n2, d_query_index, dtype=torch.float16).npu()
-weights = torch.randn(t1, n_query_index, dtype=torch.float16).npu()
-query_rope = torch.randn(t1, n1, d_rope, dtype=torch.float16).npu()
-key_rope = torch.randn(t2, n2, d_rope, dtype=torch.float16).npu()
-
-sparse_indices = torch.full((t1, n2, topk), -1, dtype=torch.int32).npu()
-for i in range(t2):
-    sparse_indices[0, 0, i] = i
-
-scale_value = 1.0 / math.sqrt(d_query)
-
-with torch.no_grad():
-    k_mqa = key.squeeze(1)
-    k_rope_mqa = key_rope.squeeze(1)
-    q_full = torch.cat([query, query_rope], dim=-1)
-    k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
-    bmm1_full = torch.matmul(q_full, k_full.t())
-    bmm1_scaled = bmm1_full.float() * scale_value
-    sm_max_val = bmm1_scaled.max(dim=-1).values
-    sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-    softmax_max = sm_max_val.reshape(n2, t1, G).contiguous().float()
-    softmax_sum = sm_sum_val.reshape(n2, t1, G).contiguous().float()
-
+B, S1, S2 = 1, 1, 8192; N1, N2, Nidx1 = 128, 1, 64; D, DIndex, DR, K = 512, 128, 64, 8192; scale = 1.0 / math.sqrt(D)
+print(f"泛化精度测试 - TND K={K}\n  B={B}, S1={S1}, S2={S2}, N1={N1}, N2={N2}, Nidx1={Nidx1}, K={K}")
+q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum = gen_inputs(B, S1, S2, N1, Nidx1, N2, K, D, DIndex, DR, is_tnd=True)
 print("\n[1] TileLang...")
 try:
-    d_qi_tl, d_ki_tl, dw_tl, loss_tl = sparse_lightning_indexer_grad_kl_loss(
-        query, key, query_index, key_index, weights, sparse_indices,
-        softmax_max, softmax_sum, scale_value,
-        query_rope=query_rope, key_rope=key_rope,
-        layout_query="TND", sparse_mode=3,
-    )
-    torch.npu.synchronize()
-    print("  OK")
-    tl_ok = True
-except Exception as e:
-    print(f"  FAIL: {e}")
-    tl_ok = False
-
+    d_qi_tl, d_ki_tl, dw_tl, loss_tl = sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, layout_query="TND", sparse_mode=3)
+    torch.npu.synchronize(); print("  OK"); tl_ok = True
+except Exception as e: print(f"  FAIL: {e}"); tl_ok = False
 print("\n[2] 官方算子...")
 try:
-    d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
-        query, key, query_index, key_index, weights, sparse_indices,
-        softmax_max, softmax_sum, scale_value,
-        query_rope=query_rope, key_rope=key_rope,
-        actual_seq_qlen=[t1], actual_seq_klen=[t2],
-        layout="TND", sparse_mode=3,
-        pre_tokens=65536, next_tokens=65536,
-    )
-    torch.npu.synchronize()
-    print("  OK")
-    off_ok = True
-except Exception as e:
-    print(f"  FAIL: {e}")
-    off_ok = False
-
+    d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, actual_seq_qlen=[S1], actual_seq_klen=[S2], layout="TND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
+    torch.npu.synchronize(); print("  OK"); off_ok = True
+except Exception as e: print(f"  FAIL: {e}"); off_ok = False
 if tl_ok and off_ok:
-    print("\n[3] 精度对比:")
-    all_pass = True
-    for name, tl_val, off_val in [("dQueryIndex", d_qi_tl, d_qi_off), ("dKeyIndex", d_ki_tl, d_ki_off), ("dWeights", dw_tl, dw_off)]:
-        diff = (tl_val.float() - off_val.float()).abs()
-        max_diff = diff.max().item()
-        rel_err = (diff / (off_val.float().abs() + 1e-6)).mean().item()
-        ok = max_diff < 0.01
-        if not ok:
-            all_pass = False
-        print(f"  {name}: max_diff={max_diff:.6f}, rel_err={rel_err:.6f} [{'PASS' if ok else 'FAIL'}]")
-    loss_tl_v = loss_tl.float().item()
-    loss_off_v = loss_off.float().item()
-    loss_abs = abs(loss_tl_v - loss_off_v)
-    loss_rel = loss_abs / (abs(loss_off_v) + 1e-6)
-    ok = loss_rel < 0.01
-    if not ok:
-        all_pass = False
-    print(f"  Loss: abs_diff={loss_abs:.6f}, rel_err={loss_rel:.6f}, tl={loss_tl_v:.6f}, off={loss_off_v:.6f} [{'PASS' if ok else 'FAIL'}]")
+    print("\n[3] 精度对比:"); all_pass = True
+    for name, tl_v, off_v in [("dQueryIndex", d_qi_tl, d_qi_off), ("dKeyIndex", d_ki_tl, d_ki_off), ("dWeights", dw_tl, dw_off)]:
+        diff = (tl_v.float() - off_v.float()).abs(); mx = diff.max().item(); re = (diff / (off_v.float().abs() + 1e-6)).mean().item(); ok = mx < 0.01
+        if not ok: all_pass = False
+        print(f"  {name}: max_diff={mx:.6f}, rel_err={re:.6f} [{'PASS' if ok else 'FAIL'}]")
+    ltl, loff = loss_tl.float().item(), loss_off.float().item(); la = abs(ltl - loff); lr = la / (abs(loff) + 1e-6); ok = lr < 0.01
+    if not ok: all_pass = False
+    print(f"  Loss: abs_diff={la:.6f}, rel_err={lr:.6f}, tl={ltl:.6f}, off={loff:.6f} [{'PASS' if ok else 'FAIL'}]")
     print(f"\n结果: {'所有测试通过!' if all_pass else '部分测试失败'}")
-else:
-    print("\n结果: 无法对比")
+else: print("\n结果: 无法对比")
