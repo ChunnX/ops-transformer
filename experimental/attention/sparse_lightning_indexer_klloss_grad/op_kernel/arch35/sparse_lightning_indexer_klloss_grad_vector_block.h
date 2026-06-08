@@ -23,6 +23,7 @@
 #include "vf/vf_process_vec5.h"
 #include "vf/vf_process_vec6.h"
 #include "vf/vf_cast_dup.h"
+#include "vf/vf_reduce_sum.h"
 
 namespace Slig {
 
@@ -105,6 +106,7 @@ private:
     SLIGradConstInfo constInfo;
     TBuf<> gatherTbuf;
     TQue<QuePosition::VECOUT, 1> reduceSumOutQue;
+    TQue<QuePosition::VECOUT, 1> softmaxReduceSumOutQue;
     TQue<QuePosition::VECIN, 1> weightInQue;
     TQue<QuePosition::VECOUT, 1> gatherKeyQue[2];
     TQue<QuePosition::VECOUT, 1> gatherKeyIndexQue[2];
@@ -187,6 +189,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->reluGradQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_16K);
     pipe->InitBuffer(this->dwQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->dwOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64 * 2);
+    pipe->InitBuffer(this->softmaxReduceSumOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64);
     gatherKeyUb = gatherTbuf.Get<INPUT_T>();
     gatherKeyIndexUb = gatherKeyUb;
     auto dwUb = this->dwQue.template AllocTensor<T>();
@@ -583,27 +586,37 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<Buffer
     LocalTensor<T> weightInUb = weightInQue.template AllocTensor<T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     auto dwTensor = this->dwQue.template AllocTensor<T>();
-
+    auto softmaxReduceSumTensor = this->softmaxReduceSumOutQue.template AllocTensor<T>();
+    LocalTensor<T> softmaxTensor = gatherTbuf.Get<T>();
     DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = 1;
-    dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
-    dataCopyParams.srcStride = (constInfo.kSize - VEC_P_BASESIZE) * sizeof(T);
-    dataCopyParams.dstStride = 0;
     DataCopyPadExtParams<T> padParams;
-    DataCopyPad(mulsResUb, attnSoftmaxL1Gm[runInfo.t1Index * constInfo.kSize + runInfo.s2CurSize], dataCopyParams, padParams);
+    if (kRunInfo.kTaskId == 0) {
+        event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = constInfo.kSize * sizeof(T);
+        dataCopyParams.srcStride = (2048 - constInfo.kSize) * sizeof(T);
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(softmaxTensor, attnSoftmaxL1Gm[runInfo.t1Index * constInfo.kSize], dataCopyParams, padParams);
+        SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        ReduceSumVf(softmaxReduceSumTensor, softmaxTensor, constInfo.kSize);
+    }
     this->mulsResQue.template EnQue(mulsResUb);
     this->mulsResQue.template DeQue<T>();
     dataCopyParams.blockCount = runInfo.nIndexSize;
+    dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
     dataCopyParams.srcStride = (constInfo.kSizeAlign128 - VEC_P_BASESIZE) * sizeof(T);
+    dataCopyParams.dstStride = 0;
     DataCopyPad(reluUb, reluGm[runInfo.s2CurSize + runInfo.firstNIndexSize * constInfo.subBlockIdx * constInfo.kSizeAlign128], dataCopyParams, padParams);
     this->reluQue.template EnQue(reluUb);
     this->reluQue.template DeQue<T>();
 
     if (kRunInfo.isAlign64) {
-        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, mulsResUb,
+        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor,
             weightInUb, reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     } else {
-        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, mulsResUb, weightInUb,
+        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor, weightInUb,
             reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     }
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
