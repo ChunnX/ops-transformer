@@ -478,20 +478,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
                     transX2->GetViewShape().GetDim(1));
         }
         if (isX2Nz) {
-            op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
-            OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
-                    "viewShape=%s, strides=[%ld,%ld].",
-                    op::ToString(expectedNzShape).GetString(),
-                    op::ToString(transX2->GetStorageShape()).GetString(),
-                    op::ToString(transX2->GetViewShape()).GetString(),
-                    transX2->GetViewStrides()[0], transX2->GetViewStrides()[1]);
-            if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            int64_t viewDim0 = transX2->GetViewShape().GetDim(0);
-            int64_t viewDim1 = transX2->GetViewShape().GetDim(1);
+            int64_t viewDim0 = transX2->GetViewShape().GetDim(1);
+            int64_t viewDim1 = transX2->GetViewShape().GetDim(0);
             int64_t viewDims[2] = {viewDim0, viewDim1};
             int64_t viewStrides[2] = {viewDim1, 1};
             uint64_t storageDimNum = transX2->GetStorageShape().GetDimNum();
@@ -508,15 +496,19 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
             auto transX2NZ = const_cast<aclTensor *>(transX2);
             transX2NZ->SetViewFormat(op::Format::FORMAT_ND);
             transX2NZ->SetOriginalFormat(op::Format::FORMAT_ND);
-            op::Shape nzOrigShape;
-            if (transposeX2) {
-                nzOrigShape.AppendDim(viewDim1);
-                nzOrigShape.AppendDim(viewDim0);
-            } else {
-                nzOrigShape.AppendDim(viewDim0);
-                nzOrigShape.AppendDim(viewDim1);
+            transX2NZ->SetOriginalShape(transX2->GetViewShape());
+            op::Shape expectedNzShape = GetWeightNzShape(transX2, transposeX2);
+            OP_LOGI("QuantMatmulAlltoAll, NZ validation: expectedNzShape=%s, actualStorageShape=%s, "
+                    "viewShape=%s, strides=[%ld,%ld].",
+                    op::ToString(expectedNzShape).GetString(),
+                    op::ToString(transX2->GetStorageShape()).GetString(),
+                    op::ToString(transX2->GetViewShape()).GetString(),
+                    transX2->GetViewStrides()[0], transX2->GetViewStrides()[1]);
+            if (!CheckWeightNzStorageShape(expectedNzShape, transX2->GetStorageShape())) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "QuantMatmulAlltoAll, x2's NZ storage shape does not match the expected shape.");
+                return ACLNN_ERR_PARAM_INVALID;
             }
-            transX2NZ->SetOriginalShape(nzOrigShape);
             OP_LOGI("QuantMatmulAlltoAll, NZ x2 tensor created: viewShape=%s, storageShape=%s, "
                     "strides=[%ld,%ld], origShape=%s.",
                     op::ToString(transX2->GetViewShape()).GetString(),
