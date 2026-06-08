@@ -16,7 +16,7 @@
 #include <register/op_def_registry.h>
 #include "util/math_util.h"
 #include "../../op_kernel/quant_matmul_reduce_scatter_tiling_data.h"
-#include "quant_matmul_mx_tiling_swat.h"  // 使用 SWAT tiling engine
+#include "../../../3rd/quant_matmul/op_host/op_tiling/quant_matmul_mx_tiling_swat.h"  // 使用 SWAT tiling engine
 
 #include "mc2_log.h"
 using namespace AscendC;

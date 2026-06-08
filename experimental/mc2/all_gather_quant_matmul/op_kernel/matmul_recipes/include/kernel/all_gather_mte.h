@@ -24,7 +24,7 @@
 #include "adv_api/reduce/sum.h"
 #include "adv_api/pad/broadcast.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "tiling/all_gather_matmul_tiling_data.h"
+#include "all_gather_matmul_tiling_data.h"
 #include "all_gather_mte_comm.h"
 #include "all_gather_mte_utils.h"
 

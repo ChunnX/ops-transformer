@@ -20,8 +20,8 @@
 
 #include "common_utils.h"
 #include "quant_matmul_tiling_common.h"
-#include "../../op_kernel/quant_matmul_tiling_data.h"
-#include "../../op_kernel/matmul_recipes/include/utils/constant.h"
+#include "quant_matmul_tiling_data.h"
+#include "constant.h"
 
 template <mm::DataType aDataType, mm::DataType bDataType>
 class QuantMatmulTilingBase {

@@ -16,7 +16,7 @@
 
 #include "basic_api/kernel_basic_intf.h"
 #include "kernel/all_gather_matmul_impl.h"
-#include "tiling/all_gather_matmul_tiling_data.h"
+#include "all_gather_matmul_tiling_data.h"
 
 using namespace AscendC;
 

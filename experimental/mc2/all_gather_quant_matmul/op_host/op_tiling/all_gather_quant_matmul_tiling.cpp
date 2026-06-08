@@ -15,8 +15,8 @@
 
 #include <register/op_def_registry.h>
 #include "util/math_util.h"
-#include "../../op_kernel/tiling/all_gather_matmul_tiling_data.h"
-#include "quant_matmul_mx_tiling_swat.h"
+#include "../../op_kernel/all_gather_matmul_tiling_data.h"
+#include "../../../3rd/quant_matmul/op_host/op_tiling/quant_matmul_mx_tiling_swat.h"
 
 #include "mc2_log.h"
 using namespace AscendC;
@@ -32,15 +32,6 @@ constexpr uint32_t OP_TYPE_ALL_TO_ALL = 6;
 
 constexpr size_t X1_INDEX = 0;
 constexpr size_t X2_INDEX = 1;
-constexpr size_t RESIDUAL_INDEX = 2;
-constexpr size_t Y_INDEX = 3;
-constexpr size_t GAMMA_INDEX = 4;
-constexpr size_t SCALE_INDEX = 5;
-constexpr size_t SMOOTH_SCALE_INDEX = 6;
-constexpr size_t BIAS_INDEX = 7;
-
-constexpr size_t OUTPUT_INDEX = 0;
-constexpr size_t Z_INDEX = 1;
 
 constexpr size_t GROUP_INDEX = 0;
 constexpr size_t RANK_SIZE_INDEX = 1;

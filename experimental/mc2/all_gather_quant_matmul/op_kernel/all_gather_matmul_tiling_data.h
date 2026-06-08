@@ -5,7 +5,12 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #endif
-#include "quant_matmul_tiling_data.h"
+
+#if __has_include("quant_matmul/op_host/op_tiling/quant_matmul_tiling_data.h")
+#include "quant_matmul/op_host/op_tiling/quant_matmul_tiling_data.h"
+#else
+#include "../../3rd/quant_matmul/op_host/op_tiling/quant_matmul_tiling_data.h"
+#endif
 
 
 struct allGatherTilingData {
