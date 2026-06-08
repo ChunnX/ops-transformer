@@ -6,7 +6,7 @@
 # Total cases: 22
 
 TestCases = {
-    'Prefill_Unquant_BF16_Prof_L0_MT_1_1_1_8192_8192_128_128_128_TND_attentionmask_000000_test': {
+    'Prefill_Unquant_BF16_Prof_1_1_1_8192_8192_128_128_128_TND_attentionmask_000000_test': {
         'B': [1],
         'N1': [1],
         'N2': [1],
@@ -28,7 +28,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 8192]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_L0_MT_4_1_1_1000_1000_128_128_128_TND_attentionmask_000001_test': {
+    'Prefill_Unquant_BF16_Prof_L0_4_1_1_1000_1000_128_128_128_TND_attentionmask_000001_test': {
         'B': [4],
         'N1': [1],
         'N2': [1],
@@ -50,7 +50,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 100, 300, 600, 1000]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_L0_MT_1_1_1_399_399_128_128_128_TND_attentionmask_000002_test': {
+    'Prefill_Unquant_BF16_Prof_1_1_1_399_399_128_128_128_TND_attentionmask_000002_test': {
         'B': [1],
         'N1': [1],
         'N2': [1],
@@ -72,7 +72,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 399]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_L0_MT_1_16_16_8192_8192_128_128_128_TND_attentionmask_000017_test': {
+    'Prefill_Unquant_BF16_Prof_1_16_16_8192_8192_128_128_128_TND_attentionmask_000017_test': {
         'B': [1],
         'N1': [16],
         'N2': [16],
@@ -94,7 +94,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 8192]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_L0_MT_2_16_16_8192_8192_128_128_128_TND_attentionmask_000018_test': {
+    'Prefill_Unquant_BF16_Prof_2_16_16_8192_8192_128_128_128_TND_attentionmask_000018_test': {
         'B': [2],
         'N1': [16],
         'N2': [16],
@@ -116,7 +116,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 4096, 8192]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_hunyuan_Image3.0_CON_1_3_118888_118888_128_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_1_3_118888_118888_128_pre0_test': {
         'B': [1],
         'N1': [3],
         'N2': [3],
@@ -134,7 +134,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_Wan2.2_CON_1_10_25024_25024_128_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_1_10_25024_25024_128_pre0_test': {
         'B': [1],
         'N1': [10],
         'N2': [10],
@@ -152,7 +152,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_Wan2.2_CON_1_40_6256_512_128_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_1_40_6256_512_128_pre0_test': {
         'B': [1],
         'N1': [40],
         'N2': [40],
@@ -170,7 +170,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_Longcat_4_64_64_4608_4608_128_128_TND_000000_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_4_64_64_4608_4608_128_128_TND_000000_test': {
         'B': [4],
         'N1': [64],
         'N2': [64],
@@ -192,7 +192,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 4608, 4608, 4608, 4608]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_network_L0_1_8_16384_16384_128_tnd_GQA_actq_actkv_sps3_m_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_L0_1_8_16384_16384_128_tnd_GQA_sps3_m_pre0_test': {
         'B': [1],
         'N1': [8],
         'N2': [1],
@@ -214,7 +214,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 16384]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_network_L0_1_8_32768_32768_128_tnd_GQA_actq_actkv_sps3_m_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_L0_1_8_32768_32768_128_tnd_GQA_sps3_m_pre0_test': {
         'B': [1],
         'N1': [8],
         'N2': [1],
@@ -236,7 +236,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 32768]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_Prof_network_L0_1_8_131072_131072_128_tnd_GQA_actq_actkv_sps3_m_pre0_test': {
+    'Prefill_Unquant_BF16_Prof_1_8_131072_131072_128_tnd_GQA_sps3_m_pre0_test': {
         'B': [1],
         'N1': [8],
         'N2': [1],
@@ -258,7 +258,7 @@ TestCases = {
         'cu_seqlens_kv': [[0, 131072]],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_MY_4_32_32_128_128_128_128_BNSD_000000_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_4_32_32_128_128_128_128_BNSD_000000_test': {
         'B': [4],
         'N1': [32],
         'N2': [32],
@@ -276,7 +276,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_MY_4_32_32_128_128_128_128_BNSD_000002_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_4_32_32_128_128_128_128_BNSD_000002_test': {
         'B': [4],
         'N1': [32],
         'N2': [32],
@@ -294,7 +294,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_KS_45_4_4_100_1000_64_64_BSND_000000_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_45_4_4_100_1000_64_64_BSND_000000_test': {
         'B': [45],
         'N1': [4],
         'N2': [4],
@@ -312,7 +312,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_KS_45_4_4_1000_92000_64_64_BSND_000001_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_45_4_4_1000_92000_64_64_BSND_000001_test': {
         'B': [45],
         'N1': [4],
         'N2': [4],
@@ -330,7 +330,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_TX_1_16_2_1024_16384_128_128_BNSD_000000_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_1_16_2_1024_16384_128_128_BNSD_000000_test': {
         'B': [1],
         'N1': [16],
         'N2': [2],
@@ -352,7 +352,7 @@ TestCases = {
         'block_size': [128],
         'return_softmax_lse': [0],
     },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_TX_1_16_2_1024_32768_128_128_BNSD_000001_test': {
+    'Prefill_Unquant_BF16_BF16_Prof_1_16_2_1024_32768_128_128_BNSD_000001_test': {
         'B': [1],
         'N1': [16],
         'N2': [2],
@@ -374,7 +374,7 @@ TestCases = {
         'block_size': [128],
         'return_softmax_lse': [0],
     },
-    'Decode_Unquant_BF16_Prof_L0_MT_2_1_1_1_2_128_128_128_TND_PA_000000_test': {
+    'Decode_Unquant_BF16_Prof_2_1_1_1_2_128_128_128_TND_PA_000000_test': {
         'B': [2],
         'N1': [1],
         'N2': [1],
@@ -397,7 +397,7 @@ TestCases = {
         'block_size': [128],
         'return_softmax_lse': [0],
     },
-    'Decode_Unquant_BF16_Prof_L0_MT_5_1_1_1_5_128_128_128_TND_PA_000001_test': {
+    'Decode_Unquant_BF16_Prof_5_1_1_1_5_128_128_128_TND_PA_000001_test': {
         'B': [5],
         'N1': [1],
         'N2': [1],
@@ -420,7 +420,7 @@ TestCases = {
         'block_size': [128],
         'return_softmax_lse': [0],
     },
-    'Decode_Unquant_BF16_BF16_Prof_L0_QWEN3_4_8_1_1_4096_128_128_BNSD_000000_test': {
+    'Decode_Unquant_BF16_BF16_Prof_4_8_1_1_4096_128_128_BNSD_000000_test': {
         'B': [4],
         'N1': [8],
         'N2': [1],
@@ -438,7 +438,7 @@ TestCases = {
         'mask_mode': [0],
         'return_softmax_lse': [0],
     },
-    'Decode_Unquant_BF16_Prof_Qwen3-32B_CON_4_8_1_4106_128_pre0_test': {
+    'Decode_Unquant_BF16_Prof_4_8_1_4106_128_pre0_test': {
         'B': [4],
         'N1': [8],
         'N2': [1],
