@@ -37,6 +37,7 @@ private:
     __aicore__ inline void WriteExpertTokens();
     __aicore__ inline void GatherAndWriteChunked();
     __aicore__ inline void GatherAndWriteDroppad();
+    template <int64_t QUANT_MODE>
     __aicore__ inline void PadZerosForDropPad();
 
     // Quantization helper functions
