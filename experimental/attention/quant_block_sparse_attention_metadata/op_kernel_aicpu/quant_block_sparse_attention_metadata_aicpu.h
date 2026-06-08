@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FLASH_ATTN_METADATA_AICPU_H
-#define FLASH_ATTN_METADATA_AICPU_H
+#ifndef QUANT_BLOCK_SPARSE_ATTENTION_METADATA_AICPU_H
+#define QUANT_BLOCK_SPARSE_ATTENTION_METADATA_AICPU_H
 
 #include <array>
 #include <string>
@@ -51,14 +51,18 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
+    bool ParamsCheck();
+    bool CheckTensorData();
+    bool ParamsInit();
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
-    bool ParamsInit();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    int32_t GetQueryBatchSize();
 
 private:
     CpuKernelContext *context_ = nullptr;
     // input tensor
+    Tensor *sparseSeqLen_ = nullptr;
     Tensor *cuSeqlensQ_ = nullptr;
     Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
@@ -66,22 +70,25 @@ private:
     // output tensor
     Tensor *metaData_ = nullptr;
 
-    // input attr
+    // attr
     int32_t batchSize_ = 0;
-    int32_t maxSeqlenQ_ = -1;
-    int32_t maxSeqlenKv_ = -1;
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
-    int32_t maskMode_ = 1;
-    int32_t winLeft_ = -1;
-    int32_t winRight_ = -1;
-    std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "BSND";
-    std::string layoutOut_ = "BSND";
+    int32_t sparseBlockSizeQ_ = 128;
+    int32_t sparseBlockSizeKv_ = 128;
+    int32_t quantMode_ = 0; // TODO: confirm default value for quant_mode
+    int32_t maskMode_ = 3;
+    int32_t maxSeqlenQ_ = -1;
+    int32_t maxSeqlenKv_ = -1;
+    std::string layoutQ_ = "BSND"; // TODO: confirm default value for layout_q
+    std::string layoutKv_ = "PA_BNSD";
+    std::string layoutSparseIndices_ = "B_N_Qb_Kb";
+
+    // platform
     std::string socVersion_ = "";
-    int32_t aicCoreNum_ = 36U;
-    int32_t aivCoreNum_ = 72U;
+    int32_t aicCoreNum_ = 36;
+    int32_t aivCoreNum_ = 72;
 
     // SplitParams
     uint32_t groupSize_ = 0;
@@ -94,10 +101,11 @@ private:
 private:
     enum class ParamId : uint32_t {
         // input
-        cuSeqlensQ = 0,
-        cuSeqlensKv = 1,
-        sequsedQ = 2,
-        sequsedKv = 3,
+        sparseSeqLen = 0,
+        cuSeqlensQ = 1,
+        cuSeqlensKv = 2,
+        sequsedQ = 3,
+        sequsedKv = 4,
         // output
         metaData = 0,
     };

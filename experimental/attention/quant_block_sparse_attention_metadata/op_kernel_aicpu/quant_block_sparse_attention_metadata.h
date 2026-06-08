@@ -13,20 +13,20 @@
  * \brief
  */
 
-#ifndef FLASH_ATTN_METADATA_H
-#define FLASH_ATTN_METADATA_H
+#ifndef QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#define QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
 
 #include <cstdint>
 #include <cassert>
 
 namespace optiling {
 
-// Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t FA_META_SIZE = 1024;
-using FA_METADATA_T = uint32_t;
+constexpr uint32_t QBSA_METADATA_SIZE = 1024;
+using QBSA_METADATA_T = uint32_t;
 
+constexpr uint32_t METADATA_HEADER_SIZE = 16;
 constexpr uint32_t FA_METADATA_SIZE = 16;
 constexpr uint32_t FD_METADATA_SIZE = 16;
 
@@ -49,20 +49,13 @@ constexpr uint32_t FD_M_NUM_INDEX = 5;
 
 #ifdef __CCE_AICORE__
 
-/**
- * @brief 获取属性的绝对索引
- * @param coreIdx 核索引
- * @param metaIdx 元数据索引
- * @param isAIV 是否为AIV数据，默认为false
- * @return 返回属性的绝对索引
- */
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t idx, uint32_t coreIdx,
-                                           uint32_t metaIdx, uint32_t num, bool isAIV = false)
+                                            uint32_t metaIdx, uint32_t num, bool isAIV = false)
 {
     if (isAIV) {
-        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx + 16U;
+        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx + METADATA_HEADER_SIZE;
     } else {
-        return FA_METADATA_SIZE * coreIdx + metaIdx + 16U;
+        return FA_METADATA_SIZE * coreIdx + metaIdx + METADATA_HEADER_SIZE;
     }
 }
 #endif
@@ -72,8 +65,8 @@ struct FaMetaData {
     uint32_t *faMetadata; // [AIC_CORE_NUM][FA_METADATA_SIZE];
     uint32_t *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr)
-        : faMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
-          fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + AIC_CORE_NUM * FA_METADATA_SIZE)
+        : faMetadata(static_cast<uint32_t*>(metadataPtr) + METADATA_HEADER_SIZE),
+          fdMetadata(static_cast<uint32_t*>(metadataPtr) + METADATA_HEADER_SIZE + AIC_CORE_NUM * FA_METADATA_SIZE)
     {
         static_cast<uint32_t*>(metadataPtr)[0] = 1;
     }

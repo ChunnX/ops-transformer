@@ -26,32 +26,34 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(QuantBlockSparseAttentionMetadata);
 
-const aclTensor *QuantBlockSparseAttentionMetadata(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-                                   const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                   int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                   int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
-                                   int64_t winRight, const char *layoutQ, const char *layoutKv, const char *layoutOut,
-                                   const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
-                                   const aclTensor *metaData, aclOpExecutor *executor)
+const aclTensor *QuantBlockSparseAttentionMetadata(
+    const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
+    int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
+    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
+    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const char *socVersion,
+    int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData, aclOpExecutor *executor)
 {
-    L0_DFX(QuantBlockSparseAttentionMetadata, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
-           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv,
-           layoutOut, socVersion, aicCoreNum, aivCoreNum, metaData);
+    L0_DFX(QuantBlockSparseAttentionMetadata, sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional,
+            sequsedQOptional, sequsedKvOptional, batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
+            sparseBlockSizeKv, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
+            layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metaData);
 
     static internal::AicpuTaskSpace space("QuantBlockSparseAttentionMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         QuantBlockSparseAttentionMetadata,
-        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_kv", "num_heads_q", "num_heads_kv", "head_dim",
-                       "mask_mode", "win_left", "win_right", "layout_q", "layout_kv", "layout_out", "soc_version",
-                       "aic_core_num", "aiv_core_num"}),
-        OP_INPUT(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional),
+        OP_ATTR_NAMES({"batch_size", "num_heads_q", "num_heads_kv", "head_dim", "sparse_block_size_q",
+                       "sparse_block_size_kv", "quant_mode", "mask_mode", "max_seqlen_q", "max_seqlen_kv",
+                       "layout_q", "layout_kv", "layout_sparse_indices", "soc_version", "aic_core_num",
+                       "aiv_core_num"}),
+        OP_INPUT(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional),
         OP_OUTPUT(metaData),
-        OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight,
-                layoutQ, layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum));
+        OP_ATTR(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode, maskMode,
+                maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional, layoutSparseIndicesOptional, socVersion,
+                aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
-             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantBlockSparseAttentionMetadata"
-                                              " ADD_TO_LAUNCHER_LIST_AICPU failed."),
+             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantBlockSparseAttentionMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
     return metaData;
 }
