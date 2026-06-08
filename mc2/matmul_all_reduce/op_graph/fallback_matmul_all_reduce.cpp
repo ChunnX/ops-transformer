@@ -207,9 +207,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+        isCommMode = (comm_para.comm_mode == "ccu") || (comm_para.comm_mode == "ai_cpu");
     }
 
     switch (quant_para.type) {

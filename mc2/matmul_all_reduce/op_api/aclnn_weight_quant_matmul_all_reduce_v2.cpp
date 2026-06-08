@@ -80,8 +80,6 @@ static bool CheckDtypeValid(
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
-        const auto x1Dtype = x1->GetDataType();
-        const auto biasDtype = bias->GetDataType();
             // 检查x1和bias的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }
@@ -159,7 +157,8 @@ static bool IsAntiquantScaleShapeValid(
         return false;
     }
 
-    int64_t kValue = static_cast<int64_t>(CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize));
+    int64_t kValue = static_cast<int64_t>(CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1Len - 1)),
+        static_cast<size_t>(antiquantGroupSize)));
     if (antiquantGroupSize > 0) {
         if ((scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
              scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
@@ -194,7 +193,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
+    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 != x2Dim0) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
             "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
@@ -246,7 +246,8 @@ static bool CheckShape(
                 op::ToString(scale->GetViewShape()).GetString());
         }
         if (antiquantGroupSize != 0) {
-            size_t kValueGroup = CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
+            size_t kValueGroup = CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1Len - 1)),
+                static_cast<size_t>(antiquantGroupSize));
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
                 "Expected shape of antiquantScale to be [%zu,%ld] for per-group calculation, but got scale shape: %s.",
@@ -419,7 +420,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && *executor != nullptr && executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
@@ -438,7 +439,13 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+            char* commMode = static_cast<char*>(NnopbaseGetUserHandle(executor));
+            if (commMode == nullptr) {
+                OP_LOGE(
+                    ACLNN_ERR_INNER,
+                    "WeightQuantMatmulAllReduceV2, NnopbaseGetUserHandle get commMode is nullptr.");
+                return ACLNN_ERR_INNER;
+            }
             if (strcmp(commMode, COMM_MODE_CCU) == 0) {
                 OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is 'ccu', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
