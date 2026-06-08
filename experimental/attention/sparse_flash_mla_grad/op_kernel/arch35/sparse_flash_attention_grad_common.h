@@ -20,6 +20,7 @@
 #include "../../../../../../attention/common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;
 
+constexpr int32_t PROCESS_KV_SIZE = 4096;
 constexpr uint8_t SYNC_C3_TO_V0_FLAG[2] = {7, 9};
 constexpr uint8_t SYNC_V0_TO_C1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
@@ -33,6 +34,7 @@ constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
 constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
 constexpr uint8_t SCATTER_SYNC_FLAG = 13;
+constexpr uint8_t SCATTER_TO_FIX_SYNC_FLAG = 14;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
