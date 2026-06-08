@@ -185,6 +185,7 @@ public:
         PipeBarrier<PIPE_ALL>();
         SyncAll();
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
+        vecOp.SetFlag();
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -213,6 +214,7 @@ public:
             taskId++;
         }
 
+        vecOp.WaitFlag();
         PipeBarrier<PIPE_ALL>();
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         SyncAll();
