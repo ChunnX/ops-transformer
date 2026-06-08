@@ -15,8 +15,12 @@
 
 #include "quant_block_sparse_attention_check.h"
 #include "quant_block_sparse_attention_tiling.h"
+#include "log/log.h"
 
 namespace optiling {
+namespace {
+constexpr const char *kOpName = "QuantBlockSparseAttention";
+} // namespace
 
 QuantBlockSparseAttentionCheck::QuantBlockSparseAttentionCheck(const QuantBlockSparseAttentionTilingInfo &tilingInfo)
     : tilingInfo_(tilingInfo)
@@ -26,9 +30,13 @@ QuantBlockSparseAttentionCheck::QuantBlockSparseAttentionCheck(const QuantBlockS
 ge::graphStatus QuantBlockSparseAttentionCheck::CheckDtype() const
 {
     if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.qDtype != ge::DT_HIFLOAT8) {
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", std::to_string(static_cast<int>(tilingInfo_.qDtype)),
+                                  "FLOAT8_E4M3FN or HIFLOAT8");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.kvDtype != ge::DT_HIFLOAT8) {
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", std::to_string(static_cast<int>(tilingInfo_.kvDtype)),
+                                  "FLOAT8_E4M3FN or HIFLOAT8");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -37,6 +45,10 @@ ge::graphStatus QuantBlockSparseAttentionCheck::CheckDtype() const
 ge::graphStatus QuantBlockSparseAttentionCheck::CheckBlockSize() const
 {
     if (tilingInfo_.qBlockSizeVal != BSA_BLOCK_SIZE || tilingInfo_.kvBlockSizeVal != BSA_BLOCK_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE(kOpName, "q_block_size/kv_block_size",
+                                  std::to_string(tilingInfo_.qBlockSizeVal) + "/" +
+                                      std::to_string(tilingInfo_.kvBlockSizeVal),
+                                  std::to_string(BSA_BLOCK_SIZE));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -45,18 +57,35 @@ ge::graphStatus QuantBlockSparseAttentionCheck::CheckBlockSize() const
 ge::graphStatus QuantBlockSparseAttentionCheck::CheckShapeConsistency() const
 {
     if (tilingInfo_.bSize == 0U || tilingInfo_.n1Size == 0U || tilingInfo_.n2Size == 0U || tilingInfo_.gSize == 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "bSize/n1Size/n2Size/gSize",
+            std::to_string(tilingInfo_.bSize) + "/" + std::to_string(tilingInfo_.n1Size) + "/" +
+                std::to_string(tilingInfo_.n2Size) + "/" + std::to_string(tilingInfo_.gSize),
+            "all dimensions must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n1Size (query head num)", std::to_string(tilingInfo_.n1Size),
+                                              "must be divisible by n2Size (kv head num) " +
+                                                  std::to_string(tilingInfo_.n2Size));
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.s1Size == 0U || tilingInfo_.s2Size == 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "s1Size/s2Size", std::to_string(tilingInfo_.s1Size) + "/" + std::to_string(tilingInfo_.s2Size),
+            "sequence lengths must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.qbMax == 0U || tilingInfo_.kbMax == 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "qbMax/kbMax", std::to_string(tilingInfo_.qbMax) + "/" + std::to_string(tilingInfo_.kbMax),
+            "block counts must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.dSize == 0U || tilingInfo_.dSizeV == 0U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "dSize/dSizeV", std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
+            "head dimensions must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -65,6 +94,7 @@ ge::graphStatus QuantBlockSparseAttentionCheck::CheckShapeConsistency() const
 ge::graphStatus QuantBlockSparseAttentionCheck::CheckMaskMode() const
 {
     if (tilingInfo_.maskModeVal > 4U) {
+        OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal), "0, 1, 2, 3 or 4");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -26,7 +26,8 @@ using namespace AscendC;
 enum class BSALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNSD = 2
+    PA_BNSD = 2,
+    BNSD = 3
 };
 
 enum class BSADType : uint32_t {

@@ -16,30 +16,40 @@
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
 #include "quant_block_sparse_attention_tiling.h"
+#include "log/log.h"
 
 namespace ops {
+namespace {
+constexpr const char *kOpName = "QuantBlockSparseAttention";
+} // namespace
+
 ge::graphStatus InferShapeQuantBlockSparseAttention(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
+        OP_LOGE(kOpName, "InferShape: context is nullptr");
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(optiling::BSA_QUERY_INDEX);
     if (queryShape == nullptr) {
+        OP_LOGE(kOpName, "InferShape: query shape is nullptr");
         return ge::GRAPH_FAILED;
     }
 
     gert::Shape *attentionOutShape = context->GetOutputShape(optiling::BSA_ATTENTION_OUT_INDEX);
     if (attentionOutShape == nullptr) {
+        OP_LOGE(kOpName, "InferShape: attentionOut shape is nullptr");
         return ge::GRAPH_FAILED;
     }
     *attentionOutShape = *queryShape;
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::BSA_SOFTMAX_LSE_INDEX);
     if (softmaxLseShape == nullptr) {
+        OP_LOGE(kOpName, "InferShape: softmaxLse shape is nullptr");
         return ge::GRAPH_FAILED;
     }
     auto attrs = context->GetAttrs();
     if (attrs == nullptr) {
+        OP_LOGE(kOpName, "InferShape: attrs is nullptr");
         return ge::GRAPH_FAILED;
     }
     const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(optiling::BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
@@ -61,6 +71,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttention(gert::InferShapeContext *con
         softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
         softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
     } else {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(kOpName, "query", std::to_string(queryDimNum) + "D", "3D or 4D");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -69,6 +80,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttention(gert::InferShapeContext *con
 ge::graphStatus InferDataTypeQuantBlockSparseAttention(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
+        OP_LOGE(kOpName, "InferDataType: context is nullptr");
         return ge::GRAPH_FAILED;
     }
     ge::DataType attentionOutType = context->GetOutputDataType(optiling::BSA_ATTENTION_OUT_INDEX);
