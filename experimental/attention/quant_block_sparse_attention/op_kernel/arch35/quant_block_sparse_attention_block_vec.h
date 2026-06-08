@@ -907,7 +907,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
 
     int64_t attenOutOffset = constInfo.dSizeV;
-    if constexpr (qLayout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND) {
         attenOutOffset = constInfo.n2GDv;
         if (constInfo.isPfaGS1Merge) {
             attenOutOffset = 0;
@@ -1205,7 +1205,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
-    if (qLayout == BSALayout::TND) {
+    if (layout == BSALayout::TND) {
         intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;

@@ -44,7 +44,7 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
     return GmFormat::TNGD;
 }
 
-template <BSAKvLayout LAYOUT>
+template <BSALayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
     return GmFormat::TND;
@@ -164,7 +164,7 @@ private:
     __gm__ uint8_t *currentValue; // pageattention需要
     __gm__ uint8_t *blocktablePtr; // pageattention需要
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
-    static constexpr GmFormat Q_FORMAT = QuantBlockSparseAttentionCube::GetQueryGmFormat<qLayout>();
+    static constexpr GmFormat Q_FORMAT = QuantBlockSparseAttentionCube::GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = QuantBlockSparseAttentionCube::GetKVGmFormat<kvLayout>();
     FaGmTensor<INPUT_T, Q_FORMAT> queryGm;
     FaGmTensor<INPUT_T, KV_FORMAT> keyGm;

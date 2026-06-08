@@ -85,13 +85,13 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr BSALayout qLayout = BSALayout::TND;
-    constexpr BSAKvLayout kvLayout = BSAKvLayout::PA_BNSD;
+    constexpr BSALayout layout = BSALayout::TND;
+    constexpr BSALayout kvLayout = BSALayout::PA_BNSD;
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
     // TODO: 是否新增模板参数
     constexpr bool HAS_ATTENTION = (COMPRESS_MODE==3);
-    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, qLayout, kvLayout,
+    BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout,
         S1TemplateType::Aligned128, S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, 
         HAS_ATTENTION, bsaIsPa);
 }
