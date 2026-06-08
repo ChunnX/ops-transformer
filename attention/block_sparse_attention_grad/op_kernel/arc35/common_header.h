@@ -1,0 +1,134 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+namespace BSA_ARC35 {
+
+#define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+#define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+
+static constexpr uint32_t BSND = 0;
+static constexpr uint32_t BNSD = 1;
+static constexpr uint32_t TND = 2;
+
+static constexpr uint32_t C0_SIZE = 16;
+static constexpr uint32_t FLAG_C1_V1 = 0;      // cube(qk) -> vec(softmax)
+static constexpr uint32_t FLAG_C2_V2 = 1;      // cube(dyV) -> vec(softmaxGrad)
+static constexpr uint32_t FLAG_V1_C3 = 2;      // vec(softmax) -> cube(dv)
+static constexpr uint32_t FLAG_V2_C45 = 3;     // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_CUBE_POST = 4;   // vec(softmaxGrad) -> cube(dq\dk)
+
+struct RunTimeInfo {
+    int32_t taskId{0};
+    int32_t bIdx{0};           // 当前计算的batch的idx
+    int32_t n1Idx{0};          // 当前计算的q_head的idx
+    int32_t n2Idx{0};          // 当前计算的kv_head的idx
+    int32_t s1Idx{0};          // 当前计算的q_seq的起始idx
+    int32_t s2Idx{0};          // 当前计算的kv_seq的起始idx
+    int32_t s1Len{0};          // 当前计算的q_seq的长度
+    int32_t s2Len{0};          // 当前计算的kv_seq的长度
+    int32_t s1LenAlign{0};     // 当前计算的q_seq的16对齐的长度
+    int32_t s2LenAlign{0};     // 当前计算的kv_seq的16对齐的长度
+    uint64_t queryGmOffset{0}; // query gm offset
+    uint64_t keyGmOffset{0};   // key gm offset
+    uint64_t lseGmOffset{0};   // lse gm offset
+    uint64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int32_t need_compute{0};   // 是否存在任务需要计算
+};
+
+
+inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
+{
+    return a > b ? a : b;
+}
+
+template <typename T>
+inline __aicore__ T CeilDiv(const T dividend, const T divisor)
+{
+    return (dividend + divisor - 1) / divisor;
+}
+
+template <typename T>
+inline __aicore__ T RoundUp(const T val, const T align)
+{
+    return (val + align - 1) / align * align;
+}
+
+__aicore__ inline int64_t GetSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualSeqlen;
+    if (i == 0) {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[0];
+    } else {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[i] - ((__gm__ int64_t *)seq_Len)[i - 1];
+    }
+    return actualSeqlen;
+}
+
+__aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualTotalSeqlen = ((__gm__ int64_t *)seq_Len)[i];
+    return actualTotalSeqlen;
+}
+
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n_idx)
+{
+    if constexpr (INPUT_LAYOUT == BSND) {
+        return batch_idx * (current_seq_len * head_num * head_dim) + (seqlen_idx * head_num * head_dim) +
+               (n_idx * head_dim);
+    } else if (INPUT_LAYOUT == BNSD) {
+        return batch_idx * (head_num * current_seq_len * head_dim) + (n_idx * current_seq_len * head_dim) +
+               (seqlen_idx * head_dim);
+    } else if constexpr (INPUT_LAYOUT == TND) {
+        return lastBatchSum * (head_num * head_dim) + (seqlen_idx * head_num * head_dim) + (n_idx * head_dim);
+    }
+}
+
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                          int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+{
+    if constexpr (INPUT_LAYOUT == TND) {
+        // TN1
+        return lastBatchSum * head_num + (seqlen_idx * head_num) + n1Idx;
+    } else {
+        // BNS1
+        return batch_idx * (head_num * current_seq_len) + n1Idx * (current_seq_len) + seqlen_idx;
+    }
+}
+
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                           int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+{
+    if constexpr (INPUT_LAYOUT == TND) {
+        // BNS8
+        return lastBatchSum * head_num * 8 + n1Idx * current_seq_len * 8 + seqlen_idx * 8;
+    } else {
+        // BNS8
+        return batch_idx * (head_num * current_seq_len) * 8 + n1Idx * (current_seq_len) * 8 + seqlen_idx * 8;
+    }
+}
+
+
+__aicore__ inline bool IsValidBlock(const int32_t q_head_num, const int32_t q_block_num, const int32_t kv_block_num,
+                                    const int32_t batch_idx, const int32_t n1_idx, const int32_t q_block_idx,
+                                    const int32_t kv_block_idx, __gm__ uint8_t *sparse_block_list)
+
+{
+    uint64_t offset = batch_idx * (q_head_num * q_block_num * kv_block_num) + n1_idx * (q_block_num * kv_block_num) +
+                      q_block_idx * kv_block_num + kv_block_idx;
+    bool is_valid = sparse_block_list[offset];
+    return is_valid;
+}
+
+
+} // namespace BSA_ARC35

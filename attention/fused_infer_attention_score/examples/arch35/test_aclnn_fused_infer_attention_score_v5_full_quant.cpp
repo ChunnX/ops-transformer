@@ -103,14 +103,18 @@ int main() {
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    std::vector<int64_t> queryShape = {1, 2, 2, 16}; // BNSD
-    std::vector<int64_t> keyShape = {1, 2, 2, 16};   // BNSD
-    std::vector<int64_t> valueShape = {1, 2, 2, 16}; // BNSD
+    std::vector<int64_t> queryShape = {64, 2, 64}; // TND
+    std::vector<int64_t> keyShape = {64, 2, 64};   // TND
+    std::vector<int64_t> valueShape = {64, 2, 64}; // TND
+    std::vector<int64_t> actualSeqlenVector = {4,8,16,32,64};
+    auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
+    std::vector<int64_t> actualSeqlenKvVector = {4,8,16,32,64};
+    auto actualSeqLengthsKv = aclCreateIntArray(actualSeqlenKvVector.data(), actualSeqlenKvVector.size());
     std::vector<int64_t> quantScale1Shape = {1}; // 1
-    std::vector<int64_t> keyAntiquantScaleShape = {1, 2, 1, 1}; // B, Q_N, ceil(Q_S, 128), 1
-    std::vector<int64_t> valueAntiquantScaleShape = {1, 2, 1, 1}; // B, KV_N, ceil(KV_S, 256), 1
-    std::vector<int64_t> dequantScaleQueryShape = {1, 2, 1, 1}; // B, KV_N, ceil(KV_S, 256), 1
-    std::vector<int64_t> outShape = {1, 2, 2, 16};   // BNSD
+    std::vector<int64_t> keyAntiquantScaleShape = {64, 2, 1, 2}; //（KV_T, KV_N, D/64, 2）
+    std::vector<int64_t> valueAntiquantScaleShape = {5, 2, 64, 2}; // （KV_T/64, KV_N, D, 2）
+    std::vector<int64_t> dequantScaleQueryShape = {64, 2, 1, 2}; // （Q_T, Q_N, D/64, 2）
+    std::vector<int64_t> outShape = {64, 2, 64}; // TND
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
@@ -127,13 +131,13 @@ int main() {
     aclTensor *keyAntiquantScaleTensor = nullptr;
     aclTensor *valueAntiquantScaleTensor = nullptr;
     aclTensor *outTensor = nullptr;
-    int64_t queryShapeSize = GetShapeSize(queryShape); // BNSD
+    int64_t queryShapeSize = GetShapeSize(queryShape); // TND
     int64_t keyShapeSize = GetShapeSize(keyShape);     // BNSD
     int64_t valueShapeSize = GetShapeSize(valueShape); // BNSD
     int64_t quantScale1ShapeSize = GetShapeSize(quantScale1Shape); // 1
-    int64_t dequantScaleQueryShapeSize = GetShapeSize(dequantScaleQueryShape); // B, Q_N, ceil(Q_S, 128), 1
-    int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape); // B, KV_N, ceil(KV_S, 256), 1
-    int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // B, KV_N, ceil(KV_S, 256), 1
+    int64_t dequantScaleQueryShapeSize = GetShapeSize(dequantScaleQueryShape); // （Q_T, Q_N, D/64, 2）
+    int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape); // （KV_T, KV_N, D/64, 2）
+    int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // （KV_T/64, KV_N, D, 2）
     int64_t outShapeSize = GetShapeSize(outShape);     // BNSD
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> keyHostData(keyShapeSize, 1);
@@ -173,19 +177,19 @@ int main() {
     }
     // Create keyAntiquantScale aclTensor.
     ret = CreateAclTensor(keyAntiquantScaleHostData,
-        keyAntiquantScaleShape, &keyAntiquantScaleDeviceAddr, aclDataType::ACL_FLOAT, &keyAntiquantScaleTensor);
+        keyAntiquantScaleShape, &keyAntiquantScaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &keyAntiquantScaleTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create valueAntiquantScale aclTensor.
     ret = CreateAclTensor(valueAntiquantScaleHostData,
-        valueAntiquantScaleShape, &valueAntiquantScaleDeviceAddr, aclDataType::ACL_FLOAT, &valueAntiquantScaleTensor);
+        valueAntiquantScaleShape, &valueAntiquantScaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &valueAntiquantScaleTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create dequantScaleQuery aclTensor.
     ret = CreateAclTensor(dequantScaleQueryHostData,
-        dequantScaleQueryShape, &dequantScaleQueryDeviceAddr, aclDataType::ACL_FLOAT, &dequantScaleQueryTensor);
+        dequantScaleQueryShape, &dequantScaleQueryDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &dequantScaleQueryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -196,11 +200,11 @@ int main() {
     }
 
     int64_t numHeads = 2; // N
-    int64_t numKeyValueHeads = numHeads;
+    int64_t numKeyValueHeads = 2;
     double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
-    string sLayerOut = "BNSD";
+    string sLayerOut = "TND";
     char layerOut[sLayerOut.length() + 1];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
@@ -208,16 +212,16 @@ int main() {
     int blockSize = 0;
     int antiquantMode = 0;
     bool softmaxLseFlag = false;
-    int64_t keyAntiquantMode = 7;
-    int64_t valueAntiquantMode = 7;
-    int64_t queryQuantMode = 7;
+    int64_t queryQuantMode = 6;
+    int64_t keyAntiquantMode = 6;
+    int64_t valueAntiquantMode = 8;
     int64_t pseType = 0;
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // Call the first interface.
     ret = aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
-        queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, quantScale1Tensor, nullptr,
+        queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, actualSeqLengths, actualSeqLengthsKv, nullptr, quantScale1Tensor, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, keyAntiquantScaleTensor, nullptr, valueAntiquantScaleTensor, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, dequantScaleQueryTensor, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
@@ -266,6 +270,12 @@ int main() {
     aclDestroyTensor(queryTensor);
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);
+    aclDestroyIntArray(actualSeqLengths);
+    aclDestroyIntArray(actualSeqLengthsKv);
+    aclDestroyTensor(quantScale1Tensor);
+    aclDestroyTensor(keyAntiquantScaleTensor);
+    aclDestroyTensor(valueAntiquantScaleTensor);
+    aclDestroyTensor(dequantScaleQueryTensor);
     aclDestroyTensor(outTensor);
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);

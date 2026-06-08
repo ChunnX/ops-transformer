@@ -1139,8 +1139,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!constInfo.isRowInvalid && \
-            attenMaskInfo.compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
+        if (!constInfo.isRowInvalid) {
             return;
         }
         int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);

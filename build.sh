@@ -327,7 +327,7 @@ function help_info() {
     echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
-    echo "    --onnxplugin build op_transformer_onnx_plugin.so"
+    echo "    --onnxplugin build oponnx_plugin_transformer.so"
     echo "    --opapi build opapi_transformer.so"
     echo "    --ophost build ophost_transformer.so"
     echo "    --opkernel build binary kernel"
@@ -1372,7 +1372,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --onnxplugin)
-        BUILD_LIBS+=("op_transformer_onnx_plugin")
+        BUILD_LIBS+=("oponnx_plugin_transformer")
         ENABLE_CREATE_LIB=TRUE
         ONNX_PLUGIN=TRUE
         shift
@@ -1493,6 +1493,10 @@ if [ -n "${ascend_op_name}" ];then
     fi
     if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
  	    ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+    fi
+    # 编译quant_reduce_scatter的同时，把quant_reduce_scatter_v2也带上
+    if [[ "${ascend_op_name}" == *"quant_reduce_scatter"* ]] && [[ "${ascend_op_name}" != *"quant_reduce_scatter_v2"* ]]; then
+        ascend_op_name="${ascend_op_name};quant_reduce_scatter_v2"
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then

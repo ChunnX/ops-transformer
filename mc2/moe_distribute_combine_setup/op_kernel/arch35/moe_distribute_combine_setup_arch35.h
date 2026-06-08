@@ -128,7 +128,11 @@ private:
     TBuf<> piCiBuf_;        // 32B，用于 GetPICI 的 MTE 搬运
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-    //=============================== Urma --add by xuxn ===============================//
+    //=============================== Urma ===============================//
+    TBuf<> hcommBuf_;
+    LocalTensor<uint8_t> hcommTensor_;
+
+    constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
     constexpr static uint64_t WIN_ADDR_ALIGN = 512UL;
     constexpr static uint32_t MAX_UB_SIZE = 170U * 1024U;
     constexpr static uint8_t BUFFER_SINGLE = 1;
@@ -161,7 +165,7 @@ private:
         uint32_t currRankId = rankId > epRankId? rankId - 1 : rankId;
         return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
     }
-    //=============================== Urma --add by xuxn ===============================//
+    //=============================== Urma ===============================//
 
 };
 
@@ -175,6 +179,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     coreIdx_ = GetBlockIdx();
     moeDistributeCombineSetupInfo_ = &(tilingData->moeDistributeCombineSetupInfo);
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
+
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
@@ -210,7 +218,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     epWindowGM_ = GetWinAddrByRankId(moeDistributeCombineSetupInfo_->epRankId);
     epStatusSpaceGM_ = GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId);
 
-    //=============================== Urma --add by xuxn ===============================//
+    //=============================== Urma ===============================//
     hAlignSize_ = Ceil(moeDistributeCombineSetupInfo_->h * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
 
@@ -224,7 +232,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     for (uint32_t i = 0; i < moeDistributeCombineSetupInfo_->epWorldSize -1; i++) {
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity* >(mc2Context_->hcommHandle_[i]);
     }
-    //=============================== Urma --add by xuxn ===============================//
+    //=============================== Urma ===============================//
 
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), moeDistributeCombineSetupInfo_->totalWinSize);

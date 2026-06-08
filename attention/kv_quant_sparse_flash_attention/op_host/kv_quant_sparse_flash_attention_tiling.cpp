@@ -303,22 +303,22 @@ void QSFAMlaTiling::CheckUbSpace()
     CalcUbBmm();
 }
 
-void QSFAMlaTiling::CalcInnerSize(uint32_t s2Size)
+void QSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
 {
     sInnerSize_ = 512; // 512:s2默认切分大小
     // FlashDecode时，如果S2的计算量>=256(确保切分后不小于128)但又不足以分2次计算时，则修改sInnerSize_，均分为2份进行计算，确保Nbuffer=2
     if (splitKVFlag_ && qsfaInfo_->qLayout != QSFALayout::TND) {
-        if (s2Size == 256) {   // 256:s2Size的阈值，判断sInnerSize_是否切分
+        if (qsfaS2Size == 256) {   // 256:s2Size的阈值，判断sInnerSize_是否切分
             sInnerSize_ = 128; // 128:sInnerSize_值为s2Size的一半，均分为2份进行计算，
-        } else if (s2Size > 256 && s2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
+        } else if (qsfaS2Size > 256 && qsfaS2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
             sInnerSize_ = (sInnerSize_ + 1) / 2; // 2:减半
         }
     }
 
-    sInnerLoopTimes_ = (s2Size + sInnerSize_ - 1) / sInnerSize_;
-    sInnerSizeTail_ = s2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
-    if (sInnerSize_ > s2Size) {
-        sInnerSize_ = s2Size;
+    sInnerLoopTimes_ = (qsfaS2Size + sInnerSize_ - 1) / sInnerSize_;
+    sInnerSizeTail_ = qsfaS2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
+    if (sInnerSize_ > qsfaS2Size) {
+        sInnerSize_ = qsfaS2Size;
     }
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
 
@@ -580,18 +580,19 @@ void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expe
         name.c_str(), qsfaOss.str().c_str(), QSFADataTypeToSerialString(actualDtype).c_str());
 }
 
-ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
     const std::string &name) const
 {
-    if (desc != nullptr) {
+    if (qsfaDesc != nullptr) {
         const auto& qsfaIt = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(qsfaIt == DTYPE_SUPPORT_MAP.end(),
             OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
             return ge::GRAPH_FAILED);
         auto &qsfaExpectDtypeList = qsfaIt->second;
         OP_CHECK_IF(std::find(
-            qsfaExpectDtypeList.begin(), qsfaExpectDtypeList.end(), desc->GetDataType()) == qsfaExpectDtypeList.end(),
-            LogErrorDtypeSupport(qsfaExpectDtypeList, desc->GetDataType(), name),
+            qsfaExpectDtypeList.begin(), qsfaExpectDtypeList.end(),
+            qsfaDesc->GetDataType()) == qsfaExpectDtypeList.end(),
+            LogErrorDtypeSupport(qsfaExpectDtypeList, qsfaDesc->GetDataType(), name),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -633,15 +634,15 @@ ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &la
 }
 
 ge::graphStatus QSFATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-    const std::vector<size_t> &expectDimNumList, const std::string &name) const
+    const std::vector<size_t> &qsfaExpectDimNumList, const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
-    if (std::find(expectDimNumList.begin(), expectDimNumList.end(),
-        shape->GetStorageShape().GetDimNum()) == expectDimNumList.end()) {
-        LogErrorDimNumSupport(expectDimNumList, shape->GetStorageShape().GetDimNum(), name);
+    if (std::find(qsfaExpectDimNumList.begin(), qsfaExpectDimNumList.end(),
+        shape->GetStorageShape().GetDimNum()) == qsfaExpectDimNumList.end()) {
+        LogErrorDimNumSupport(qsfaExpectDimNumList, shape->GetStorageShape().GetDimNum(), name);
         return ge::GRAPH_FAILED;
     }
 
@@ -832,13 +833,13 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
             QSFALayoutToSerialString(layout).c_str(), name.c_str());
         return ge::GRAPH_FAILED;
     }
-    int64_t shapeSize = tensor->GetShapeSize();
-    if (shapeSize <= 0) {
+    int64_t qsfaShapeSize = tensor->GetShapeSize();
+    if (qsfaShapeSize <= 0) {
         OP_LOGE(opName, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), shapeSize);
+            name.c_str(), qsfaShapeSize);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize);
+    size = static_cast<uint32_t>(qsfaShapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1148,12 +1149,13 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
 
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
 {
-    const std::vector<std::string> layoutSupportList = {
+    const std::vector<std::string> qsfaLayoutSupportList = {
         "BSND",
         "TND"
     };
     std::string layoutQuery = opParamInfo_.layoutQuery;
-    OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutQuery) == layoutSupportList.end(),
+    OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(),
+        qsfaLayoutSupportList.end(), layoutQuery) == qsfaLayoutSupportList.end(),
         OP_LOGE(opName_, "layoutQuery only supports BSND/TND, but got %s", layoutQuery.c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
