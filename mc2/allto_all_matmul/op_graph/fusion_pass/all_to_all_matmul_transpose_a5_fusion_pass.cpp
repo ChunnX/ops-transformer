@@ -387,7 +387,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDType, x1QuantMode,
                                x2QuantMode, commQuantMode, x1QuantDType, commQuantDType, transposeX1, transposeX2,
-                               groupSize, alltoallOutFlag);
+                               groupSize, "", alltoallOutFlag);
 
     return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
