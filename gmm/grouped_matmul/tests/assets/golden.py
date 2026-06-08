@@ -24,7 +24,7 @@ import torch
 
 
 def convert_to_high_precision(input_tensor, input_type):
-    if input_type in ("float8_e4m3fn", "float8_e5m2", "float4_e2m1", "float4_e1m2", "hifloat8", "hifloat4"):
+    if input_type in ("float8_e4m3fn", "float8_e5m2", "float4_e2m1", "float4_e1m2", "hifloat8"):
         input_tensor = torch.from_numpy(input_tensor.astype(np.float32))
     elif input_type in ("int4"):
         input_tensor = torch.from_numpy(input_tensor.astype(np.int32)).to(torch.int32)
@@ -44,7 +44,8 @@ def get_total_scale_k_for_split_k(k, group_size, group_num):
     return k // group_size + group_num
 
 
-def infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n, group_num, split_m, split_k, gs_k, gs_n):
+def infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n,
+                     group_num, split_m, split_k, gs_k, gs_n):
     x_quant_type = set()
     w_quant_type = set()
     if split_m:
@@ -80,7 +81,7 @@ def infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n, 
 
     if len(scale.shape) == 1:
         if scale.shape[-1] == group_num:
-             w_quant_type.add("perTensor")
+            w_quant_type.add("perTensor")
     else:
         scale_k = scale.shape[-1] if trans_b else scale.shape[-2]
         scale_n = scale.shape[-2] if trans_b else scale.shape[-1]
@@ -91,8 +92,6 @@ def infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n, 
             w_quant_type.add("perChannel")
         if scale_k == expect_scale_k and scale_n == math.ceil(shape_n / gs_n):
             w_quant_type.add("perBlock")
-
-    print(f"Quant mode list: X:{x_quant_type} W:{w_quant_type}")
 
     if len(w_quant_type) == 1 and len(x_quant_type) == 1:
         return next(iter(x_quant_type)), next(iter(w_quant_type))
@@ -113,8 +112,7 @@ def infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n, 
 
 def single_group_mm_cal(x1, x2, bias, pertoken_scale_slice, deq_scale_tensor, two_scale_tensor,
                         out_dtype, bias_dtype,
-                        is_pertoken, is_two_scale, is_mx_quant, is_hif4, is_compatible):
-    import torch
+                        is_pertoken, is_two_scale, is_mx_quant, is_compatible):
     out = torch.matmul(x1, x2)
     if bias is not None and bias_dtype == "int32":
         bias = torch.from_numpy(bias).to(torch.int32)
@@ -134,28 +132,20 @@ def single_group_mm_cal(x1, x2, bias, pertoken_scale_slice, deq_scale_tensor, tw
         else:
             out = out.numpy().astype(out_dtype)
     elif out_dtype == 'int32' or out_dtype == 'int8':
-        # For int32/int8 output from quantized matmul (int8 x int8)
-        # int32: return raw matmul result (already int32)
-        # int8: need requantization from int32 to int8
         if out_dtype == 'int32':
-            # Just return the int32 result, optionally with bias
             if bias is not None and bias_dtype == "int32":
-                # Bias already added above
                 pass
             out = out.numpy().astype(np.int32)
-        else:  # int8
-            # Requantize from int32 to int8
-            # Apply dequant scale, then requantize to int8
+        else:
             if is_pertoken:
                 out = out * deq_scale_tensor * pertoken_scale_slice
             elif is_two_scale:
                 out = out * two_scale_tensor
             else:
                 out = out * deq_scale_tensor
-            # Clamp to int8 range and convert
             out = torch.clamp(torch.round(out), -128, 127).numpy().astype(np.int8)
     else:
-        if is_mx_quant or is_hif4:
+        if is_mx_quant:
             pass
         elif is_pertoken:
             out = out * deq_scale_tensor * pertoken_scale_slice
@@ -216,16 +206,13 @@ def get_per_group_size(antiquant_scale, k_size, trans_b):
     gn = antiquant_scale.shape[-2] if not trans_b else antiquant_scale.shape[-1]
     assert gn > 0 and k_size % gn == 0
     group_size = k_size // gn
-    print(f"antiquant groupSize: {group_size}, k_size: {k_size}", flush=True)
     return group_size
 
 
 def get_mx_scale(antiquant_scale, group_size, pertoken_scale, trans_b, x1_dtype):
-    print(f"kankan antiquant_scale 00000000000 {antiquant_scale.dtype}", flush=True)
     antiquant_scale = antiquant_scale.astype(np.float32)
     antiquant_scale_broadcast = np.repeat(antiquant_scale, group_size, axis=-2) if not trans_b else np.repeat(
         antiquant_scale, group_size, axis=-1)
-    print(f"kankan antiquant_scale_broadcast shape 00000000000 {antiquant_scale_broadcast.shape}", flush=True)
     antiquant_scale_broadcast = torch.from_numpy(antiquant_scale_broadcast)
     if x1_dtype == "float16":
         antiquant_scale_broadcast = antiquant_scale_broadcast.to(torch.float16)
@@ -233,8 +220,6 @@ def get_mx_scale(antiquant_scale, group_size, pertoken_scale, trans_b, x1_dtype)
     if x1_dtype == "float8_e4m3fn":
         pertoken_scale_broadcast = torch.from_numpy(
             np.repeat(pertoken_scale.astype(np.float32), group_size, axis=-1))
-        print(f"kankan pertoken_scale_broadcast shape 00000000000 {pertoken_scale_broadcast.shape}",
-              flush=True)
     else:
         pertoken_scale_broadcast = None
 
@@ -248,9 +233,6 @@ def get_group_m(group_list, group_list_type, i):
     else:
         start_m = sum(group_list[:i])
         end_m = start_m + group_list[i]
-    print("GMM GOLDEN: ")
-    print(start_m)
-    print(end_m)
     return start_m, end_m
 
 
@@ -258,7 +240,6 @@ def cal_weight_quant_s8s4(x1, x2, bias, scale, antiquant_scale, pertoken_scale, 
                           y_dtype):
     shape_k = x2.shape[-2]
     group_size = get_per_group_size(antiquant_scale, shape_k, False)
-    print("antiquant groupSize: {}, shape_k: {}".format(group_size, shape_k))
 
     x2_tmp = x2.astype(np.float16)
     antiquant_scale = antiquant_scale.astype(np.float16)
@@ -275,19 +256,19 @@ def cal_weight_quant_s8s4(x1, x2, bias, scale, antiquant_scale, pertoken_scale, 
         weight_group = x2[i]
 
         group_out = torch.matmul(x1_group, weight_group).to(torch.int32)
-        
+
         # Handle per-tensor scale (shape=(1,)) vs per-group scale (shape=(num_groups,))
         if scale.shape[0] == 1:
             scale_val = scale[0].reshape(1, -1)
         else:
             scale_val = scale[i].reshape(1, -1)
-        
+
         # Handle per-tensor pertoken_scale (shape=(1,)) vs per-token (shape=(M,))
         if pertoken_scale.shape[0] == 1:
             pertoken_val = pertoken_scale[0]
         else:
             pertoken_val = pertoken_scale.reshape(-1, 1)[start_m:end_m, :]
-        
+
         group_out = group_out.numpy().astype(np.float32) * scale_val * pertoken_val
 
         if (bias is not None) and (len(bias) != 0):
@@ -310,7 +291,6 @@ def cal_weight_quant_s8s4(x1, x2, bias, scale, antiquant_scale, pertoken_scale, 
 
 def cal_weight_quant_a16w8(x1, x2, bias, antiquant_scale, antiquant_offset, group_list, group_list_type,
                            x1_dtype, x2_dtype, y_dtype, trans_b):
-    print("weight quant a16w8")
     assert x1_dtype == y_dtype
     x1 = torch.from_numpy(x1.astype(np.float32))
     is_f8_input = x2_dtype in ["hifloat8", "float8_e5m2", "float8_e4m3fn"]
@@ -322,9 +302,6 @@ def cal_weight_quant_a16w8(x1, x2, bias, antiquant_scale, antiquant_offset, grou
             x2 = torch.from_numpy(x2.astype(np.float16))
     else:
         x2 = torch.from_numpy(x2.astype(np.int32)).to(torch.int32)
-
-    print(f"x1 = {x1}", flush=True)
-    print(f"x2 = {x2}", flush=True)
 
     if (bias is not None) and (len(bias) != 0):
         bias = torch.from_numpy(bias.astype(np.float32))
@@ -374,29 +351,6 @@ def cal_weight_quant_a16w8(x1, x2, bias, antiquant_scale, antiquant_offset, grou
     return outs
 
 
-def repack_hif4_scale(scale):
-    original_shape = scale.shape
-    new_shape = list(original_shape[:-1]) + [original_shape[-1] * 64]
-    result = np.zeros(new_shape, dtype=np.float32)
-
-    for idx in np.ndindex(original_shape):
-        scale_value = np.uint32(scale[idx])
-        for k in range(64):
-            new_idx = list(idx)
-            new_idx[-1] = idx[-1] * 64 + k
-            new_idx = tuple(new_idx)
-            high_8bits = (scale_value) & 0xFF
-            bits_9_to_16 = (scale_value >> 8) & 0xFF
-            secd_idx = k // 8
-            secd_bit = (bits_9_to_16 >> secd_idx) & 0x1
-            high_16 = (scale_value >> 16) & 0xFFFF
-            third_idx = k // 4
-            third_bit = (high_16 >> third_idx) & 1
-            m2 = high_8bits & 0x3
-            e6 = high_8bits >> 2
-            result[new_idx] = np.float32(np.power(np.float32(2), (e6 - 48) + secd_bit + third_bit) * np.float32(1 + (m2 >> 1) * (0.5) + (m2 & 0x1) * (0.5) ** (2)))
-    return result
-
 
 def _unwrap_dtype(dt):
     if isinstance(dt, (list, tuple)):
@@ -404,8 +358,8 @@ def _unwrap_dtype(dt):
     return dt
 
 
-def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiquant_offset,
-                          group_list, pertoken_scale,
+def grouped_matmul_golden(x, weight, bias, scale, offset, antiquant_scale, antiquant_offset,
+                          group_list, per_token_scale,
                           transpose_x=False, transpose_weight=False,
                           group_type=0, group_list_type=0, **kwargs):
     testcase_name = kwargs['testcase_name']
@@ -429,13 +383,13 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
     trans_a = transpose_x
     trans_b = transpose_weight
 
-    if isinstance(x1, (list, tuple)):
-        x1 = x1[0] if len(x1) == 1 else np.concatenate(x1, axis=0)
-    if isinstance(x2, (list, tuple)):
-        if len(x2) == 1:
-            x2 = x2[0]
+    if isinstance(x, (list, tuple)):
+        x = x[0] if len(x) == 1 else np.concatenate(x, axis=0)
+    if isinstance(weight, (list, tuple)):
+        if len(weight) == 1:
+            weight = weight[0]
         else:
-            x2 = np.stack(x2, axis=0)
+            weight = np.stack(weight, axis=0)
     if isinstance(bias, (list, tuple)):
         bias = bias[0] if len(bias) == 1 else np.stack(bias, axis=0)
     if isinstance(scale, (list, tuple)):
@@ -446,12 +400,12 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
         antiquant_offset = antiquant_offset[0] if len(antiquant_offset) == 1 else np.stack(antiquant_offset, axis=0)
     if isinstance(group_list, (list, tuple)):
         group_list = np.array(group_list)
-    if isinstance(pertoken_scale, (list, tuple)):
-        pertoken_scale = pertoken_scale[0] if len(pertoken_scale) == 1 else np.stack(pertoken_scale, axis=0)
+    if isinstance(per_token_scale, (list, tuple)):
+        per_token_scale = per_token_scale[0] if len(per_token_scale) == 1 else np.stack(per_token_scale, axis=0)
 
-    shape_m = x1.shape[0] if not trans_a else x1.shape[1]
-    shape_n = x2.shape[-1] if not trans_b else x2.shape[-2]
-    shape_k = x1.shape[-1] if not trans_a else x1.shape[-2]
+    shape_m = x.shape[0] if not trans_a else x.shape[1]
+    shape_n = weight.shape[-1] if not trans_b else weight.shape[-2]
+    shape_k = x.shape[-1] if not trans_a else x.shape[-2]
     split_m = group_type == 0
     split_k = group_type == 2
 
@@ -460,9 +414,7 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
     if weight_quant_s8s4_flag:
         is_quant = False
     weight_quant_mxfp4_flag = "float4" in x2_dtype and "float8" in antiquant_scale_dtype
-    print(f"weight_quant_s8s4_flag: {weight_quant_s8s4_flag}, weight_quant_mxfp4_flag: {weight_quant_mxfp4_flag}")
     is_weight_quant = antiquant_scale.size > 0 and antiquant_scale.any()
-    print(f"is_quant: {is_quant}, is_weight_quant: {is_weight_quant}")
 
     outs = []
     group_num = len(group_list)
@@ -472,13 +424,14 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
         gs_k = 128
         x_quant_type = None
         w_quant_type = None
-        is_mx_quant = x1_dtype in ("float4_e2m1", "float4_e1m2", "float8_e4m3fn", "float8_e5m2") and scale_dtype == "float8_e8m0"
-        is_hif4 = x1_dtype in ("hifloat4") and scale_dtype == "float32"
+        is_mx_quant = (x1_dtype in ("float4_e2m1", "float4_e1m2", "float8_e4m3fn", "float8_e5m2")
+                       and scale_dtype == "float8_e8m0")
         is_compatible = x1_dtype == 'int8' and scale_dtype not in ("uint64", "int64")
 
         if not is_mx_quant:
-            x_quant_type, w_quant_type = infer_quant_mode(scale, pertoken_scale, trans_b, shape_m, shape_k, shape_n, group_num, split_m, split_k, gs_k, gs_n)
-        print(f"Qunat mode is :{x_quant_type} {w_quant_type}")
+            x_quant_type, w_quant_type = infer_quant_mode(
+                scale, per_token_scale, trans_b, shape_m, shape_k, shape_n,
+                group_num, split_m, split_k, gs_k, gs_n)
 
         is_two_scale = x_quant_type == "perTensor" and w_quant_type == "perTensor"
         is_pertile = x_quant_type == "perGroup" and w_quant_type == "perBlock"
@@ -487,33 +440,34 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
         if w_quant_type == "perTensor":
             scale = scale.reshape([group_num, 1])
         if x_quant_type == "perTensor":
-            pertoken_scale = pertoken_scale.reshape([group_num, 1])
+            per_token_scale = per_token_scale.reshape([group_num, 1])
 
         if group_list_type == 1:
             group_list = np.cumsum(group_list)
 
         if is_mx_quant:
             if split_m:
-                pertoken_scale_mx = pertoken_scale
+                pertoken_scale_mx = per_token_scale
                 m, k0, k1 = pertoken_scale_mx.shape
                 pertoken_scale_mx = pertoken_scale_mx.reshape(m, k0 * k1)
                 if trans_a:
-                    x1 = np.swapaxes(x1, -1, -2)
+                    x = np.swapaxes(x, -1, -2)
                     pertoken_scale_mx = pertoken_scale_mx.transpose()
                 pertoken_scale_mx_broadcast = np.repeat(pertoken_scale_mx, 32, axis=-1)
-                x1_dims = len(x1.shape)
-                x1_pad_len = pertoken_scale_mx_broadcast.shape[-1] - x1.shape[-1]
-                x1 = np.pad(x1, [(0, 0)] * (x1_dims - 1) + [(0, x1_pad_len)], mode='constant', constant_values=0)
-                x1 = x1 * pertoken_scale_mx_broadcast
-                x1 = convert_to_high_precision(x1, x1_dtype)
+                x1_dims = len(x.shape)
+                x1_pad_len = pertoken_scale_mx_broadcast.shape[-1] - x.shape[-1]
+                x = np.pad(x, [(0, 0)] * (x1_dims - 1) + [(0, x1_pad_len)],
+                            mode='constant', constant_values=0)
+                x = x * pertoken_scale_mx_broadcast
+                x = convert_to_high_precision(x, x1_dtype)
                 for i in range(group_num):
                     scale_g = scale[i]
-                    if trans_b == False:
+                    if not trans_b:
                         scale_g = transform_tensor(scale_g)
                     else:
                         n, k0, k1 = scale_g.shape
                         scale_g = scale_g.reshape(n, k0 * k1)
-                    x2_g = x2[i]
+                    x2_g = weight[i]
                     if trans_b:
                         x2_g = np.swapaxes(x2_g, -1, -2)
                         scale_g = scale_g.transpose()
@@ -521,20 +475,23 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                     deq_scale_mx_broadcast = np.repeat(scale_g, 32, axis=-2)
                     x2_dims = len(x2_g.shape)
                     x2_pad_len = deq_scale_mx_broadcast.shape[-2] - x2_g.shape[-2]
-                    x2_g = np.pad(x2_g, [(0, 0)] * (x2_dims - 2) + [(0, x2_pad_len)] + [(0, 0)], mode='constant', constant_values=0)
+                    x2_g = np.pad(x2_g, [(0, 0)] * (x2_dims - 2) + [(0, x2_pad_len)] + [(0, 0)],
+                                  mode='constant', constant_values=0)
                     x2_g = x2_g * deq_scale_mx_broadcast
                     if i == 0:
-                        x1_temp = x1[:group_list[i], :]
+                        x1_temp = x[:group_list[i], :]
                     else:
-                        x1_temp = x1[group_list[i - 1]:group_list[i], :]
+                        x1_temp = x[group_list[i - 1]:group_list[i], :]
                     x2_g = convert_to_high_precision(x2_g, x2_dtype)
-                    out = single_group_mm_cal(x1_temp, x2_g, bias_g, None, None, None, out_dtype, bias_dtype, is_pertoken, is_two_scale, is_mx_quant, is_hif4, is_compatible)
+                    out = single_group_mm_cal(x1_temp, x2_g, bias_g, None, None, None,
+                                              out_dtype, bias_dtype,
+                                              is_pertoken, is_two_scale, is_mx_quant, is_compatible)
                     outs.append(out)
             elif split_k:
-                pertoken_scale_mx = pertoken_scale
+                pertoken_scale_mx = per_token_scale
                 deq_scale_mx = scale
-                M = x1.shape[-1]
-                N = x2.shape[-1]
+                M = x.shape[-1]
+                N = weight.shape[-1]
                 scale_k_offset = 0
                 pertoken_scale_mx = transform_tensor(pertoken_scale_mx)
                 deq_scale_mx = transform_tensor(deq_scale_mx)
@@ -549,8 +506,8 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                             if group_list[i + 1] != 0:
                                 scale_k_offset = cur_scale_k
                         continue
-                    x1_g = x1[pre: cur, :]
-                    x2_g = x2[pre: cur, :]
+                    x1_g = x[pre: cur, :]
+                    x2_g = weight[pre: cur, :]
                     pertoken_scale_mx_g = pertoken_scale_mx[scale_k_offset: cur_scale_k, :]
                     deq_scale_mx_g = deq_scale_mx[scale_k_offset: cur_scale_k, :]
                     scale_k_offset = cur_scale_k
@@ -560,7 +517,8 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                     pertoken_scale_mx_broadcast = np.repeat(pertoken_scale_mx_g, 32, axis=-1)
                     x1_dims = len(x1_g.shape)
                     x1_pad_len = pertoken_scale_mx_broadcast.shape[-1] - x1_g.shape[-1]
-                    x1_g = np.pad(x1_g, [(0, 0)] * (x1_dims - 1) + [(0, x1_pad_len)], mode='constant', constant_values=0)
+                    x1_g = np.pad(x1_g, [(0, 0)] * (x1_dims - 1) + [(0, x1_pad_len)],
+                                  mode='constant', constant_values=0)
                     x1_g = x1_g * pertoken_scale_mx_broadcast
                     x1_g = convert_to_high_precision(x1_g, x1_dtype)
                     if trans_b:
@@ -569,57 +527,33 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                     deq_scale_mx_broadcast = np.repeat(deq_scale_mx_g, 32, axis=-2)
                     x2_dims = len(x2_g.shape)
                     x2_pad_len = deq_scale_mx_broadcast.shape[-2] - x2_g.shape[-2]
-                    x2_g = np.pad(x2_g, [(0, 0)] * (x2_dims - 2) + [(0, x2_pad_len)] + [(0, 0)], mode='constant', constant_values=0)
+                    x2_g = np.pad(x2_g, [(0, 0)] * (x2_dims - 2) + [(0, x2_pad_len)] + [(0, 0)],
+                                  mode='constant', constant_values=0)
                     x2_g = x2_g * deq_scale_mx_broadcast
                     x2_g = convert_to_high_precision(x2_g, x2_dtype)
-                    out = single_group_mm_cal(x1_g, x2_g, None, None, None, None, out_dtype, None, is_pertoken, is_two_scale, is_mx_quant, is_hif4, is_compatible)
+                    out = single_group_mm_cal(x1_g, x2_g, None, None, None, None,
+                                              out_dtype, None,
+                                              is_pertoken, is_two_scale, is_mx_quant, is_compatible)
                     outs.append(out)
-        elif is_hif4:
-            deq_scale_hif4 = scale
-            pertoken_scale_hif4 = pertoken_scale
-            pertoken_scale_hif4 = repack_hif4_scale(pertoken_scale_hif4)
-            x1_dims = len(x1.shape)
-            x2_dims = len(x2.shape)
-            x1_pad_len = pertoken_scale_hif4.shape[-1] - x1.shape[-1]
-            x1 = np.pad(x1, [(0, 0)] * (x1_dims - 1) + [(0, x1_pad_len)], mode='constant', constant_values=0)
-            x1 = x1 * pertoken_scale_hif4
-            x1 = torch.from_numpy(x1.astype(np.float32))
-            for i in range(group_num):
-                scale_g = scale[i]
-                scale_g = repack_hif4_scale(scale_g)
-                x2_g = x2[i]
-                x2_g = np.swapaxes(x2_g, -1, -2)
-                scale_g = scale_g.transpose()
-                x2_dims = len(x2_g.shape)
-                x2_pad_len = scale_g.shape[-2] - x2_g.shape[-2]
-                x2_g = np.pad(x2_g, [(0, 0)] * (x2_dims - 2) + [(0, x2_pad_len)] + [(0, 0)], mode='constant', constant_values=0)
-                x2_g = x2_g * scale_g
-                if i == 0:
-                    x1_temp = x1[:group_list[i], :]
-                else:
-                    x1_temp = x1[group_list[i - 1]:group_list[i], :]
-                x2_g = torch.from_numpy(x2_g.astype(np.float32))
-                out = torch.matmul(x1_temp, x2_g)
-                outs.append(out)
         elif is_pertile:
             if trans_a:
-                x1 = np.swapaxes(x1, -1, -2)
-                pertoken_scale = np.swapaxes(pertoken_scale, -1, -2)
+                x = np.swapaxes(x, -1, -2)
+                per_token_scale = np.swapaxes(per_token_scale, -1, -2)
             if trans_b:
-                x2 = np.swapaxes(x2, -1, -2)
+                weight = np.swapaxes(weight, -1, -2)
                 scale = np.swapaxes(scale, -1, -2)
-            x1 = convert_to_high_precision(x1, x1_dtype)
-            x2 = convert_to_high_precision(x2, x2_dtype)
-            pertoken_scale = torch.from_numpy(pertoken_scale).to(torch.float32)
+            x = convert_to_high_precision(x, x1_dtype)
+            weight = convert_to_high_precision(weight, x2_dtype)
+            per_token_scale = torch.from_numpy(per_token_scale).to(torch.float32)
             scale = torch.from_numpy(scale).to(torch.float32)
             if split_m:
                 for i in range(group_num):
                     scale_g = scale[i]
-                    x2_g = x2[i]
+                    x2_g = weight[i]
                     pre = 0 if i == 0 else group_list[i - 1]
                     cur = group_list[i]
-                    x1_g = x1[pre: cur, :]
-                    pertoken_scale_g = pertoken_scale[pre: cur, :]
+                    x1_g = x[pre: cur, :]
+                    pertoken_scale_g = per_token_scale[pre: cur, :]
                     out = pertile_mm_cal(x1_g, x2_g, pertoken_scale_g, scale_g, out_dtype)
                     outs.append(out)
             elif split_k:
@@ -631,17 +565,17 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                         out = np.zeros((shape_m, shape_n), dtype=out_dtype)
                         outs.append(out)
                         continue
-                    x1_g = x1[:, pre: cur]
-                    x2_g = x2[pre: cur, :]
+                    x1_g = x[:, pre: cur]
+                    x2_g = weight[pre: cur, :]
                     cur_scale_k = math.ceil(k_g / gs_k)
                     scale_k_offset = 0 if i == 0 else group_list[i - 1] // gs_k + i
-                    pertoken_scale_g = pertoken_scale[:, scale_k_offset: (scale_k_offset + cur_scale_k)]
+                    pertoken_scale_g = per_token_scale[:, scale_k_offset: (scale_k_offset + cur_scale_k)]
                     scale_g = scale[scale_k_offset: (scale_k_offset + cur_scale_k), :]
                     out = pertile_mm_cal(x1_g, x2_g, pertoken_scale_g, scale_g, out_dtype)
                     outs.append(out)
         else:
-            x1 = convert_to_high_precision(x1, x1_dtype)
-            x2 = convert_to_high_precision(x2, x2_dtype)
+            x = convert_to_high_precision(x, x1_dtype)
+            weight = convert_to_high_precision(weight, x2_dtype)
             if is_mx_quant:
                 pass
             elif scale_dtype == "uint64" or scale_dtype == "int64":
@@ -652,12 +586,12 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                 deq_scale_tensor = torch.from_numpy(deq_scale)
 
             if is_pertoken and group_type == 0:
-                pertoken_scale_slice = torch.unsqueeze(torch.from_numpy(pertoken_scale), dim=1).to(torch.float32)
+                pertoken_scale_slice = torch.unsqueeze(torch.from_numpy(per_token_scale), dim=1).to(torch.float32)
             elif is_two_scale:
-                two_scale = scale_generate(pertoken_scale * deq_scale)
+                two_scale = scale_generate(per_token_scale * deq_scale)
                 two_scale_tensor = torch.unsqueeze(torch.from_numpy(two_scale), dim=1).to(torch.float32)
             elif x_quant_type == "perTensor":
-                deq_scale_tensor *= torch.from_numpy(pertoken_scale).to(torch.float32)
+                deq_scale_tensor *= torch.from_numpy(per_token_scale).to(torch.float32)
             pertoken_scale_temp = None
             deq_scale_temp = None
             two_scale_temp = None
@@ -665,10 +599,10 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
             if group_type == 0:
                 for i in range(group_num):
                     if i == 0:
-                        x1_temp = x1[:group_list[i], :]
+                        x1_temp = x[:group_list[i], :]
                     else:
-                        x1_temp = x1[group_list[i - 1]:group_list[i], :]
-                    x2_temp = x2[i]
+                        x1_temp = x[group_list[i - 1]:group_list[i], :]
+                    x2_temp = weight[i]
                     if trans_b:
                         x2_temp = np.swapaxes(x2_temp, -1, -2)
                     pre = 0 if i == 0 else group_list[i - 1]
@@ -694,24 +628,26 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                             deq_scale_temp = deq_scale_tensor[0]
                         else:
                             deq_scale_temp = deq_scale_tensor[i]
-                    out = single_group_mm_cal(x1_temp, x2_temp, bias_temp, pertoken_scale_temp, deq_scale_temp, two_scale_temp,
-                                              out_dtype, bias_dtype,
-                                              is_pertoken, is_two_scale, is_mx_quant, is_hif4, is_compatible)
+                    out = single_group_mm_cal(
+                        x1_temp, x2_temp, bias_temp, pertoken_scale_temp,
+                        deq_scale_temp, two_scale_temp,
+                        out_dtype, bias_dtype,
+                        is_pertoken, is_two_scale, is_mx_quant, is_compatible)
                     outs.append(out)
             elif group_type == 2:
                 for i in range(group_num):
-                    M = x1.shape[-1]
-                    N = x2.shape[-1]
+                    M = x.shape[-1]
+                    N = weight.shape[-1]
                     pre = 0 if i == 0 else group_list[i - 1]
                     cur = group_list[i]
                     if cur - pre == 0:
                         out = np.zeros((M, N), dtype=out_dtype)
                         outs.append(out)
                         continue
-                    x1_g = x1[pre:cur, :]
+                    x1_g = x[pre:cur, :]
                     if trans_a:
                         x1_g = np.swapaxes(x1_g, -1, -2)
-                    x2_g = x2[pre:cur, :]
+                    x2_g = weight[pre:cur, :]
 
                     if bias is not None and bias.size > 0:
                         if bias.shape[0] == 1:
@@ -719,11 +655,13 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                         else:
                             bias_temp = bias[i]
                     if is_pertoken:
-                        if pertoken_scale.shape[0] == 1:
-                            pertoken_scale_temp = pertoken_scale[0].flatten()
+                        if per_token_scale.shape[0] == 1:
+                            pertoken_scale_temp = per_token_scale[0].flatten()
                         else:
-                            pertoken_scale_temp = pertoken_scale[i].flatten()
-                        pertoken_scale_temp = torch.unsqueeze(torch.from_numpy(pertoken_scale_temp), dim=1).to(torch.float32)
+                            pertoken_scale_temp = per_token_scale[i].flatten()
+                        pertoken_scale_temp = torch.unsqueeze(
+                            torch.from_numpy(pertoken_scale_temp), dim=1
+                        ).to(torch.float32)
                         if deq_scale_tensor.shape[0] == 1:
                             deq_scale_temp = deq_scale_tensor[0]
                         else:
@@ -738,37 +676,32 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                             deq_scale_temp = deq_scale_tensor[0]
                         else:
                             deq_scale_temp = deq_scale_tensor[i]
-                    out = single_group_mm_cal(x1_g, x2_g, bias_temp, pertoken_scale_temp, deq_scale_temp, two_scale_temp,
-                                              out_dtype, bias_dtype,
-                                              is_pertoken, is_two_scale, is_mx_quant, is_hif4, is_compatible)
+                    out = single_group_mm_cal(
+                        x1_g, x2_g, bias_temp, pertoken_scale_temp,
+                        deq_scale_temp, two_scale_temp,
+                        out_dtype, bias_dtype,
+                        is_pertoken, is_two_scale, is_mx_quant, is_compatible)
                     outs.append(out)
     elif is_weight_quant:
         if weight_quant_s8s4_flag:
-            print("x1 shape: {}, x1_dtype: {}, x2 shape: {}, x2_dtype: {}, x2_format: {}".
-                  format(x1.shape, x1_dtype, x2.shape, x2_dtype, x2_format))
-            print("scale shape: {}, dtype: {}".format(scale.shape, scale.dtype))
-            print("per-group scale shape: {}, dtype: {}".format(antiquant_scale.shape, scale.dtype))
-            print("per-token scale shape: {}, dtype: {}".format(pertoken_scale.shape, pertoken_scale.dtype))
-
             assert not trans_a and not trans_b
 
             if x2_format == "FRACTAL_NZ":
-                x2 = trans_nz2nd(x2)
+                weight = trans_nz2nd(weight)
 
-            outs = cal_weight_quant_s8s4(x1, x2, bias, scale, antiquant_scale, pertoken_scale, group_list,
+            outs = cal_weight_quant_s8s4(x, weight, bias, scale, antiquant_scale, per_token_scale, group_list,
                                          group_list_type, _unwrap_dtype(kwargs['output_dtypes'][0]))
         elif weight_quant_mxfp4_flag:
             assert x2_format == "FRACTAL_NZ"
-            x2_nd = trans_nz2nd(x2)
+            x2_nd = trans_nz2nd(weight)
             # Convert FP4 to float before passing to torch
             if x2_dtype in ("float4_e2m1", "float4_e1m2"):
                 x2_nd = x2_nd.astype(np.float32)
             x2_nd = torch.from_numpy(x2_nd).to(torch.float16) if x1_dtype == "float16" else torch.from_numpy(x2_nd)
-            x1_t = torch.from_numpy(x1.astype(np.float32))
+            x1_t = torch.from_numpy(x.astype(np.float32))
 
             shape_k = x2_nd.shape[-2] if not trans_b else x2_nd.shape[-1]
             shape_n = x2_nd.shape[-1] if not trans_b else x2_nd.shape[-2]
-            print(f"cal_weight_quant_mx k{shape_k} n{shape_n}")
 
             if (bias is not None) and (len(bias) != 0):
                 bias_t = torch.from_numpy(bias.astype(np.float32))
@@ -778,14 +711,14 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
             if antiquant_scale.ndim == 4:
                 s = antiquant_scale.shape
                 antiquant_scale = antiquant_scale.reshape(s[0], s[1], -1)
-            if pertoken_scale is not None and pertoken_scale.ndim == 3:
-                s = pertoken_scale.shape
-                pertoken_scale = pertoken_scale.reshape(s[0], -1)
+            if per_token_scale is not None and per_token_scale.ndim == 3:
+                s = per_token_scale.shape
+                per_token_scale = per_token_scale.reshape(s[0], -1)
 
             group_size = get_per_group_size(antiquant_scale, shape_k, trans_b)
 
             antiquant_scale_broadcast, pertoken_scale_broadcast = get_mx_scale(antiquant_scale, group_size,
-                                                                               pertoken_scale, trans_b, x1_dtype)
+                                                                               per_token_scale, trans_b, x1_dtype)
             for i in range(len(group_list)):
                 start_m, end_m = get_group_m(group_list, group_list_type, i)
                 x1_group = x1_t[start_m:end_m, :]
@@ -809,22 +742,22 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                 else:
                     outs.append(group_out.numpy().astype(np.float16))
         else:
-            outs = cal_weight_quant_a16w8(x1, x2, bias, antiquant_scale, antiquant_offset, group_list, group_list_type,
+            outs = cal_weight_quant_a16w8(x, weight, bias, antiquant_scale, antiquant_offset, group_list, group_list_type,
                                           x1_dtype, x2_dtype, _unwrap_dtype(kwargs['output_dtypes'][0]), trans_b)
     else:
         if group_list_type == 1:
             group_list = np.cumsum(group_list)
         if group_type == 0:
-            _, w_outer, w_inner = x2.shape
+            _, w_outer, w_inner = weight.shape
             if x2_dtype == "float16" or x2_dtype == "bfloat16":
                 w_outer_align = (w_outer + 16) // w_outer * w_outer
                 w_inner_align = (w_inner + 16) // w_inner * w_inner
 
             if trans_a:
-                x1 = np.swapaxes(x1, -1, -2)
-            x1 = torch.from_numpy(x1.astype(np.float32))
+                x = np.swapaxes(x, -1, -2)
+            x = torch.from_numpy(x.astype(np.float32))
             for i in range(group_num):
-                x2_g = x2[i]
+                x2_g = weight[i]
                 if x2_format == "FRACTAL_NZ":
                     x2_g = x2_g.transpose((1, 2, 0, 3)).reshape(w_outer_align, w_inner_align)
                     x2_g = x2_g[:w_outer, :w_inner]
@@ -833,9 +766,9 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                     x2_g = np.swapaxes(x2_g, -1, -2)
                 x2_g = torch.from_numpy(x2_g.astype(np.float32))
                 if i == 0:
-                    x1_temp = x1[:group_list[i], :]
+                    x1_temp = x[:group_list[i], :]
                 else:
-                    x1_temp = x1[group_list[i - 1]:group_list[i], :]
+                    x1_temp = x[group_list[i - 1]:group_list[i], :]
                 bias_temp = None
                 if bias is not None and bias.size > 0:
                     bias_temp = bias[i]
@@ -846,21 +779,21 @@ def grouped_matmul_golden(x1, x2, bias, scale, _unused, antiquant_scale, antiqua
                     out += bias_temp
                 outs.append(out.numpy().astype(out_dtype))
         elif group_type == 2:
-            x1 = torch.from_numpy(x1.astype(np.float32))
-            x2 = torch.from_numpy(x2.astype(np.float32))
+            x = torch.from_numpy(x.astype(np.float32))
+            weight = torch.from_numpy(weight.astype(np.float32))
             for i in range(group_num):
-                M = x1.shape[-1]
-                N = x2.shape[-1]
+                M = x.shape[-1]
+                N = weight.shape[-1]
                 pre = 0 if i == 0 else group_list[i - 1]
                 cur = group_list[i]
                 if cur - pre == 0:
                     out = np.zeros((M, N), dtype=out_dtype)
                     outs.append(out)
                     continue
-                x1_g = x1[pre:cur, :]
+                x1_g = x[pre:cur, :]
                 if trans_a:
                     x1_g = x1_g.transpose(-1, -2)
-                x2_g = x2[pre:cur, :]
+                x2_g = weight[pre:cur, :]
                 out = torch.matmul(x1_g, x2_g).numpy().astype(out_dtype)
                 outs.append(out)
 
