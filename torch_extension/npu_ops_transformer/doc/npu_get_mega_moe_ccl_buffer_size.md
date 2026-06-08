@@ -37,7 +37,7 @@
 ## 函数原型
 
 ```
-npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
+npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
 ```
 
 ## 参数说明
@@ -48,7 +48,7 @@ npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_ma
 -   **num\_topk** (`int`)：必选参数，表示选取topK个专家，目前仅支持 6 或 8 。
 -   **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。目前仅支持 4096、5120、7168。
 -   **dispatch\_quant\_mode** (`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
--   **dispatch\_quant\_out\_type** (`int`)：可选参数，dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
+-   **dispatch\_quant\_out\_dtype** (`int`)：可选参数，dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
 -   **comm\_alg** (`string`)：暂不支持该参数，使用默认值即可。
 
 ## 输出说明
