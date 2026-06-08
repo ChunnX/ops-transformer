@@ -538,6 +538,10 @@ public:
                                        uint32_t subLoop)
     {
         uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
+        // Band head intra-skip: shift CopyKey offset for subLoop 0
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U) {
+            s2Offset += runInfo.bandHeadIntraSkip;
+        }
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
     }
 
@@ -568,6 +572,10 @@ public:
                                             uint32_t s2RealSize, uint32_t subLoop)
     {
         uint32_t s2Offset = subLoop % 2 == 0 ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
+        // Band head intra-skip: shift CopyKeyScale offset for subLoop 0
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U) {
+            s2Offset += runInfo.bandHeadIntraSkip;
+        }
         CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
     }
 
@@ -798,6 +806,12 @@ public:
                 s2CalcSize = runInfo.actSingleLoopS2Size - s2SplitSize;
             }
         }
+        // Band head intra-skip: reduce CopyKey/BMM1 for subLoop 0
+        uint32_t s2IntraSkip = 0U;
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < s2CalcSize) {
+            s2IntraSkip = runInfo.bandHeadIntraSkip;
+            s2CalcSize -= s2IntraSkip;
+        }
         Buffer<BufferType::L1> mm1B;
         uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
         if constexpr (HAS_ROPE) {
@@ -1021,15 +1035,23 @@ public:
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
+            // Band head intra-skip: BMM1 shifted CopyKey by intraSkip, so P columns start from
+            // token (s2Idx+intraSkip). V must also shift to align with P.
+            // P offset stays at 0 (valid data begins at column 0 in L1).
+            uint32_t mm2IntraSkip = 0U;
+            if (k == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < realK) {
+                mm2IntraSkip = runInfo.bandHeadIntraSkip;
+                realK -= mm2IntraSkip;
+            }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
             }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
+            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK + mm2IntraSkip, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
-            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
+            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK + mm2IntraSkip) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
@@ -1049,7 +1071,9 @@ public:
                 mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
-
+        if (unlikely(runInfo.isLastS2Loop)) {
+            mm2AScale.Set<HardEvent::MTE1_MTE2>();
+        }
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
