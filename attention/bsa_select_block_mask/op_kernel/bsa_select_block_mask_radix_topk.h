@@ -499,14 +499,31 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         int32_t involvedMaskTemp = static_cast<int32_t>(
             involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
+        // === DUMP 460: involvedMaskTemp (first round, first tile, first 3 bins) ===
+        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask >= 1) {
+            AscendC::printf("[DUMP460] binMask=%d involvedMaskTemp=%d (0x%x)\n",
+                binMask, involvedMaskTemp, involvedMaskTemp);
+        }
+
         uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
+
+        // === DUMP 470: cmpMaskTensor after Compares (first round, first tile, bin 1 only) ===
+        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 1) {
+            AscendC::DumpTensor(cmpMaskTensor, 470, 32);
+        }
 
         uint64_t rsvdCnt = 0;
         GatherMask(tempHalf, tempHalf, cmpMaskTensor.ReinterpretCast<uint16_t>(),
                    true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
         VToSSync();
+
+        // === DUMP 480: rsvdCnt after GatherMask (first round, first tile) ===
+        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+            AscendC::printf("[DUMP480] binMask=%d rsvdCnt=%lu cumSumOne=%d\n",
+                binMask, rsvdCnt, cumSumOne + static_cast<int32_t>(rsvdCnt));
+        }
 
         cumSumOne += rsvdCnt;
 
