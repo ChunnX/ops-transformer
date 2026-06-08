@@ -1,7 +1,7 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -211,7 +211,6 @@ public:
         GMM2(params);
     }
 
-
     template <>
     CATLASS_DEVICE
     void operator()<AscendC::AIV>(Params const &params)
@@ -220,12 +219,13 @@ public:
     }
 
 private:
-    CATLASS_DEVICE void initBuffer(Params const &params) {
-        #ifdef HCCL_COMM
-            qp_info_ = (__gm__ HcclAiRMAInfo*)(((__gm__ HcclA2CombineOpParam*)shmem.WinContext_)->aiRMAInfo);
-        #else
-            shmem.initShmem(params.symmetricPtr, params.rank, params.rankSize);
-        #endif
+    CATLASS_DEVICE void initBuffer(Params const &params)
+    {
+#ifdef HCCL_COMM
+        qp_info_ = (__gm__ HcclAiRMAInfo*)(((__gm__ HcclA2CombineOpParam*)shmem.WinContext_)->aiRMAInfo);
+#else
+        shmem.initShmem(params.symmetricPtr, params.rank, params.rankSize);
+#endif
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
 
@@ -400,7 +400,7 @@ private:
             remoteFlag.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 shmem(0, dstEpIdx) + peermemInfo.offsetFlag
                 + (params.rank * params.expertPerRank + groupIdx) * sizeof(uint32_t)));
- 	        flagUb.SetValue(0, 1);
+            flagUb.SetValue(0, 1);
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DataCopyPad(remoteFlag, flagUb,
                 AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
@@ -415,7 +415,7 @@ private:
             localFlagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 shmem.windowsOutAddr() + peermemInfo.offsetFlag
                 + (params.rank * params.expertPerRank + groupIdx) * sizeof(uint32_t)));
- 	        flagUb.SetValue(0, 1);
+            flagUb.SetValue(0, 1);
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DataCopyPad(localFlagGm, flagUb,
                 AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
@@ -472,7 +472,6 @@ private:
         __gm__ int32_t* flagAddr = reinterpret_cast<__gm__ int32_t*>(
             shmem() + peermemInfo.offsetFlag + (srcEpIdx * params.expertPerRank + groupIdx) * sizeof(uint32_t));
         gm_signal_wait_until_ne(flagAddr, 0);
-
     }
 
     CATLASS_DEVICE
@@ -483,15 +482,14 @@ private:
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> tmpResult =
             resource.ubBuf.template GetBufferByByte<int32_t>(EP * EP * expertPerRank * sizeof(int32_t));
-        #define U16(x) static_cast<uint16_t>(x)
+#define U16(x) static_cast<uint16_t>(x)
 
         AscendC::DataCopyPad(
             tmpBuffer1,
             tokenPerExpert,
             {U16(EP), U16(EP * expertPerRank * sizeof(int32_t)),
                 U16((AlignUp(EP * expertPerRank, 128) - EP * expertPerRank) * sizeof(int32_t)), 0},
-            {}
-        );
+            {});
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -517,7 +515,8 @@ private:
 
     CATLASS_DEVICE
     void GetSumPreRank(AscendC::GlobalTensor<int32_t> & tokenPerExpert, AscendC::GlobalTensor<int32_t> & result,
-        uint32_t expertPerRank, uint32_t rankId, uint32_t EP) {
+        uint32_t expertPerRank, uint32_t rankId, uint32_t EP)
+    {
         int32_t cursum = 0;
         if (coreIdx < EP) {
             for (int32_t i = 0; i < rankId * expertPerRank; i++) {
@@ -548,7 +547,8 @@ private:
     }
 
     CATLASS_DEVICE
-    void GMM1(Params const &params) {
+    void GMM1(Params const &params)
+    {
         icache_preload(8);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -622,16 +622,14 @@ private:
                             gmB1[gmGroupOffsetB + gmOffsetB], layoutB1,
                             gmC[gmGroupOffsetC + gmOffsetC], layoutC,
                             gmS[gmOffsetS], layoutScale,
-                            actualBlockShape
-                        );
+                            actualBlockShape);
                     } else {
                         blockMmad(
                             gmA[gmGroupOffsetA + gmOffsetA], layoutA,
                             gmB1[gmGroupOffsetB + gmOffsetB], layoutB1,
                             gmC[gmGroupOffsetC + gmOffsetC], layoutC,
                             gmS, layoutScale,
-                            actualBlockShape
-                        );
+                            actualBlockShape);
                     }
                 }
             }
@@ -665,7 +663,8 @@ private:
     }
 
     CATLASS_DEVICE
-    void GMM2(Params const &params) {
+    void GMM2(Params const &params)
+    {
         icache_preload(8);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -748,16 +747,14 @@ private:
                             gmB2[gmGroupOffsetB + gmOffsetB], layoutB2,
                             gmC2[gmGroupOffsetC + gmOffsetC], layoutC,
                             gmS2[gmOffsetS], layoutScale,
-                            actualBlockShape, syncLoopIdx, 0
-                        );
+                            actualBlockShape, syncLoopIdx, 0);
                     } else {
                         blockMmad(
                             gmPermutedToken[gmGroupOffsetA + gmOffsetA], layoutA,
                             gmB2[gmGroupOffsetB + gmOffsetB], layoutB2,
                             gmC2[gmGroupOffsetC + gmOffsetC], layoutC,
                             gmS2, layoutScale,
-                            actualBlockShape, syncLoopIdx, 0
-                        );
+                            actualBlockShape, syncLoopIdx, 0);
                     }
                 }
             }
@@ -777,7 +774,8 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitArithProgress(Params const &params) {
+    void InitArithProgress(Params const &params)
+    {
         AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
@@ -810,12 +808,12 @@ private:
             AscendC::GlobalTensor<int32_t> dstAddress;
             __gm__ void* dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
 
-            dstAddress.SetGlobalBuffer((__gm__ int32_t * )dstPeermemPtr);
+            dstAddress.SetGlobalBuffer((__gm__ int32_t*)dstPeermemPtr);
             AscendC::GlobalTensor<int32_t> localDstAddress;
             GM_ADDR localDstPeermemPtr = shmem.windowsOutAddr() +
                 peermemInfo.offsetPeerTokenPerExpert +
                 tokenPerExpertLayout(dstEpIdx, 0, 0) * sizeof(int32_t);
-            localDstAddress.SetGlobalBuffer((__gm__ int32_t * )localDstPeermemPtr);
+            localDstAddress.SetGlobalBuffer((__gm__ int32_t*)localDstPeermemPtr);
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             using TType = Gemm::GemmType<int32_t, layout::RowMajor>;
@@ -958,7 +956,6 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
             flag = min(flag, dstValueBuffer.GetValue(0));
-
             if (flag > lastflag) {
                 *aicFinishPtr = flag;
                 gm_dcci(aicFinishPtr);
@@ -968,13 +965,15 @@ private:
     }
 
     CATLASS_DEVICE
-    void CombineSetFlag() {
+    void CombineSetFlag()
+    {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 
     CATLASS_DEVICE
-    void DispatchAndCombine(Params const &params) {
+    void DispatchAndCombine(Params const &params)
+    {
         icache_preload(8);
         int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert +
             tokenPerExpertLayout(params.rank, 0, 0) * sizeof(int32_t);
@@ -1069,8 +1068,7 @@ private:
 
             // ── RECV 阶段：各 core 并行等 epoch flag ──
             for (int32_t srcEpIdx = static_cast<int32_t>(coreIdx);
-                srcEpIdx < params.EP; srcEpIdx += static_cast<int32_t>(coreNum))
-            {
+                srcEpIdx < params.EP; srcEpIdx += static_cast<int32_t>(coreNum)) {
                 // rowStart2：srcEpIdx 的 token 在本 rank peer mem 中的起始行号
                 uint32_t rowStart2 = prevGroupSum2 +
                     (srcEpIdx == 0 ? 0u : static_cast<uint32_t>(
@@ -1112,7 +1110,6 @@ private:
                 }
             }
         }
-
 
         uint32_t n2 = params.problemShape.k();
 
@@ -1177,9 +1174,9 @@ private:
 
         AscendC::SyncAll<true>();
 
-        #ifndef __CROSSRANKSYNCANDALLGATHERV1__
+#ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params.EP * AlignUp(params.EP * params.expertPerRank, 128));
-        #endif
+#endif
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1211,11 +1208,11 @@ private:
                 reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
         }
-
     }
 
     CATLASS_DEVICE
-    void CombineV2(Params const &params, BlockEpilogue2 & blockEpilogue) {
+    void CombineV2(Params const &params, BlockEpilogue2 & blockEpilogue)
+    {
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;
         uint32_t startCoreIdx = 0;
@@ -1250,7 +1247,6 @@ private:
                 (aicCoreIdx + aicCoreNum) : aicCoreIdx) - startCoreIdx;
 
             for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
-
                 GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
                 GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
 
@@ -1282,48 +1278,48 @@ private:
                 }
             }
 #ifdef HCCL_COMM
- 	        AscendC::SyncAll<true>();
- 	        int32_t preSumRankInExpert = 0;
- 	        for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
- 	int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
- 	            int32_t stRankInExpert = preSumRankInExpert;
- 	            int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
- 	            preSumRankInExpert += lenRankInExpert;
- 	            if (stRankInExpert >= static_cast<int32_t>(currentExpertM)) {
- 	                break;
- 	            }
- 	            if ((dstEpIdx % coreNum) != static_cast<int32_t>(coreIdx)) {
- 	                continue;
- 	            }
- 	            if ((dstEpIdx / SERVER_RANK_SIZE_A2) == static_cast<int32_t>(serverId_)) {
- 	                continue;
- 	            }
+            AscendC::SyncAll<true>();
+            int32_t preSumRankInExpert = 0;
+            for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
+                int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+                int32_t stRankInExpert = preSumRankInExpert;
+                int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
+                preSumRankInExpert += lenRankInExpert;
+                if (stRankInExpert >= static_cast<int32_t>(currentExpertM)) {
+                    break;
+                }
+                if ((dstEpIdx % coreNum) != static_cast<int32_t>(coreIdx)) {
+                    continue;
+                }
+                if ((dstEpIdx / SERVER_RANK_SIZE_A2) == static_cast<int32_t>(serverId_)) {
+                    continue;
+                }
 
- 	            int32_t edData = min(edRankInExpert, static_cast<int32_t>(currentExpertM));
- 	            uint32_t lenData = edData - stRankInExpert;
- 	            if (lenData == 0) {
- 	                continue;
- 	            }
+                int32_t edData = min(edRankInExpert, static_cast<int32_t>(currentExpertM));
+                uint32_t lenData = edData - stRankInExpert;
+                if (lenData == 0) {
+                    continue;
+                }
 
- 	            AscendC::GlobalTensor<ElementD2> gmRemotePeer;
- 	            __gm__ void* dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
- 	            gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(dstPeermemPtr));
+                AscendC::GlobalTensor<ElementD2> gmRemotePeer;
+                __gm__ void* dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
+                gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(dstPeermemPtr));
 
- 	            int32_t dstExpertOffset = preSumBeforeRankForCombine(dstEpIdx * params.expertPerRank + groupIdx);
- 	            MatrixCoord srcOffset{preSrcExpertSum + static_cast<uint32_t>(stRankInExpert), 0};
- 	            MatrixCoord dstOffset{static_cast<uint32_t>(dstExpertOffset), 0};
- 	            int64_t gmSrcOffset = params.layoutD2.GetOffset(srcOffset);
- 	            int64_t gmDstOffset = params.layoutD2.GetOffset(dstOffset);
- 	            uint64_t messageLen = static_cast<uint64_t>(lenData) * static_cast<uint64_t>(n2) * sizeof(ElementD2);
- 	            AIVRDMAPostSend(
- 	                (GM_ADDR)gmLocalWindowsOut[gmSrcOffset].GetPhyAddr(),
- 	                (GM_ADDR)gmRemotePeer[gmDstOffset].GetPhyAddr(),
- 	                static_cast<uint64_t>(dstEpIdx),
- 	                messageLen,
- 	                qp_info_,
- 	                rdmaUbLocal,
- 	                rdmaUbLocalHead);
- 	        }
+                int32_t dstExpertOffset = preSumBeforeRankForCombine(dstEpIdx * params.expertPerRank + groupIdx);
+                MatrixCoord srcOffset{preSrcExpertSum + static_cast<uint32_t>(stRankInExpert), 0};
+                MatrixCoord dstOffset{static_cast<uint32_t>(dstExpertOffset), 0};
+                int64_t gmSrcOffset = params.layoutD2.GetOffset(srcOffset);
+                int64_t gmDstOffset = params.layoutD2.GetOffset(dstOffset);
+                uint64_t messageLen = static_cast<uint64_t>(lenData) * static_cast<uint64_t>(n2) * sizeof(ElementD2);
+                AIVRDMAPostSend(
+                    (GM_ADDR)gmLocalWindowsOut[gmSrcOffset].GetPhyAddr(),
+                    (GM_ADDR)gmRemotePeer[gmDstOffset].GetPhyAddr(),
+                    static_cast<uint64_t>(dstEpIdx),
+                    messageLen,
+                    qp_info_,
+                    rdmaUbLocal,
+                    rdmaUbLocalHead);
+            }
 #endif
 
             preSrcExpertSum += currentExpertM;
@@ -1345,7 +1341,7 @@ private:
         GM_ADDR expandedRowIdx;
         GM_ADDR ptrTokenPerExpert;
         GM_ADDR ptrSumBeforeRankForDispatch;
- 	    GM_ADDR ptrSumBeforeRankForCombine;
+        GM_ADDR ptrSumBeforeRankForCombine;
         __gm__ float* ptrSoftFlagBase;
 
         CATLASS_DEVICE
@@ -1405,7 +1401,8 @@ private:
         PeermemInfo() {}
 
         CATLASS_DEVICE
-        PeermemInfo(const Params & params, const HcclShmem<true> & shmem) {
+        PeermemInfo(const Params & params, const HcclShmem<true> & shmem)
+        {
             offsetA = 0;
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
             offsetD = offsetPeerPerTokenScale + MB_SIZE;
@@ -1439,7 +1436,7 @@ private:
     AscendC::GlobalTensor<int32_t> tokenPerExpert;
     AscendC::GlobalTensor<int32_t> cumsumMM;
     AscendC::GlobalTensor<int32_t> preSumBeforeRankForDispatch;
- 	AscendC::GlobalTensor<int32_t> preSumBeforeRankForCombine;
+    AscendC::GlobalTensor<int32_t> preSumBeforeRankForCombine;
 
     Layout3D tokenPerExpertLayout;
     HcclShmem<true> shmem;
