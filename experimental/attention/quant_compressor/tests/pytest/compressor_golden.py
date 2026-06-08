@@ -680,10 +680,10 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     x_hif = torch_npu.npu_dtype_cast(x.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
     wkv_hif = torch_npu.npu_dtype_cast(wkv.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
     wgate_hif = torch_npu.npu_dtype_cast(wgate.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
-    from generate_hifloat8_data import trans_np_hifuint8_tensor_to_float32
-    x = torch.tensor(trans_np_hifuint8_tensor_to_float32(x_hif)).cpu()
-    wkv = torch.tensor(trans_np_hifuint8_tensor_to_float32(wkv_hif)).cpu()
-    wgate = torch.tensor(trans_np_hifuint8_tensor_to_float32(wgate_hif)).cpu()
+    from generate_hifloat8_data_vec import trans_np_hifuint8_tensor_to_float32
+    x = trans_np_hifuint8_tensor_to_float32(x_hif).cpu()
+    wkv = trans_np_hifuint8_tensor_to_float32(wkv_hif).cpu()
+    wgate = trans_np_hifuint8_tensor_to_float32(wgate_hif).cpu()
 
     x_descale = torch.tensor(np.random.uniform(x_descale_datarange[0], x_descale_datarange[1], (1,))).to(torch.float32)
     wkv_descale = torch.tensor(np.random.uniform(wkv_descale_datarange[0], wkv_descale_datarange[1], (coff * head_dim,))).to(torch.float32)
@@ -829,18 +829,27 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # print("平均差异值:", mean_diff.item())
 
     # 结果精度对比
-    check_succeed = True
     data_type = str(npu_out.dtype)
+    check_results = []
+
     print("--------------------------------------------------------------check result-------------------------------------------------------------")
-    check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    _, r1 = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    check_results.append(("cmp_kv", r1))
     print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
-    check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
+    _, r2 = check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
+    check_results.append(("kv_state_update", r2))
     print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
-    check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
+    _, r3 = check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
+    check_results.append(("score_state_update", r3))
     print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
-    check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    _, r4 = check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    check_results.append(("kv_state_origin", r4))
     print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
-    check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
+    _, r5 = check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
+    check_results.append(("score_state_origin", r5))
+
+    failed = [name for name, r in check_results if r != "Pass"]
+    assert len(failed) == 0, f"Check failed: {failed}"
 
 
 if __name__ == "__main__":
