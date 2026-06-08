@@ -406,6 +406,12 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         aiCoreIdx = tmpBlockIdx;
     }
 
+#if CVRATIO == 1
+    if (ASCEND_IS_AIV && tmpBlockIdx >= 32) {
+        return;
+    }
+#endif
+
     InitTilingData(tiling);
     InitActualSeqLen(actualSeqLengthsQ, actualSeqLengthsK);
 
@@ -575,6 +581,12 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
 template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::Process()
 {
+#if CVRATIO == 1
+    if (ASCEND_IS_AIV && tmpBlockIdx >= 32) {
+        return;
+    }
+#endif
+
     if (usedCoreNum == 0) {
         // 没有计算任务，直接清理输出
         ProcessInvalid();
@@ -618,7 +630,9 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0);
+#if CVRATIO > 1
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1);
+#endif
     } else {
         matmulService.AllocEventID();
     }
@@ -656,7 +670,9 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     } else {
         matmulService.FreeEventID();
         CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0); 
+#if CVRATIO > 1
         CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1); 
+#endif
     }
 }
 
