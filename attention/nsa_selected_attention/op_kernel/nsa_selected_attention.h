@@ -655,8 +655,8 @@ __aicore__ inline void NsaSelectedAttention<INPUT_T, ATTEN_ENABLE>::HandleMask(u
                     AscendC::Duplicate(this->bmm1ResUb[offset], this->negativeScalar, this->selectedBlockSize);
                 }
             } else {
-                AscendC::Duplicate(this->bmm1ResUb[selectedBlockIdx * this->selectedBlockSize],
-                                   this->negativeScalar, this->selectedBlockSize, currentProcessSize, 1, static_cast<uint8_t>(dstStride));
+                AscendC::Duplicate(this->bmm1ResUb[selectedBlockIdx * this->selectedBlockSize], this->negativeScalar,
+                    this->selectedBlockSize, currentProcessSize, 1, static_cast<uint8_t>(dstStride));
             }
             AscendC::PipeBarrier<PIPE_V>();
         }

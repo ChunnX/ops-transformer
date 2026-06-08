@@ -277,7 +277,8 @@ __aicore__ inline void NsaCompressGradND<T>::Process() {
             CopyInCmpGrad(cmpOffset, headToProcess * headDim_);
             
             for (auto rowId = 0; rowId < blockSize_; rowId+=nRowsOnce_) {
-                uint64_t inputOffset = blcOffset + static_cast<uint64_t>(rowId) * offsetPerRow + static_cast<uint64_t>(headId) * headDim_;
+                uint64_t inputOffset =
+                    blcOffset + static_cast<uint64_t>(rowId) * offsetPerRow + static_cast<uint64_t>(headId) * headDim_;
                 uint64_t weightOffset = static_cast<uint64_t>(rowId) * headNum_ + headId;
                 uint32_t rowsToProcess = (rowId + nRowsOnce_ > blockSize_) ? (blockSize_ - rowId) : nRowsOnce_;
 
