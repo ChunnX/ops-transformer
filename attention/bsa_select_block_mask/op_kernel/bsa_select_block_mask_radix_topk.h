@@ -159,12 +159,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
 
     this->formerTileLen_ = tileLen_;
-    this->tailTileLen_ = (GetBlockIdx() != constInfo.coreNum - 1) ? tileLen_ : (sortLen_ - (totalTileNum_ - 1) * tileLen_);
+    this->tailTileLen_ = (GetBlockIdx() != constInfo.aivNum - 1) ? tileLen_ : (sortLen_ - (totalTileNum_ - 1) * tileLen_);
     if (tailTileLen_ == 0) {
         tailTileLen_ = tileLen_;
     }
 
-    uint32_t coreNum = constInfo.coreNum;
+    uint32_t coreNum = constInfo.aivNum;
     uint64_t baseTilesPerCore = totalTileNum_ / coreNum;
     uint64_t extraCores = totalTileNum_ % coreNum;
     this->formerCoreNum_ = extraCores;
@@ -211,7 +211,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     this->topkWorkspaceGmLocal = topkWorkspaceGm;
     this->maskTmpGmLocal = maskTmpGm;
 
-    uint32_t coreNum = constInfo.coreNum;
+    uint32_t coreNum = constInfo.aivNum;
     uint32_t headerSize = (numValue_ * coreNum + coreNum + coreNum);
     this->globalHistGm_.SetGlobalBuffer((__gm__ int32_t *)topkWorkspaceGm.GetPhyAddr());
     this->boundaryBinCumSumGm_.SetGlobalBuffer(
@@ -751,7 +751,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyInGlobalHist(LocalTensor<i
 {
     DataCopyExtParams copyParams{
         static_cast<uint16_t>(1),
-        static_cast<uint32_t>(sizeof(int32_t) * numValue_ * constInfo.coreNum), 0, 0, 0};
+        static_cast<uint32_t>(sizeof(int32_t) * numValue_ * constInfo.aivNum), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(globalHist, globalHistGm_, copyParams, padParams);
 }
@@ -761,10 +761,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
 {
     int32_t coresInBlock = UB_BLOCK_SIZE / sizeof(int32_t) / numValue_;
     int32_t splitPoint = 32;
-    while (splitPoint >= static_cast<int32_t>(constInfo.coreNum) && splitPoint > coresInBlock) {
+    while (splitPoint >= static_cast<int32_t>(constInfo.aivNum) && splitPoint > coresInBlock) {
         splitPoint /= 2;
     }
-    int32_t remain = static_cast<int32_t>(constInfo.coreNum);
+    int32_t remain = static_cast<int32_t>(constInfo.aivNum);
     while (remain > coresInBlock) {
         Add(globalHist, globalHist, globalHist[splitPoint * numValue_], (remain - splitPoint) * numValue_);
         remain = splitPoint;
@@ -823,7 +823,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ComputeCumSumPrev(
 {
     DataCopyExtParams copyInParams{
         static_cast<uint16_t>(1),
-        static_cast<uint32_t>(sizeof(int32_t) * constInfo.coreNum), 0, 0, 0};
+        static_cast<uint32_t>(sizeof(int32_t) * constInfo.aivNum), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(resTensor, boundaryBinCumSumGm_, copyInParams, padParams);
     MTE2ToSSync();
