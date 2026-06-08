@@ -78,39 +78,39 @@ MHC (Manifold-Constraint Hyper-Connection) 是一种改进的注意力机制连�
 ### 2.1 前向计算流程
 
 ```mermaid
-flowchart TD
-    A[x] --> B[x @ phi]
-    B --> C[+ bias]
+graph TD
+    A[x] --> B[x_phi]
+    B --> C[+bias]
     C --> D[hcBeforeNorm]
     D --> E[RmsNorm]
-    E --> F[Reshape to [B,S,N,N]]
-    F --> G[Save hResLogits]
-    G --> H{clamp_min!=0 or clamp_max!=0?}
-    H -->|Yes| I[Maxs: clamp_min]
-    I --> J[Mins: clamp_max]
-    H -->|No| K[Skip clamp]
+    E --> F[Reshape]
+    F --> G[Save_hResLogits]
+    G --> H{clamp}
+    H -- yes --> I[Maxs]
+    I --> J[Mins]
+    H -- no --> K[Skip]
     J --> L[Softmax]
     K --> L
-    L --> M[Sinkhorn iter]
-    M --> N[Output hRes, normOut, sumOut]
+    L --> M[Sinkhorn]
+    M --> N[Output]
 ```
 
 ### 2.2 反向计算流程
 
 ```mermaid
-flowchart TD
+graph TD
     A[grad_h_res] --> B[SinkhornGrad]
-    B --> C[grad_h_res after softmax backward]
+    B --> C[grad after softmax bwd]
     C --> D{clamp enabled?}
-    D -->|Yes| E[Load reduceOut from hResLogits]
-    E --> F[Compare reduceOut < min → maskLow]
-    F --> G[Compare reduceOut > max → maskHigh]
-    G --> H[Or maskLow, maskHigh → mask]
-    H --> I[Mul grad, mask → zero out clamped positions]
+    D -->|Yes| E[Load reduceOut]
+    E --> F[Compare < min]
+    F --> G[Compare > max]
+    G --> H[Or masks]
+    H --> I[Mul grad * mask]
     I --> J[Continue backward]
     D -->|No| J
     J --> K[ComputeGradHHat2]
-    K --> L[grad_phi, grad_alpha, grad_bias]
+    K --> L[grad_phi/alpha/bias]
     L --> M[ComputeGradX1]
     M --> N[grad_x]
 ```
@@ -118,13 +118,13 @@ flowchart TD
 ### 2.3 数据流图
 
 ```mermaid
-flowchart LR
+graph LR
     subgraph Forward
-        F1[x] --> F2[MatMul x@phi]
+        F1[x] --> F2[MatMul]
         F3[bias] --> F2
         F2 --> F4[hcBeforeNorm]
         F4 --> F5[RmsNorm]
-        F5 --> F6[Reshape N*N]
+        F5 --> F6[Reshape]
         F6 --> F7[hResLogits]
         F7 --> F8[Clamp]
         F8 --> F9[Softmax+Sinkhorn]
@@ -202,15 +202,15 @@ SoftmaxFP32Perf(mxies02ReduceLocal, ...);
 在反向算子的 `SinkhornGrad` 函数末尾，对 softmax 梯度计算完成后，执行 clamp 反向：
 
 ```mermaid
-flowchart TD
-    A[gradHResLocal_ after softmax backward] --> B[Load reduceOut from hResLogits]
-    B --> C[Duplicate minVal_ to scalarLocal]
-    C --> D[Compare reduceOut < minVal_ → maskLow]
-    D --> E[Duplicate maxVal_ to scalarLocal]
-    E --> F[Compare reduceOut > maxVal_ → maskHigh]
-    F --> G[Or maskLow, maskHigh → mask]
-    G --> H[Cast mask uint8→float]
-    H --> I[Mul gradHResLocal_, mask → zero out clamped positions]
+graph TD
+    A[gradHRes after softmax bwd] --> B[Load reduceOut]
+    B --> C[Dup minVal scalar]
+    C --> D[Compare < min]
+    D --> E[Dup maxVal scalar]
+    E --> F[Compare > max]
+    F --> G[Or masks]
+    G --> H[Cast uint8 to float]
+    H --> I[Mul grad * mask]
 ```
 
 **数学原理**：
@@ -288,7 +288,7 @@ Mul(gradHResLocal_, gradHResLocal_, scalarLocal, calCnt);
 ### 5.1 模块架构
 
 ```mermaid
-flowchart TD
+graph TD
     subgraph op_host
         A[def.cpp] --> B[算子定义]
         C[tiling.cpp] --> D[Tiling 计算]
@@ -373,47 +373,47 @@ gradHResTempLocal_[calCnt].ReinterpretCast<uint8_t>() → maskHigh
 SinkhornGrad 实现 Sinkhorn 算子的反向传播，包含 softmax 梯度计算和 clamp 反向。
 
 ```mermaid
-flowchart TD
-    A[开始 SinkhornGrad] --> B[Load grad_h_res from Global]
+graph TD
+    A[开始 SinkhornGrad] --> B[Load grad_h_res]
     B --> C[iter = skIterCount-1 to 1]
-    C --> D[Load skRowNorm, skRowSum, skColSum]
+    C --> D[Load skRowNorm/Sum/ColSum]
     D --> E[Add eps to skColSum]
     E --> F[Div: grad / skColSum]
     F --> G[Mul: grad * skRowNorm]
     G --> H[Mul: skColSum^2]
-    H --> I[ReduceSum: sum(grad * skRowNorm)]
+    H --> I[ReduceSum]
     I --> J[Div: sum / skColSum^2]
-    J --> K[Sub: grad = grad/sum - sum/sum^2]
+    J --> K[Sub: grad - sum/sum^2]
     K --> L[Add eps to skRowSum]
     L --> M[Brcb skRowSum]
     M --> N[Div: grad / skRowSum]
     N --> O[Mul: skRowNorm * grad]
     O --> P[BlockReduceSum]
     P --> Q[Brcb reduce result]
-    Q --> R[Sub: grad = grad - reduce]
+    Q --> R[Sub: grad - reduce]
     R --> S[iter--]
     S --> C
-    C --> T[iter=0: final softmax backward]
+    C --> T[iter=0: final softmax bwd]
     T --> U[Mul: grad * skRowNorm]
     U --> V[BlockReduceSum]
     V --> W[Brcb reduce result]
-    W --> X[Sub: grad = grad - reduce]
+    W --> X[Sub: grad - reduce]
     X --> Y[Mul: grad * skRowNorm]
     Y --> Z[ClampBwd]
-    Z --> Z1[Load reduceOut from hResLogits]
-    Z1 --> Z2[Compare reduceOut < min → maskLow]
-    Z2 --> Z3[Compare reduceOut > max → maskHigh]
-    Z3 --> Z4[Or maskLow, maskHigh → mask]
-    Z4 --> Z5[Cast mask uint8→float]
-    Z5 --> Z6[Mul grad * mask → zero out clamped]
-    Z6 --> ZA[Data layout transform 4v4o4v40→4v4v]
+    Z --> Z1[Load reduceOut]
+    Z1 --> Z2[Compare < min]
+    Z2 --> Z3[Compare > max]
+    Z3 --> Z4[Or masks]
+    Z4 --> Z5[Cast uint8 to float]
+    Z5 --> Z6[Mul grad * mask]
+    Z6 --> ZA[Layout transform]
     ZA --> ZB[结束 SinkhornGrad]
 ```
 
 #### ComputeGradHHat2
 
 ```mermaid
-flowchart TD
+graph TD
     A[开始 ComputeGradHHat2] --> B[调用 SinkhornGrad]
     B --> C[Copy gradHRes to dhat]
     C --> D[Load gradHPost, hat2, rsqrt]
@@ -432,28 +432,28 @@ flowchart TD
 #### ComputeGradX1
 
 ```mermaid
-flowchart TD
-    A[开始 ComputeGradX1] --> B[Load x, grad from Global]
-    B --> C[MatMul: grad_x = grad @ phi^T]
-    C --> D[Cast grad_x to output dtype]
-    D --> E[Store grad_x to Global]
+graph TD
+    A[开始 ComputeGradX1] --> B[Load x, grad]
+    B --> C[MatMul: grad_x = grad * phi^T]
+    C --> D[Cast grad_x]
+    D --> E[Store grad_x]
     E --> F[结束 ComputeGradX1]
 ```
 
 ### 5.5 并行策略
 
 ```mermaid
-flowchart LR
+graph LR
     subgraph AIC_Core
-        MM1[MatMul1: grad_h_pre/post/res @ phi]
-        MM2[MatMul2: grad_x = grad_h @ phi^T]
+        MM1[MatMul1: grad_h phi]
+        MM2[MatMul2: grad_x = grad_h * phi^T]
     end
 
     subgraph AIV_Core
         GP[ComputeGradPre]
         SG[SinkhornGrad + ClampBwd]
         GH[ComputeGradHHat2]
-        GX[ComputeGradX1 Vector part]
+        GX[ComputeGradX1 Vector]
         SB[ComputeScaleBias]
     end
 
