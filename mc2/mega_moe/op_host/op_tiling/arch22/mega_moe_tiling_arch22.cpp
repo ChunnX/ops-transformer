@@ -33,7 +33,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace mc2tiling;
 
-namespace MegaMoeA2A3Tiling{
+namespace MegaMoeA2A3Tiling {
     const char *K_INNER_DEBUG = "MegaMoeA2A3 Tiling Debug";
 
     // 算子属性索引
@@ -119,9 +119,9 @@ static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
 {
     OP_TILING_CHECK(ptr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "epWorldSize is nullptr."), return GRAPH_FAILED);
-    bool isValidEpWorldSize = std::find(std::begin(VALID_EP_WORLD_SIZE), 
-                                    std::end(VALID_EP_WORLD_SIZE), 
-                                    *ptr) != std::end(VALID_EP_WORLD_SIZE);
+    bool isValidEpWorldSize = std::find(std::begin(VALID_EP_WORLD_SIZE),
+                                        std::end(VALID_EP_WORLD_SIZE),
+                                        *ptr) != std::end(VALID_EP_WORLD_SIZE);
     OP_TILING_CHECK(!isValidEpWorldSize,
         OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64, 128}, but got %ld.",
             *ptr), return GRAPH_FAILED);
@@ -922,7 +922,6 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
             OP_LOGE(K_INNER_DEBUG, "CheckBiasInput for bias2 failed."),
             return GRAPH_FAILED);
     }
-    
 
     // ==================== 12. x_active_mask 输入校验（可选） ====================
     bool isActiveMask = false;
