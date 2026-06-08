@@ -10,7 +10,7 @@
 
 /*!
  * \file vf_dequant.h
- * \brief HiFP8 matmul结果反量化：result = input * scalar * descale
+ * \brief HiFP8 matmul结果反量化：result = input * descale
  */
 
 #ifndef VF_DEQUANT_H
@@ -25,26 +25,25 @@ using namespace QuantCompressor;
 // total = col, descale = col（register一一对应）
 
 __simd_vf__ void DequantVFCoff1BaseImpl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+                                         __ubuf__ float *descaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInput;
     MicroAPI::RegTensor<float> vregDescale;
     MicroAPI::RegTensor<float> vregMul;
 
     MicroAPI::MaskReg mask = MicroAPI::UpdateMask<float>(col);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale, wDescaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale, descaleAddr);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * actualCol;
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputAddr + offset);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput, vregInput, xDescale, mask);
         MicroAPI::Mul(vregMul, vregInput, vregDescale, mask);
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, vregMul, mask);
     }
 }
 
 __simd_vf__ void DequantVFCoff1_128Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+                                         __ubuf__ float *descaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInput[2];
     MicroAPI::RegTensor<float> vregDescale[2];
@@ -52,17 +51,14 @@ __simd_vf__ void DequantVFCoff1_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], wDescaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], descaleAddr + FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * actualCol;
 
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[0], inputAddr + offset);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[1], inputAddr + offset + FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[0], vregInput[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[1], vregInput[1], xDescale, mask);
 
         MicroAPI::Mul(vregMul[0], vregInput[0], vregDescale[0], mask);
         MicroAPI::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
@@ -73,7 +69,7 @@ __simd_vf__ void DequantVFCoff1_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 }
 
 __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+                                         __ubuf__ float *descaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInput[4];
     MicroAPI::RegTensor<float> vregDescale[4];
@@ -81,10 +77,10 @@ __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], wDescaleAddr + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[2], wDescaleAddr + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[3], wDescaleAddr + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], descaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[2], descaleAddr + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[3], descaleAddr + 3 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * actualCol;
@@ -93,11 +89,6 @@ __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[1], inputAddr + offset + FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[2], inputAddr + offset + 2 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[3], inputAddr + offset + 3 * FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[0], vregInput[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[1], vregInput[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[2], vregInput[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[3], vregInput[3], xDescale, mask);
 
         MicroAPI::Mul(vregMul[0], vregInput[0], vregDescale[0], mask);
         MicroAPI::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
@@ -112,7 +103,7 @@ __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 }
 
 __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
+                                         __ubuf__ float *descaleAddr, uint32_t row, uint32_t col, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInput[8];
     MicroAPI::RegTensor<float> vregDescale[8];
@@ -120,14 +111,14 @@ __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], wDescaleAddr + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[2], wDescaleAddr + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[3], wDescaleAddr + 3 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[4], wDescaleAddr + 4 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[5], wDescaleAddr + 5 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[6], wDescaleAddr + 6 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[7], wDescaleAddr + 7 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[1], descaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[2], descaleAddr + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[3], descaleAddr + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[4], descaleAddr + 4 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[5], descaleAddr + 5 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[6], descaleAddr + 6 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescale[7], descaleAddr + 7 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * actualCol;
@@ -140,15 +131,6 @@ __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[5], inputAddr + offset + 5 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[6], inputAddr + offset + 6 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInput[7], inputAddr + offset + 7 * FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[0], vregInput[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[1], vregInput[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[2], vregInput[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[3], vregInput[3], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[4], vregInput[4], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[5], vregInput[5], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[6], vregInput[6], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInput[7], vregInput[7], xDescale, mask);
 
         MicroAPI::Mul(vregMul[0], vregInput[0], vregDescale[0], mask);
         MicroAPI::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
@@ -175,7 +157,7 @@ __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 // descale: coff0_descale 从offset0加载, coff1_descale 从headDim偏移加载
 
 __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr,
+                                         __ubuf__ float *descaleAddr,
                                          uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInputCoff0;
@@ -188,17 +170,14 @@ __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::UpdateMask<float>(col);
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0, wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1, wDescaleAddr + headDim);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0, descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1, descaleAddr + headDim);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
 
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff0, inputAddr + offset);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1, inputAddr + offset + actualCol);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0, vregInputCoff0, xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1, vregInputCoff1, xDescale, mask);
 
         MicroAPI::Mul(vregMulCoff0, vregInputCoff0, vregDescaleCoff0, mask);
         MicroAPI::Mul(vregMulCoff1, vregInputCoff1, vregDescaleCoff1, mask);
@@ -210,7 +189,7 @@ __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
 
 // total = 256, coff0: 2reg input + 2reg descale, coff1: 2reg input + 2reg descale
 __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr,
+                                         __ubuf__ float *descaleAddr,
                                          uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInputCoff0[2];
@@ -223,10 +202,10 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], wDescaleAddr + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], wDescaleAddr + headDim);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], wDescaleAddr + headDim + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], descaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
@@ -235,11 +214,6 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff0[1], inputAddr + offset + FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[1], inputAddr + offset + actualCol + FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[0], vregInputCoff0[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[1], vregInputCoff0[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[0], vregInputCoff1[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[1], vregInputCoff1[1], xDescale, mask);
 
         MicroAPI::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         MicroAPI::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -255,7 +229,7 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
 // total = 512, coff0: 4reg input + 4reg descale, coff1: 4reg input + 4reg descale
 __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr,
+                                         __ubuf__ float *descaleAddr,
                                          uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInputCoff0[4];
@@ -268,14 +242,14 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], wDescaleAddr + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[2], wDescaleAddr + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[3], wDescaleAddr + 3 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], wDescaleAddr + headDim);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], wDescaleAddr + headDim + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[2], wDescaleAddr + headDim + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[3], wDescaleAddr + headDim + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], descaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[2], descaleAddr + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[3], descaleAddr + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[2], descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[3], descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
@@ -288,15 +262,6 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[1], inputAddr + offset + actualCol + FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[2], inputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[3], inputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[0], vregInputCoff0[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[1], vregInputCoff0[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[2], vregInputCoff0[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[3], vregInputCoff0[3], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[0], vregInputCoff1[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[1], vregInputCoff1[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[2], vregInputCoff1[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[3], vregInputCoff1[3], xDescale, mask);
 
         MicroAPI::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         MicroAPI::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -320,7 +285,7 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
 // total = 1024, coff0: 8reg input + 8reg descale, coff1: 8reg input + 8reg descale
 __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ float *inputAddr,
-                                         float xDescale, __ubuf__ float *wDescaleAddr,
+                                         __ubuf__ float *descaleAddr,
                                          uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
 {
     MicroAPI::RegTensor<float> vregInputCoff0[8];
@@ -333,22 +298,22 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], wDescaleAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], wDescaleAddr + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[2], wDescaleAddr + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[3], wDescaleAddr + 3 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[4], wDescaleAddr + 4 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[5], wDescaleAddr + 5 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[6], wDescaleAddr + 6 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[7], wDescaleAddr + 7 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], wDescaleAddr + headDim);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], wDescaleAddr + headDim + FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[2], wDescaleAddr + headDim + 2 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[3], wDescaleAddr + headDim + 3 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[4], wDescaleAddr + headDim + 4 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[5], wDescaleAddr + headDim + 5 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[6], wDescaleAddr + headDim + 6 * FLOAT_REP_SIZE);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[7], wDescaleAddr + headDim + 7 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[1], descaleAddr + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[2], descaleAddr + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[3], descaleAddr + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[4], descaleAddr + 4 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[5], descaleAddr + 5 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[6], descaleAddr + 6 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0[7], descaleAddr + 7 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[2], descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[3], descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[4], descaleAddr + headDim + 4 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[5], descaleAddr + headDim + 5 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[6], descaleAddr + headDim + 6 * FLOAT_REP_SIZE);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff1[7], descaleAddr + headDim + 7 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
@@ -369,23 +334,6 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[5], inputAddr + offset + actualCol + 5 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[6], inputAddr + offset + actualCol + 6 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregInputCoff1[7], inputAddr + offset + actualCol + 7 * FLOAT_REP_SIZE);
-
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[0], vregInputCoff0[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[1], vregInputCoff0[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[2], vregInputCoff0[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[3], vregInputCoff0[3], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[4], vregInputCoff0[4], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[5], vregInputCoff0[5], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[6], vregInputCoff0[6], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff0[7], vregInputCoff0[7], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[0], vregInputCoff1[0], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[1], vregInputCoff1[1], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[2], vregInputCoff1[2], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[3], vregInputCoff1[3], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[4], vregInputCoff1[4], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[5], vregInputCoff1[5], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[6], vregInputCoff1[6], xDescale, mask);
-        MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(vregInputCoff1[7], vregInputCoff1[7], xDescale, mask);
 
         MicroAPI::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         MicroAPI::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -425,11 +373,10 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
 // ================================ 入口 ===================================
 /**
- * @brief DequantVF 对matmul输出做反量化：output = input * xDescale * wDescale
+ * @brief DequantVF 对matmul输出做反量化：output = input * descale
  * @param outputLocal 输出tensor [row, coff * actualCol], 支持原地更新
  * @param inputLocal 输入tensor（matmul输出）[row, coff * actualCol]
- * @param xDescale x反量化权重
- * @param wDescale weight反量化权重 [coff * headDim], coff间以headDim偏移
+ * @param descale 反量化权重 (xDescale * wDescale) [coff * headDim], coff间以headDim偏移
  * @param row 行数
  * @param col 有效列数
  * @param headDim 实际列数，用于计算coff间偏移
@@ -437,31 +384,31 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
  */
 template <COFF Coff>
 __aicore__ inline void DequantVF(const LocalTensor<float> &outputLocal, const LocalTensor<float> &inputLocal,
-                                 float xDescale, const LocalTensor<float> &wDescale, uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
+                                 const LocalTensor<float> &descale, uint32_t row, uint32_t col, uint32_t headDim, uint32_t actualCol)
 {
     __ubuf__ float *inputAddr = (__ubuf__ float *)inputLocal.GetPhyAddr();
-    __ubuf__ float *wDescaleAddr = (__ubuf__ float *)wDescale.GetPhyAddr();
+    __ubuf__ float *descaleAddr = (__ubuf__ float *)descale.GetPhyAddr();
     __ubuf__ float *outputAddr = (__ubuf__ float *)outputLocal.GetPhyAddr();
 
     if constexpr (Coff == COFF::DISABLE) {
         if (col <= 64) {
-            DequantVFCoff1BaseImpl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, actualCol);
+            DequantVFCoff1BaseImpl(outputAddr, inputAddr, descaleAddr, row, col, actualCol);
         } else if (col == 128) {
-            DequantVFCoff1_128Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, actualCol);
+            DequantVFCoff1_128Impl(outputAddr, inputAddr, descaleAddr, row, col, actualCol);
         } else if (col == 256) {
-            DequantVFCoff1_256Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, actualCol);
+            DequantVFCoff1_256Impl(outputAddr, inputAddr, descaleAddr, row, col, actualCol);
         } else {
-            DequantVFCoff1_512Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, actualCol);
+            DequantVFCoff1_512Impl(outputAddr, inputAddr, descaleAddr, row, col, actualCol);
         }
     } else {
         if (col <= 64) {
-            DequantVFCoff2BaseImpl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, headDim, actualCol);
+            DequantVFCoff2BaseImpl(outputAddr, inputAddr, descaleAddr, row, col, headDim, actualCol);
         } else if (col == 128) {
-            DequantVFCoff2_128Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, headDim, actualCol);
+            DequantVFCoff2_128Impl(outputAddr, inputAddr, descaleAddr, row, col, headDim, actualCol);
         } else if (col == 256) {
-            DequantVFCoff2_256Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, headDim, actualCol);
+            DequantVFCoff2_256Impl(outputAddr, inputAddr, descaleAddr, row, col, headDim, actualCol);
         } else {
-            DequantVFCoff2_512Impl(outputAddr, inputAddr, xDescale, wDescaleAddr, row, col, headDim, actualCol);
+            DequantVFCoff2_512Impl(outputAddr, inputAddr, descaleAddr, row, col, headDim, actualCol);
         }
     }
 }

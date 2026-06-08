@@ -132,8 +132,8 @@ private:
                                    const Vec1RunInfo &info, const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
                                    uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize);
     template <bool IS_SINGLE>
-    __aicore__ inline void Dequant(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, float xDescale,
-                                   const LocalTensor<float> &wDescale, uint32_t row, uint32_t col, uint32_t actualCol);
+    __aicore__ inline void Dequant(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
+                                   const LocalTensor<float> &descale, uint32_t row, uint32_t col, uint32_t actualCol);
     __aicore__ inline void FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
                                              const Vec1SliceInfo &sliceInfo, const StatisticInfo &statisticInfo,
                                              uint32_t dStartIdx, uint32_t dDealSize);
@@ -219,8 +219,8 @@ private:
     // TBuf<TPosition::VECIN> mm1ResUb;
     LocalTensor<T> normWeightUb;
     LocalTensor<T> apeUb;
-    LocalTensor<T> wKvDescaleUb;
-    LocalTensor<T> wGateDescaleUb;
+    LocalTensor<T> xWKvDescaleUb;
+    LocalTensor<T> xWGateDescaleUb;
     // 临时tbuf
     TBuf<TPosition::VECCALC> tmpBuff1;
     TBuf<TPosition::VECCALC> tmpBuff2;
@@ -299,8 +299,8 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitBuffers(TPipe *pipe
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
     normWeightUb = normWeightBuf.Get<T>();
     apeUb = apeBuf.Get<T>();
-    wKvDescaleUb = wKvDescaleBuf.Get<T>();
-    wGateDescaleUb = wGateDescaleBuf.Get<T>();
+    xWKvDescaleUb = wKvDescaleBuf.Get<T>();
+    xWGateDescaleUb = wGateDescaleBuf.Get<T>();
     LocalTensor<T> normweightInUb = inputQue2.AllocTensor<T>();
     DataCopy(normweightInUb, normWeightGm_, constInfo_.headDim); // 获取normWeight，常驻
     inputQue2.EnQue(normweightInUb);
@@ -314,9 +314,11 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitBuffers(TPipe *pipe
         DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], wGateDescaleGm_, coff_ * constInfo_.headDim);
         inputQue3.EnQue(wDescale);
         inputQue3.DeQue<T>();
-        DataCopy(wKvDescaleUb, wDescale, coff_ * constInfo_.headDim);
-        DataCopy(wGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], coff_ * constInfo_.headDim);
+        DataCopy(xWKvDescaleUb, wDescale, coff_ * constInfo_.headDim);
+        DataCopy(xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], coff_ * constInfo_.headDim);
         inputQue3.FreeTensor(wDescale);
+        MulsVF(xWKvDescaleUb, xWKvDescaleUb, xDescale_, coff_, constInfo_.headDim)
+        MulsVF(xWGateDescaleUb, xWGateDescaleUb, xDescale_, coff_, constInfo_.headDim)
     }
     PipeBarrier<PIPE_V>();
 }
@@ -681,15 +683,15 @@ QuantCompressorBlockVector<COMP>::OverLap(const LocalTensor<T> &dstLocal, const 
 template <typename COMP>
 template <bool IS_SINGLE>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::Dequant(const LocalTensor<T> &dstLocal,
-                                                                         const LocalTensor<T> &srcLocal, float xDescale,
-                                                                         const LocalTensor<float> &wDescale,
+                                                                         const LocalTensor<T> &srcLocal,
+                                                                         const LocalTensor<float> &descale,
                                                                          uint32_t row, uint32_t col, uint32_t actualCol)
 {
     if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
         if constexpr (IS_SINGLE) {
-            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCol);
+            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         } else {
-            DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCol);
+            DequantVF<COMP::coff>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -770,10 +772,10 @@ QuantCompressorBlockVector<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dstLoc
                              srcSingleRowElemNum, coff_ * dDealSize, constInfo_.kBaseNum, constInfo_.mm1KvResSize);
         }
         if constexpr (IS_SCORE) {
-            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wGateDescaleUb[dStartIdx],
+            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xWGateDescaleUb[dStartIdx],
                             copyRowCount, dDealSize, coff_ * dDealSize);
         } else {
-            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xDescale_, wKvDescaleUb[dStartIdx],
+            Dequant<true>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xWKvDescaleUb[dStartIdx],
                             copyRowCount, dDealSize, coff_ * dDealSize);
         }
     } else { // 从UB中获取
@@ -1033,7 +1035,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
     FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
-    Dequant<false>(scoreUb, scoreUb, xDescale_, wGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
+    Dequant<false>(scoreUb, scoreUb, xWGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
                     dDealSize, dDealSize);
     PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
@@ -1059,7 +1061,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
     FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
-    Dequant<false>(kvUb, kvUb, xDescale_, wKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
+    Dequant<false>(kvUb, kvUb, xWKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
                     dDealSize, dDealSize);
     PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);

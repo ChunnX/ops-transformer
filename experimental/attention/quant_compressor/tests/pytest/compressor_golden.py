@@ -377,8 +377,10 @@ def cpu_compressor(
     for i in range(wkv.shape[1] // 128):
         leftH = i * 128
         rightH = (i + 1) * 128
-    new_kv_state = np.matmul(x, wkv.T, dtype=matmul_dtype) * x_descale * wkv_descale
-    new_score_state = np.matmul(x, wgate.T, dtype=matmul_dtype) * x_descale * wgate_descale
+    wkv_descale = x_descale * wkv_descale
+    wgate_descale = x_descale * wgate_descale
+    new_kv_state = np.matmul(x, wkv.T, dtype=matmul_dtype) * wkv_descale
+    new_score_state = np.matmul(x, wgate.T, dtype=matmul_dtype) * wgate_descale
 
     B = len(start_pos)
     head_dim = wkv.shape[0] // coff

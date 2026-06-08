@@ -315,4 +315,36 @@ __aicore__ inline void MulReduceSumbaseVF(const LocalTensor<T> &kvLocal, const L
 }
 
 
+template <typename T>
+__simd_vf__ void MulsVFImpl(__ubuf__ T *dstAddr, __ubuf__ T *srcAddr, float scalarValue, uint32_t cnt, uint16_t repeatTimes)
+{
+    MicroAPI::RegTensor<T> srcReg;
+    MicroAPI::RegTensor<T> dstReg;
+    MicroAPI::MaskReg mask;
+    for (uint16_t i = 0; i < repeatTimes; i++) {
+        mask = MicroAPI::UpdateMask<T>(cnt);
+        MicroAPI::LoadAlign(srcReg, srcAddr + i * baseD64);
+        MicroAPI::Muls(dstReg, srcReg, scalarValue, mask);
+        MicroAPI::StoreAlign(dstAddr + i * baseD64, dstReg, mask);
+    }
+}
+
+/**
+ * @brief MulsVF 标量乘法调度入口
+ * @param srcLocal  输入LocalTensor
+ * @param dstLocal  输出LocalTensor
+ * @param scalar    标量乘数
+ * @param baseD     d轴元素个数
+ */
+template <typename T>
+__aicore__ inline void MulsVF(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, float scalar,
+                              uint32_t row, uint32_t col)
+{
+    uint32_t cnt = row * col;
+    uint16_t repeatTimes = static_cast<uint16_t>(SimdCeilDivT(cnt, baseD64));
+    __ubuf__ T *srcAddr = (__ubuf__ T *)srcLocal.GetPhyAddr();
+    __ubuf__ T *dstAddr = (__ubuf__ T *)dstLocal.GetPhyAddr();
+    MulsVFImpl<T>(dstAddr, srcAddr, scalar, cnt, repeatTimes);
+}
+
 #endif
