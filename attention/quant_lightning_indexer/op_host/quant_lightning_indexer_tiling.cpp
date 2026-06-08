@@ -844,30 +844,30 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 }
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
-static uint32_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
+static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
                                      int64_t qliS2Size, uint32_t qliAicNum)
 {
-    constexpr uint32_t qliMm1ResElemSize = 4;
-    constexpr uint32_t qliDoubleBuffer = 2;
-    constexpr uint32_t qliMBaseSize = 512;
-    constexpr uint32_t qliS2BaseSize = 512;
-    constexpr uint32_t qliV1ResElemSize = 4;
-    constexpr uint32_t qliV1ResElemType = 2;
-    constexpr uint32_t qliV1DecodeParamElemSize = 8;
-    constexpr uint32_t qliV1DecodeParamNum = 16;
-    constexpr uint32_t qliV1DecodeDataNum = 2;
-    constexpr uint32_t qliS1BaseSize = 8;
-    constexpr uint32_t qliTopkMaxSize = 2048;
+    constexpr uint64_t qliMm1ResElemSize = 4;
+    constexpr uint64_t qliDoubleBuffer = 2;
+    constexpr uint64_t qliMBaseSize = 512;
+    constexpr uint64_t qliS2BaseSize = 512;
+    constexpr uint64_t qliV1ResElemSize = 4;
+    constexpr uint64_t qliV1ResElemType = 2;
+    constexpr uint64_t qliV1DecodeParamElemSize = 8;
+    constexpr uint64_t qliV1DecodeParamNum = 16;
+    constexpr uint64_t qliV1DecodeDataNum = 2;
+    constexpr uint64_t qliS1BaseSize = 8;
+    constexpr uint64_t qliTopkMaxSize = 2048;
 
-    uint32_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
+    uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t qli3510S1Base = 4;
-        constexpr uint32_t qli3510S2Base = 128;
+        constexpr uint64_t qli3510S1Base = 4;
+        constexpr uint64_t qli3510S2Base = 128;
         qliWorkspaceSize +=
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
             sizeof(uint16_t) * qliAicNum;
     } else {
-        constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
+        constexpr uint64_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
         qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
         qliWorkspaceSize +=
             qliV1DecodeDataNum * qliS1BaseSize * qliV1ResElemType * qliTopkMaxSize * qliV1ResElemSize * qliAicNum;
@@ -887,7 +887,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint32_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
