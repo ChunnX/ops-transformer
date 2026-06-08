@@ -28,8 +28,16 @@
 
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
-#include "flash_attn_kernel_base_gqa_template.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#ifdef __DAV_C310_CUBE__
+#include "../utils/flash_attn_cube_def.h"
+#else
+#include "../utils/flash_attn_vec_def.h"
+#endif
+#ifdef __DAV_C310_CUBE__
+#include "flash_attn_gqa_cube.h"
+#else
+#include "flash_attn_gqa_vec.h"
+#endif
 #include "flash_attn_tiling_data.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,41 +84,36 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
-    // 3. Block 类型别名
-    using CubeBlock =
-        BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                                       dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    using VecFaBlock =
-        BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                      s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                      useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
-    using VecBlockDummy =
-        BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType,
-                              dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
-                              bmm2Write2Ub, splitD>;
-    using CubeBlockDummy =
-        BaseApi::CubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                               dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-
+    // 3. Kernel 实例化
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlock, VecBlockDummy, VecBlockDummy>;
+    using Kernel =
+        BaseApi::FANoQuantGqaCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                   dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD, hasAttenMask>;
 #else
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                   hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelVec<
+    INPUT_T, float, OUT_T, VecFdBlock,
+    inputLayoutType, outputLayoutType, s1TemplateType,
+    s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType, useDn,
+    bmm2Write2Ub, splitD>;
 #endif
 
-    // 5. Tiling 解析、实例化并执行
-    size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
+    size_t offset = offsetof(optiling::FlashAttnTilingData, baseTiling);
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+#ifdef __DAV_C310_CUBE__
+    op.InitCube(query, key, value, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv,
+                workspace, runtimeMetaData, tilingData, &tPipe, blocktable);
+#else
+    op.InitVec(key, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv,
+               workspace, runtimeMetaData, tilingData, &tPipe,
+               attenMask, learnableSink, softmaxLse, attentionOut);
+#endif
     op.Process();
 }
 
