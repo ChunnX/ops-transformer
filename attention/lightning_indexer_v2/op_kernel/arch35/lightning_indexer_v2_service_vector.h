@@ -260,14 +260,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-        // uint16_t negInf = 0;
-        // if constexpr (std::is_same_v<K_T, float16_t>) {
-        //     negInf = 0xFC00;
-        // }else {
-        //     negInf = 0xFF80;
-        // }
-        
         Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), (uint32_t)0, constInfo_.topk);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
