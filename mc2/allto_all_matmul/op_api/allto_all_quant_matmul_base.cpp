@@ -134,7 +134,7 @@ static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, boo
     if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
             std::to_string(x2Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(KCDYN_SCENE) + " scenario, expected " + std::to_string(ONE_DIM) + "D").c_str());
+            ("The shape dim of x2Scale must be " + std::to_string(ONE_DIM) + "D when the quantization mode is " + std::string(KCDYN_SCENE)).c_str());
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -154,13 +154,13 @@ static bool Check3DScaleShape(const aclTensor *x2, const aclTensor *x1Scale, con
     if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1Scale",
             std::to_string(x1Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(MX_SCENE) + " scenario, expected " + std::to_string(THREE_DIMS) + "D").c_str());
+            ("The shape dim of x1Scale must be " + std::to_string(THREE_DIMS) + "D when the quantization mode is " + std::string(MX_SCENE)).c_str());
         return false;
     }
     if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
             std::to_string(x2Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(MX_SCENE) + " scenario, expected " + std::to_string(THREE_DIMS) + "D").c_str());
+            ("The shape dim of x2Scale must be " + std::to_string(THREE_DIMS) + "D when the quantization mode is " + std::string(MX_SCENE)).c_str());
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);

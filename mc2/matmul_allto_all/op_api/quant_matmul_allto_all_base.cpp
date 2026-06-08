@@ -109,13 +109,13 @@ static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
     if (x1Scale->GetViewShape().GetDimNum() != ONE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
             std::to_string(x1Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(KC_SCENE) + " scenario, expected " + std::to_string(ONE_DIM) + "D").c_str());
+            ("The shape dim of x1Scale must be " + std::to_string(ONE_DIM) + "D when the quantization mode is " + std::string(KC_SCENE)).c_str());
         return false;
     }
     if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
             std::to_string(x2Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(KC_SCENE) + " scenario, expected " + std::to_string(ONE_DIM) + "D").c_str());
+            ("The shape dim of x2Scale must be " + std::to_string(ONE_DIM) + "D when the quantization mode is " + std::string(KC_SCENE)).c_str());
         return false;
     }
     auto mVal = x1->GetViewShape().GetDim(0);
@@ -142,13 +142,13 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
     if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
             std::to_string(x1Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(MX_SCENE) + " scenario, expected " + std::to_string(THREE_DIMS) + "D").c_str());
+            ("The shape dim of x1Scale must be " + std::to_string(THREE_DIMS) + "D when the quantization mode is " + std::string(MX_SCENE)).c_str());
         return false;
     }
     if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
             std::to_string(x2Scale->GetViewShape().GetDimNum()).c_str(),
-            ("in " + std::string(MX_SCENE) + " scenario, expected " + std::to_string(THREE_DIMS) + "D").c_str());
+            ("The shape dim of x2Scale must be " + std::to_string(THREE_DIMS) + "D when the quantization mode is " + std::string(MX_SCENE)).c_str());
         return false;
     }
     auto mVal = x1->GetViewShape().GetDim(0);
