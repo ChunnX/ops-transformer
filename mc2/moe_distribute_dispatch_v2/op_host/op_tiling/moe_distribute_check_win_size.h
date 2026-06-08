@@ -103,7 +103,7 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
                 "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, 
                 actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
     } else {
-        const char* socName = aclrtGetSocName();
+        const char* socName = "Ascend950";
         if (std::strstr(socName, "Ascend950") != nullptr) {
             actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
