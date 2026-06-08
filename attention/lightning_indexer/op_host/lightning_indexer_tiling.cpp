@@ -758,27 +758,27 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
 static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
                                     int64_t liS2Size, uint32_t liAicNum)
 {
-    constexpr uint64_t liMm1ResElemSize = 4;
-    constexpr uint64_t liDoubleBuffer = 2;
-    constexpr uint64_t liMBaseSize = 512;
-    constexpr uint64_t liS2BaseSize = 512;
-    constexpr uint64_t liV1ResElemSize = 4;
-    constexpr uint64_t liV1ResElemType = 2;
-    constexpr uint64_t liV1DecodeParamElemSize = 8;
-    constexpr uint64_t liV1DecodeParamNum = 16;
-    constexpr uint64_t liV1DecodeDataNum = 2;
-    constexpr uint64_t liS1BaseSize = 8;
-    constexpr uint64_t liTopkMaxSize = 2048;
+    constexpr uint32_t liMm1ResElemSize = 4;
+    constexpr uint32_t liDoubleBuffer = 2;
+    constexpr uint32_t liMBaseSize = 512;
+    constexpr uint32_t liS2BaseSize = 512;
+    constexpr uint32_t liV1ResElemSize = 4;
+    constexpr uint32_t liV1ResElemType = 2;
+    constexpr uint32_t liV1DecodeParamElemSize = 8;
+    constexpr uint32_t liV1DecodeParamNum = 16;
+    constexpr uint32_t liV1DecodeDataNum = 2;
+    constexpr uint32_t liS1BaseSize = 8;
+    constexpr uint32_t liTopkMaxSize = 2048;
 
     uint64_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
     if (liPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint64_t li3510S1Base = 4;
-        constexpr uint64_t li3510S2Base = 128;
+        constexpr uint32_t li3510S1Base = 4;
+        constexpr uint32_t li3510S2Base = 128;
         liWorkspaceSize +=
             li3510S1Base * ((liS2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
             sizeof(uint16_t) * liAicNum;
     } else {
-        constexpr uint64_t liMm1ResSize = liMBaseSize * liS2BaseSize;
+        constexpr uint32_t liMm1ResSize = liMBaseSize * liS2BaseSize;
         liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liAicNum;
         liWorkspaceSize +=
             liV1DecodeDataNum * liS1BaseSize * liV1ResElemType * liTopkMaxSize * liV1ResElemSize * liAicNum;

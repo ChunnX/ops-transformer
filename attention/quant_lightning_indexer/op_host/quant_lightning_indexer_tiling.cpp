@@ -847,17 +847,17 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform,
                                      int64_t qliS2Size, uint32_t qliAicNum)
 {
-    constexpr uint64_t qliMm1ResElemSize = 4;
-    constexpr uint64_t qliDoubleBuffer = 2;
-    constexpr uint64_t qliMBaseSize = 512;
-    constexpr uint64_t qliS2BaseSize = 512;
-    constexpr uint64_t qliV1ResElemSize = 4;
-    constexpr uint64_t qliV1ResElemType = 2;
-    constexpr uint64_t qliV1DecodeParamElemSize = 8;
-    constexpr uint64_t qliV1DecodeParamNum = 16;
-    constexpr uint64_t qliV1DecodeDataNum = 2;
-    constexpr uint64_t qliS1BaseSize = 8;
-    constexpr uint64_t qliTopkMaxSize = 2048;
+    constexpr uint32_t qliMm1ResElemSize = 4;
+    constexpr uint32_t qliDoubleBuffer = 2;
+    constexpr uint32_t qliMBaseSize = 512;
+    constexpr uint32_t qliS2BaseSize = 512;
+    constexpr uint32_t qliV1ResElemSize = 4;
+    constexpr uint32_t qliV1ResElemType = 2;
+    constexpr uint32_t qliV1DecodeParamElemSize = 8;
+    constexpr uint32_t qliV1DecodeParamNum = 16;
+    constexpr uint32_t qliV1DecodeDataNum = 2;
+    constexpr uint32_t qliS1BaseSize = 8;
+    constexpr uint32_t qliTopkMaxSize = 2048;
 
     uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -867,7 +867,7 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
             sizeof(uint16_t) * qliAicNum;
     } else {
-        constexpr uint64_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
+        constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
         qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
         qliWorkspaceSize +=
             qliV1DecodeDataNum * qliS1BaseSize * qliV1ResElemType * qliTopkMaxSize * qliV1ResElemSize * qliAicNum;
