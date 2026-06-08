@@ -317,11 +317,43 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 // Wait current tile ready
                 WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
+                // === DUMP 100: Input data after CopyIn (first round, first tile) ===
+                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                    LocalTensor<half> xDump = curBuf.template Get<half>()[tileLen_];
+                    AscendC::DumpTensor(xDump, 100, 32);
+                }
+
                 // Core processing
                 NegateDataForLargest(curBuf, curTileLen);
                 TwiddleInB16(curBuf, curTileLen);
+
+                // === DUMP 200: After TwiddleInB16 (first round, first tile) ===
+                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                    LocalTensor<int16_t> xDumpInt16 = curBuf.Get<int16_t>();
+                    AscendC::DumpTensor(xDumpInt16, 200, 32);
+                }
+
                 DoAndMask(curBuf, curTileLen);
+
+                // === DUMP 300: After DoAndMask (first round, first tile) ===
+                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                    LocalTensor<int16_t> xDumpInt16 = curBuf.Get<int16_t>();
+                    AscendC::DumpTensor(xDumpInt16, 300, 32);
+                }
+
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
+
+                // === DUMP 400: tileHist after CalcCumsumHistogram (first round, first tile) ===
+                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                    LocalTensor<int32_t> tileHistDump = tileHistAndTopKBuf_.Get<int32_t>();
+                    // bin 1, 2, 3 each have 1 entry for tile 0
+                    // layout: [bin1_tile0, bin1_tile1, ..., bin2_tile0, ..., bin3_tile0, ...]
+                    // For 1 tile: bin1 at offset 0, bin2 at offset 2048, bin3 at offset 4096
+                    AscendC::printf("[DUMP400] tileHist bin3=%d bin2=%d bin1=%d\n",
+                        tileHistDump.GetValue(2 * MAX_TILE_NUM_IN_UB_BY3),
+                        tileHistDump.GetValue(1 * MAX_TILE_NUM_IN_UB_BY3),
+                        tileHistDump.GetValue(0));
+                }
 
                 // Signal next tile ready
                 SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
@@ -350,6 +382,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
+
+        // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
+        if (GetBlockIdx() == 0) {
+            AscendC::printf("[DUMP500] round=%d boundaryBin=%d boundaryBinPrev=%d involvedMask16_=0x%04x remainK_=%lu totalDefinitelyInTopK_=%lu\n",
+                roundId, boundaryBin, boundaryBinPrev, involvedMask16_, remainK_, totalDefinitelyInTopK_);
+        }
 
         // i. Shift mask
         andMask16_ >>= RADIX_BITS_PER_ROUND;
@@ -994,6 +1032,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::GT, alignLen);
     PipeBarrier<PIPE_V>();
 
+    // === DUMP 710: cmpMask after Compares (bitmask) ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::DumpTensor(cmpMask, 710, 32);
+    }
+
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
 
@@ -1024,6 +1067,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
 
+    // === DUMP 720: maskU8 after Cast chain ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::DumpTensor(maskU8, 720, 32);
+    }
+
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
@@ -1033,6 +1081,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
                true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
     VToSSync();
+
+    // === DUMP 730: rsvdCnt after GatherMask ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::printf("[DUMP730] GT rsvdCnt=%lu curTileK=%d->%d\n",
+            rsvdCnt, curTileK + static_cast<int32_t>(rsvdCnt), curTileK);
+    }
+
     curTileK -= static_cast<int32_t>(rsvdCnt);
 }
 
@@ -1047,6 +1102,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
     PipeBarrier<PIPE_V>();
 
+    // === DUMP 810: cmpMask after Compares EQ (bitmask) ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::DumpTensor(cmpMask, 810, 32);
+    }
+
     LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
     for (uint64_t i = 0; i < curTileLen; i++) {
         vecIndex.SetValue(i, static_cast<int32_t>(i));
@@ -1059,7 +1119,19 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
                true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
     VToSSync();
 
+    // === DUMP 820: matchIndices after GatherMask ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::printf("[DUMP820] EQ eqRsvdCnt=%lu\n", eqRsvdCnt);
+        AscendC::DumpTensor(matchIndices, 820, 32);
+    }
+
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
+
+    // === DUMP 830: writeCnt ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::printf("[DUMP830] EQ writeCnt=%u (curTileK=%d eqRsvdCnt=%lu)\n",
+            writeCnt, curTileK, eqRsvdCnt);
+    }
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     DataCopyPad(maskLocal, maskTmpGmLocal[tileGmOffset],
@@ -1072,6 +1144,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     for (uint32_t i = 0; i < writeCnt; i++) {
         int32_t idx = matchIndices.GetValue(i);
         maskLocal.SetValue(idx, writeValue);
+    }
+
+    // === DUMP 840: Final maskLocal after SetValue ===
+    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+        AscendC::DumpTensor(maskLocal, 840, 32);
     }
 
     SToMTE3Sync();
@@ -1093,6 +1170,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
     // Restore boundary value (twiddle inverse transform)
     int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
+
+    // === DUMP 600: TileTopK entry - boundaryHalf ===
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[DUMP600] TileTopK: involvedMask16_=0x%04x boundaryInt16=0x%04x boundaryHalf=%f\n",
+            involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
+    }
 
     // WS version: batch read tileTopK, use ping-pong double buffering
     for (uint32_t repeatId = 0; repeatId <= tileNumRepeatTimes_; repeatId++) {
@@ -1138,10 +1221,35 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             NegateDataForLargest(curBuf, curTileLen);
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
 
+            // === DUMP 700: Before GT phase ===
+            int32_t curTileKBeforeGT = curTileK;
+            if (GetBlockIdx() == 0 && tileId == 0) {
+                AscendC::printf("[DUMP700] Before GT: tileId=%lu curTileK=%d curTileLen=%lu tileGmOffset=%lu\n",
+                    tileId, curTileK, curTileLen, tileGmOffset);
+            }
+
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
+            // === DUMP 701: After GT phase ===
+            if (GetBlockIdx() == 0 && tileId == 0) {
+                AscendC::printf("[DUMP701] After GT: curTileK=%d (was %d, selected %d)\n",
+                    curTileK, curTileKBeforeGT, curTileKBeforeGT - curTileK);
+            }
+
             if (curTileK > 0) {
+                // === DUMP 800: Before EQ phase ===
+                int32_t curTileKBeforeEQ = curTileK;
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    AscendC::printf("[DUMP800] Before EQ: curTileK=%d\n", curTileK);
+                }
+
                 SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+
+                // === DUMP 801: After EQ phase ===
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    AscendC::printf("[DUMP801] After EQ: curTileK=%d (was %d, selected %d)\n",
+                        curTileK, curTileKBeforeEQ, curTileKBeforeEQ - curTileK);
+                }
             }
 
             if (i < dataNum - 1) {
@@ -1176,6 +1284,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
                     DataCopyPadExtParams<uint8_t>(false, 0,
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         MTE2ToMTE3Sync();
+
+        // === DUMP 900: Final mask output (first tile) ===
+        if (GetBlockIdx() == 0 && tileIdx == 0) {
+            AscendC::printf("[DUMP900] CopyMaskToOutput: tileIdx=%lu curTileLen=%lu tileGmOffset=%lu outputOffset=%lu\n",
+                tileIdx, curTileLen, tileGmOffset, outputOffset);
+            AscendC::DumpTensor(maskLocal8, 900, 32);
+        }
 
         // Write to maskOutGm
         // Note: uint8_t and int8_t have identical memory layout (1 byte each)
