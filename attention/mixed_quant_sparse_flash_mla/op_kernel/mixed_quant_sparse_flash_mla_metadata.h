@@ -43,7 +43,7 @@ constexpr uint32_t FA_S2_MAX_NUM = 8;
 // FD Metadata Index Definitions
 constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
 constexpr uint32_t FD_BN2_IDX_INDEX = 1;
-constexpr uint32_t FD_M_IDX_INDEX = 2;
+constexpr uint32_t FD_M_IDX_INDEX = 2; // 当前AIV核上的规约任务的s1gIdx
 constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 3;
 constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 4;
 constexpr uint32_t FD_M_START_INDEX = 5;
