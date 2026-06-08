@@ -767,7 +767,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingRowKHFullLoad(int64_t row
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingKHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock)
 {
     int64_t rowFactor = 1;
-    if (k <= 4) {
+    if (k <= 8) {
         int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER;
         rowFactor = CalcRowFactorForKHFullLoad(ubSizeRemained, true);
     } else {
