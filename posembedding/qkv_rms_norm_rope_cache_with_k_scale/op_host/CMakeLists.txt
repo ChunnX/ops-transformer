@@ -26,6 +26,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+# if (NOT BUILD_OPS_RTY_KERNEL)
+#     add_modules_sources(OPTYPE qkv_rms_norm_rope_cache_with_k_scale ACLNNTYPE aclnn_inner)
+# endif()
+
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE qkv_rms_norm_rope_cache_with_k_scale ACLNNTYPE aclnn_exclude)
     if(TARGET ${OPHOST_NAME}_tiling_obj)
