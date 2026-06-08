@@ -1,7 +1,7 @@
-/*
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -23,36 +23,36 @@
 #include "catlass/epilogue/tile/tile_copy.hpp"
 
 #ifndef HCCL_COMM
-    #include "block_mmad_preload_async_fixpipe_quant.hpp"
-    #include "copy_gm_to_l1_custom.hpp"
-    #include "copy_l0c_to_gm_custom.hpp"
-    #include "block_epilogue_pertoken_row.hpp"
-    #include "block_epilogue_pertoken_v2.hpp"
-    #include "block_epilogue_pertoken_swiglu.hpp"
-    #include "hccl_shmem.hpp"
-    #include "const_args.hpp"
-    #include "layout3d.hpp"
-    #include "tiling/moe_init_routing_quant_v2_tiling.h"
-    #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.cpp"
-    #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
-    #include "moe_token_unpermute.h"
-    #include "get_tensor_addr.hpp"
+#include "block_mmad_preload_async_fixpipe_quant.hpp"
+#include "copy_gm_to_l1_custom.hpp"
+#include "copy_l0c_to_gm_custom.hpp"
+#include "block_epilogue_pertoken_row.hpp"
+#include "block_epilogue_pertoken_v2.hpp"
+#include "block_epilogue_pertoken_swiglu.hpp"
+#include "hccl_shmem.hpp"
+#include "const_args.hpp"
+#include "layout3d.hpp"
+#include "tiling/moe_init_routing_quant_v2_tiling.h"
+#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.cpp"
+#include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
+#include "moe_token_unpermute.h"
+#include "get_tensor_addr.hpp"
     inline __gm__ struct OpSystemRunCfg g_opSystemRunCfg{Catlass::L2_OFFSET};
 #else
-    #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
-    #include "utils/copy_gm_to_l1_custom.hpp"
-    #include "utils/copy_l0c_to_gm_custom.hpp"
-    #include "utils/block_epilogue_pertoken_row.hpp"
-    #include "utils/block_epilogue_pertoken_v2.hpp"
-    #include "utils/block_epilogue_pertoken_swiglu.hpp"
-    #include "utils/hccl_shmem.hpp"
-    #include "utils/const_args.hpp"
-    #include "utils/layout3d.hpp"
-    #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-    #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.cpp"
-    #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
-    #include "unpermute/moe_token_unpermute.h"
-    #include "utils/get_tensor_addr.hpp"
+#include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
+#include "utils/copy_gm_to_l1_custom.hpp"
+#include "utils/copy_l0c_to_gm_custom.hpp"
+#include "utils/block_epilogue_pertoken_row.hpp"
+#include "utils/block_epilogue_pertoken_v2.hpp"
+#include "utils/block_epilogue_pertoken_swiglu.hpp"
+#include "utils/hccl_shmem.hpp"
+#include "utils/const_args.hpp"
+#include "utils/layout3d.hpp"
+#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
+#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.cpp"
+#include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
+#include "unpermute/moe_token_unpermute.h"
+#include "utils/get_tensor_addr.hpp"
 #endif
 
 using namespace AscendC;
@@ -168,7 +168,7 @@ public:
             ptrScale2(ptrScale2_), layoutScale2(layoutScale2_),
             ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
             expertIdx(expertIdx_), moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
-            moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_), 
+            moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
             expertTokensBeforeCapacity(expertTokensBeforeCapacity_), probs(probs_),
             ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_), ubMoveNum(ubMoveNum_),
             moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
@@ -191,7 +191,7 @@ public:
 
             serverId_ = params.rank / SERVER_RANK_SIZE_A2;
         }
-        
+
 
         initBuffer(params);
     }
@@ -223,12 +223,13 @@ public:
     }
 
 private:
-    CATLASS_DEVICE void initBuffer(Params const &params) {
+    CATLASS_DEVICE void initBuffer(Params const &params)
+    {
         #ifdef HCCL_COMM
             qp_info_ = (__gm__ HcclAiRMAInfo*)(((__gm__ HcclA2CombineOpParam*)shmem.WinContext_)->aiRMAInfo);
-        #else
+#else
             shmem.initShmem(params.symmetricPtr, params.rank, params.rankSize);
-        #endif
+#endif
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
@@ -515,7 +516,7 @@ private:
         int32_t expertPerRankAligned = (EP * expertPerRank + 8 - 1) / 8 * 8;
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> tmpResult = resource.ubBuf.template GetBufferByByte<int32_t>(EP * EP * expertPerRank * sizeof(int32_t));
-        #define U16(x) static_cast<uint16_t>(x)
+#define U16(x) static_cast<uint16_t>(x)
 
         AscendC::DataCopyPad(
             tmpBuffer1,
@@ -538,7 +539,7 @@ private:
         AscendC::DataCopyPad(
             result,
             tmpBuffer1,
-            {U16(EP), U16((EP * expertPerRank) * sizeof(int32_t)), 
+            {U16(EP), U16((EP * expertPerRank) * sizeof(int32_t)),
                 0, U16((AlignUp(EP * expertPerRank, 128) - EP * expertPerRank) * sizeof(int32_t))}
         );
     }
@@ -572,7 +573,7 @@ private:
                 currentM = 0;
             } else if (preCurrentmSum + currentM >= params.maxOutputSize) {
                 currentM = params.maxOutputSize - preCurrentmSum;
-            } 
+            }
             AscendC::GlobalTensor<ElementB> gmB1;
             AscendC::GlobalTensor<ElementScale> gmS;
             int32_t arrayGroupIdx = params.listLen == 1 ? 0 : groupIdx;
@@ -596,7 +597,7 @@ private:
             // Loop through the matmul of each groupIdx
 
             for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += coreNum) {
-                for(;syncGroupIdx <= groupIdx; syncGroupIdx++) {
+                for (;syncGroupIdx <= groupIdx; syncGroupIdx++) {
                     AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
                     syncgmmIdx ++;
                 }
@@ -641,7 +642,7 @@ private:
             startCoreIdx = (startCoreIdx  + coreLoops) % coreNum;
         }
 
-        for(;syncGroupIdx < params.expertPerRank; syncGroupIdx++) {
+        for (;syncGroupIdx < params.expertPerRank; syncGroupIdx++) {
             AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
             syncgmmIdx ++;
         }
@@ -688,7 +689,7 @@ private:
                 currentM = 0;
             } else if (preCurrentmSum + currentM > params.maxOutputSize) {
                 currentM = params.maxOutputSize - preCurrentmSum;
-            } 
+            }
             AscendC::GlobalTensor<ElementB> gmB2;
             AscendC::GlobalTensor<ElementScale> gmS2;
             int32_t arrayGroupIdx = params.listLen == 1 ? 0 : groupIdx;
@@ -757,7 +758,7 @@ private:
     }
 
 
-    CATLASS_DEVICE 
+    CATLASS_DEVICE
     void InitArithProgress(Params const &params) {
         AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
@@ -781,7 +782,7 @@ private:
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(ubOffet);
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
 
-        for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
             srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
@@ -799,11 +800,11 @@ private:
             using CopyUbToGm = Epilogue::Tile::CopyUb2Gm<ArchTag, TType>;
             CopyGmToUb copyGmToUb;
             CopyUbToGm copyUbToGm;
-            
+
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-            
-            copyGmToUb(tmpBuffer, srcAddress[0], 
-                layout::RowMajor{ 1, numPerCore}, 
+
+            copyGmToUb(tmpBuffer, srcAddress[0],
+                layout::RowMajor{ 1, numPerCore},
                 layout::RowMajor{1, numPerCore});
 
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -812,25 +813,25 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             if (dstServerId == serverId_) {
-                copyUbToGm(dstAddress, tmpBuffer, 
-                    layout::RowMajor{ 1, numPerCore}, 
+                copyUbToGm(dstAddress, tmpBuffer,
+                    layout::RowMajor{ 1, numPerCore},
                     layout::RowMajor{1, numPerCore});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             } else {
                 // copy to windows out
-                copyUbToGm(localDstAddress, tmpBuffer, 
-                    layout::RowMajor{ 1, numPerCore}, 
+                copyUbToGm(localDstAddress, tmpBuffer,
+                    layout::RowMajor{ 1, numPerCore},
                     layout::RowMajor{1, numPerCore});
                 AscendC::PipeBarrier<PIPE_ALL>();
                 AIVRDMAPostSend((GM_ADDR)localDstAddress.GetPhyAddr(), (GM_ADDR)dstAddress.GetPhyAddr(), dstEpIdx, numPerCore * sizeof(int32_t),
                                 qp_info_, rdmaUbLocal, rdmaUbLocalHead);
-            }  
+            }
         }
 
-        for(int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             int32_t intPer512 = CACHE_LINE / sizeof(int);
-            for(int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128); checkIdx += intPer512) {
+            for (int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128); checkIdx += intPer512) {
                 __gm__ int32_t* sync_check = reinterpret_cast<__gm__ int32_t*>(shmem() + peermemInfo.offsetPeerTokenPerExpert) + tokenPerExpertLayout(dstEpIdx, 0, checkIdx);
                 gm_signal_wait_until_ne(sync_check, 0);
             }
@@ -856,11 +857,11 @@ private:
                     AscendC::DataCopyParams{1, static_cast<uint16_t>(numPerCore * sizeof(int32_t)), 0, 0});
             }
             for (int32_t i = 0, j = 0, prevSum = 0; i < (params.rank + 1) * params.expertPerRank; i++) {
-                 if (i >= params.rank * params.expertPerRank) {
-                     prevSumBuf(j) = prevSum;
-                     j++;
-                 }
-                 prevSum += tmpBuffer(i);
+                if (i >= params.rank * params.expertPerRank) {
+                    prevSumBuf(j) = prevSum;
+                    j++;
+                }
+                prevSum += tmpBuffer(i);
             }
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -950,13 +951,13 @@ private:
         GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertOffset;     // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
         //---initRouting------
-        moe_init_routing_quant_v2<ElementD2>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx, 
-        params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetA, 
-        workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity, 
-        shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale, 
-        params.ptrWorkspace + expandedRowIdxOffset, 
+        moe_init_routing_quant_v2<ElementD2>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx,
+        params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetA,
+        workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
+        shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale,
+        params.ptrWorkspace + expandedRowIdxOffset,
         &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey);
-        
+
         AscendC::SyncAll<true>();
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
@@ -974,8 +975,7 @@ private:
 
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
         ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.ptrExpertTokenNums));
-        if(coreIdx == 0)
-        {
+        if (coreIdx == 0) {
             CopyGMToGM(ExpertTokenNums, cumsumMM[tokenPerExpertLayout(params.EP - 1, params.rank, 0)], params.expertPerRank, params.ubMoveNum);
         }
 
@@ -985,7 +985,10 @@ private:
 
         // prevGroupSum1:   本 core 所处理的 dstEpIdx 在 peer mem 中已接收的 token 基准偏移
         // prevGroupSum2:   params.rank 的 peer mem 中已接收 token 的基准偏移（所有 core 共享）
-        uint32_t prevGroupSum1 = 0, dequantSum1 = 0, dequantSum2 = 0, prevGroupSum2 = 0;
+        uint32_t prevGroupSum1 = 0;
+        uint32_t dequantSum1 = 0;
+        uint32_t dequantSum2 = 0;
+        uint32_t prevGroupSum2 = 0;
 
         icache_preload(8);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
@@ -999,8 +1002,7 @@ private:
             uint32_t currentMSend = 0;
 
             for (int32_t dstEpIdx = static_cast<int32_t>(coreIdx);
-                dstEpIdx < params.EP; dstEpIdx += static_cast<int32_t>(coreNum))
-            {
+                dstEpIdx < params.EP; dstEpIdx += static_cast<int32_t>(coreNum)) {
                 uint32_t rowStart = prevGroupSum1 +
                     (params.rank == 0 ? 0u : static_cast<uint32_t>(
                         cumsumMM(tokenPerExpertLayout(params.rank - 1, dstEpIdx, groupIdx))));
@@ -1017,24 +1019,23 @@ private:
                     gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(
                         shmem.windowsOutAddr() + peermemInfo.offsetA));
                     int64_t gmSrcOffset = static_cast<int64_t>(rowSrc) * (params.problemShape.k() + ALIGN_512);
-    
+
                     AscendC::GlobalTensor<ElementA> gmRemoteDstA;
                     gmRemoteDstA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(
                         shmem(0, dstEpIdx) + peermemInfo.offsetA));
                     int64_t gmDstOffset = static_cast<int64_t>(rowStart) * (params.problemShape.k() + ALIGN_512);
-    
+
                     SendTokensV3<ElementA>(
                         gmRemoteDstA[gmDstOffset], gmSrcA[gmSrcOffset],
                         static_cast<int32_t>(rows), params.problemShape.k(),
-                        dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params);  
+                        dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params);
                 }
             }
             AscendC::SyncAll<true>();  // 等待所有 core 发送完成
 
             // ── RECV 阶段：各 core 并行等 epoch flag 后做 scale 分离 ──
             for (int32_t srcEpIdx = static_cast<int32_t>(coreIdx);
-                srcEpIdx < params.EP; srcEpIdx += static_cast<int32_t>(coreNum))
-            {
+                srcEpIdx < params.EP; srcEpIdx += static_cast<int32_t>(coreNum)) {
                 // rowStart2：srcEpIdx 的 token 在本 rank peer mem 中的起始行号
                 uint32_t rowStart2 = prevGroupSum2 +
                     (srcEpIdx == 0 ? 0u : static_cast<uint32_t>(
@@ -1101,7 +1102,7 @@ private:
         // Synchronous wait: SwiGLU waits for GMM1 [1]
         AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
         AscendC::SyncAll<true>();
-        if (dequantSum1 > 0) { 
+        if (dequantSum1 > 0) {
             uint32_t rowStartThisCore = 0;
             MatrixCoord offsetC{0U, 0};
             MatrixCoord shapeC{dequantSum1, params.problemShape.n()};
@@ -1113,7 +1114,7 @@ private:
         AscendC::SyncAll<true>();
         // Synchronization signal: SwiGLU notifies GMM2 [1]
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
-        
+
         if ((params.epilogueGranularity < params.expertPerRank && params.epilogueGranularity > 0)) {
             // Synchronous wait: SwiGLU waits for GMM1 [2]
             AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
@@ -1142,7 +1143,7 @@ private:
         AscendC::SyncAll<true>();
         #ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params.EP * AlignUp(params.EP * params.expertPerRank, 128));
-        #endif
+#endif
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1165,7 +1166,7 @@ private:
             AscendC::LocalTensor<float> statusSumOutTensor = resource.ubBuf.template GetBufferByByte<float>(uboffset);
             uboffset += AlignUp(sizeof(float), 32);
             shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
-            
+
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
@@ -1216,13 +1217,12 @@ private:
                 if (aivSubCoreIdx == 1 && aiv_m_rows * 2 < m_rows) {
                     aiv_m_rows += 1;
                 }
-                uint32_t m_offset = blockCoord.m() * L1TileShape::M;//blockOffset
-                if(aivSubCoreIdx == 1) {
+                uint32_t m_offset = blockCoord.m() * L1TileShape::M; // blockOffset
+                if (aivSubCoreIdx == 1) {
                     m_offset += (m_rows / 2) * m0;
                 }
 
-
-                for (;syncLoopIdx <= groupIdx; syncLoopIdx ++) {
+                for (; syncLoopIdx <= groupIdx; syncLoopIdx++) {
                     int32_t flag_id = syncLoopIdx / CROSS_CORE_FLAG_MAX_SET_COUNT;
                     AscendC::CrossCoreWaitFlag<0x2>(flag_id);
                 }
@@ -1230,7 +1230,7 @@ private:
                 for (int32_t cur_row = 0; cur_row < aiv_m_rows; cur_row ++) {
                     GemmCoord realTileCoord{m_offset, blockCoord.n() * L1TileShape::N, 1};
                     uint32_t actualm = m0;
-                    if(aivSubCoreIdx == 1 && cur_row == aiv_m_rows - 1){
+                    if (aivSubCoreIdx == 1 && cur_row == aiv_m_rows - 1) {
                         actualm = actualBlockShape.m() - (m_rows / 2) * m0 - cur_row * m0;
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
@@ -1239,7 +1239,7 @@ private:
                     m_offset += m0;
                 }
             }
-            
+
 #ifdef HCCL_COMM
             AscendC::SyncAll<true>();
             int32_t preSumRankInExpert = 0;

@@ -1,7 +1,7 @@
-/*
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -91,7 +91,7 @@ public:
     using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout>>;
     using CopyL1ToL0A = typename TileCopy_::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy_::CopyL1ToL0B;
-    
+
     using ElementAccumulator =
         typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
     using CopyL0CToGm = typename std::conditional<
@@ -131,7 +131,7 @@ public:
 
     // Check L1TileShape
     static_assert(
-        (std::is_same_v<ElementA, int8_t> 
+        (std::is_same_v<ElementA, int8_t>
             ? (L1A_TILE_SIZE + L1B_TILE_SIZE + L1S_TILE_SIZE) * L1_STAGES <= ArchTag::L1_SIZE
             : (L1A_TILE_SIZE + L1B_TILE_SIZE) * L1_STAGES <= ArchTag::L1_SIZE),
         "L1TileShape exceeding the L1 space for the given data type"
@@ -492,9 +492,9 @@ private:
                 int32_t flagId = params.flag + params.syncLoopIdx / 8;
                 AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagId);
             }
-            #else
+#else
             Finalize(params.syncLoopIdx, params.flag);
-            #endif
+#endif
         }
     }
     AscendC::LocalTensor<ElementA> l1ATensorList[L1_STAGES];

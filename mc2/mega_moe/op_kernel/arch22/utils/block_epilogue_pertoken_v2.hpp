@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 
@@ -68,13 +78,12 @@ public:
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, 
-        LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int32_t offsetD_,
-        int32_t serverId_ = 0) :
-        ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), 
-        expertPerRank(expertPerRank_),rank(rank_), layoutC(layoutC_), n2(n2_), n0(n0_),
-        shmem(shmem_), offsetD(offsetD_), serverId(serverId_)
-         {}
+        Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_,
+            LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int32_t offsetD_,
+            int32_t serverId_ = 0)
+            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
+              layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_), serverId(serverId_)
+        {}
     };
 
 
@@ -116,7 +125,7 @@ public:
     CATLASS_DEVICE
     ~BlockEpilogue()
     {
-        
+
     }
     CATLASS_DEVICE
     void operator() (
@@ -165,16 +174,15 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(event_id_2);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event_id_2);
 
-        
-
-        
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event_id_2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(event_id_2); // Note that the value must be MTE2_S instead of MTE2_V.
-                                                                   // Otherwise, 0 will be read, causing garbled characters.
+        // Note that the value must be MTE2_S instead of MTE2_V. Otherwise, 0 will be read, causing garbled characters.
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(event_id_2);
         AscendC::PipeBarrier<PIPE_V>();
         for (int32_t row = 0; row < actualBlockShape.m(); ++row) {
-                float scale = scaleUb(row);
-                Muls<float, false>(ubCFp32[n0* row], ubCFp32[n0 * row] , scale, -1, (actualBlockShape.n() + 127) / 128 * 2, {1, 1, 8, 8});
+            float scale = scaleUb(row);
+            Muls<float, false>(
+                ubCFp32[n0 * row], ubCFp32[n0 * row], scale, -1,
+                (actualBlockShape.n() + 127) / 128 * 2, {1, 1, 8, 8});
         }
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(event_id);
@@ -208,7 +216,7 @@ public:
             if (lenData <= 0){
                 continue;
             }
-            
+
             uint32_t dstOffsetInExpert = 0;
             if (stTile > stRankInExpert) {
                 dstOffsetInExpert = stTile - stRankInExpert;
@@ -254,12 +262,12 @@ private:
     int32_t n0;
     bool is_ping = false;
 
-    
+
     int32_t repeat = 128;
 
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
-    
+
     CopyScaleGmToUb copyScaleGmToUb;
     AscendC::GlobalTensor<int32_t> tokenPerExpert;
     Layout3D tokenPerExpertLayout;

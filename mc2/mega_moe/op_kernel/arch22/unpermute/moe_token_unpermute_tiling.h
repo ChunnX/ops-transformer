@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef MOE_TOKEN_UNPERMUTE_TILING
 #define MOE_TOKEN_UNPERMUTE_TILING
 
@@ -19,7 +29,7 @@ struct MoeTokenUnpermuteTilingData {
 __forceinline__ [host, aicore] void
 MoeTokenUnpermuteTiling(int32_t m, int32_t n, int32_t topK, MoeTokenUnpermuteTilingData &tilingData, uint32_t coreNum)
 {
-    #define I64(x) static_cast<int64_t>(x)
+#define I64(x) static_cast<int64_t>(x)
     tilingData.hidden_size = I64(n);
     tilingData.top_k = I64(topK);
     tilingData.num_out_tokens = I64(m);

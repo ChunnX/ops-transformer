@@ -1,7 +1,7 @@
-/*
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -56,11 +56,10 @@ public:
         "The element type template parameters of BlockEpilogue are wrong"
     );
     static_assert(
-        std::is_same_v<LayoutC, layout::RowMajor> && 
+        std::is_same_v<LayoutC, layout::RowMajor> &&
             std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
         "The layout template parameters of BlockEpilogue are wrong"
     );
-
 
     // Tile copy
     using CopyGmToUbC = typename TileCopy_::CopyGmToUbC;
@@ -76,7 +75,9 @@ public:
         Params() {};
 
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_, int32_t n2_) : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), n2(n2_) {}
+        Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_, int32_t n2_)
+            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), n2(n2_)
+        {}
     };
 
     CATLASS_DEVICE
@@ -114,10 +115,7 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-        
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void UpdateParams(Params const &params_)
@@ -173,7 +171,7 @@ public:
 
             AscendC::Cast(ubD, ubCFp32, AscendC::RoundMode::CAST_RINT, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-            
+
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
             copyUbToGmD(gmTileD, ubD, layoutUbD, layoutUbD);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);

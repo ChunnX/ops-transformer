@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef SYNC_UTIL_HPP
 #define SYNC_UTIL_HPP
 
@@ -180,7 +190,8 @@ public:
         Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
-        HcclShmem(){
+        HcclShmem()
+        {
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
             if constexpr(IS_A2) {
                 WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
@@ -193,18 +204,20 @@ public:
             }
             m_segmentSize = WinContext_->winSize;
         }
-    #else
+#else
         FORCE_INLINE_AICORE
-        HcclShmem(){
+        HcclShmem()
+        {
             m_segmentSize = SHMEM_MEM;
         }
-        FORCE_INLINE_AICORE 
-        void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize) {
+        FORCE_INLINE_AICORE
+        void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize)
+        {
             symmetricPtr = symmetricPtr_;
             m_rank = rank;
             m_rankSize = rankSize;
         }
-    #endif
+#endif
 
     FORCE_INLINE_AICORE
     GM_ADDR operator() () const {   // No parameters: return pointer to local peermem
@@ -218,9 +231,9 @@ public:
             } else {
                 return (GM_ADDR)(WinContext_->localWindowsIn);
             }
-        #else
+#else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
@@ -240,13 +253,13 @@ public:
                 return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
             }
-        #else
+#else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
-    GM_ADDR operator () (int64_t offset, int32_t rankId) const  {  
+    GM_ADDR operator () (int64_t offset, int32_t rankId) const  {
         #ifdef HCCL_COMM
             if (offset < 0 || offset >= m_segmentSize) {
                 return nullptr;
@@ -268,9 +281,9 @@ public:
                 return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
             }
-        #else
+#else
             return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
@@ -285,9 +298,9 @@ public:
             } else {
                 return nullptr;
             }
-        #else
+#else
             return nullptr;
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
@@ -306,9 +319,9 @@ public:
             } else {
                 return nullptr;
             }
-        #else
+#else
             return nullptr;
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
@@ -327,9 +340,9 @@ public:
             } else {
                 return nullptr;
             }
-        #else
+#else
             return nullptr;
-        #endif
+#endif
     }
 
     FORCE_INLINE_AICORE
@@ -374,9 +387,9 @@ public:
     {
         using namespace AscendC;
         uint64_t flag_offset = (m_segmentSize - MB_SIZE) + SELF_STATE_OFFSET;
-        //uint64_t self_state_offset = (m_segmentSize - 2 * MB_SIZE);
+        // uint64_t self_state_offset = (m_segmentSize - 2 * MB_SIZE);
         // ep state
-        //uint32_t coreIdx = get_block_idx();;
+        // uint32_t coreIdx = get_block_idx();;
         uint32_t coreIdx = GetBlockIdx();
         GlobalTensor<int32_t> selfStatusTensor;
         selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)((*this)() + flag_offset));
@@ -400,12 +413,12 @@ public:
 
     FORCE_INLINE_AICORE
     void CrossRankSyncV2Set(AscendC::LocalTensor<int32_t> ctrBuffer) {
-        //subblockid = 0
+        // subblockid = 0
         uint32_t stateOffset_ =  STATE_OFFSET;
         // uint32_t epStateOffsetOnWin_ = m_rank * stateOffset_;
 
         uint64_t flag_offset = (m_segmentSize - MB_SIZE) + m_rank * stateOffset_;
-        //uint64_t flag_offset = (m_segmentSize - MB_SIZE);
+        // uint64_t flag_offset = (m_segmentSize - MB_SIZE);
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
 
@@ -485,9 +498,9 @@ public:
             uint32_t mask = 1;  // gatherMask + sum
             uint64_t rsvdCnt = 0;
             // DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
-            //                         static_cast<uint16_t>((moeSendNum_ > 512) ? 7 : 15), 0}; 
+            //                         static_cast<uint16_t>((moeSendNum_ > 512) ? 7 : 15), 0};
             AscendC::DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
-                                    static_cast<uint16_t>(15), 0}; 
+                                    static_cast<uint16_t>(15), 0};
 
             float sumOfFlag = static_cast<float>(-1.0);
             float minTarget = (sumTarget_ * sendRankNum_) - (float)0.5;
@@ -496,7 +509,7 @@ public:
 
             AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-            
+
             while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
                 AscendC::DataCopy<float>(statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)],
                                 intriParams);
@@ -517,7 +530,7 @@ public:
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
         AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
 
-        //unpermute
+        // unpermute
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
     }
 

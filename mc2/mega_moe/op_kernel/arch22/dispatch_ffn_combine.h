@@ -40,7 +40,6 @@ using namespace AscendC;
 
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
-#include "dispatch_ffn_combine_kernel.hpp"
 #include "dispatch_ffn_combine_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
@@ -55,10 +54,10 @@ template <TemplateMMA2AClass>
 class DispatchFFNCombine {
 public:
     __aicore__ inline DispatchFFNCombine() {};
-    __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR expertIdGM, GM_ADDR scale1GM, GM_ADDR scale2GM,
-                                GM_ADDR probs, GM_ADDR outGM, GM_ADDR expertTokenNums, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+    __aicore__ inline void Init(
+        GM_ADDR xGM, GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR expertIdGM, GM_ADDR scale1GM, GM_ADDR scale2GM,
+        GM_ADDR probs, GM_ADDR outGM, GM_ADDR expertTokenNums, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
-
 
 private:
     GM_ADDR xGM_;
@@ -75,7 +74,6 @@ private:
     GM_ADDR moeInitRoutingQuantV2Scale = nullptr;
     GM_ADDR moeInitRoutingQuantV2Offset = nullptr;
     GM_ADDR expertTokensBeforeCapacity = nullptr;
-
 
     TBuf<AscendC::TPosition::VECCALC> uBuf_;
 
@@ -108,13 +106,12 @@ private:
     uint64_t initRoutingQuantTilingKey;
 
     // Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-
 };
 
-
 template <TemplateMMA2AClass>
-__aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(GM_ADDR xGM, GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR expertIdGM, GM_ADDR scale1GM, GM_ADDR scale2GM,
-                                                                    GM_ADDR probs, GM_ADDR outGM, GM_ADDR expertTokenNums, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
+    GM_ADDR xGM, GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR expertIdGM, GM_ADDR scale1GM, GM_ADDR scale2GM,
+    GM_ADDR probs, GM_ADDR outGM, GM_ADDR expertTokenNums, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingData);
     auto tiling = (__gm__ DispatchFFNCombineTilingData*)tilingGM;
@@ -244,14 +241,16 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>;
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
-    using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType,PerTokenScaleType,
+    using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType,
         D2Type, TileCopy2, IS_A2>;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
     using MatmulKernel = typename std::conditional_t<IS_A2_,
-        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>,
-        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>>;
+        Gemm::Kernel::DispatchFFNCombineKernelA2<
+            BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>,
+        Gemm::Kernel::DispatchFFNCombineKernel<
+            BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2>>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};
@@ -267,7 +266,8 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     uint32_t epilogueGranularity = expertPerRank - 1;
 
     typename MatmulKernel::Params params{
-        problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen), static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+        problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
+        static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
         static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
         static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
         epilogueCoreNum, epilogueGranularity,
@@ -280,7 +280,7 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
         expertIdGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
         expertTokensBeforeCapacity, probs_,
         workspaceGM_, gmExpertTokenNums_, ubMoveNum, moeInitRoutingQuantV2TilingData};
-    //Call kernel
+    // Call kernel
     MatmulKernel kernel(params);
     kernel(params);
 }

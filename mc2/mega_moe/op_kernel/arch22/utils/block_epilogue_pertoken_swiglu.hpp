@@ -1,7 +1,7 @@
-/*
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -57,7 +57,7 @@ public:
         "The element type template parameters of BlockEpilogue are wrong"
     );
     static_assert(
-        std::is_same_v<LayoutC, layout::RowMajor> && 
+        std::is_same_v<LayoutC, layout::RowMajor> &&
             std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
         "The layout template parameters of BlockEpilogue are wrong"
     );
@@ -65,7 +65,8 @@ public:
     // Tile copy
     using CopyGmToUbC = typename TileCopy_::CopyGmToUbC;
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
-    using CopyUbToGmDequantScale = Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
+    using CopyUbToGmDequantScale = Epilogue::Tile::CopyUb2Gm<
+        ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
 
     struct Params {
         __gm__ ElementPerTokenScale *ptrPerTokenScale{nullptr};
@@ -117,7 +118,7 @@ public:
             eventUbDVMTE3List[i] = eventVMTE3++;
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);  
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
@@ -172,7 +173,8 @@ public:
         uint32_t remainderData = blockM % epilogueCoreNum;
 
         uint32_t tasksForIdx  = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData? epilogueCoreIdx : remainderData);
+        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData +
+            (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
 
         uint32_t alignedPerCoreData = RoundUp<BYTE_PER_BLK / sizeof(ElementPerTokenScale)>(perCoreData + 1);
 
@@ -188,7 +190,7 @@ public:
             auto &ubD = ubDList[ubListId];
 
             auto &ubCFp32 = ubCFp32List[ubListId];
-            auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId]; 
+            auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId];
             auto &ubAbs = ubCFp32ChunkNAbsList[ubListId];
             // auto &ubMax = ubCFp32ChunkNMaxList[ubListId];
             auto &ubReduceMax = ubCFp32ChunkNMaxList[ubListId];
@@ -231,7 +233,7 @@ public:
             AscendC::Div(ubCFp32ChunkN, ubCFp32, ubCFp32ChunkN, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Mul(ubCFp32ChunkN, ubCFp32ChunkN, ubCFp32[ChunkTileLen], ChunkTileLen);
-            
+
             // Quantization process; difference between the two approaches
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Abs(ubAbs, ubCFp32ChunkN, ChunkTileLen);
@@ -239,7 +241,7 @@ public:
 
             AscendC::ReduceMax<float>(ubReduceMax, ubAbs, sharedUbTmpBuffer, ChunkTileLen, false);
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
 
@@ -278,9 +280,11 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
 
-            copyUbToGmDequantScale(gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0], layoutGmPerTokenScale2, layoutGmPerTokenScale2);
+            copyUbToGmDequantScale(
+                gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0],
+                layoutGmPerTokenScale2, layoutGmPerTokenScale2);
         }
-        
+
 
     }
 
