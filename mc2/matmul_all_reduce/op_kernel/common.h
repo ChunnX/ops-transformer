@@ -46,6 +46,18 @@ constexpr uint32_t AC_MAX_RANK_NUM = 32;
 constexpr uint32_t UB_ALIGN_SIZE = 32;
 constexpr uint32_t HCCL_COMM_DOMAIN_KEY_MAX_LEN = 128;
 constexpr uint32_t CAST_BF16_UB_FACTOR = 6; // 1 bf16 data needs 6 bytes tmpbuffer
+constexpr int COMM_MODE_CCU = 0;
+constexpr int COMM_MODE_AICPU = 1;
+
+template<int commMode = COMM_MODE_CCU>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+ 	 
+template<>
+struct HcclTypeSelector<COMM_MODE_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
 
 struct HcclSignalInfo {
     uint64_t resId; // 在代表event时为eventid，notify时为notifyid

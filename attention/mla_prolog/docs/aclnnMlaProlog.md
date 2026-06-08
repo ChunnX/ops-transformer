@@ -107,34 +107,414 @@ aclnnStatus aclnnMlaProlog(
 
 - **参数说明**
 
-    | 参数名 | 输入/输出 | 描述 | 使用说明   | 数据类型 | 数据格式   | 维度(shape) | 非连续Tensor |
-    |----------------------------|-----------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|------------|---------------------------|-------------------------|
-    | tokenX                     | 输入      | 公式中用于计算Query和Key的输入tensor。          | - 支持B=0,S=0,T=0的空Tensor                                                                                                              | BFLOAT16       | ND         | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T,He) <br>- BS非合轴：(B,S,He) | ×                       |
-    | weightDq                   | 输入      | 公式中用于计算Query的下采样权重矩阵$W^{DQ}$      |  - 不支持空Tensor                                                                                                                         | BFLOAT16       | FRACTAL_NZ | (He,Hcq)             | ×                       |
-    | weightUqQr                 | 输入      | 公式中用于计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$。 |  - 不支持空Tensor <br> dtype为INT8（量化场景）：<br> 1. 需为per-tensor量化输入 <br>2. 非量化输出时必传dequantScaleWUqQrOptional <br>3. 量化输出时必传dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional <br>4. smoothScalesCqOptional可选传 <br> dtype为BFLOAT16（非量化场景）： <br>1. dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional、smoothScalesCqOptional必须传空指针 | BFLOAT16、INT8 | FRACTAL_NZ | (Hcq,N*(D+Dr))       | ×                       |
-    | weightUk                   | 输入      | 公式中用于计算Key的上采样权重$W^{UK}$。           |  - 不支持空Tensor       | BFLOAT16       | ND         | (N,D,Hckv)           | ×                       |
-    | weightDkvKr                | 输入      | 公式中用于计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$。 |  - 不支持空Tensor                                        | BFLOAT16       | FRACTAL_NZ | (He,Hckv+Dr)         | ×                      |
-    | rmsnormGammaCq             | 输入      | 计算$c^Q$的RmsNorm公式中的$\gamma$参数。          |  - 不支持空Tensor                                                  | BFLOAT16       | ND         | (Hcq)                | ×                       |
-    | rmsnormGammaCkv            | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\gamma$参数。        |  - 不支持空Tensor                                                         | BFLOAT16       | ND         | (Hckv)               | ×                       |
-    | ropeSin                    | 输入      | 用于计算旋转位置编码的正弦参数矩阵。              |  - 支持B=0,S=0,T=0的空Tensor                                                  | BFLOAT16       | ND         | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr) | ×                       |
-    | ropeCos                    | 输入      | 用于计算旋转位置编码的余弦参数矩阵。              |  - 支持B=0,S=0,T=0的空Tensor                                                | BFLOAT16       | ND         | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr)  | ×                       |
-    | cacheIndex                 | 输入      | 用于存储kvCache和krCache的索引。                  |  - 支持B=0,S=0,T=0的空Tensor <br> 取值范围需在[0,BlockNum*BlockSize)内                                                                   | INT64          | ND         | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T) <br>- BS非合轴：(B,S)      | ×                       |
-    | kvCacheRef                 | 输入      | 用于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。       |  - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                         | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Hckv) | ×                       |
-    | krCacheRef                 | 输入      | 用于key位置编码的cache，计算结果原地更新（对应公式中的$k^R$）。 | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                          | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Dr) | ×                       |
-    | dequantScaleXOptional      | 输入      | tokenX的反量化参数。  |  - 数据格式支持ND | FLOAT          | ND         | - BS合轴：(T) <br>- BS非合轴：(B*S,1)                          | ×                       |
-    | dequantScaleWDqOptional    | 输入      | weightDq的反量化参数。|  - 数据格式支持ND        | FLOAT          | ND         | (1,Hcq)                         | ×                       |
-    | dequantScaleWUqQrOptional  | 输入      | 用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。 |  - 支持非空Tensor（仅INT8 dtype场景需传）                                                                                                 | FLOAT          | ND         | (1,N*(D+Dr))         | ×                       |
-    | dequantScaleWDkvKrOptional | 输入      | weightDkvKr的反量化参数。 |  - 数据格式支持ND | FLOAT          | ND         |  (1, Hckv+Dr)                        | ×                       |
-    | quantScaleCkvOptional      | 输入      | 用于对kvCache输出数据做量化操作的参数。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Hckv)             | ×                       |
-    | quantScaleCkrOptional      | 输入      | 用于对krCache输出数据做量化操作的参数。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Dr)               | ×                       |
-    | smoothScalesCqOptional     | 输入      | 用于对RmsNormCq输出做动态量化操作的参数。         |  - 支持非空Tensor（仅INT8 dtype场景可选传）                                                                                               | FLOAT          | ND         | (1,Hcq)              | ×                       |
-    | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数。                  |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
-    | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数。                |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
-    | cacheModeOptional          | 输入      | 表示kvCache的模式。                                        |  - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>可选值为"PA_BSND"、"PA_NZ"                                          | CHAR*          | -          | -                         | -                       |
-    | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$）。             | -                                                                                                                        | BFLOAT16、INT8 | ND         |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv)  | ×                       |
-    | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$）。      | -                                                                                                                          | BFLOAT16       | ND         | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>输入维度：<br>- BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)  | ×                       |
-    | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。                                  | - 仅用于输出结果，无需输入配置 <br> - 数据类型为uint64_t*                                                                                 | -              | -          | -                         | -                       |
-    | executor                   | 输出      | 返回op执行器，包含算子计算流程。                                      |  - 仅用于输出结果，无需输入配置 <br> - 数据类型为aclOpExecutor**                                                                           | -              | -          | -                         | -                       |
+    <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
+    <col style="width: 145px">
+    </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+          <th>使用说明</th>
+          <th>数据类型</th>
+          <th>数据格式</th>
+          <th>维度（shape）</th>
+          <th>非连续Tensor</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>tokenX</td>
+          <td>输入</td>
+          <td>公式中用于计算Query和Key的输入tensor。</td>
+          <td>
+            <ul>
+              <li>支持B=0,S=0,T=0的空Tensor</li>
+            </ul>
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T,He)</li>
+              <li>BS非合轴：(B,S,He)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>weightDq</td>
+          <td>输入</td>
+          <td>公式中用于计算Query的下采样权重矩阵 <i>W<sup>DQ</sup></i></td>
+          <td>
+            <ul>
+              <li>不支持空Tensor</li>
+            </ul>
+          </td>
+          <td>BFLOAT16</td>
+          <td>FRACTAL_NZ</td>
+          <td>(He,Hcq)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>weightUqQr</td>
+          <td>输入</td>
+          <td>公式中用于计算Query的上采样权重矩阵 <i>W<sup>UQ</sup></i> 和位置编码权重矩阵 <i>W<sup>QR</sup></i>。</td>
+          <td>
+            <ul>
+              <li>不支持空Tensor</li>
+              <li>dtype为INT8（量化场景）：
+                <ul>
+                  <li>需为per-tensor量化输入</li>
+                  <li>非量化输出时必传dequantScaleWUqQrOptional</li>
+                  <li>量化输出时必传dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional</li>
+                  <li>smoothScalesCqOptional可选传</li>
+                </ul>
+              </li>
+              <li>dtype为BFLOAT16（非量化场景）：dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional、smoothScalesCqOptional必须传空指针</li>
+            </ul>
+          </td>
+          <td>BFLOAT16、INT8</td>
+          <td>FRACTAL_NZ</td>
+          <td>(Hcq,N*(D+Dr))</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>weightUk</td>
+          <td>输入</td>
+          <td>公式中用于计算Key的上采样权重 <i>W<sup>UK</sup></i>。</td>
+          <td>
+            不支持空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>(N,D,Hckv)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>weightDkvKr</td>
+          <td>输入</td>
+          <td>公式中用于计算Key的下采样权重矩阵 <i>W<sup>DKV</sup></i> 和位置编码权重矩阵 <i>W<sup>KR</sup></i>。</td>
+          <td>
+            不支持空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>FRACTAL_NZ</td>
+          <td>(He,Hckv+Dr)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>rmsnormGammaCq</td>
+          <td>输入</td>
+          <td>计算 <i>c<sup>Q</sup></i> 的RmsNorm公式中的 <i>γ</i> 参数。</td>
+          <td>
+            不支持空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>(Hcq)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>rmsnormGammaCkv</td>
+          <td>输入</td>
+          <td>计算 <i>c<sup>KV</sup></i> 的RmsNorm公式中的 <i>γ</i> 参数。</td>
+          <td>
+            不支持空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>(Hckv)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>ropeSin</td>
+          <td>输入</td>
+          <td>用于计算旋转位置编码的正弦参数矩阵。</td>
+          <td>
+            支持B=0,S=0,T=0的空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T,Dr)</li>
+              <li>BS非合轴：(B,S,Dr)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>ropeCos</td>
+          <td>输入</td>
+          <td>用于计算旋转位置编码的余弦参数矩阵。</td>
+          <td>
+            支持B=0,S=0,T=0的空Tensor
+          </td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T,Dr)</li>
+              <li>BS非合轴：(B,S,Dr)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>cacheIndex</td>
+          <td>输入</td>
+          <td>用于存储kvCache和krCache的索引。</td>
+          <td>
+            <ul>
+              <li>支持B=0,S=0,T=0的空Tensor</li>
+              <li>取值范围需在[0,BlockNum*BlockSize)内</li>
+            </ul>
+          </td>
+          <td>INT64</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T)</li>
+              <li>BS非合轴：(B,S)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>kvCacheRef</td>
+          <td>输入</td>
+          <td>用于cache索引的aclTensor，计算结果原地更新（对应公式中的 <i>k<sup>C</sup></i>）。</td>
+          <td>
+            <ul>
+              <li>支持B=0,Skv=0的空Tensor</li>
+              <li>Nkv与N关联，N是超参，故Nkv不支持等于0</li>
+            </ul>
+          </td>
+          <td>BFLOAT16、INT8</td>
+          <td>ND</td>
+          <td>(BlockNum,BlockSize,Nkv,Hckv)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>krCacheRef</td>
+          <td>输入</td>
+          <td>用于key位置编码的cache，计算结果原地更新（对应公式中的 <i>k<sup>R</sup></i>）。</td>
+          <td>
+            <ul>
+              <li>支持B=0,Skv=0的空Tensor</li>
+              <li>Nkv与N关联，N是超参，故Nkv不支持等于0</li>
+            </ul>
+          </td>
+          <td>BFLOAT16、INT8</td>
+          <td>ND</td>
+          <td>(BlockNum,BlockSize,Nkv,Dr)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>dequantScaleXOptional</td>
+          <td>输入</td>
+          <td>tokenX的反量化参数。</td>
+          <td>
+            数据格式支持ND
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T)</li>
+              <li>BS非合轴：(B*S,1)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>dequantScaleWDqOptional</td>
+          <td>输入</td>
+          <td>weightDq的反量化参数。</td>
+          <td>
+            数据格式支持ND
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1,Hcq)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>dequantScaleWUqQrOptional</td>
+          <td>输入</td>
+          <td>用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。</td>
+          <td>
+            支持非空Tensor（仅INT8 dtype场景需传）
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1,N*(D+Dr))</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>dequantScaleWDkvKrOptional</td>
+          <td>输入</td>
+          <td>weightDkvKr的反量化参数。</td>
+          <td>
+            数据格式支持ND
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1, Hckv+Dr)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>quantScaleCkvOptional</td>
+          <td>输入</td>
+          <td>用于对kvCache输出数据做量化操作的参数。</td>
+          <td>
+            支持非空Tensor（仅INT8 dtype场景需传）
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1,Hckv)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>quantScaleCkrOptional</td>
+          <td>输入</td>
+          <td>用于对krCache输出数据做量化操作的参数。</td>
+          <td>
+            支持非空Tensor（仅INT8 dtype场景需传）
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1,Dr)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>smoothScalesCqOptional</td>
+          <td>输入</td>
+          <td>用于对RmsNormCq输出做动态量化操作的参数。</td>
+          <td>
+            支持非空Tensor（仅INT8 dtype场景需传）
+          </td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>(1,Hcq)</td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>rmsnormEpsilonCq</td>
+          <td>输入</td>
+          <td>计算 <i>c<sup>Q</sup></i> 的RmsNorm公式中的 <i>ε</i> 参数。</td>
+          <td>
+            <ul>
+              <li>用户未特意指定时，建议传入1e-05</li>
+              <li>仅支持double类型</li>
+            </ul>
+          </td>
+          <td>DOUBLE</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>rmsnormEpsilonCkv</td>
+          <td>输入</td>
+          <td>计算 <i>c<sup>KV</sup></i> 的RmsNorm公式中的 <i>ε</i> 参数。</td>
+          <td>
+            <ul>
+              <li>用户未特意指定时，建议传入1e-05</li>
+              <li>仅支持double类型</li>
+            </ul>
+          </td>
+          <td>DOUBLE</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>cacheModeOptional</td>
+          <td>输入</td>
+          <td>表示kvCache的模式。</td>
+          <td>
+            <ul>
+              <li>用户未特意指定时，建议传入"PA_BSND"</li>
+              <li>仅支持char*类型</li>
+              <li>可选值为"PA_BSND"、"PA_NZ"</li>
+            </ul>
+          </td>
+          <td>CHAR*</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>queryOut</td>
+          <td>输出</td>
+          <td>公式中Query的输出tensor（对应 <i>q<sup>N</sup></i>）。</td>
+          <td>-</td>
+          <td>BFLOAT16、INT8</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T,N,Hckv)</li>
+              <li>BS非合轴：(B,S,N,Hckv)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>queryRopeOut</td>
+          <td>输出</td>
+          <td>公式中Query位置编码的输出tensor（对应 <i>q<sup>R</sup></i>）。</td>
+          <td>-</td>
+          <td>BFLOAT16</td>
+          <td>ND</td>
+          <td>
+            <ul>
+              <li>BS合轴：(T,N,Dr)</li>
+              <li>BS非合轴：(B,S,N,Dr)</li>
+            </ul>
+          </td>
+          <td>×</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>输出</td>
+          <td>返回需在Device侧申请的workspace大小。</td>
+          <td>
+            <ul>
+              <li>仅用于输出结果，无需输入配置</li>
+              <li>数据类型为uint64_t*</li>
+            </ul>
+          </td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>输出</td>
+          <td>返回op执行器，包含算子计算流程。</td>
+          <td>
+            <ul>
+              <li>仅用于输出结果，无需输入配置</li>
+              <li>数据类型为aclOpExecutor**</li>
+            </ul>
+          </td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+      </tbody>
+    </table>
 
 - **返回值**
 
@@ -142,23 +522,81 @@ aclnnStatus aclnnMlaProlog(
     
     第一段接口完成入参校验，出现以下场景时报错：
 
-    | 返回值                 | 错误码               | 描述      |
-    |------------------------|----------------------|----------------------|
-    | ACLNN_ERR_PARAM_NULLPTR | 161001   | 必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。         |
-    | ACLNN_ERR_PARAM_INVALID | 161002   | 输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。 |
-    | ACLNN_ERR_RUNTIME_ERROR | 361001   | API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。 |
-    | ACLNN_ERR_INNER_TILING_ERROR | 561002  | tiling发生异常，入参的dtype类型或者shape错误。 |
+    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+    <col style="width: 319px">
+    <col style="width: 144px">
+    <col style="width: 671px">
+    </colgroup>
+      <thead>
+        <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_PARAM_INVALID</td>
+          <td>161002</td>
+          <td>输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_RUNTIME_ERROR</td>
+          <td>361001</td>
+          <td>API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+          <td>561002</td>
+          <td>tiling发生异常，入参的dtype类型或者shape错误。</td>
+        </tr>
+      </tbody>
+    </table>
 
 ## aclnnMlaProlog
 
 - **参数说明**
 
-  | 参数名        | 参数类型         | 含义                                                                |
-  |---------------|------------------|---------------------------------------------------------------------|
-  | workspace     | void\*           | 在Device侧申请的workspace内存地址。                                 |
-  | workspaceSize | uint64_t         | 在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologGetWorkspaceSize获取。 |
-  | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                      |
-  | stream        | aclrtStream      | 指定执行任务的Stream。|
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
+    </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>参数类型</th>
+          <th>含义</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>workspace</td>
+          <td>void*</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>uint64_t</td>
+          <td>在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologGetWorkspaceSize获取。</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>aclOpExecutor*</td>
+          <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+          <td>stream</td>
+          <td>aclrtStream</td>
+          <td>指定执行任务的Stream。</td>
+        </tr>
+      </tbody>
+    </table>
 
 - **返回值**
 
@@ -168,26 +606,105 @@ aclnnStatus aclnnMlaProlog(
 
 - 确定性计算：
   - aclnnMlaProlog默认确定性实现。
-具体说明如下
-- shape 格式字段含义说明
 
-    | 字段名       | 英文全称/含义                  | 取值规则与说明                                                                 |
-    |--------------|--------------------------------|------------------------------------------------------------------------------|
-    | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
-    | S            | Seq-Length（输入样本序列长度） | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值范围：不限制                    |
-    | He           | Hidden-Size（隐藏层大小）        | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192   |
-    | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536                                                           |
-    | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
-    | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
-    | D            | qk 不含位置编码维度            | 取值固定为：128                                                             |
-    | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
-    | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
-    | BlockNum     | PagedAttention 场景下的块数    | 取值为计算 `B*Skv/BlockSize` 的结果后向上取整（Skv 表示 kv 的序列长度，允许取 0） |
-    | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                                          |
-    | T            | BS 合轴后的大小                | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值范围：0~1048576；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维  |
+<details>
+  <summary><a id="shapeDesc"></a>shape 格式字段含义说明</summary>
+    &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+        <col style="width: 165px">
+        <col style="width: 625px">
+        <col style="width: 360px">
+        </colgroup>
+<table>
+  <thead>
+    <tr>
+      <th>字段名</th>
+      <th>英文全称/含义</th>
+      <th>取值规则与说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>B</td>
+      <td>Batch（输入样本批量大小）</td>
+      <td>取值范围：0~65536</td>
+    </tr>
+    <tr>
+      <td>S</td>
+      <td>Seq-Length（输入样本序列长度）</td>
+      <td>
+        取值范围：不限制
+      </td>
+    </tr>
+    <tr>
+      <td>He</td>
+      <td>Hidden-Size（隐藏层大小）</td>
+      <td>
+        取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192
+      </td>
+    </tr>
+    <tr>
+      <td>Hcq</td>
+      <td>q 低秩矩阵维度</td>
+      <td>取值固定为：1536</td>
+    </tr>
+    <tr>
+      <td>N</td>
+      <td>Head-Num（多头数）</td>
+      <td>取值范围：1、2、4、8、16、32、64、128</td>
+    </tr>
+    <tr>
+      <td>Hckv</td>
+      <td>kv 低秩矩阵维度</td>
+      <td>取值固定为：512</td>
+    </tr>
+    <tr>
+      <td>D</td>
+      <td>qk 不含位置编码维度</td>
+      <td>取值固定为：128</td>
+    </tr>
+    <tr>
+      <td>Dr</td>
+      <td>qk 位置编码维度</td>
+      <td>取值固定为：64</td>
+    </tr>
+    <tr>
+      <td>Nkv</td>
+      <td>kv 的 head 数</td>
+      <td>取值固定为：1</td>
+    </tr>
+    <tr>
+      <td>BlockNum</td>
+      <td>PagedAttention 场景下的块数</td>
+      <td>取值为计算 B*Skv/BlockSize 的结果后向上取整 ⌈B*Skv/BlockSize⌉（Skv 表示 kv 的序列长度，允许取 0）</td>
+    </tr>
+    <tr>
+      <td>BlockSize</td>
+      <td>PagedAttention 场景下的块大小</td>
+      <td>取值范围：16~1024，且为16的倍数</td>
+    </tr>
+    <tr>
+      <td>T</td>
+      <td>BS 合轴后的大小</td>
+      <td>
+        <ul>
+          <li>取值范围：0~1048576</li>
+          <li>注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</details>
 
-- weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
-- aclnnMlaProlog接口支持场景：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持以下所有场景
+  <details>
+  <summary><a id="specialConstraint"></a>特殊约束</summary>
+
+  - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k, n）。
+  </details>
+
+  <details>
+  <summary><a id="SupportScenes"></a>aclnnMlaProlog接口支持场景</summary>
+
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>
@@ -216,6 +733,10 @@ aclnnStatus aclnnMlaProlog(
       </td>
     </tr>
   </table>
+  </details>
+
+  <details>
+  <summary><a id="SupportScenes"></a>不同量化场景参数的dtype与shape约束</summary>
 
 - 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
   <div style="overflow-x: auto; width: 100%;">
@@ -348,25 +869,25 @@ aclnnStatus aclnnMlaProlog(
     <tr>
       <td> dequantScaleXOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
     </tr>
     <tr>
       <td> dequantScaleWDqOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
     </tr>
     <tr>
       <td> dequantScaleWUqQrOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>FLOAT</td>
       <td> (1, N*(D+Dr)) </td>
       <td>FLOAT</td>
@@ -375,34 +896,34 @@ aclnnStatus aclnnMlaProlog(
     <tr>
       <td> dequantScaleWDkvKrOptional </td>
       <td> 无需赋值 </td>
-      <td> / </td>
+      <td>-</td>
       <td> 无需赋值 </td>
-      <td> / </td>
+      <td>-</td>
       <td> 无需赋值 </td>
-      <td> / </td>
+      <td>-</td>
     </tr>
     <tr>
       <td> quantScaleCkvOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>FLOAT</td>
       <td> (1, Hckv) </td>
     </tr>
     <tr>
       <td> quantScaleCkrOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>FLOAT</td>
       <td> (1, Dr) </td>
     </tr>
     <tr>
       <td> smoothScalesCqOptional </td>
       <td>无需赋值</td>
-      <td> / </td>
+      <td>-</td>
       <td>FLOAT</td>
       <td> (1, Hcq) </td>
       <td>FLOAT</td>
@@ -429,14 +950,15 @@ aclnnStatus aclnnMlaProlog(
     <tr>
       <td> dequantScaleQNopeOutOptional </td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
     </tr>
   </table>
   </div>
+  </details>
 
   <!-- 参数解释请参见**算子执行接口**。 -->
 

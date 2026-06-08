@@ -16,7 +16,7 @@
 #include "torch_npu/csrc/framework/utils/OpPreparation.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "op_host/incre_flash_attention_tiling_impl.h"
-#include "op_kernel/incre_flash_attention_arch32.h"
+#include "op_kernel/incre_flash_attention_arch22.h"
 namespace ascend_ops {
 namespace custom {
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
@@ -104,7 +104,7 @@ const static int64_t DIM_4 = 4;
 const static int64_t PA_BBH_DIMS = 3;
 const static int64_t PA_BNBD_DIMS = 4;
 const static int64_t PA_NZ_DIMS = 5;
-constexpr uint32_t MIX_AIC = 0;
+constexpr uint32_t MIX_AIC = 4;
 
 using namespace at_npu::native;
 using namespace optiling;

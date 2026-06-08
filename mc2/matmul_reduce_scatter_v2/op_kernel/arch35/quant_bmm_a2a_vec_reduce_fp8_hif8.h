@@ -27,8 +27,8 @@
 #include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
-                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans>
-#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans
+                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -45,8 +45,8 @@ public:
     __aicore__ inline QuantBmmA2AVecReduceFP8HiF8(){ }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
                                 GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
-                                Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData,
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -89,7 +89,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;  // CCU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
@@ -102,16 +102,17 @@ private:
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
-    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, __gm__ void* mc2InitTiling, 
-    __gm__ void* mc2CcTiling, TPipe* tPipe)
+    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, TPipe* tPipe)
 {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
     auto&& tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
 
     // 初始化 HCCL
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
@@ -241,7 +242,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
     // V核发起 All2All 通信
     if ASCEND_IS_AIV {
-        handles_[0] = hccl_.AlltoAll<true>(
+        handles_[0] = hccl_.template AlltoAll<true>(
             sendBuffer, recvBuffer, recvCount, dataType_, stride, repeat);
     }
 }
@@ -380,20 +381,20 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
     const uint32_t handleShift = isTail ? cfg.tileCnt : 0;
 
     // 指针初始化
-    GM_ADDR currSendPtr = sendGM; // 当前发送缓冲区起始地址
-    GM_ADDR currRecvPtr = recvGM; // 当前接收缓冲区起始地址
-    GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
+    GM_ADDR currentSendPtr = sendGM; // 当前发送缓冲区起始地址
+    GM_ADDR currentRecvPtr = recvGM; // 当前接收缓冲区起始地址
+    GM_ADDR currentOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.AlltoAll<true>(
-        currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
+    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
+        currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
     
     // 移动指针准备下一轮
-    currSendPtr += rankSliceBytes;
-    currRecvPtr += rankSliceBytes;
-    currOutPtr += rankSliceBytes;
+    currentSendPtr += rankSliceBytes;
+    currentRecvPtr += rankSliceBytes;
+    currentOutPtr += rankSliceBytes;
 
     // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
     for (uint32_t i = 0; i < count - 1; i++) {
@@ -405,41 +406,41 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.AlltoAll<true>(
-            currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
+        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
+            currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
 
         // 3. 执行上一轮 (i) 数据的 ReduceSum
         // 计算地址 = 当前指针 - 一步偏移
-        GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-        GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
+        GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
+        GM_ADDR calculateOutPtr  = currentOutPtr - rankSliceBytes;
 
         tPipe_->Reset();
-        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
+        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
         reduceSum_.ExecuteReduceSum();
 
         // 指针继续前移
-        currSendPtr += rankSliceBytes;
-        currRecvPtr += rankSliceBytes;
-        currOutPtr += rankSliceBytes;
+        currentSendPtr += rankSliceBytes;
+        currentRecvPtr += rankSliceBytes;
+        currentOutPtr += rankSliceBytes;
     }
 
     // --- Epilogue: 处理最后一轮 (count-1) ---
-    uint32_t lastIdx = count - 1;
+    uint32_t lastIndex = count - 1;
     
     // 等待最后一轮通信结束
     if (GetBlockIdx() == 0) {
-        hccl_.Wait(handles_[lastIdx + handleShift]); 
+        hccl_.Wait(handles_[lastIndex + handleShift]);
     }
     SyncAll<true>();
 
     // 执行最后一轮数据的 reduceSum
     // 此时的计算地址同样是 "当前指针 - 偏移量"
-    GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-    GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
+    GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
+    GM_ADDR calculateOutPtr  = currentOutPtr - rankSliceBytes;
 
     tPipe_->Reset();
-    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
+    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
     reduceSum_.ExecuteReduceSum();
 }
 
@@ -521,7 +522,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerb
 
         // All2All 通信, AIV 发起
         if ASCEND_IS_AIV {
-            handles_[i + handleShift] = hccl_.AlltoAll<true>(
+            handles_[i + handleShift] = hccl_.template AlltoAll<true>(
                 currSendPtr,    // 发送缓冲区
                 currRecvPtr,    // 接收缓冲区
                 recvCount,      // 元素数量

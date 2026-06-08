@@ -16,7 +16,6 @@ import torch
 TEST_PARAMS = {
     "TND_PA": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],
@@ -44,7 +43,6 @@ TEST_PARAMS = {
     },
     "BSND_BSND": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
@@ -71,7 +69,6 @@ TEST_PARAMS = {
     },
     "BSND_PA": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],
@@ -99,7 +96,6 @@ TEST_PARAMS = {
     },
     "TND_TND": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],

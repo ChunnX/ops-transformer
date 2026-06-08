@@ -22,6 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "const_def.h"
+
 using namespace AttentionCommon;
 using namespace AscendC;
 using AscendC::LocalTensor;
@@ -695,9 +696,9 @@ __aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTens
 }
 
 static constexpr uint64_t headDim = 512ULL;
-template <FIA_LAYOUT LAYOUT_T, typename OUT_T>
+template <FIA_LAYOUT LAYOUT_T, typename OUT_T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void Bmm2DataCopyOutNBSDMTiling(LocalTensor<OUT_T> &attenOutUb, const FusedTransposeInfo &transInfo,
-                                                  const AttentionCommon::ConstInfo &constInfo,
+                                                  const CONST_INFO_T &constInfo,
                                                   GlobalTensor<uint64_t> &actualSeqLengthsGmQ,
                                                   GlobalTensor<OUT_T> &attentionOutGm)
 {
@@ -747,10 +748,9 @@ __aicore__ inline void Bmm2DataCopyOutNBSDMTiling(LocalTensor<OUT_T> &attenOutUb
     }
 }
 
-template <typename OUT_T>
+template <typename OUT_T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void Bmm2DataCopyOutNBSDGTiling(LocalTensor<OUT_T> &attenOutUb, const FusedTransposeInfo &transInfo,
-                                                  const AttentionCommon::ConstInfo &constInfo,
-                                                  GlobalTensor<OUT_T> &attentionOutGm)
+                                                  const CONST_INFO_T &constInfo, GlobalTensor<OUT_T> &attentionOutGm)
 {
     bool hasHeadBlock = transInfo.s1StartIdx != 0;
     bool hasTailBlock = (transInfo.s1EndIdx + 1) != constInfo.qSeqSize;
@@ -862,14 +862,6 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
     return bOffset + s1Offset + s2Offset;
 }
 
-__aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
-{
-    uint64_t bOffset = info.attenMaskBatchStride;
-    uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
-    uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
-    return bOffset + s1Offset + s2Offset;
-}
-
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
@@ -918,9 +910,10 @@ __aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1Sta
             return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
         }
         if constexpr (ENABLE_TREE) {
-            if (info.sparseMode == TREE) {
-                return ComputeAttenMaskOffsetTree(info, s1StartIdx, treeMaskStart);
-            }
+            uint64_t bOffset = info.attenMaskBatchStride;
+            uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
+            uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
+            return bOffset + s1Offset + s2Offset;
         }
         return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
     }
@@ -1082,14 +1075,12 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 
     // 增加sparse = 9的处理
     if constexpr (ENABLE_TREE) {
-        if (info.sparseMode == TREE) {
-            // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
-            if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
-                static_cast<int64_t>(info.s2Size - info.s1Size)) {
-                return false;
-            } else {
-                return true;
-            }
+        // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
+        if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
+            static_cast<int64_t>(info.s2Size - info.s1Size)) {
+            return false;
+        } else {
+            return true;
         }
     }
 
@@ -1224,8 +1215,8 @@ __aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T
             SelectWithBytesMask(dstUb, srcUb, *((T *)&info.maskValue), attenMaskUb, tmpBuf,
                                 selectWithBytesMaskShapeInfo);
         }
-        srcUb.SetSize(AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K /
-                      sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
+        constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+        srcUb.SetSize(BUFFER_SIZE_BYTE_32K / sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
     }
 }
 
@@ -1253,6 +1244,19 @@ __aicore__ inline constexpr UbInputFormat GeInputUbFormat()
     if constexpr (LAYOUT_T == FIA_LAYOUT::BSH || LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSND) {
         return UbInputFormat::S1G;
     } else if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NTD) {
+        return UbInputFormat::GS1;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
+{
+    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
+                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+                  "Get Query GmFormat fail, LAYOUT_T is incorrect");
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        return UbInputFormat::S1G;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         return UbInputFormat::GS1;
     }
 }

@@ -272,6 +272,7 @@ protected:
     int64_t dSplitCoef_;
     uint32_t dCosFlag_{0};
     bool is1snd_ = false;
+    bool isTndLayout_ = false;
 };
 
 } // namespace optiling

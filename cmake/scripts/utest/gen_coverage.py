@@ -13,6 +13,7 @@
 生成覆盖率
 """
 import os
+import re
 import argparse
 import dataclasses
 import logging
@@ -32,6 +33,7 @@ class GenCoverage:
         info_file_filtered: Optional[Path] = None
         html_report_dir: Optional[Path] = None
         filter_str: str = ''
+        lcov_ver: Optional[str] = None
 
         @staticmethod
         def get_exclude_paths_from_yaml(yaml_path: Path):
@@ -123,26 +125,33 @@ class GenCoverage:
         if not p.html_report_dir.exists():
             p.html_report_dir.mkdir(parents=True, exist_ok=True)
         # 环境检查
-        if not cls._chk_env():
+        p.lcov_ver = cls._chk_env()
+        if not p.lcov_ver:
+            logging.error("[ERROR] lcov is required but was not found or --version failed.")
             exit(1)
         # 生成覆盖率数据
         cls._gen_cov(param=p)
 
     @classmethod
     def _chk_env(cls):
+
+        def _get_version(cmd: List[str]) -> Optional[str]:
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True)
+            text = (r.stdout or "") + (r.stderr or "")
+            version_re = re.compile(r"\bversion\s+([0-9]+(?:\.[0-9]+)*(?:-[0-9]+)?)\b", re.I)
+            m = version_re.search(text)
+            return m.group(1) if m else None
+
         try:
-            ret = subprocess.run('lcov --version'.split(), capture_output=True, check=True, encoding='utf-8')
-            ret.check_returncode()
+            lcov_ver = _get_version(["lcov", "--version"])
         except FileNotFoundError:
             logging.error("[ERROR] lcov is required to generate coverage data, please install.")
-            return False
-        try:
-            ret = subprocess.run('genhtml --version'.split(), capture_output=True, check=True, encoding='utf-8')
-            ret.check_returncode()
-        except FileNotFoundError:
-            logging.error("[ERROR] genhtml is required to generate coverage html report, please install.")
-            return False
-        return True
+            return None
+        except subprocess.CalledProcessError as e:
+            logging.error("[ERROR] lcov --version failed: %s", (e.stderr or e.stdout or "").strip())
+            return None
+
+        return lcov_ver
 
     @classmethod
     def _gen_cov(cls, param: Param):
@@ -156,8 +165,14 @@ class GenCoverage:
         logging.critical("Coverage Report")
         logging.critical("================================================================================")
 
+        lcov_ver_is_old = param.lcov_ver.startswith("1.")
         # 生成覆盖率
         cmd = f"lcov -c -d {param.data_dir} -o {param.info_file} {lcov_log_tag}"
+        if not lcov_ver_is_old:
+            cmd += (
+                " --rc geninfo_unexecuted_blocks=1 --ignore-errors mismatch,mismatch,gcov,corrupt,source,negative"
+            )
+
         logging.debug("[DEBUG] Generate origin coverage file, cmd=`%s`", cmd)
         ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
         ret.check_returncode()
@@ -167,6 +182,10 @@ class GenCoverage:
         logging.debug("[DEBUG] Generated origin coverage file %s", param.info_file)
         # 滤掉某些文件/路径的覆盖率信息
         cmd = f"lcov --remove {param.info_file} {param.filter_str} -o {param.info_file_filtered} {lcov_log_tag}"
+        if not lcov_ver_is_old:
+            cmd += (
+                " --ignore-errors unused,unused --rc max_message_count=0 --keep-going"
+            )
         logging.debug("[DEBUG] Generate filtered coverage file, cmd=`%s`", cmd)
         ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
         ret.check_returncode()
@@ -181,13 +200,19 @@ class GenCoverage:
         cmd = f'genhtml {param.info_file_filtered} {sub_cmd_prefix} -o {param.html_report_dir} {lcov_log_tag}'
         logging.debug("[DEBUG] Generate filtered coverage html report, cmd=`%s`", cmd)
         ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
-        ret.check_returncode()
+        ret.check_returncode() 
         logging.info("[INFO] Generated filtered coverage html report. %s", param.html_report_dir)
-        # 输出覆盖率数据到终端
+        # 打印覆盖率表格到终端
         cmd = f"lcov --list {param.info_file_filtered}"
         ret = subprocess.run(cmd.split(), capture_output=False, check=True, encoding='utf-8')
         logging.critical("================================================================================")
         ret.check_returncode()
+        # 打印实际覆盖率到终端，适配lcov2.0
+        if not lcov_ver_is_old:
+            cmd = f"lcov --summary {param.info_file_filtered}"
+            ret = subprocess.run(cmd.split(), capture_output=False, check=True, encoding='utf-8')
+            logging.critical("================================================================================")
+            ret.check_returncode()
 
 
 if __name__ == "__main__":

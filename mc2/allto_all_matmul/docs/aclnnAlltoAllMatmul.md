@@ -120,7 +120,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     <td>输入</td>
     <td>Host侧标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     <td>输入</td>
     <td>标识左矩阵是否转置过。</td>
     <td>暂不支持配为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     <td>输入</td>
     <td>标识右矩阵是否转置过。</td>
     <td>配置为True时右矩阵Shape为(N, rankSize*H)。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -169,8 +169,8 @@ aclnnStatus aclnnAlltoAllMatmul(
     <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
-    <td></td>
-    <td>UINT64</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -179,8 +179,8 @@ aclnnStatus aclnnAlltoAllMatmul(
     <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td></td>
-    <td>aclOpExecutor*</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnAlltoAllMatmul(
 
 ## 约束说明
 
-* 默认支持确定性计算。
+* aclnnAlltoAllMatmul默认支持确定性计算。
 * NPU卡数（rankSize），根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
@@ -304,6 +304,10 @@ aclnnStatus aclnnAlltoAllMatmul(
   - <term>Ascend 950PR/Ascend 950DT</term>：x1/x2计算输入的数据类型为FLOAT16时，biasOptional计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，biasOptional计算输入的数据类型支持BFLOAT16和FLOAT32。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
 
 ## 调用示例
 

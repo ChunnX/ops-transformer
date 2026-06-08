@@ -33,7 +33,6 @@ BlackList = {
         "moe_distribute_combine_shmem",
         "moe_distribute_dispatch_shmem",
         "rope_matrix",
-        "all_gather_matmul_v2",
         "quant_sals_indexer",
         "quant_sals_indexer_metadata",
         "sparse_flash_attention_antiquant",
@@ -136,14 +135,121 @@ def get_operator_info_from_ci(changed_file_info_from_ci, is_experimental):
     return OperatorChangeInfo(changed_operators=list(changed_operators), operator_file_map=operator_file_map)
 
 
-def get_change_ops_list(changed_file_info_from_ci, is_experimental):
+def find_def_cpp_files(operators, operator_file_map, is_experimental):
+    """
+    Find def.cpp files for each operator
+    :param operators: list of operator names
+    :param operator_file_map: map of operator name to file paths
+    :param is_experimental: whether in experimental branch
+    :return: dict mapping operator name to list of def.cpp file paths
+    """
+    op_to_def_files = {}
+    for op_name in operators:
+        if op_name not in operator_file_map:
+            continue
+        for file_path in operator_file_map[op_name]:
+            path_parts = file_path.lstrip('/').split('/')
+            domain, _ = _get_domain_and_op(path_parts, is_experimental)
+            if domain is None:
+                continue
+            
+            if is_experimental == "TRUE":
+                search_dir = f"experimental/{domain}/{op_name}"
+            else:
+                search_dir = f"{domain}/{op_name}"
+            
+            if not os.path.exists(search_dir):
+                continue
+            
+            for root, dirs, files in os.walk(search_dir):
+                for f in files:
+                    if f.endswith("def.cpp"):
+                        full_path = os.path.join(root, f)
+                        if op_name not in op_to_def_files:
+                            op_to_def_files[op_name] = []
+                        if full_path not in op_to_def_files[op_name]:
+                            op_to_def_files[op_name].append(full_path)
+    return op_to_def_files
+
+
+def check_soc_registered(def_cpp_file, soc):
+    """
+    Check if a SOC is registered in the def.cpp file
+    :param def_cpp_file: path to def.cpp file
+    :param soc: SOC name to check (e.g., 'ascend950')
+    :return: True if SOC is registered, False otherwise
+    """
+    try:
+        with open(def_cpp_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            pattern = rf'this->AICore\(\)\.AddConfig\(["\']?{soc}["\']?'
+            if re.search(pattern, content):
+                return True
+    except Exception as e:
+        logging.warning(f"[WARN] Failed to read {def_cpp_file}: {e}")
+    return False
+
+
+def filter_operators_by_def_and_soc(operators, op_to_def_files, soc):
+    """
+    Filter operators that have def.cpp files with the specified SOC registered
+    :param operators: list of operator names
+    :param op_to_def_files: dict mapping operator name to list of def.cpp file paths
+    :param soc: SOC name to check
+    :return: list of filtered operator names, list of valid def.cpp files
+    """
+    filtered_operators = []
+    valid_def_files = []
+    
+    for op_name in operators:
+        if op_name not in op_to_def_files or not op_to_def_files[op_name]:
+            logging.info(f"[INFO] Operator '{op_name}' has no def.cpp file, filtered out.")
+            continue
+        
+        has_valid_def = False
+        for def_file in op_to_def_files[op_name]:
+            if check_soc_registered(def_file, soc):
+                has_valid_def = True
+                if def_file not in valid_def_files:
+                    valid_def_files.append(def_file)
+                break
+        
+        if has_valid_def:
+            filtered_operators.append(op_name)
+        else:
+            logging.info(f"[INFO] Operator '{op_name}' has no def.cpp with SOC '{soc}' registered, filtered out.")
+    
+    return filtered_operators, valid_def_files
+
+
+def get_change_ops_list(changed_file_info_from_ci, is_experimental, soc):
     ops_change_info = get_operator_info_from_ci(changed_file_info_from_ci, is_experimental)
     if not ops_change_info:
         logging.info("[INFO] not found ops change info, run all c++.")
         return None
 
-    return ";".join(ops_change_info.changed_operators)
+    op_to_def_files = find_def_cpp_files(ops_change_info.changed_operators,
+                                         ops_change_info.operator_file_map,
+                                         is_experimental)
+    
+    filtered_operators, valid_def_files = filter_operators_by_def_and_soc(
+        ops_change_info.changed_operators,
+        op_to_def_files,
+        soc
+    )
+    
+    if not filtered_operators:
+        if soc == "ascend950":
+            filtered_operators = ["all_gather_matmul_v2"]
+            logging.info("[INFO] No operators found for ascend950, using default: all_gather_matmul_v2")
+        elif soc == "ascend910b":
+            filtered_operators = ["nsa_compress_attention_infer"]
+            logging.info("[INFO] No operators found for ascend910b, using default: nsa_compress_attention_infer")
+    
+    return ";".join(filtered_operators)
 
 
 if __name__ == '__main__':
-    print(get_change_ops_list(sys.argv[1], sys.argv[2]))
+    soc = sys.argv[3] if len(sys.argv) > 3 else ''
+    ops_str = get_change_ops_list(sys.argv[1], sys.argv[2], soc)
+    print(ops_str)

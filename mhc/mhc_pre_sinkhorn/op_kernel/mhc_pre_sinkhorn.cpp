@@ -15,9 +15,9 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
-
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_m_k_split_core.h"
+#include "mhc_pre_sinkhorn_m_split_core.h"
 #include "mhc_pre_sinkhorn_base.h"
 using namespace MhcPreSinkhorn;
 
@@ -38,21 +38,37 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
     if (userWs == nullptr) {
         return;
     }
-    // A3
+
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
+    const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+
     if (TILING_KEY_IS(0)) {
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
-        
+        // -----------split m--------------
+        TPipe pipe;
+        MhcPreSinkhorn::MhcPreSinkhornStage1<DTYPE_X> op1;
+        op1.cubeCompute_.mm1_.Init(&tilingData->mm1TilingData, &pipe);
+        op1.cubeCompute_.mm1_.SetSubBlockIdx(0);
+        op1.Init(x, phi, invRms, hcBeforeNorm, userWs, tilingData, &pipe);
+        op1.Process();
+        pipe.Destroy();
+            
+        TPipe pipeStage2;
+        MhcPreSinkhorn::MhcPreSinkhornStage2<DTYPE_X> op2;
+        op2.Init(x, alpha, bias, hin, hPost, hRes,
+                    hPre, hcBeforeNorm, invRms, sumOut, normOut,
+                    userWs, tilingData, &pipeStage2);
+        op2.Process(false);
+        pipeStage2.Destroy();
+    } else if (TILING_KEY_IS(1)) {
+        // -----------split m k------------
         for (int64_t bsLoopIdx = 0; bsLoopIdx < tilingData->bsLoop; bsLoopIdx++) {
             int64_t curBsOffset = bsLoopIdx * tilingData->curBsSplit;
             int64_t curBs = (bsLoopIdx == tilingData->bsLoop - 1) ? tilingData->tailBs : tilingData->curBsSplit;
             bool isTailBsLoop = (bsLoopIdx == tilingData->bsLoop - 1) && (tilingData->tailBs != tilingData->curBsSplit);
-            
             TPipe pipe;
             MhcPreSinkhorn::MhcPreSinkhornMembaseKSplitCorePart1<DTYPE_X> op;
             op.Init(x, phi, userWs, tilingData, &pipe, curBsOffset, curBs, isTailBsLoop);
             op.Process(curBsOffset, curBs, isTailBsLoop);
-
             pipe.Destroy();
 
             TPipe pipeStage2;
@@ -61,7 +77,6 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
                         hPre, hcBeforeNorm, invRms, sumOut, normOut,
                         userWs, tilingData, &pipeStage2, curBsOffset, isTailBsLoop);
             op2.Process(curBsOffset, curBs, isTailBsLoop);
-
             pipeStage2.Destroy();
             SyncAll<false>(); // cv全部同步
         }

@@ -129,7 +129,7 @@ def load_excel_test_cases(excel_file_path, sheet_name):
         pytest.skip(f"Failed to read Excel file: {error}", allow_module_level=True)
 
     required_columns = [
-        "Testcase_Prefix", "Testcase_Number",
+        "Testcase_Prefix",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
@@ -193,7 +193,7 @@ def save_result(params, result, fulfill_percent, result_path):
 def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
     base_param_names = [
-        "Testcase_Prefix", "Testcase_Number",
+        "Testcase_Prefix",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",

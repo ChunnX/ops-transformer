@@ -11,7 +11,6 @@ import torch
 TEST_PARAMS = {
     "bsnd_basic": {
         "Testcase_Prefix": ["sfa_bsnd_basic"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.float16],
@@ -28,7 +27,7 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "sparse_mode": [0],
         "attention_mode": [2],
-        "return_softmax_lse": [False],
+        "return_softmax_lse": [True],
         "actual_seq_q": [[4]],
         "actual_seq_kv": [[4]],
         "range_query": [[-10.0, 100.0]],
@@ -36,7 +35,6 @@ TEST_PARAMS = {
     },
     "bsnd_multi_batch": {
         "Testcase_Prefix": ["sfa_bsnd_multi_batch"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
@@ -53,13 +51,12 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "sparse_mode": [3],
         "attention_mode": [2],
-        "return_softmax_lse": [False],
+        "return_softmax_lse": [True],
         "actual_seq_q": [[2,5,4,2,6,6,0,6,6,2,2,6,3,4,6,4,5,5,6,4,0,4,3,2,3,0,0,3,3,6,2,3]],
         "actual_seq_kv": [[2,5,4,2,6,6,0,6,6,2,2,6,3,4,6,4,5,5,6,4,0,4,3,2,3,0,0,3,3,6,2,3]],
     },
     "pa_bsnd": {
         "Testcase_Prefix": ["sfa_pa_bsnd"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.float16],
@@ -84,7 +81,6 @@ TEST_PARAMS = {
     },
     "tnd_basic": {
         "Testcase_Prefix": ["sfa_tnd_basic"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.float16],
@@ -103,13 +99,12 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "sparse_mode": [0],
         "attention_mode": [2],
-        "return_softmax_lse": [False],
+        "return_softmax_lse": [True],
         "actual_seq_q": [[4,8]],
         "actual_seq_kv": [[1111,3000]],
     },
     "tnd_pa_multi_batch": {
         "Testcase_Prefix": ["sfa_tnd_pa_multi_batch"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],

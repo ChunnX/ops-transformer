@@ -345,7 +345,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
         } else {
             Cast<T2, T, castTraitZero>(vreg_exp_even_f16, vreg_exp_even, preg_all);
             Cast<T2, T, castTraitOne>(vreg_exp_odd_f16, vreg_exp_odd, preg_all);
-            Or((RegTensor<uint16_t>&)(RegTensor<uint16_t>&)vreg_exp_f16, (RegTensor<uint16_t>&)vreg_exp_even_f16, (RegTensor<uint16_t>&)vreg_exp_odd_f16, preg_all_b16);
+            Or((RegTensor<uint16_t>&)vreg_exp_f16, (RegTensor<uint16_t>&)vreg_exp_even_f16,
+               (RegTensor<uint16_t>&)vreg_exp_odd_f16, preg_all_b16);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_f16, blockStride, repeatStride, preg_all_b16);
         }

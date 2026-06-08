@@ -17,6 +17,7 @@
 
 #include "moe_v3_common.h"
 #include "kernel_operator.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
@@ -57,8 +58,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeSimt(int
                                                                              __gm__ int32_t *sortedExpertIndicesGmAddr,
                                                                              __gm__ int32_t *expandedRowIdxGmAddr)
 {
-    for (int32_t index = static_cast<int32_t>(Simt::GetThreadIdx()); index < static_cast<int32_t>(elements);
-         index += static_cast<int32_t>(Simt::GetThreadNum())) {
+    for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(elements);
+         index += static_cast<int32_t>(blockDim.x)) {
         int64_t outIndices = sortedExpertIndicesGmAddr[index];
         expandedRowIdxGmAddr[outIndices] = indexBase + index;
     }
@@ -124,7 +125,7 @@ __aicore__ inline void RowIdxGather::Process()
         int64_t elements = (blockIdx_ == needCoreNum_ - 1 ? lastCoreElements : perCoreElements);
         __gm__ int32_t *sortedExpertIndicesGmAddr = (__gm__ int32_t *)sortedExpertIndicesGm_.GetPhyAddr();
         __gm__ int32_t *expandedRowIdxGmAddr = (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr();
-        Simt::VF_CALL<ComputeSimt>(Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
+        asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
                                    sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
     }
 }

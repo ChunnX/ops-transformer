@@ -9,3 +9,4 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.fusedop.rotary_position_embedding_grad.graph_plugin.CMakeLists.txt ")
+add_graph_plugin_sources()

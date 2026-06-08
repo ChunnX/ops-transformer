@@ -308,8 +308,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
             return ge::GRAPH_FAILED);
     } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
-        OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN,
-               OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
+               OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
+               return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT,
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),

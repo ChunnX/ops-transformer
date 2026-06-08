@@ -104,8 +104,6 @@ protected:
     void UpdateTilingKeyIsPa();
     void UpdateTilingKeyIsFd();
     void UpdateTilingKeyEmptyTensor();
-    void UpdateTilingKeyPFAMask();
-    void UpdateTilingKeyPFAMatMulType();
     void UpdateTilingKeyEnableKVPrefix();
     void UpdateTilingKeySplitCoreMode();
 public:
@@ -118,8 +116,6 @@ public:
     bool isPa = false;
     bool isFd = false;
     bool emptyTensor = false;
-    uint8_t PFAMask = 0;
-    uint8_t pFAMatMulType = 0;
     bool enableKVPrefix = false;
     bool enableS1OutSplit = false;
 private:

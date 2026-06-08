@@ -12,7 +12,7 @@
  * \file vf_rope.h
  * \brief
  */
- 
+
 #ifndef VF_ROPE_H
 #define VF_ROPE_H
 #include "kernel_tensor.h"
@@ -23,8 +23,8 @@ namespace MlaProlog {
 constexpr uint64_t FLOAT_VF_SIZE = 64;
 
 template <typename T>
-__simd_vf__ void RopeVFImpl(__ubuf__ T * ropeUb, __ubuf__ T * sinUb, __ubuf__ T * cosUb, __ubuf__ uint32_t * gatherUb1, 
-    __ubuf__ uint32_t * gatherUb2, __ubuf__ T * resUb, const uint16_t row)
+__simd_vf__ void RopeVFImpl(__ubuf__ T *ropeUb, __ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ uint32_t *gatherUb1,
+                            __ubuf__ uint32_t *gatherUb2, __ubuf__ T *resUb, const uint16_t row)
 {
     MicroAPI::RegTensor<float> vregRopeFp32_1;
     MicroAPI::RegTensor<float> vregRopeFp32_2;
@@ -51,11 +51,11 @@ __simd_vf__ void RopeVFImpl(__ubuf__ T * ropeUb, __ubuf__ T * sinUb, __ubuf__ T 
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregCosDouble, cosUb);
     MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregSinDouble, sinUb);
 
-    static constexpr MicroAPI::CastTrait castTrait ={MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    static constexpr MicroAPI::CastTrait castTrait0 ={MicroAPI::RegLayout::ONE,
-                MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    
+    static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                      MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
+                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
     for (uint16_t i = 0; i < row; i++) {
         MicroAPI::Gather(vregRopeFp32_1, ropeUb + i * FLOAT_VF_SIZE, vregIndex_1, preg_all);
         MicroAPI::Gather(vregRopeFp32_2, ropeUb + i * FLOAT_VF_SIZE, vregIndex_2, preg_all);
@@ -73,23 +73,26 @@ __simd_vf__ void RopeVFImpl(__ubuf__ T * ropeUb, __ubuf__ T * sinUb, __ubuf__ T 
 }
 
 template <typename T>
-__aicore__ inline void RopeVF(const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& xTensor,
-    const LocalTensor<uint32_t>& gatherTensor1, const LocalTensor<uint32_t>& gatherTensor2,
-    const LocalTensor<T>& resTensor, const uint16_t row)
+__aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
+                              const LocalTensor<T> &xTensor, const LocalTensor<uint32_t> &gatherTensor1,
+                              const LocalTensor<uint32_t> &gatherTensor2, const LocalTensor<T> &resTensor,
+                              const uint16_t row)
 {
-    __ubuf__ T * ropeUb = (__ubuf__ T*)xTensor.GetPhyAddr();
-    __ubuf__ T * sinUb = (__ubuf__ T*)sinTensor.GetPhyAddr();
-    __ubuf__ T * cosUb = (__ubuf__ T*)cosTensor.GetPhyAddr();
-    __ubuf__ uint32_t * gatherUb1 = (__ubuf__ uint32_t*)gatherTensor1.GetPhyAddr();
-    __ubuf__ uint32_t * gatherUb2 = (__ubuf__ uint32_t*)gatherTensor2.GetPhyAddr();
-    __ubuf__ T * resUb = (__ubuf__ T*)resTensor.GetPhyAddr();
+    __ubuf__ T *ropeUb = (__ubuf__ T *)xTensor.GetPhyAddr();
+    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
+    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
+    __ubuf__ uint32_t *gatherUb1 = (__ubuf__ uint32_t *)gatherTensor1.GetPhyAddr();
+    __ubuf__ uint32_t *gatherUb2 = (__ubuf__ uint32_t *)gatherTensor2.GetPhyAddr();
+    __ubuf__ T *resUb = (__ubuf__ T *)resTensor.GetPhyAddr();
 
     RopeVFImpl<T>(ropeUb, sinUb, cosUb, gatherUb1, gatherUb2, resUb, row);
 }
 
 template <typename C>
-__aicore__ inline void RotaryPosEmbVF(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal, const LocalTensor<C> &cosLocal,
-                                    const LocalTensor<C> &sinLocal, const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col) {
+__aicore__ inline void RotaryPosEmbVF(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal,
+                                      const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
+                                      const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col)
+{
     uint64_t cnt = row * col;
     uint32_t offsetByBytes = 0;
     constexpr uint32_t halfReg = 32;
@@ -99,10 +102,10 @@ __aicore__ inline void RotaryPosEmbVF(const LocalTensor<C> &outputLocal, const L
     LocalTensor<uint32_t> gatherTensor2 = shareTmpUb.ReinterpretCast<uint32_t>()[offsetByBytes / sizeof(uint32_t)];
     offsetByBytes += col * sizeof(uint32_t); // 偏移col
 
-    for(int i = 0; i < halfReg; ++i) {
-        gatherTensor1.SetValue(i, i * 2 + 1); // 奇数在前面32
-        gatherTensor1.SetValue(i + halfReg, i * 2); // 偶数在后面32
-        gatherTensor2.SetValue(i, i * 2); // 偶数在前面32
+    for (int i = 0; i < halfReg; ++i) {
+        gatherTensor1.SetValue(i, i * 2 + 1);           // 奇数在前面32
+        gatherTensor1.SetValue(i + halfReg, i * 2);     // 偶数在后面32
+        gatherTensor2.SetValue(i, i * 2);               // 偶数在前面32
         gatherTensor2.SetValue(i + halfReg, i * 2 + 1); // 奇数在后面32
     }
     RopeVF<C>(sinLocal, cosLocal, inputLocal, gatherTensor1, gatherTensor2, outputLocal, static_cast<uint16_t>(row));

@@ -104,6 +104,7 @@ public:
         this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
 
         // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
         OpAICoreConfig aicoreConfig_950;
@@ -189,7 +190,7 @@ public:
  	        .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape，复用二进制，后续图支持后修改
  	        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
  	        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
- 	        .ExtendCfgInfo("opFile.value", "matmul_allto_all_apt");
+ 	        .ExtendCfgInfo("opFile.value", "matmul_allto_all");
  	    this->AICore().AddConfig("ascend910_93", aicoreConfig_910_93);
  	    this->MC2().HcclGroup("group");
 

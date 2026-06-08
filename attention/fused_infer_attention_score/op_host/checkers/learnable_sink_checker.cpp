@@ -66,7 +66,7 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     if (!fiaInfo.learnableSinkFlag) {
         return ge::GRAPH_SUCCESS;
     }
-
+    // sink 不支持左padding
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
         OP_LOGE(fiaInfo.opName,
                 "When learnable sink enable, left padding is not supported."),

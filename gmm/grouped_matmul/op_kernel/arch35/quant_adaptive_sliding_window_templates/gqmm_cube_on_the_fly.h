@@ -42,7 +42,8 @@ protected:
     __aicore__ inline void SetMNK(uint32_t loopIdx, uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
     __aicore__ inline void CalcTailTile(uint64_t mTail, uint64_t nTail);
     __aicore__ inline void SetMMParaAndCompute();
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM_);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM_, int64_t nSize, int64_t kSize,
+                                                     int64_t baseN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(uint32_t groupIdx);
     __aicore__ inline bool IsLastGroupAndRound(uint32_t groupIdx, uint64_t roundIdx);
 
@@ -259,14 +260,36 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::CalcTailTile(ui
 
 LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetL2CacheDisableIfNeeded(int64_t mSize,
-                                                                                           int64_t curBaseM_)
+                                                                                           int64_t curBaseM_,
+                                                                                           int64_t nSize, int64_t kSize,
+                                                                                           int64_t baseN)
 {
-    if (curBaseM_ >= mSize) {
-        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    if constexpr (wFormat != CubeFormat::ND) {
+        if (curBaseM_ >= mSize) {
+            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        }
     } else {
-        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        if constexpr (bTrans) {
+            if (curBaseM_ >= mSize && (kSize & 0xff) == 0) {
+                wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        } else {
+            if (curBaseM_ >= mSize && (nSize & 0xff) == 0 && (baseN & 0xff) == 0) {
+                wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                scaleBGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        }
     }
 }
 
@@ -322,7 +345,9 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
             block_.UpdateTailTile();
         } else {
-            SetL2CacheDisableIfNeeded(mSize, static_cast<int64_t>(mmTilingData_->baseM));
+            SetL2CacheDisableIfNeeded(mSize, static_cast<int64_t>(mmTilingData_->baseM),
+                                      static_cast<int64_t>(nSize), static_cast<int64_t>(kSize),
+                                      static_cast<int64_t>(mmTilingData_->baseN));
         }
         UpdateMMGlobalAddr(groupIdx);
         for (uint64_t roundIdx = 0; roundIdx < block_.params_.round; ++roundIdx) {

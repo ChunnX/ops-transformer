@@ -21,7 +21,6 @@
 #include "op_host/tiling_templates_registry.h"
 #include "common/matmul_allto_all_util_tiling.h"
 #include "common/allto_all_formulaic_tiling.h"
-#include "common/allto_all_tiling_factory.h"
 
 namespace MC2Tiling {
 
@@ -45,7 +44,7 @@ protected:
     {
         return ge::GRAPH_SUCCESS;
     }
-    CutResult GetTilingResult();
+    virtual CutResult GetTilingResult();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();
     ge::graphStatus Check2DMatrixMulShapes(const gert::TilingContext *context, const char *opName);

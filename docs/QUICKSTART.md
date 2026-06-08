@@ -4,9 +4,9 @@
 
 本指南旨在帮助您快速上手CANN和`ops-transformer`算子仓的使用。为方便快速了解算子开发全流程，以**AddExample**算子为实践对象，算子源码位于`ops-transformer/examples/add_example`，操作流程如下：
 
-1. **[前提条件](../README.md)**：参考项目README完成环境准备和源码下载，此处不再赘述。快速入门场景**推荐WebIDE或Docker部署**，操作简单。
+1. **[前提条件](../README.md)**：参考项目README完成环境准备和源码下载，此处不再赘述。快速入门场景**推荐CANNLab或Docker部署**，操作简单。
 
-   > **说明**：WebIDE或Docker环境默认提供最新商发版CANN包；如需体验master分支最新能力，可手动搭建环境。
+   > **说明**：CANNLab或Docker环境默认提供最新商发版CANN包；如需体验master分支最新能力，可手动搭建环境。
 
 2. **[编译运行](#一编译运行)**：编译自定义算子包并安装，实现快速调用算子。
 
@@ -22,14 +22,14 @@
 
 ### 1. 进入项目源码
 
-- WebIDE环境：
+- CANNLab云开发环境：
    
    默认提供最新商发版CANN包配套的项目源码，进入源码目录，\$\{gitCode\_id\}替换为开发者个人gitCode账号。
    
    ```
    cd /mnt/workspace/gitCode/${gitCode_id}/ops-transformer
    ```
-- 非WebIDE环境：
+- 非CANNLab云开发环境：
   
   根据[release仓库](https://gitcode.com/cann/release-management)源码与CANN版本配套关系，执行如下命令下载源码，\$\{tag\_version\}替换为目标分支标签，例如9.0.0。
     
@@ -50,15 +50,19 @@
 ```bash
 bash build.sh --pkg --soc=${soc_version} --ops=add_example -j16
 ```
-\$\{soc\_version\}设置方法如下：
+\$\{soc\_version\}取值请访问[CANN下载中心](https://www.hiascend.com/cann/download)：
 
-访问[CANN下载中心](https://www.hiascend.com/cann/download)，根据页面提示复制硬件查询命令，在当前环境中执行，返回芯片ID信息，再回填到官网按Enter键获取产品名，产品名对应的${soc_version}取值如下，请按实际场景传参。
+<img src="./zh/figures/socInfo.png" alt="芯片版本" width="800px" height="160px">
+
+ ①根据页面提示复制硬件查询命令，在当前环境中执行，返回芯片ID信息。
+
+ ②再将ID信息回填到官网，按Enter键获取产品名。
+
+ ③产品名对应的${soc_version}取值如下，请按实际场景传参。
 
 - Atlas A2 训练系列产品/Atlas A2 推理系列产品：取值为ascend910b
 - Atlas A3 训练系列产品/Atlas A3 推理系列产品：取值为ascend910_93
-- Atlas 350 加速卡：取值为ascend950
-
-<img src="./zh/figures/socInfo.png" alt="芯片版本" width="800px" height="160px">
+- 950系列产品：取值为ascend950
 
 若提示如下信息，说明编译成功。
 

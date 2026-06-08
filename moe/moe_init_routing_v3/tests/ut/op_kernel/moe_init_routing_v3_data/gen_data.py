@@ -160,7 +160,7 @@ def gen_golden(x, expert_idx, scale, offset, active_num, expert_capacity,
             expanded_x = x_final / expanded_scale
             expanded_x = np.round(expanded_x).astype(np.int8)
         if x.dtype == np.int8:
-            expanded_scale == None
+            expanded_scale = None
     if drop_pad_mode == 1:
         expanded_x = np.ma.array(expanded_x, mask=expanded_x_mask).filled(0)
         expanded_x = expanded_x.reshape(expert_num, expert_capacity, h)

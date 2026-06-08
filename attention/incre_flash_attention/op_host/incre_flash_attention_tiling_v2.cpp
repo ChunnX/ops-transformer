@@ -4003,8 +4003,6 @@ ge::graphStatus IFATilingV2::GenTilingKey() {
     UpdateTilingKeyIsPa();
     UpdateTilingKeyIsFd();
     UpdateTilingKeyEmptyTensor();
-    UpdateTilingKeyPFAMask();
-    UpdateTilingKeyPFAMatMulType();
     UpdateTilingKeyEnableKVPrefix();
     UpdateTilingKeySplitCoreMode();
     return ge::GRAPH_SUCCESS;
@@ -4089,14 +4087,6 @@ void IFATilingV2::UpdateTilingKeyIsFd() {
 
 void IFATilingV2::UpdateTilingKeyEmptyTensor() {
   emptyTensor = 0;
-}
-
-void IFATilingV2::UpdateTilingKeyPFAMask() {
-  PFAMask = 0;
-}
-
-void IFATilingV2::UpdateTilingKeyPFAMatMulType() {
-  pFAMatMulType = 0;
 }
 
 void IFATilingV2::UpdateTilingKeyEnableKVPrefix() {
@@ -4424,13 +4414,14 @@ ge::graphStatus IFATilingV2::DoOpTiling()
     ret = DoSubOpTiling(ifaContext);
     uint64_t tiling_key = GET_TPL_TILING_KEY(static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
                                             static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, 
-                                            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix, enableS1OutSplit);
+                                            enableKVPrefix, enableS1OutSplit);
     context_->SetTilingKey(tiling_key);
     OP_LOGI(ifaContext.opName, "The new template tilingkey is %llu.", tiling_key);
-    OP_LOGI(ifaContext.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu,quantMode: %llu, hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, pFAMatMulType: %llu, enableKVPrefix: %llu, enableS1OutSplit: %llu.", 
+    OP_LOGI(ifaContext.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu,quantMode: %llu, "
+            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, enableKVPrefix: %llu, enableS1OutSplit: %llu.", 
             static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
             static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, 
-            static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), enableKVPrefix, enableS1OutSplit);
+            enableKVPrefix, enableS1OutSplit);
     return ret;
 }
 
@@ -4464,8 +4455,6 @@ ge::graphStatus IFATilingV2::DoSubOpTiling(IncreFlashAttentionContext& ifaContex
         isPa = flashTilingV2.isPa;
         isFd = flashTilingV2.isFd;
         emptyTensor = flashTilingV2.emptyTensor;
-        PFAMask = flashTilingV2.PFAMask;
-        pFAMatMulType = flashTilingV2.pFAMatMulType;
         OP_LOGI(contextParamsForPFATiling.opName, "All the PFATiling work is done.");
         return ret;
     } else {

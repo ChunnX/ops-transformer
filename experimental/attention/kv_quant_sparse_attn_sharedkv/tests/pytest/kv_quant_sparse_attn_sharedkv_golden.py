@@ -20,10 +20,78 @@ import numpy as np
 import math
 import custom_ops as ops
 
+# 两种运行模式
+# 0 不切S2
+# 1 切S2
+
+RUN_MODE = 1
+
 DATA_RANGE_LEFT = -2
 DATA_RANGE_RIGHT = 2
 FP8_DATA_RANGE_LEFT = -1
 FP8_DATA_RANGE_RIGHT = 1
+
+FP32_FRACTION_BITS = 23        # fp32尾数位数
+
+HIF8_EXP_ZERO_THRESHOLD = -23  # 边界值
+HIF8_EXP_DML_MIN = -22         # DML最小指数
+HIF8_EXP_DML_MAX = -15         # DML最大指数
+HIF8_EXP_D0 = 0                # D0指数值
+HIF8_EXP_D1_BOUNDARY = 1       # D1指数值
+HIF8_EXP_D2_MIN, HIF8_EXP_D2_MAX = 2, 3   # D2指数范围
+HIF8_EXP_D3_MIN, HIF8_EXP_D3_MAX = 4, 7   # D3指数范围
+HIF8_EXP_D4_MIN, HIF8_EXP_D4_MAX = 8, 15  # D4指数范围
+
+HIF8_DOT_DML = 0               # DML: Denormal Low, 指数范围 -22 ~ -16, 0位尾数
+HIF8_DOT_D0 = 1                # D0: 指数为0，3位尾数（最高精度）
+HIF8_DOT_D1 = 2                # D1: 指数为±1，3位尾数
+HIF8_DOT_D2 = 4                # D2: 指数为±2 ~ ±3，3位尾数
+HIF8_DOT_D3 = 8                # D3: 指数为±4 ~ ±7，2位尾数
+HIF8_DOT_D4 = 12               # D4: 指数为±8 ~ ±15，1位尾数（最低精度）
+HIF8_DOT_INVALID = -1          # 无效状态
+
+HIF8_FRAC_BITS_DML = 0         # DML档位尾数位数
+HIF8_FRAC_BITS_D0 = 3          # D0档位尾数位数
+HIF8_FRAC_BITS_D1 = 3          # D1档位尾数位数
+HIF8_FRAC_BITS_D2 = 3          # D2档位尾数位数
+HIF8_FRAC_BITS_D3 = 2          # D3档位尾数位数
+HIF8_FRAC_BITS_D4 = 1          # D4档位尾数位数
+
+HIF8_EXP_BITS_DML = 3          # DML档位指数位数
+HIF8_EXP_BITS_D0 = 0           # D0档位指数位数
+HIF8_EXP_BITS_D1 = 1           # D1档位指数位数
+HIF8_EXP_BITS_D2 = 2           # D2档位指数位数
+HIF8_EXP_BITS_D3 = 3           # D3档位指数位数
+HIF8_EXP_BITS_D4 = 4           # D4档位指数位数
+
+HIF8_ZERO = 0
+HIF8_NAN = 128                 # 0b10000000, NaN
+HIF8_NEG_INF = 239             # 0b11101111, -inf
+HIF8_NEG_MAX = 238             # 0b11101110, 负极大值
+HIF8_POS_INF = 111             # 0b01101111, +inf
+HIF8_POS_MAX = 110             # 0b01101110, 正极大值
+
+HIF8_SIGN_MASK = 128           # 0b10000000, 符号位掩码
+HIF8_DOT_MASK = 120            # 0b01110000, dot值掩码
+HIF8_FRAC_MASK_3BIT = 7        # 0b00000111, 3位尾数掩码（D0/D1/D2）
+HIF8_FRAC_MASK_2BIT = 3        # 0b00000011, 2位尾数掩码（D3）
+HIF8_FRAC_MASK_1BIT = 1        # 0b00000001, 1位尾数掩码（D4）
+HIF8_EXP_MASK_DML = 7          # 0b00000111, DML指数掩码（bit0-2）
+HIF8_EXP_MASK_D4 = 30          # 0b00011110, D4指数掩码（bit1-4）
+HIF8_EXP_MASK_D3 = 28          # 0b00011100, D3指数掩码（bit2-4）
+HIF8_EXP_MASK_D2 = 24          # 0b00011000, D2指数掩码（bit3-4）
+HIF8_EXP_SIGN_MASK_D1 = 8      # 0b00001000, D1指数掩码（bit3）
+
+HIF8_DOT_BIT_SHIFT = 3         # Dot值在HiF8中的起始位置(bit3)
+HIF8_DML_EXP_OFFSET = 23       # DML指数偏移值
+HIF8_OVERFLOW_SCALE = 1.25     # 溢出阈值缩放因子
+HIF8_MAX_FINITE_VALUE = 32768  # 最大有限值（非饱和模式下的边界值, 2^15
+
+SSR_T14_MASK = 16383           # 0b0011 1111 1111 1111, 14位低位掩码
+SSR_F14_OFFSET = 8192          # 0b0010 0000 0000 0000, F14偏移值
+SSR_DML_SHIFT = 10             # SSR舍入移位值
+SSR_RESERVED_BITS = 14         # SSR舍入保留位数
+HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
 
 class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
@@ -63,6 +131,7 @@ class GeneralizedSFAQuant:
         B = q_bnsd.shape[0]
         act_q = prefix_sum_to_original(cu_seqlens_q)
         G = int(self.N1 / self.N2)
+        s2_base_size = 128
 
         for i_B in range(B):
             print(f"i_B = {i_B}/{B}")
@@ -91,32 +160,78 @@ class GeneralizedSFAQuant:
                             ori_win_start = max(ori_threshold - self.ori_win_left - 1, 0)
 
                     cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
-                    k_concat = cur_ori_k_bnsd
 
                     if self.template_run_mode == "SCFA" and cmp_sparse_indices_bnsd is not None:
                         topk_id = cmp_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-
-                        empty_flag, k_sparse = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
-                        if empty_flag != True:
-                            k_concat = torch.concat([cur_ori_k_bnsd, k_sparse], dim=0)
+                        empty_flag, cur_cmp_k = self.gather_cmp_kv(cmp_k_bnsd, topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
                     elif self.template_run_mode == "CFA":
-                        empty_flag, k_sparse = self.mask_cmp_kv(cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
-                        if empty_flag != True:
-                            k_concat = torch.concat([cur_ori_k_bnsd, k_sparse], dim=0)
+                        empty_flag, cur_cmp_k = self.mask_cmp_kv(cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q)
+                    else:
+                        empty_flag = True
+                        cur_cmp_k = []
+                    if cur_cmp_k == []:
+                        cmp_s2_loop_time = 0
+                        cur_cmp_k_fp32 = []
+                    else:
+                        cmp_s2_loop_time = math.ceil(cur_cmp_k.size(0) / s2_base_size)
+                        cur_cmp_k_fp32 = cur_cmp_k.to(dtype=torch.float32)
 
+                    cur_attn_out = attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :]
                     q_curr = q_bnsd[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :]
                     q_curr_fp32 = q_curr.to(dtype=torch.float32)
-                    k_concat_fp32 = k_concat.to(dtype=torch.float32)
+                    if RUN_MODE == 0:
+                        if empty_flag:
+                            k_concat = cur_ori_k_bnsd
+                        else:
+                            k_concat = torch.concat([cur_ori_k_bnsd, cur_cmp_k], dim=0)
+                        k_concat_fp32 = k_concat.to(dtype=torch.float32)
+                        v_concat_fp32 = k_concat_fp32.clone()
 
-                    v_concat_fp32 = k_concat_fp32.clone()
+                        mm1_res = torch.matmul(q_curr_fp32, k_concat_fp32.T)
+                        scale_res = mm1_res * self.softmax_scale
+                        softmax_res, softmax_sum = self.sinks_softmax(scale_res, cur_sinks_expand)
+                        softmax_res = softmax_res.to(q_bnsd.dtype).to(torch.float32)
+                        mm2_res = torch.matmul(softmax_res, v_concat_fp32)
+                        v2_res = torch.div(mm2_res, softmax_sum)
+                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = v2_res
+                    elif RUN_MODE == 1:
+                        ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
+                        total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
+                        cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                        row_sum = torch.empty((G), dtype=torch.float32).uniform_(1.0, 1.0)
+                        row_max = torch.empty((G, 1), dtype=torch.float32)
+                        row_max = cur_sinks
 
-                    mm1_res = torch.matmul(q_curr_fp32, k_concat_fp32.T)
-                    scale_res = mm1_res * self.softmax_scale
-                    softmax_res, softmax_sum = self.sinks_softmax(scale_res, cur_sinks_expand)
-                    softmax_res = softmax_res.to(q_bnsd.dtype).to(torch.float32)
-                    mm2_res = torch.matmul(softmax_res, v_concat_fp32)
-                    v2_res = torch.div(mm2_res, softmax_sum)
-                    attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = v2_res
+                        for i_S2 in range(total_s2_loop_time):
+                            if i_S2 < ori_s2_loop_time: # ori_kv
+                                if i_S2 < ori_s2_loop_time - 1:
+                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:(i_S2 + 1) * s2_base_size, :]
+                                else:
+                                    k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size:, :]
+                            else: # cmp_kv
+                                if i_S2 < total_s2_loop_time - 1:
+                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:(i_S2 - ori_s2_loop_time + 1) * s2_base_size, :]
+                                else:
+                                    k_tile = cur_cmp_k_fp32[(i_S2 - ori_s2_loop_time) * s2_base_size:, :]
+                            v_tile = k_tile.clone()
+                            mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
+                            scale_res = mm1_res * self.softmax_scale  # 外层for S1 循环，据实拷入数据，因此不需要mask
+
+                            row_max_old = row_max.clone()
+                            row_max_tmp = torch.max(scale_res, dim=1)[0]
+                            # row_max_tmp = row_max_tmp.unsqueeze(1)
+                            row_max = torch.max(row_max, row_max_tmp)
+                            update_mul = torch.exp(row_max_old - row_max)
+                            row_max_expand = row_max.unsqueeze(1)
+                            update_mul_expand = update_mul.unsqueeze(1)
+
+                            cur_softmax_res = torch.exp(scale_res - row_max_expand)
+                            row_sum = update_mul * row_sum + torch.sum(cur_softmax_res, dim=1)
+                            cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(dtype=torch.float)
+                            cur_o = torch.matmul(cur_softmax_res, v_tile)
+                            cur_attn_out = cur_attn_out * update_mul_expand + cur_o
+                        row_sum_expand = row_sum.unsqueeze(1)
+                        attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = (cur_attn_out / row_sum_expand).to(dtype=q_bnsd.dtype)
         return attn_out
 
     def gather_cmp_kv(self, k_tensor, topk_id, i_B, i_N2, i_S1, cur_act_kv, cur_act_q, sparse_block_size=1):
@@ -153,7 +268,7 @@ class GeneralizedSFAQuant:
         if self.cmp_mask_mode == 3:
             threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
         empty_flag = True
-        k_sparse = None
+        k_sparse = []
         if threshold > 0:
             empty_flag = False
             k_sparse = k_tensor[i_B, i_N2, :threshold, :]
@@ -333,19 +448,270 @@ def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv
                 cmp_sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
-                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
-                seqused_kv, quant_param_range_left, quant_param_range_right):
+def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    if exponent == HIF8_EXP_ZERO_THRESHOLD:
+        return True, 0
+    hif8_value_tmp = fraction32_int >> (FP32_FRACTION_BITS - (hif8_bits_num + 1))
+    if hif8_value_tmp == pow(2, hif8_bits_num + 1) - 1:
+        return True, 0
+    elif hif8_value_tmp == 0:
+        return False, 0
+    elif hif8_value_tmp % 2 == 1:
+        hif8_value_tmp += 1
+        return False, hif8_value_tmp >> 1
+    else:
+        return False, hif8_value_tmp >> 1
+
+
+
+def fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    t14_mask = SSR_T14_MASK
+    if exponent == HIF8_EXP_ZERO_THRESHOLD:
+        f14_values = (fraction32_int >> SSR_DML_SHIFT) + SSR_F14_OFFSET
+        t14_values = fraction32_int & t14_mask
+        hif8_value = 0
+    else:
+        hif8_value = fraction32_int >> (FP32_FRACTION_BITS - hif8_bits_num)
+        f14_t14 = fraction32_int - (hif8_value << (FP32_FRACTION_BITS - hif8_bits_num))
+        f14_values = f14_t14 >> (FP32_FRACTION_BITS - hif8_bits_num - SSR_RESERVED_BITS)
+        t14_values = f14_t14 & t14_mask
+    if f14_values >= t14_values:
+        if hif8_value == pow(2, hif8_bits_num) - 1:
+            return True, 0
+        else:
+            hif8_value += 1
+            return False, hif8_value
+    else:
+        return False, hif8_value
+
+def get_hif8_fraction_bits_number(exponent):
+    if exponent < HIF8_EXP_DML_MIN:
+        return HIF8_DOT_INVALID, HIF8_EXP_BITS_DML, HIF8_FRAC_BITS_DML
+    if HIF8_EXP_DML_MIN <= exponent < HIF8_EXP_DML_MAX:
+        return HIF8_DOT_DML, HIF8_EXP_BITS_DML, HIF8_FRAC_BITS_DML
+    if exponent == HIF8_EXP_D0:
+        return HIF8_DOT_D0, HIF8_EXP_BITS_D0, HIF8_FRAC_BITS_D0
+    if abs(exponent) == HIF8_EXP_D1_BOUNDARY:
+        return HIF8_DOT_D1, HIF8_EXP_BITS_D1, HIF8_FRAC_BITS_D1
+    if HIF8_EXP_D2_MIN <= abs(exponent) <= HIF8_EXP_D2_MAX:
+        return HIF8_DOT_D2, HIF8_EXP_BITS_D2, HIF8_FRAC_BITS_D2
+    if HIF8_EXP_D3_MIN <= abs(exponent) <= HIF8_EXP_D3_MAX:
+        return HIF8_DOT_D3, HIF8_EXP_BITS_D3, HIF8_FRAC_BITS_D3
+    if HIF8_EXP_D4_MIN <= abs(exponent) <= HIF8_EXP_D4_MAX:
+        return HIF8_DOT_D4, HIF8_EXP_BITS_D4, HIF8_FRAC_BITS_D4
+    if exponent > HIF8_EXP_D4_MAX:
+        return HIF8_DOT_D4, HIF8_EXP_BITS_D4, HIF8_DOT_INVALID
+
+def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
+    sign = False
+    sign_int_value = 0
+    x_abs = math.fabs(x)
+    ec = 0
+    over_value = HIF8_OVERFLOW_SCALE * pow(2.0, HIF8_EXP_D4_MAX + ec)
+    if x < 0.0:
+        sign = True
+        sign_int_value = HIF8_SIGN_MASK
+    if torch.isinf(x) or x_abs >= over_value:
+        if sign:
+            if over_mode:
+                return HIF8_NEG_INF
+            else:
+                return HIF8_NEG_MAX
+        else:
+            if over_mode:
+                return HIF8_POS_INF
+            else:
+                return HIF8_POS_MAX
+    if torch.isnan(x):
+        if over_mode:
+            return HIF8_NAN
+        else:
+            return 0
+    if x_abs == 0.0:
+        return 0
+    exponent = math.floor(math.log2(x_abs))
+    if round_mode == "hybrid":
+        if abs(exponent) < HYBRID_ROUND_EXP_THRESHOLD:
+            cut_bit_type = "TA"
+        else:
+            cut_bit_type = "SSR"
+    elif round_mode == "round":
+        cut_bit_type = "TA"
+    elif round_mode == "storound":
+        cut_bit_type = "SSR"
+    else:
+        cut_bit_type = "TA"
+    fraction_int = int(x_abs * pow(2, FP32_FRACTION_BITS) * pow(2, -exponent) - pow(2, FP32_FRACTION_BITS))
+    dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = get_hif8_fraction_bits_number(exponent)
+    if cut_bit_type == "TA":
+        carry_exp_status, hif8_frac_value = fp32_ta_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+    elif cut_bit_type == "SSR":
+        carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+    else:
+        print(f"unknown round type")
+        return 0
+
+    if carry_exp_status:
+        exponent += 1
+        dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = get_hif8_fraction_bits_number(exponent)
+        fraction_hif8_bits = fraction_hif8_bits_new
+    if exponent < HIF8_EXP_ZERO_THRESHOLD:
+        return 0
+    if exponent < 0:
+        sig_exp = 1
+    else:
+        sig_exp = 0
+    if dot_hif8_value <= 0:
+        if exponent <= HIF8_EXP_ZERO_THRESHOLD:
+            return 0
+        else:
+            return sign_int_value + exponent + HIF8_DML_EXP_OFFSET
+    elif dot_hif8_value == 1:
+        dot_int_value = dot_hif8_value << HIF8_DOT_BIT_SHIFT
+        hif8_int_value = sign_int_value + dot_int_value + hif8_frac_value
+    else:
+        abs_exponent = abs(exponent)
+        abs_exponent = abs_exponent - pow(2, exponent_hif8_bits - 1)
+        exponent_int_value = abs_exponent << fraction_hif8_bits
+        sig_exp = sig_exp << (exponent_hif8_bits - 1 + fraction_hif8_bits)
+        dot_int_value = dot_hif8_value << HIF8_DOT_BIT_SHIFT
+        hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
+    return hif8_int_value
+
+def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = True):
+    tensor_shape = in_tensor.shape
+    tensor_shape_size = in_tensor.numel()
+    if tensor_shape_size == 1.0:
+        tensor_shape_size = int(tensor_shape_size)
+    
+    out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
+    in_tensor = in_tensor.reshape(tensor_shape_size)
+    for i in range(tensor_shape_size):
+        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
+    out_tensor = out_tensor.view(torch.uint8)
+    out_tensor = out_tensor.reshape(tensor_shape)
+    return out_tensor
+
+def cvt_hifuint8_to_float32(x, over_mode = True):
+    x = int(x)
+    if x == HIF8_ZERO:
+        return float(0)
+    elif x == HIF8_NAN:
+        if over_mode:
+            return float('nan')
+        else:
+            return float(0)
+    elif x == HIF8_NEG_INF:
+        if over_mode:
+            return -torch.inf
+        else:
+            return -HIF8_MAX_FINITE_VALUE
+    elif x == HIF8_POS_INF:
+        if over_mode:
+            return torch.inf
+        else:
+            return HIF8_MAX_FINITE_VALUE
+    else:
+        if x >= HIF8_NAN:
+            sign = -1.0
+        else:
+            sign = 1.0
+        dot_4_bits = x & HIF8_DOT_MASK
+        dot_4_value = dot_4_bits >> 3
+        if dot_4_value >= HIF8_DOT_D4:
+            exponent = x & HIF8_EXP_MASK_D4
+            exponent_int = exponent >> 1
+            if exponent_int >= 8:
+                exponent_value = -exponent_int
+            else:
+                exponent_value = exponent_int + 8
+
+            fra_int = x & HIF8_FRAC_MASK_1BIT
+            m_value = 1.0 + fra_int * 0.5
+        elif dot_4_value >= HIF8_DOT_D3:
+            exponent = x & HIF8_EXP_MASK_D3
+            exponent_int = exponent >> 2
+            if exponent_int >= 4:
+                exponent_value = -exponent_int
+            else:
+                exponent_value = exponent_int + 4
+
+            fra_int = x & HIF8_FRAC_MASK_2BIT
+            m_value = 1.0 + fra_int * 0.25
+        elif dot_4_value >= HIF8_DOT_D2:
+            exponent = x & HIF8_EXP_MASK_D2
+            exponent_int = exponent >> 3
+            if exponent_int >= 2:
+                exponent_value = -exponent_int
+            else:
+                exponent_value = exponent_int + 2
+
+            fra_int = x & HIF8_FRAC_MASK_3BIT
+            m_value = 1.0 + fra_int * 0.125
+        elif dot_4_value >= HIF8_DOT_D1:
+            exponent = x & HIF8_EXP_SIGN_MASK_D1
+            exponent_sign = exponent >> 3
+            if exponent_sign >= 1:
+                exponent_value = -1
+            else:
+                exponent_value = 1
+
+            fra_int = x & HIF8_FRAC_MASK_3BIT
+            m_value = 1.0 + fra_int * 0.125
+        elif dot_4_value == HIF8_DOT_D0:
+            exponent_value = 0
+            fra_int = x & HIF8_FRAC_MASK_3BIT
+            m_value = 1.0 + fra_int * 0.125
+        elif dot_4_value == HIF8_DOT_DML:
+            m_value = 1
+            exponent_value = (x & HIF8_EXP_MASK_DML) - HIF8_DML_EXP_OFFSET
+        else:
+            print("error, dot error")
+            m_value = 0.0
+            exponent_value = 0
+        return sign * pow(2.0, exponent_value) * m_value
+
+def trans_hifuint8_tensor_to_float(in_tensor):
+    tensor_shape = in_tensor.shape
+    tensor_shape_size = in_tensor.numel()
+    
+    out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
+    in_tensor = in_tensor.reshape(tensor_shape_size)
+    for i in range(tensor_shape_size):
+        out_tensor[i] = cvt_hifuint8_to_float32(in_tensor[i])
+    out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
+    return out_tensor
+
+def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
+               pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
+               seqused_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode):
     # ori_kv处理流程
-    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
+    if kv_quant_mode == 10:
+        quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
+        quant_range_left = quant_param
+        quant_range_right = quant_param
+    else:
+        quant_range_left = quant_param_range_left
+        quant_range_right = quant_param_range_right
+    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
         (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
+
     # 分别生成bf16类型的nope合rope矩阵，为了模拟量化的过程，得到准确的量化参数
-    ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
-        (B, N2, ori_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
-    ori_k_nope_bnsd = ori_k_nope_bnsd_npu.to(q_type)
+    if kv_quant_mode == 10:
+        ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+            (B, N2, ori_max_s2, nope_head_dim))).to(torch.float)
+        ori_k_nope_bnsd_npu = trans_float_tensor_to_hifuint8(ori_k_nope_bnsd_npu,
+            round_mode = "hybrid", over_mode = True)
+        ori_k_nope_bnsd = trans_hifuint8_tensor_to_float(ori_k_nope_bnsd_npu).to(q_type)
+    else:
+        ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+            (B, N2, ori_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
+        ori_k_nope_bnsd = ori_k_nope_bnsd_npu.to(q_type)
+
     ori_k_rope_bnsd = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
         (B, N2, ori_max_s2, rope_head_dim))).to(q_type)
+
     # nope部分*scale，转成fp8，保存为bin文件，再转回bf16
     for d_loop in range(quant_scale_head_dim):
         for tile_loop in range(tile_size):
@@ -355,7 +721,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     ori_k_bnsd = torch.concat([ori_k_nope_bnsd, ori_k_rope_bnsd], dim=3)
 
     ori_pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, ori_max_s2, pad_d))).to(torch.float8_e8m0fnu)
-    ori_k_bnsd_npu = torch.concat([ori_k_rope_bnsd.view(torch.float8_e4m3fn), ori_k_nope_bnsd_npu, ori_kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), ori_pad_tensor.view(torch.float8_e4m3fn)], dim=3)
+    ori_k_bnsd_npu = torch.concat([ori_k_rope_bnsd.view(ori_kv_type), ori_k_nope_bnsd_npu, ori_kv_quant_param_tensor_npu.view(ori_kv_type), ori_pad_tensor.view(ori_kv_type)], dim=3)
 
     ori_block_num_per_batch = []
     ori_block_num_sum = 0
@@ -401,21 +767,38 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
 
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
 
-def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
-                pad_d, block_num2, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-                quant_param_range_left, quant_param_range_right):
+def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size,
+               quant_scale_head_dim, d_aligned_128, pad_d, block_num2, block_size2, cmp_max_s2,
+               cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
+               quant_param_range_left, quant_param_range_right, kv_quant_mode):
     if cmp_max_s2 == 0:
         return None, None, None, None
     # cmp kv处理
-    cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
+    if kv_quant_mode == 10:
+        quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
+        quant_range_left = quant_param
+        quant_range_right = quant_param
+    else:
+        quant_range_left = quant_param_range_left
+        quant_range_right = quant_param_range_right
+    cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
         (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
-    cmp_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
-        (B, N2, cmp_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
-    cmp_k_nope_bnsd = cmp_k_nope_bnsd_npu.to(q_type)
-    cmp_k_rope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+
+    if kv_quant_mode == 10:
+        cmp_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+            (B, N2, cmp_max_s2, nope_head_dim))).to(torch.float)
+        cmp_k_nope_bnsd_npu = trans_float_tensor_to_hifuint8(cmp_k_nope_bnsd_npu,
+            round_mode = "hybrid", over_mode = True)
+        cmp_k_nope_bnsd = trans_hifuint8_tensor_to_float(cmp_k_nope_bnsd_npu).to(q_type)
+    else:
+        cmp_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+            (B, N2, cmp_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
+        cmp_k_nope_bnsd = cmp_k_nope_bnsd_npu.to(q_type)
+
+    cmp_k_rope_bnsd = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
         (B, N2, cmp_max_s2, rope_head_dim))).to(q_type)
-    cmp_k_rope_bnsd = cmp_k_rope_bnsd_npu.to(q_type)
+
     for d_loop in range(quant_scale_head_dim):
         for tile_loop in range (tile_size):
             offset = d_loop * tile_size + tile_loop
@@ -423,7 +806,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     cmp_k_bnsd = torch.concat([cmp_k_nope_bnsd, cmp_k_rope_bnsd], dim=3)
 
     cmp_pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, cmp_max_s2, pad_d))).to(torch.float8_e8m0fnu)
-    cmp_k_bnsd_npu = torch.concat([cmp_k_rope_bnsd.view(torch.float8_e4m3fn), cmp_k_nope_bnsd_npu, cmp_kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), cmp_pad_tensor.view(torch.float8_e4m3fn)], dim=3)
+    cmp_k_bnsd_npu = torch.concat([cmp_k_rope_bnsd.view(cmp_kv_type), cmp_k_nope_bnsd_npu, cmp_kv_quant_param_tensor_npu.view(cmp_kv_type), cmp_pad_tensor.view(cmp_kv_type)], dim=3)
 
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
@@ -538,8 +921,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
 
-    if kv_quant_mode != 1:
-        raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1")
+    if kv_quant_mode != 1 and kv_quant_mode != 10:
+        raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1 and 10")
 
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
@@ -555,20 +938,18 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     # generate sinks tensor
     sinks = torch.tensor(np.random.uniform(DATA_RANGE_LEFT/10, DATA_RANGE_RIGHT/10, (N1))).to(torch.float)
-    
+
     # generate ori_kv tensor
-    ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
-                                                pad_d, block_num, block_size1, ori_max_s2, ori_max_block_num_per_batch,
-                                                seqused_kv, quant_param_range_left, quant_param_range_right)
+    ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim,
+        nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, pad_d, block_num, block_size1, ori_max_s2,
+        ori_max_block_num_per_batch, seqused_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode)
 
     # generate cmp_kv and sparse_indices
     if template_run_mode == "CFA" or template_run_mode == "SCFA":
-        cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1,
-                                                                        T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
-                                                                        pad_d, block_num,
-                                                                        block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q,
-                                                                        seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-                                                                        quant_param_range_left, quant_param_range_right)
+        cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv(q_type, layout_q, cmp_kv_type,
+            B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, pad_d,
+            block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio,
+            cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, kv_quant_mode)
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_indices = None
@@ -584,8 +965,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :].view(block_num, block_size2, N2, d_combined + pad_d)
 
     test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
-                              block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
-                              ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
+        block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
     cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
     
     print("mode:%s\n",template_run_mode)
@@ -627,7 +1008,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'layout_q': layout_q,
             'layout_kv': layout_kv,
             'has_ori_kv': True,
-            'has_cmp_kv': False if template_run_mode == "SWA" else True  # SWA 为false
+            'has_cmp_kv': False if template_run_mode == "SWA" else True,  # SWA 为false
+            'kv_quant_mode': kv_quant_mode,
         },
 
         'input': {
@@ -640,7 +1022,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'cu_seqlens_q': cu_seqlens_q,
             'seqused_kv': seqused_kv,
             'sinks': sinks,
-            'kv_quant_mode': 1,
+            'kv_quant_mode': kv_quant_mode,
             'tile_size': 64,
             'rope_head_dim': 64,
             'softmax_scale': softmax_scale,

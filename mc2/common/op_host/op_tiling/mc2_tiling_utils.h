@@ -55,7 +55,7 @@ constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
 **/
 constexpr uint8_t AIV_ENGINE = 3;
-constexpr uint8_t A5_CCU_ENGINE = 5;
+constexpr uint8_t A5_CCU_ENGINE = 0;
 constexpr uint8_t Y_INDEX = 3;
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
@@ -248,7 +248,8 @@ inline ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBuffe
         OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
     }
     OP_TILING_CHECK(*cclBufferSize == 0,
-            OP_LOGE(nodeName, "Get cclBufferSize failed, cclBufferSize is 0"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", "0", "non-zero"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

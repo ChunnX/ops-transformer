@@ -19,6 +19,7 @@
 #include "exe_graph/runtime/storage_shape.h"
 
 #include "mc2_tiling_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeDispatchV3UT {
 class MoeDistributeDispatchV3Arch22TilingTest : public testing::Test {
@@ -826,4 +827,16 @@ TEST_F(MoeDistributeDispatchV3Arch22TilingTest, ZeroComputeExpertNumInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-}  // moe_distribute_dispatch_v2_ut
+TEST_F(MoeDistributeDispatchV3Arch22TilingTest, TestTilingParse)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeDistributeDispatchV3");
+    ASSERT_NE(opImpl, nullptr);
+    auto tilingParseFunc = opImpl->tiling_parse;
+    ASSERT_NE(tilingParseFunc, nullptr);
+    auto ret = tilingParseFunc(nullptr);
+    ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+}
+
+}  // namespace MoeDistributeDispatchV3UT

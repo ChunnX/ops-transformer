@@ -185,11 +185,11 @@ def aclnn_op_func_ifa_cpu(input_data : InputDataset):
     act_q_seq = [1]
     act_kv_seq = input_data.kwargs["actualSeqLengths"]
 
-    pse = input_data.kwargs["pseShift"].to(dtype=torch.float16).numpy() if input_data.kwargs["pseShift"] != None else []
-    mask = input_data.kwargs["attenMask"].to(dtype=torch.uint8).numpy() if input_data.kwargs["attenMask"] != None else []
+    pse = input_data.kwargs["pseShift"].to(dtype=torch.float16).numpy() if input_data.kwargs["pseShift"] is not None else []
+    mask = input_data.kwargs["attenMask"].to(dtype=torch.uint8).numpy() if input_data.kwargs["attenMask"] is not None else []
 
-    antiquant_scale = input_data.kwargs["antiquantScale"].to(dtype=torch.float16).numpy() if input_data.kwargs["antiquantScale"] != None else []
-    antiquant_offset = input_data.kwargs["antiquantOffset"].to(dtype=torch.float16).numpy() if input_data.kwargs["antiquantOffset"] != None else []
+    antiquant_scale = input_data.kwargs["antiquantScale"].to(dtype=torch.float16).numpy() if input_data.kwargs["antiquantScale"] is not None else []
+    antiquant_offset = input_data.kwargs["antiquantOffset"].to(dtype=torch.float16).numpy() if input_data.kwargs["antiquantOffset"] is not None else []
 
     return compute(query, key, value, act_q_seq, act_kv_seq, pse, mask, antiquant_scale, antiquant_offset, num_heads=numHeads, input_layout=input_layout).to(dtype=input_dtype)
 

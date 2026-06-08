@@ -102,8 +102,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantDtype() const
 
 ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
 {
-    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1, but got %ld",
+    // 1 for fp8_e4m3fn per-tile and 10 for hif8 per-tensor
+    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 10,
+        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 10, but got %ld",
         *opParamInfo_.kvQuantMode),
         return ge::GRAPH_FAILED);
 
@@ -111,6 +112,14 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
         OP_CHECK_IF(*opParamInfo_.tileSize != 64, // 64:当前不泛化
             OP_LOGE(opName_, "tile_size only support 64, but got %ld",
             *opParamInfo_.tileSize),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
+            OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_FLOAT8_E4M3FN, // 前面已校验dtype在fp8 e4m3和hif8之间
+            OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got DT_FLOAT8_E4M3FN"),
             return ge::GRAPH_FAILED);
     }
     

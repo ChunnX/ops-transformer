@@ -266,8 +266,6 @@ protected:
     void UpdateTilingKeyIsPa(ge::DataType inputDataType);
     void UpdateTilingKeyIsFd(ge::DataType inputDataType);
     void UpdateTilingKeyEmptyTensor();
-    void UpdateTilingKeyPFAMask(PromptFlashAttentionTilingDataV2& tilingData, ge::DataType inputDataType);
-    void UpdateTilingKeyPFAMatMulType(PromptFlashAttentionTilingDataV2& tilingData, ge::DataType inputDataType);
     void UpdateTilingKeyEnableKVPrefix();
     void UpdateTilingKeySplitCoreMode();
 
@@ -281,8 +279,6 @@ public:
     bool isPa = false;
     bool isFd = false;
     bool emptyTensor = false;
-    uint8_t PFAMask = 0;
-    uint8_t pFAMatMulType = 0;
     bool enableKVPrefix = false;
     bool enableS1OutSplit = false;
   

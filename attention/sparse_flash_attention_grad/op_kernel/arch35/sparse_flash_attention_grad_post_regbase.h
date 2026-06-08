@@ -75,6 +75,8 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
 
     if constexpr (IS_ROPE) {
         REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
+    } else {
+        REGBASE_POST_BASE = tilingData->postTilingData.qPostBaseNum;
     }
 
     pipe->InitBuffer(inQueuePing, 1, REGBASE_POST_BASE * sizeof(T2));
@@ -89,7 +91,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
     if (g_coreType != AIV) {
         return;
     }
-    for (int qkvIdx = 0; qkvIdx < 2; qkvIdx++) {
+    for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
         if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.kPostBlockTotal;
@@ -98,6 +100,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
             loop = tilingData->postTilingData.vPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.vPostBlockTotal;
             qPostTailNum = tilingData->postTilingData.vPostTailNum;
+            REGBASE_POST_BASE = tilingData->postTilingData.vPostBaseNum;
         }
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;

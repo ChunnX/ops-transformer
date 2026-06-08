@@ -129,7 +129,7 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::Process()
         // clear dq dk dv workspace
         InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
         InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
-        InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
+        InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
     }
 }
 

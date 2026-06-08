@@ -475,8 +475,6 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsNull = !actualSeqLenQFlag_;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsKVNull = !actualSeqLenKVFlag_;
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -542,8 +540,6 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsQSize:%d", fiaBaseParams.actualSeqLengthsQSize);
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsKVSize:%d", fiaBaseParams.actualSeqLengthsKVSize);
     OP_LOGD(fiaInfo_->opName, "scaleValue:%f", fiaBaseParams.scaleValue);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsNull:%d", fiaBaseParams.isActualSeqLengthsNull);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsKVNull:%d", fiaBaseParams.isActualSeqLengthsKVNull);
     OP_LOGD(fiaInfo_->opName, "isKvContinuous:%d", fiaBaseParams.isKvContinuous);
     OP_LOGD(fiaInfo_->opName, "isSoftMaxLseEnable:%d", fiaBaseParams.isSoftMaxLseEnable);
 
@@ -582,7 +578,7 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx <= NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -590,7 +586,7 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx <= NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],
@@ -780,16 +776,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyHasRope()
     }
 }
 
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyMaskMode()
-{
-    tilingKeyInfo_.maskMode = 0;
-}
-
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyMatmulMode()
-{
-    tilingKeyInfo_.matmulMode = 0;
-}
-
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
 {
     if (fiaInfo_->emptyTensorFlag) {
@@ -807,8 +793,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
         UpdateTilingKeyHasRope();
         tilingKeyInfo_.isPa = fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION;
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
-        UpdateTilingKeyMaskMode();
-        UpdateTilingKeyMatmulMode();
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
         tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
@@ -821,18 +805,18 @@ void FiaTilingNonQuantMlaArch35::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                     tilingKeyInfo_.isPa, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode, tilingKeyInfo_.enableKvPrefix,
-                                    tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+                                    tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
-            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu.",
+            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, "
+            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.isPa, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+            tilingKeyInfo_.isReconstructTemp);
 }
 
 // TODO，调用fia_tiling_base.h的SetTilingData，报类型不匹配，策略待定

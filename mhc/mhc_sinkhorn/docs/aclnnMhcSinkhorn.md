@@ -94,9 +94,10 @@ aclnnStatus aclnnMhcSinkhorn(
   | x | 输入 | 待计算数据，mHC层的$\mathbf{H}'_{\text{res}}$矩阵 | 必选参数，不能为空Tensor | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
   | eps | 输入 | 归一化防除零参数 | 建议值：1e-6 | FLOAT32 | - | - | - |
   | numIters| 输入 | 迭代次数 | 建议值：20；范围：1~100 | INT64 | - | - | - |
+  | outFlag | 输入 | 是否输出normOut和sumOut | 0表示不输出normOut和sumOut；1表示输出normOut和sumOut；范围：0~1 | INT64 | - | - | - |
   | output | 输出 | MhcSinkhorn变换最终结果（双随机矩阵$\mathbf{H}_{\text{res}}$） | 必选输出，维度与输入x一致 | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
-  | normOut| 输出 | 迭代过程中的归一化中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters\*n\*n_align\*B\*S]、[2\*num_iters\*n\*n_align\*T], n_align为n按8对齐 | √ |
-  | sumOut| 输出 | 迭代过程中的求和中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters\*n_align\*B\*S]、[2\*num_iters\*n_align,T], n_align为n按8对齐| √ |
+  | normOut | 输出 | 迭代过程中的归一化中间结果，用于反向 | outFlag为1时必选；outFlag为0时可传空指针 | FLOAT32 | ND | [2\*num_iters\*n\*n_align\*B\*S]、[2\*num_iters\*n\*n_align\*T]，n_align为n按8对齐 | √ |
+  | sumOut | 输出 | 迭代过程中的求和中间结果，用于反向 | outFlag为1时必选；outFlag为0时可传空指针 | FLOAT32 | ND | [2\*num_iters\*n_align\*B\*S]、[2\*num_iters\*n_align\*T]，n_align为n按8对齐 | √ |
   | workspaceSize | 输出 | 计算所需的Device侧workspace内存大小（字节） | 由算子内部计算得出，用于后续申请内存 | UINT64 | - | - | - |
   | executor | 输出 | 算子执行器，包含计算流程和参数信息 | 需传递给第二段接口使用 | aclOpExecutor* | - | - | - |
 
@@ -109,7 +110,7 @@ aclnnStatus aclnnMhcSinkhorn(
   | 返回值 | 错误码 | 描述 |
   |:--- |:--- |:--- |
   | ACLNN_ERR_PARAM_NULLPTR | 161001 | 必选参数（x/output）或输出参数（workspaceSize/executor）为空指针。 |
-  | ACLNN_ERR_PARAM_INVALID | 161002 | 1. x的数据类型/格式非FLOAT32/ND；<br>2. numIters超出1~100范围；<br>3. n值非4/6/8；4. outFlag非0。 |
+  | ACLNN_ERR_PARAM_INVALID | 161002 | 1. x的数据类型/格式非FLOAT32/ND；<br>2. numIters超出1~100范围；<br>3. n值非4/6/8；<br>4. outFlag非0或1；<br>5. outFlag为1时，normOut或sumOut为空指针，或shape不符合规格。 |
   | ACLNN_ERR_RUNTIME_ERROR | 361001 | 调用NPU Runtime接口申请内存/创建Tensor失败。 |
 
 ## aclnnMhcSinkhorn
@@ -139,6 +140,7 @@ aclnnStatus aclnnMhcSinkhorn(
      - 输入Tensor `x` 为空，报错`ACLNN_ERR_PARAM_NULLPTR`；
      - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
      - 仅支持`FLOAT32`数据类型，不支持其他精度（如FLOAT16/DOUBLE）。
+     - outFlag支持0和1；outFlag为0时，仅输出output，normOut和sumOut可传空指针；outFlag为1时，同时输出output、normOut和sumOut，normOut和sumOut不能为空。
      - 输入-inf/inf/nan/，输出nan/nan/nan。
   2. 内存约束：
      - Workspace内存需在Device侧申请，且大小需严格匹配第一段接口返回值；
@@ -148,6 +150,7 @@ aclnnStatus aclnnMhcSinkhorn(
   | 规格项   | 规格    | 规格说明                                              |
   | :------- | :------ | :---------------------------------------------------- |
   | numIters | 1~100   | 迭代次数超出该范围会返回参数无效错误。                |
+  | outFlag | 0、1 | 0表示不输出normOut和sumOut，仅输出output；1表示输出normOut和sumOut。其他取值返回参数无效错误。 |
   | n        | 4、6、8 | 输入Tensor最后两维的大小（矩阵维度）仅支持这三个值。  |
   | 维度数   | 3/4     | 输入x支持3维(T,n,n)或4维(B,S,n,n)，其他维度数不支持。 |
 

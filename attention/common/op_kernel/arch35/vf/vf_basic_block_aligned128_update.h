@@ -86,6 +86,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
+
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }

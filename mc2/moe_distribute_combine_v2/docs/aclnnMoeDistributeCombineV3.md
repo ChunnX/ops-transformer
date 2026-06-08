@@ -38,15 +38,15 @@
 
 - 新增支持特殊专家场景：
 
-  - **zeroExpertNum≠0**：通过传入大于0的`zeroExpertNum`参数使能。
+  - **zeroExpertNum≠0**：通过传入大于0的`zeroExpertNum`参数开启。
 
     $$Moe(oriXOptional) = 0$$
 
-  - **copyExpertNum≠0**：通过传入大于0的`copyExpertNum`参数使能，且需传入有效的`oriXOptional`参数。
+  - **copyExpertNum≠0**：通过传入大于0的`copyExpertNum`参数开启，且需传入有效的`oriXOptional`参数。
 
     $$Moe(oriXOptional) = oriXOptional$$
 
-  - **constExpertNum≠0**：通过传入大于0的`constExpertNum`参数使能，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
+  - **constExpertNum≠0**：通过传入大于0的`constExpertNum`参数开启，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
 
     $$Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional$$
 
@@ -265,7 +265,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <td>oriXOptional</td>
     <td>输入</td>
     <td>表示未经过FFN（Feed-Forward Neural network）的token数据。</td>
-    <td>在使能copyExpert或使能constExpert的场景下需要本输入数据。可选择传入有效数据或填空指针，当<code>copyExpertNum</code>不为0或<code>constExpertNum</code>不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，数据类型需跟<code>expandX</code>保持一致。</td>
+    <td>在开启copyExpert或开启constExpert的场景下需要本输入数据。可选择传入有效数据或填空指针，当<code>copyExpertNum</code>不为0或<code>constExpertNum</code>不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，数据类型需跟<code>expandX</code>保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td><code>(BS, H)</code></td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertAlpha1Optional</td>
     <td>输入</td>
-    <td>在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -284,7 +284,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertAlpha2Optional</td>
     <td>输入</td>
-    <td>在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertVOptional</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>Device侧的aclTensor，在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -525,7 +525,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     - expandScalesOptional 要求为1D Tensor，shape为 (A, )。
     - sharedExpertXOptional 为预留参数，当前版本不支持，传空指针即可。
     - epWorldSize 依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
-    - moeExpertNum 取值范围(0, 512]。
+    - moeExpertNum 依commAlg取值，"fullmesh"支持(0, 1024]，"hierarchy"支持(0, 512]。
     - groupTp 当前版本不支持，传空字符即可。
     - tpWorldSize 当前版本不支持，传0即可。
     - tpRankId 当前版本不支持，传0即可。
@@ -561,7 +561,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum 当前取值范围[0, 4]。
     - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-    - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可使能。
+    - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可开启。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
     - elasticInfoOptional 当前版本不支持，传空指针即可。
     - constExpertAlpha1Optional 可选择传入有效数据或填空指针，当constExpertNum不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，shape为<code>(constExpertNum, H)</code>，数据类型需与expandX保持一致。
@@ -705,7 +705,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | 本卡需分发的最大token数，取值范围如下: <ul><li>对于共享专家，要满足<code>A = BS * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>。</li><li>对于MoE专家，当globalBS为0时，要满足<code>A >= BS * epWorldSize * min(localExpertNum, K)</code>；当globalBS非0时，要满足<code>A >= globalBS * min(localExpertNum, K)</code>。</li></ul>|
-  | H            |表示hidden size隐藏层大小:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：[1024, 8192]。 </li></ul>|
+  | H            |表示hidden size隐藏层大小:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：(0, 10240]且为32的整数倍。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：[1024, 8192]。 </li></ul>|
   | BS           | 本卡最终输出token数:<ul><li> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 256]；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 512]；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：0 < BS ≤512。</li></ul> |
   | K            |表示选取topK个专家:<br> 0 < K ≤16，且0 < K ≤ <code>moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>。 |
   | serverNum    | 服务器节点数:<br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅该场景的shape使用了该变量，仅支持2、4、8。

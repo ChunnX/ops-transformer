@@ -11,7 +11,7 @@ import os
 import sys
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ascendc_extension import ascendc_extension
 CURRENT_DIR = os.path.dirname(__file__)
 
@@ -33,7 +33,7 @@ setup(
                 '-lquest_prefill_metadata',       # Shared library 1/2 name
                 '-lquest_block_select_paged'  # Shared library 2/2 name
             ],
-            runtime_library_dirs=[os.path.join(CURRENT_DIR, 'lib')],  # add the directory to RPATH
+            runtime_library_dirs=[os.path.abspath(os.path.join(CURRENT_DIR, 'lib'))],  # add the directory to RPATH
             extra_compile_args=[f'-DNUM_CORES={num_cores}']
             ),
         ],

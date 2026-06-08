@@ -16,6 +16,7 @@
 #define MOE_V3_FULL_LOAD_BASE_H
 
 #include "moe_v3_common.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
@@ -24,9 +25,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr)
 {
-    auto threadIdx = static_cast<int32_t>(Simt::GetThreadIdx());
-    auto threadNum = static_cast<int32_t>(Simt::GetThreadNum());
-    for (auto i = threadIdx; i < elementNum; i += threadNum) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
+         i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -42,9 +42,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
     __local_mem__ int32_t *expertFirstIndexLocalAddr, __local_mem__ int32_t *expertCountOutLocalAddr)
 {
-    auto threadIdx = static_cast<int32_t>(Simt::GetThreadIdx());
-    auto threadNum = static_cast<int32_t>(Simt::GetThreadNum());
-    for (auto i = threadIdx; i < elementNum; i += threadNum) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
+         i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertEnd) {
             break;
@@ -60,16 +59,15 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
     __local_mem__ int32_t *actualIdxNumAddr)
 {
-    auto threadIdx = static_cast<int32_t>(Simt::GetThreadIdx());
-    auto threadNum = static_cast<int32_t>(Simt::GetThreadNum());
     int32_t localCount = 0;
-    for (auto i = threadIdx; i < elementNum; i += threadNum) {
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
+         i += static_cast<int32_t>(blockDim.x)) {
         auto currExpertId = sortedExpertIdLocalAddr[i];
         if (currExpertId >= expertStart && currExpertId < expertEnd) {
             localCount++;
         }
     }
-    Simt::AtomicAdd(actualIdxNumAddr, localCount);
+    asc_atomic_add(actualIdxNumAddr, localCount);
 }
 
 template <typename T>
@@ -83,6 +81,7 @@ protected:
     __aicore__ inline void CopyIn();
     __aicore__ inline void SortCompute();
     __aicore__ inline void ComputeGatherIdx(LocalTensor<int32_t> &inLocal);
+    __aicore__ inline void ComputeGatherIdxWithCapacity();
     __aicore__ inline void CopyOutRowIdx();
     __aicore__ inline void ComputeExpertTokenCount();
     __aicore__ inline void CopyExpertCountToOutput();
@@ -99,6 +98,9 @@ protected:
     int64_t n_;
     int64_t cols_;
     int64_t activeNum_;
+    int64_t dropPadMode_ = 0;
+    int64_t expertCapacity_ = 0;
+    int64_t outputRows_ = 0;
     int64_t expertNum_;
     int64_t expertStart_ = 0;
     int64_t expertEnd_ = 0;
@@ -157,6 +159,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
 
     this->perCoreIndicesElements_ = this->gatherOutTilingData_->perCoreIndicesElements;
     this->activeNum_ = tilingData->activeNum;
+    this->dropPadMode_ = tilingData->dropPadMode;
+    this->expertCapacity_ = tilingData->expertCapacity;
+    this->outputRows_ = this->dropPadMode_ == DROP_PAD_MODE ? tilingData->expertNum * tilingData->expertCapacity :
+ 	                    this->activeNum_;
     if (this->blockIdx_ == this->gatherOutTilingData_->needCoreNum - 1) {
         this->coreIndicesElements_ = this->gatherOutTilingData_->lastCoreIndicesElements;
     } else {
@@ -282,13 +288,19 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
     Duplicate(expertCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(1));
     __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdxLocal.GetPhyAddr();
     __local_mem__ int32_t *actualIdxNumAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
-    Simt::VF_CALL<FullLoadComputeActualIdxNumSimt>(
-        Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
+    asc_vf_call<FullLoadComputeActualIdxNumSimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
         static_cast<int32_t>(expertEnd_), sortedExpertIdxLocalAddr, actualIdxNumAddr);
     actualExpertIdxNum_ = static_cast<int64_t>(expertCountLocal.GetValue(0));
 
     sortedExpertIdxQueue_.EnQue<int32_t>(sortedExpertIdxLocal);
     sortedRowIdxQueue_.EnQue<uint32_t>(expandDstToSrcRowLocal);
+
+    if (this->dropPadMode_ == DROP_PAD_MODE) {
+        ComputeGatherIdxWithCapacity();
+        sortDataCopyInQueue_.FreeTensor(inLocal);
+        return;
+    }
 
     if (actualExpertIdxNum_ < 1) {
         sortDataCopyInQueue_.FreeTensor(inLocal);
@@ -349,6 +361,42 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdx(LocalTensor<int32_
 }
 
 template <typename T>
+__aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdxWithCapacity()
+{
+    LocalTensor<int32_t> sortedRowIdx = sortedRowIdxQueue_.DeQue<int32_t>();
+    LocalTensor<int32_t> sortedExpertIdx = sortedExpertIdxQueue_.DeQue<int32_t>();
+    LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.AllocTensor<int32_t>();
+    Duplicate(expandedRowIdx, static_cast<int32_t>(-1), static_cast<int32_t>(this->totalLength_));
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+    int32_t lastExpertId = -1;
+    int64_t tokenCount = 0;
+    for (int64_t i = 0; i < this->actualExpertIdxNum_; i++) {
+        int32_t curExpertId = sortedExpertIdx.GetValue(i);
+        if (curExpertId < this->expertStart_) {
+            continue;
+        }
+        if (curExpertId >= this->expertEnd_) {
+            break;
+        }
+        if (curExpertId != lastExpertId) {
+            lastExpertId = curExpertId;
+            tokenCount = 0;
+        }
+        if (tokenCount < this->expertCapacity_) {
+            int32_t srcIndex = sortedRowIdx.GetValue(i);
+            int32_t dstIndex = static_cast<int32_t>(curExpertId * this->expertCapacity_ + tokenCount);
+            expandedRowIdx.SetValue(srcIndex, dstIndex);
+        }
+        tokenCount++;
+    }
+
+    expandedRowIdxQueue_.EnQue<int32_t>(expandedRowIdx);
+    sortedRowIdxQueue_.EnQue<int32_t>(sortedRowIdx);
+    sortedExpertIdxQueue_.EnQue<int32_t>(sortedExpertIdx);
+}
+
+template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::CopyOutRowIdx()
 {
     LocalTensor<int32_t> sortedRowIdx = sortedRowIdxQueue_.DeQue<int32_t>();
@@ -397,11 +445,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeExpertTokenCount()
     __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdx.GetPhyAddr();
     __local_mem__ int32_t *expertCountOutLocalAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
 
-    Simt::VF_CALL<FullLoadComputeExpertFirstIndexSimt>(
-        Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
+    asc_vf_call<FullLoadComputeExpertFirstIndexSimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
         static_cast<int32_t>(expertEnd_), sortedExpertIdxLocalAddr, expertCountOutLocalAddr);
-    Simt::VF_CALL<FullLoadComputeExpertCountOutSimt>(
-        Simt::Dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
+    asc_vf_call<FullLoadComputeExpertCountOutSimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
         static_cast<int32_t>(expertEnd_), sortedExpertIdxLocalAddr, expertCountOutLocalAddr, expertCountOutLocalAddr);
 
     sortedExpertIdxQueue_.EnQue<int32_t>(sortedExpertIdx);

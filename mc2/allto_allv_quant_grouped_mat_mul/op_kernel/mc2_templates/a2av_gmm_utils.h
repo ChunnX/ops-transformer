@@ -33,16 +33,27 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-#if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_HIFLOAT8))
-#define MX_QUANT_MODE false
-#else
+#if defined(ORIG_DTYPE_GMM_X_SCALE) && (ORIG_DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0)
 #define MX_QUANT_MODE true
+#else
+#define MX_QUANT_MODE false
 #endif
 
 #if ((ORIG_DTYPE_GMM_X == ORIG_DTYPE_GMM_WEIGHT) && (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1))
 #define PACK_FACTOR 2U
 #else
 #define PACK_FACTOR 1U
+#endif
+
+#if (ORIG_DTYPE_GMM_X == DT_FLOAT16 || ORIG_DTYPE_GMM_X == DT_BF16)
+#define X_TYPE_SIZE 2U
+#elif (ORIG_DTYPE_GMM_X == DT_INT8 || ORIG_DTYPE_GMM_X == DT_HIFLOAT8 || \
+    ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)
+#define X_TYPE_SIZE 1U
+#elif (ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1)
+#define X_TYPE_SIZE 1U
+#else
+#define X_TYPE_SIZE 1U
 #endif
 
 }

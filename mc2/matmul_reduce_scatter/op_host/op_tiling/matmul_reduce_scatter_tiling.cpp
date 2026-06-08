@@ -137,77 +137,77 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
 
 static void PrintTilingData(::TCubeTiling& tiling)
 {
-    OP_LOGD("MatmulReduceScatter", " tiling.usedCoreNum %d", tiling.usedCoreNum);
-    OP_LOGD("MatmulReduceScatter", " tiling.M %d", tiling.M);
-    OP_LOGD("MatmulReduceScatter", " tiling.N %d", tiling.N);
-    OP_LOGD("MatmulReduceScatter", " tiling.Ka %d", tiling.Ka);
-    OP_LOGD("MatmulReduceScatter", " tiling.Kb %d", tiling.Kb);
-    OP_LOGD("MatmulReduceScatter", " tiling.singleCoreM %d", tiling.singleCoreM);
-    OP_LOGD("MatmulReduceScatter", " tiling.singleCoreN %d", tiling.singleCoreN);
-    OP_LOGD("MatmulReduceScatter", " tiling.singleCoreK %d", tiling.singleCoreK);
-    OP_LOGD("MatmulReduceScatter", " tiling.baseM %d", tiling.baseM);
-    OP_LOGD("MatmulReduceScatter", " tiling.baseN %d", tiling.baseN);
-    OP_LOGD("MatmulReduceScatter", " tiling.baseK %d", tiling.baseK);
-    OP_LOGD("MatmulReduceScatter", " tiling.depthA1 %d", tiling.depthA1);
-    OP_LOGD("MatmulReduceScatter", " tiling.depthB1 %d", tiling.depthB1);
-    OP_LOGD("MatmulReduceScatter", " tiling.stepM %d", tiling.stepM);
-    OP_LOGD("MatmulReduceScatter", " tiling.stepN %d", tiling.stepN);
-    OP_LOGD("MatmulReduceScatter", " tiling.stepka %d", tiling.stepKa);
-    OP_LOGD("MatmulReduceScatter", " tiling.stepkb %d", tiling.stepKb);
-    OP_LOGD("MatmulReduceScatter", " tiling.isBias %d", tiling.isBias);
-    OP_LOGD("MatmulReduceScatter", " tiling.transLength %d", tiling.transLength);
-    OP_LOGD("MatmulReduceScatter", " tiling.iterateOrder %s", ((tiling.iterateOrder == 1)? "orderM" : "orderN"));
-    OP_LOGD("MatmulReduceScatter", " tiling.usedL1Size %d", tiling.shareL1Size);
-    OP_LOGD("MatmulReduceScatter", " tiling.usedL0CSize %d", tiling.shareL0CSize);
-    OP_LOGD("MatmulReduceScatter", " tiling.dbL0C %d", tiling.dbL0C); // set_dbL0C(1)
-    OP_LOGD("MatmulReduceScatter", " tiling.usedUBSize %d", tiling.shareUbSize);
-    OP_LOGD("MatmulReduceScatter", " tiling.batchM %d", tiling.batchM);
-    OP_LOGD("MatmulReduceScatter", " tiling.batchN %d", tiling.batchN);
-    OP_LOGD("MatmulReduceScatter", " tiling.singleBatchM %d", tiling.singleBatchM);
-    OP_LOGD("MatmulReduceScatter", " tiling.singleBatchN %d", tiling.singleBatchN);
+    OP_LOGD("MatmulReduceScatter", "tiling.usedCoreNum %d", tiling.usedCoreNum);
+    OP_LOGD("MatmulReduceScatter", "tiling.M %d", tiling.M);
+    OP_LOGD("MatmulReduceScatter", "tiling.N %d", tiling.N);
+    OP_LOGD("MatmulReduceScatter", "tiling.Ka %d", tiling.Ka);
+    OP_LOGD("MatmulReduceScatter", "tiling.Kb %d", tiling.Kb);
+    OP_LOGD("MatmulReduceScatter", "tiling.singleCoreM %d", tiling.singleCoreM);
+    OP_LOGD("MatmulReduceScatter", "tiling.singleCoreN %d", tiling.singleCoreN);
+    OP_LOGD("MatmulReduceScatter", "tiling.singleCoreK %d", tiling.singleCoreK);
+    OP_LOGD("MatmulReduceScatter", "tiling.baseM %d", tiling.baseM);
+    OP_LOGD("MatmulReduceScatter", "tiling.baseN %d", tiling.baseN);
+    OP_LOGD("MatmulReduceScatter", "tiling.baseK %d", tiling.baseK);
+    OP_LOGD("MatmulReduceScatter", "tiling.depthA1 %d", tiling.depthA1);
+    OP_LOGD("MatmulReduceScatter", "tiling.depthB1 %d", tiling.depthB1);
+    OP_LOGD("MatmulReduceScatter", "tiling.stepM %d", tiling.stepM);
+    OP_LOGD("MatmulReduceScatter", "tiling.stepN %d", tiling.stepN);
+    OP_LOGD("MatmulReduceScatter", "tiling.stepka %d", tiling.stepKa);
+    OP_LOGD("MatmulReduceScatter", "tiling.stepkb %d", tiling.stepKb);
+    OP_LOGD("MatmulReduceScatter", "tiling.isBias %d", tiling.isBias);
+    OP_LOGD("MatmulReduceScatter", "tiling.transLength %d", tiling.transLength);
+    OP_LOGD("MatmulReduceScatter", "tiling.iterateOrder %s", ((tiling.iterateOrder == 1)? "orderM" : "orderN"));
+    OP_LOGD("MatmulReduceScatter", "tiling.usedL1Size %d", tiling.shareL1Size);
+    OP_LOGD("MatmulReduceScatter", "tiling.usedL0CSize %d", tiling.shareL0CSize);
+    OP_LOGD("MatmulReduceScatter", "tiling.dbL0C %d", tiling.dbL0C); // set_dbL0C(1)
+    OP_LOGD("MatmulReduceScatter", "tiling.usedUBSize %d", tiling.shareUbSize);
+    OP_LOGD("MatmulReduceScatter", "tiling.batchM %d", tiling.batchM);
+    OP_LOGD("MatmulReduceScatter", "tiling.batchN %d", tiling.batchN);
+    OP_LOGD("MatmulReduceScatter", "tiling.singleBatchM %d", tiling.singleBatchM);
+    OP_LOGD("MatmulReduceScatter", "tiling.singleBatchN %d", tiling.singleBatchN);
 }
 
 static void PrintTilingData(Mc2Tiling::RCSTiling& rcsTiling)
 {
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.rankDim %d", rcsTiling.rankDim);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.rankID %d", rcsTiling.rankID);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.commtype %d", rcsTiling.commtype);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.subtype %d", rcsTiling.subtype);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.tileCnt %d", rcsTiling.tileCnt);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.tailM %d", rcsTiling.tailM);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.tailCnt %d", rcsTiling.tailCnt);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.biasLen %d", rcsTiling.biasLen);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.isAdd %d", rcsTiling.isAdd);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.rankM %d", rcsTiling.rankM);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.rankN %d", rcsTiling.rankN);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.rankK %d", rcsTiling.rankK);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.gatherIndex %d", rcsTiling.gatherIndex);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.isTransA %d", rcsTiling.isTransposeA);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.isTransB %d", rcsTiling.isTransposeB);
-	OP_LOGD("MatmulReduceScatter", " rcsTiling.storageGather %d", rcsTiling.storageGather);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.nd2NzWorkLen %lu", rcsTiling.nd2NzWorkLen);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.cToFloatLen %lu", rcsTiling.cToFloatLen);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.gatherLen %lu", rcsTiling.gatherLen);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.workspaceAddr4 %u", rcsTiling.workspaceAddr4);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.aicCoreNum %u", rcsTiling.aicCoreNum);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.needUbBuffer %u", rcsTiling.needUbBuffer);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.addX3UbCnt %u", rcsTiling.addX3UbCnt);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.commWorkSpaceSize %u", rcsTiling.commWorkSpaceSize);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.isInputCommQuantScale %u", rcsTiling.isInputCommQuantScale);
-    OP_LOGD("MatmulReduceScatter", " rcsTiling.dataType %u", rcsTiling.dataType);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.rankDim %d", rcsTiling.rankDim);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.rankID %d", rcsTiling.rankID);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.commtype %d", rcsTiling.commtype);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.subtype %d", rcsTiling.subtype);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.tileCnt %d", rcsTiling.tileCnt);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.tailM %d", rcsTiling.tailM);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.tailCnt %d", rcsTiling.tailCnt);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.biasLen %d", rcsTiling.biasLen);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.isAdd %d", rcsTiling.isAdd);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.rankM %d", rcsTiling.rankM);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.rankN %d", rcsTiling.rankN);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.rankK %d", rcsTiling.rankK);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.gatherIndex %d", rcsTiling.gatherIndex);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.isTransA %d", rcsTiling.isTransposeA);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.isTransB %d", rcsTiling.isTransposeB);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.storageGather %d", rcsTiling.storageGather);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.nd2NzWorkLen %lu", rcsTiling.nd2NzWorkLen);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.cToFloatLen %lu", rcsTiling.cToFloatLen);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.gatherLen %lu", rcsTiling.gatherLen);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.workspaceAddr4 %u", rcsTiling.workspaceAddr4);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.aicCoreNum %u", rcsTiling.aicCoreNum);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.needUbBuffer %u", rcsTiling.needUbBuffer);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.addX3UbCnt %u", rcsTiling.addX3UbCnt);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.commWorkSpaceSize %u", rcsTiling.commWorkSpaceSize);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.isInputCommQuantScale %u", rcsTiling.isInputCommQuantScale);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.dataType %u", rcsTiling.dataType);
 }
 
 static void PrintTilingData(Mc2Tiling::TileL2Tiling& tileL2Tiling)
 {
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.mL2TileCnt %d", tileL2Tiling.mL2TileCnt);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.nL2TileCnt %d", tileL2Tiling.nL2TileCnt);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.mTileBlocks %d", tileL2Tiling.mTileBlocks);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.nTileBlocks %d", tileL2Tiling.nTileBlocks);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.mTailBlocks %d", tileL2Tiling.mTailBlocks);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.nTailBlocks %d", tileL2Tiling.nTailBlocks);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.rankTileNum %d", tileL2Tiling.rankTileNum);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.calcOrder %d", tileL2Tiling.calcOrder);
-    OP_LOGD("MatmulReduceScatter", " tileL2Tiling.enableL2Tile %d", tileL2Tiling.enableL2Tile);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.mL2TileCnt %d", tileL2Tiling.mL2TileCnt);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.nL2TileCnt %d", tileL2Tiling.nL2TileCnt);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.mTileBlocks %d", tileL2Tiling.mTileBlocks);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.nTileBlocks %d", tileL2Tiling.nTileBlocks);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.mTailBlocks %d", tileL2Tiling.mTailBlocks);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.nTailBlocks %d", tileL2Tiling.nTailBlocks);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.rankTileNum %d", tileL2Tiling.rankTileNum);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.calcOrder %d", tileL2Tiling.calcOrder);
+    OP_LOGD("MatmulReduceScatter", "tileL2Tiling.enableL2Tile %d", tileL2Tiling.enableL2Tile);
 }
 }
 
@@ -242,12 +242,12 @@ static uint32_t MC2_SpliteReduceScatter(mc2tiling::TilingArgs& args, uint32_t ma
 static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
     const gert::StorageShape* bShape = context->GetInputShape(1);
     OP_TILING_CHECK((aShape == nullptr) || (bShape == nullptr),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the required params shouldn't nullptr."),
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "required params"),
         return ge::GRAPH_FAILED);
     uint64_t valueOne = aShape->GetStorageShape().GetDim(0);
     uint64_t valueTwo = aShape->GetStorageShape().GetDim(1);
@@ -255,32 +255,27 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
     uint64_t valueFour = bShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0 || valueThree == 0 || valueFour == 0,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the value is invalid."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shape value"), return ge::GRAPH_FAILED);
 
     if (context->GetAttrs() == nullptr) {
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get attrs failed.");
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
     } else {
         auto reduce_op = context->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(reduce_op == nullptr,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the reduce_op is nullptr."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "reduce_op"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(strcmp(reduce_op, "sum") != 0,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the reduce_op should be sum, but real value is %s.", reduce_op), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "reduce_op", reduce_op, "The value of reduce_op must be sum"), return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(2);
         OP_TILING_CHECK(isTransA == nullptr,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the isTransA is nullptr."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransA"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(*isTransA != false,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the isTransA should be false, but real value is 1."), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", *isTransA ? "true" : "false", "The value of isTransA must be false"), return ge::GRAPH_FAILED);
     }
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     OP_TILING_CHECK(group == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the group is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -389,7 +384,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
     if (tilingData.param.biasLen != 0) {
         uint32_t batch_mode = 1U;
         auto ret = ctx->SetScheduleMode(batch_mode);
-        GE_ASSERT_GRAPH_SUCCESS(ret);
+        MC2_CHECK_LOG_RET(ctx->GetNodeName(), ret);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -426,7 +421,7 @@ static void SetReduceScatterTilingArgs(const gert::TilingContext* context, mc2ti
 
     if (args.commAlg == COMM_ALG_DOUBLE_RING) {
         args.mValue /= DOUBLE_RING_FACTOR;
-        OP_LOGD(context->GetNodeName(), " args.mValue is %lu under double ring communication algorithm.", args.mValue);
+        OP_LOGD(context->GetNodeName(), "args.mValue is %lu under double ring communication algorithm.", args.mValue);
     }
 
     args.nValue = nValue;
@@ -499,11 +494,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     mc2tiling::TilingArgs& args)
 {
     OP_TILING_CHECK(context->GetInputDesc(0) == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the input desc of x1 is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "input desc x1"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context->GetInputDesc(1) == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the input desc of x2 is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "input desc x2"), return ge::GRAPH_FAILED);
     SetReduceScatterTilingArgs(context, args);
 
     tilingData.param.rankM = args.orgMValue; // 存放用户原始输入的mValue
@@ -617,7 +610,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "get workspace failed"), return ge::GRAPH_FAILED);
 
     auto&& cfg = tilingData.param;
 
@@ -631,13 +624,13 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
         uint64_t gmcFloat = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankN) *
                             static_cast<uint64_t>(args.outputDtypeSize);
         gmcFloat = mc2tiling::AlignUp<uint64_t>(gmcFloat, 512); // 512 is used to get gm
-        OP_LOGD("MatmulReduceScatter", " reduce scatter gmcFloat size %lu.", gmcFloat);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter gmcFloat size %lu.", gmcFloat);
 
         tilingData.param.nd2NzWorkLen = nd2nzLen;
         tilingData.param.cToFloatLen = gmcFloat;
 
         storage_a = nd2nzLen + gmcFloat;
-        OP_LOGD("MatmulReduceScatter", " reduce scatter storage_a size %lu.", storage_a);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter storage_a size %lu.", storage_a);
     }
 
     int biasLen = 0;
@@ -646,7 +639,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
     }
     tilingData.param.biasLen = biasLen;
     workspaces[0] = storage_a + 16 * 1024 * 1024 + biasLen; // 16 mb, 1024 * 1024 is one mb
-    OP_LOGD("MatmulReduceScatter", " workspaces[0] size %ld, biasLen %d.", workspaces[0], biasLen);
+    OP_LOGD("MatmulReduceScatter", "workspaces[0] size %ld, biasLen %d.", workspaces[0], biasLen);
     tilingData.param.dataType = static_cast<uint8_t>(mc2tiling::Mc2TilingUtils::GetDataType(args.geAType));
 
     if (tilingData.param.rankID == 0) {
@@ -671,7 +664,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     MatmulReduceScatterTilingData* tilingData = context->GetTilingData<MatmulReduceScatterTilingData>();
     // 对参数进行校验
     OP_TILING_CHECK(ReduceScatterParamsCheck(context) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "param is invalid."),
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "param"),
                     return ge::GRAPH_FAILED);
     int index = 0;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
@@ -681,16 +674,13 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     auto comm_turn_ptr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);
 
     OP_TILING_CHECK(is_trans_b == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the is_trans_b is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "is_trans_b"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(comm_turn_ptr == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the comm_turn is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_turn"), return ge::GRAPH_FAILED);
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     auto comm_turn = *comm_turn_ptr;
     OP_TILING_CHECK(comm_turn != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "comm_turn should be 0, but the actual value is %ld.", comm_turn),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "comm_turn", std::to_string(comm_turn).c_str(), "0"),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("MatmulReduceScatter",
@@ -706,7 +696,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     tilingData->socParam.isStep = 0U;
     tilingData->socParam.isND2NZ = 1U;
     OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), " Set comm algorithm failed."),
+                    OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."),
                     return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
     OP_LOGI(context->GetNodeName(), " Step comm flag is %u. ND2NZ flag is: %u", tilingData->socParam.isStep,

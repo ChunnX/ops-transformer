@@ -22,8 +22,8 @@
 #include "quant_grouped_mat_mul_allto_allv_tiling_common.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
-#include "../../../../3rd/grouped_matmul/op_tiling/grouped_matmul_host_util.h"
-#include "../../../../3rd/grouped_matmul/op_tiling/grouped_matmul_tiling.h"
+#include "../../../../3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h"
+#include "../../../../3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_tiling.h"
 #include "../../../op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "register/tilingdata_base.h"
 

@@ -28,7 +28,9 @@ ACLNN_API aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
     const aclTensor* deqScale1, const aclTensor* quantScale1, const aclTensor* deqScale2, const aclTensor* quantScale2,
     const aclTensor* quantOffset2, int64_t numHeads, double scaleValue, int64_t preTokens, int64_t nextTokens,
     char* inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
-    const aclTensor* attentionOut, uint64_t* workspaceSize, aclOpExecutor** executor);
+    bool softmaxLseFlag, const aclIntArray* blockShape,
+    const aclTensor* attentionOut, const aclTensor* softmaxLse,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 /**
  * @brief The second interface of InnerBlitzSparseAttention is used to perform calculations.
  */

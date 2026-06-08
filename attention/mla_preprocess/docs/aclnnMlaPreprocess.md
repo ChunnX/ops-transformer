@@ -350,7 +350,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>支持首轴非连续</td>
     </tr>
     <tr>
       <td>kvCacheRope</td>
@@ -364,7 +364,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>支持首轴非连续</td>
     </tr>
     <tr>
       <td>slotMapping</td>

@@ -23,9 +23,11 @@
   根据 normType 对输入 x 做归一化：
 
   $$
-  normOut = \begin{cases}
-      SoftMax(x), & normType = 0 \\
-      Sigmoid(x), & normType = 1
+  normOut = 
+  \begin{cases}
+      SoftMax(x),      & normType = 0 \\
+      Sigmoid(x),      & normType = 1 \\
+      Softplus(x),     & normType = 2\ (仅<term>Ascend 950PR/Ascend 950DT</term>支持)
   \end{cases}
   $$
 
@@ -80,10 +82,10 @@
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
+  normType=1 or normType=2 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
 
   $$
-  if\ (normType = 1)\ or\ (normType = 0\ and\ renorm = 1):
+  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
   $$
 
   $$
@@ -167,7 +169,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>无</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>√</td>
     </tr>
     <tr>
@@ -177,7 +179,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape值与x最后一维相等。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>1</td>
       <td>√</td>
     </tr>
     <tr>
@@ -277,7 +279,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>数据类型与x需要保持一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>
@@ -287,7 +289,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape要求与yOut一致。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>
@@ -297,7 +299,7 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>shape要求与x保持一致。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>0-8</td>
+      <td>2</td>
       <td>-</td>
     </tr>
     <tr>

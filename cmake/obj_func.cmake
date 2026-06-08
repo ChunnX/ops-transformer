@@ -232,17 +232,20 @@ macro(add_modules_sources_with_soc)
       message(WARNING "failed to extract OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
       return()
   endif()
-
+  set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
   foreach(COMPUTE_UNIT IN LISTS ASCEND_COMPUTE_UNIT)
+      if (DEFINED ${_op_name}_${COMPUTE_UNIT}_arch_directory)
+          list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${COMPUTE_UNIT}_arch_directory})
+      endif()
       if("${COMPUTE_UNIT}" STREQUAL "ascend310p" AND MODULE_OP_MC2_ENABLE)
-          list(APPEND ARCH_DIRECTORY arch31)
+          list(APPEND OP_ARCH_DIRECTORY arch31)
       endif()
   endforeach()
   # deduplicate
- 	list(REMOVE_DUPLICATES ARCH_DIRECTORY)
+ 	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
   
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  foreach(ARCH ${ARCH_DIRECTORY})
+  foreach(ARCH ${OP_ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
     list(APPEND OPINFER_SRCS ${files})
   endforeach()
@@ -266,7 +269,7 @@ macro(add_modules_sources_with_soc)
     endif()
   endif()
 
-  foreach(ARCH ${ARCH_DIRECTORY})
+  foreach(ARCH ${OP_ARCH_DIRECTORY})
   if (MODULE_OP_MC2_ENABLE)
     file(GLOB_RECURSE files ${SOURCE_DIR}/op_tiling/${ARCH}/*.cpp)
   else()
@@ -359,10 +362,9 @@ function(add_opapi_modules)
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common/op_host>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -378,6 +380,7 @@ function(add_opapi_modules)
       PRIVATE
       -Dgoogle=ascend_private
       -DACLNN_LOG_FMT_CHECK
+      -DOP_LOG_LIBOPAPI_ONLY
     )
     target_link_libraries(${OPHOST_NAME}_opapi_obj
       PUBLIC
@@ -403,7 +406,7 @@ set(INFER_OBJ_INCLUDE
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
   $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
+  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
@@ -538,7 +541,7 @@ function(add_tiling_modules)
       
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
@@ -659,7 +662,8 @@ function(add_fallback_modules)
       PRIVATE
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -769,8 +773,8 @@ function(protobuf_generate_external comp c_var h_var)
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
       COMMAND ${CMAKE_COMMAND} -E make_directory "${proto_output_path}"
       COMMAND ${CMAKE_COMMAND} -E echo "generate proto cpp_out ${comp} by ${abs_file}"
-      COMMAND ${Protobuf_PROTOC_EXECUTABLE} -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
-      DEPENDS ${abs_file} ascend_protobuf_build_transformer
+      COMMAND ${PROTOBUF_HOST_PROTOC_DIR}/protoc -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
+      DEPENDS ${abs_file} host_protoc
       COMMENT "Running C++ protocol buffer compiler on ${file}" VERBATIM)
 
   endforeach()
@@ -800,7 +804,7 @@ function(add_onnx_plugin_modules)
       CXX_STANDARD_REQUIRED ON
       CXX_EXTENSIONS OFF
     )
-    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${Protobuf_INCLUDE} ${Protobuf_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABSL_SOURCE_DIR})
+    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${HOST_PROTOC_SRC} ${HOST_PROTOC_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABS_INSTALL_DIR})
     target_compile_definitions(${ONNX_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="ONNX_PLUGIN" LOG_CPP)
 
     if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
@@ -821,6 +825,7 @@ function(add_onnx_plugin_modules)
               $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
               $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
               json
+              ascend_protobuf_static
       )
   endif()
 
@@ -884,7 +889,7 @@ function(add_aicpu_cust_kernel_modules target_name)
             PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
             $<BUILD_INTERFACE:dlog_headers>
             -Wl,--no-whole-archive
-            Eigen3::EigenTransformer
+            Eigen3::Eigen
     )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
@@ -893,7 +898,7 @@ function(add_aicpu_cust_kernel_modules target_name)
 endfunction()
 
 # Compiles aicpu source as OBJECT for host side (x86).
-# Collects into AICPU_HOST_OBJ_TARGETS; linking into libtransformer_constant_folding_ops.so
+# Collects into AICPU_HOST_OBJ_TARGETS; linking into libopconstant_folding_transformer.so
 # is done in symbol.cmake gen_aicpu_const_symbol().
 function(add_aicpu_host_kernel_modules host_target_name)
   message(STATUS "add_aicpu_host_kernel_modules for ${host_target_name}")
@@ -917,7 +922,7 @@ function(add_aicpu_host_kernel_modules host_target_name)
       ${host_target_name}
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx14,intf_pub_cxx14>>
               $<BUILD_INTERFACE:dlog_headers>
-              Eigen3::EigenTransformer
+              Eigen3::Eigen
     )
 
     get_property(_host_targets GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)

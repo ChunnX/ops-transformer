@@ -292,15 +292,9 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     int32_t GetQueryBatchSize();
-    int32_t GetKvBatchSize();
-    bool CheckSingleParam();
-    bool CheckExistence();
-    bool CheckConsistency();
-    bool CheckFeature();
-    bool ParamsCheck();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(SplitResult &splitRes);
+    bool GenMetadata(SplitResult &splitRes);
     ValidSocVersion ProcessSocVersion();
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
@@ -353,7 +347,7 @@ private:
     Tensor *seqUsedKv_ = nullptr;
 
     // output
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
     // attributes
     int32_t batchSize_ = 0;
@@ -401,7 +395,7 @@ private:
     seqUsedQ = 3,
     seqUsedKv = 4,
     // output
-    metaData = 0,
+    metadata = 0,
     };
 };
 } // namespace aicpu

@@ -27,20 +27,20 @@ constexpr static const uint32_t SBNGD = 1;
 constexpr static const uint32_t BSNGD = 2;
 constexpr static const uint32_t TND = 3;
 
-#include "arch32/flash_attention_score_grad_tiling.h"
-#include "arch32/flash_attention_score_grad_template_tiling_key.h"
-#include "arch32/flash_attention_score_grad_constant_propagation.h"
-#include "arch32/flash_attention_score_grad_empty_tensor.h"
-#include "arch32/flash_attention_score_grad_post.h"
-#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2.h"
-#include "arch32/flash_attention_score_grad_pre.h"
-#include "arch32/flash_attention_score_grad_sfmg.h"
-#include "arch32/flash_attention_score_grad_s1s2_bn2.h"
-#include "arch32/flash_attention_score_grad_ngs1s2_bn.h"
-#include "arch32/flash_attention_score_grad_bngs1s2_b.h"
-#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_sab.h"
-#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_basic.h"
-#include "arch32/flash_attention_score_grad_s1s2_bn2gs1s2_basic_det.h"
+#include "arch22/flash_attention_score_grad_tiling.h"
+#include "arch22/flash_attention_score_grad_template_tiling_key.h"
+#include "arch22/flash_attention_score_grad_constant_propagation.h"
+#include "arch22/flash_attention_score_grad_empty_tensor.h"
+#include "arch22/flash_attention_score_grad_post.h"
+#include "arch22/flash_attention_score_grad_s1s2_bn2gs1s2.h"
+#include "arch22/flash_attention_score_grad_pre.h"
+#include "arch22/flash_attention_score_grad_sfmg.h"
+#include "arch22/flash_attention_score_grad_s1s2_bn2.h"
+#include "arch22/flash_attention_score_grad_ngs1s2_bn.h"
+#include "arch22/flash_attention_score_grad_bngs1s2_b.h"
+#include "arch22/flash_attention_score_grad_s1s2_bn2gs1s2_sab.h"
+#include "arch22/flash_attention_score_grad_s1s2_bn2gs1s2_basic.h"
+#include "arch22/flash_attention_score_grad_s1s2_bn2gs1s2_basic_det.h"
 
 constexpr MatmulConfig MM_CFG_EXCEED = GetNormalConfig(true);
 constexpr MatmulConfig MM_CFG_NORMAL = GetNormalConfig(false);

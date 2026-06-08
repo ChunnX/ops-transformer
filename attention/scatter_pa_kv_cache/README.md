@@ -26,6 +26,11 @@
     valueCache:[num_blocks, num_head * v_head_size // last_dim_v, block_size, last_dim_v]/[num_blocks, num_head, v_head_size // last_dim_v, block_size, last_dim_v]
     slotMapping:[batch * seq_len]
     cacheMode:"PA_NZ"
+
+    last_dim_k = 32 / sizeof(dtypeKey)
+    last_dim_v = 32 / sizeof(dtypeValue)
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```  
     
   - 场景二：
@@ -110,6 +115,7 @@
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
+- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、三、四、五。
 
 ## 参数说明
 
@@ -133,14 +139,14 @@
       <td>key</td>
       <td>输入</td>
       <td>待更新的key值，当前step多个token的key。</td>
-      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>keyCacheRef</td>
       <td>输入/输出</td>
       <td>需要更新的key cache，当前layer的key cache。</td>
-      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -154,14 +160,14 @@
       <td>value</td>
       <td>输入</td>
       <td>待更新的value值，当前step多个token的value。</td>
-      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>valueCacheRef</td>
       <td>输入/输出</td>
       <td>需要更新的value cache，当前layer的value cache。</td>
-      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+      <td>FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -217,9 +223,6 @@
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<br>
   - key/value数据类型仅支持：FLOAT16、BFLOAT16、INT8；<br>
-  - cacheMode当传空指针或"Norm"时，仅支持ND内存排布格式，当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布格式；<br>
-  - scatterMode当传空指针或"None"时，表示更新的key和value是非压缩状态且连续，当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态，当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态，当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态，当传"Nct"时，表示更新的key和value是非压缩状态但非连续；<br>
-  - strides和offsets仅当scatterMode为"Nct"时生效，分别表示strideK和strideV、offsetK和offsetV。<br>
 
 ## 约束说明
 
@@ -240,7 +243,11 @@
       * block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
   * 输入属性限制：
       * key、value、keyCacheRef、valueCacheRef的数据类型必须一致。
+      * 当cacheModeOptional为“PA_NZ”时key、keyCacheRef和value、valueCacheRef的数据类可以不一致。
       * slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致。
+      * cacheMode当传空指针或"Norm"时，仅支持ND内存排布格式，当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布格式。
+      * scatterMode当传空指针或"None"时，表示更新的key和value是非压缩状态且连续，当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态，当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态，当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态，当传"Nct"时，表示更新的key和value是非压缩状态但非连续。
+      * strides和offsets仅当scatterMode为"Nct"时生效，分别表示strideK和strideV、offsetK和offsetV。
 
 ## 调用说明
 

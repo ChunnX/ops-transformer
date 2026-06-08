@@ -48,8 +48,8 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ./arch32/sparse_flash_attention_grad_tiling_bs1_basic.cpp
-        ./arch32/sparse_flash_attention_grad_tiling_bs1_basic.h
+        ./arch22/sparse_flash_attention_grad_tiling_bs1_basic.cpp
+        ./arch22/sparse_flash_attention_grad_tiling_bs1_basic.h
         ./arch35/sparse_flash_attention_grad_tiling_bs1_regbase.cpp
         ./arch35/sparse_flash_attention_grad_tiling_bs1_regbase.h
     )

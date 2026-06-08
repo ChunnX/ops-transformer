@@ -68,7 +68,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 };
 
 #define COMMON_RUN_INFO \
-    int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
+    uint64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
     int64_t s2LoopLimit; \
@@ -209,47 +209,9 @@ struct RunInfo {
     uint32_t oriKvStride; \
     uint32_t cmpKvStride; \
 
-#define CV_SHARED_PARAMS \
-    /* base params */ \
-    uint32_t s1BaseSize; \
-    uint32_t s2BaseSize; \
-    uint32_t bSize;  \
-    uint32_t n2Size;  \
-    uint32_t gSize;  \
-    uint32_t s1Size;  \
-    uint32_t s2Size;  \
-    uint32_t dSize : 10;  \
-    uint32_t dSizeVInput : 12;  \
-    uint32_t needInit : 4; \
-    uint32_t layoutType : 4;  \
-    uint32_t isActualSeqLengthsNull : 1; \
-    uint32_t isActualSeqLengthsKVNull : 1; \
-    uint32_t sparseBlockCount; \
-    float softmaxScale; \
-    uint32_t cmpRatio : 9; \
-    uint32_t dSizeRope : 11; \
-    uint32_t oriMaskMode : 6;\
-    uint32_t cmpMaskMode : 6; \
-    int32_t oriWinLeft; \
-    int32_t oriWinRight; \
-    uint32_t tileSize : 8; \
-    /* pa params */  \
-    uint32_t oriBlockSize : 12; \
-    uint32_t cmpBlockSize : 12; \
-    uint32_t oriMaxBlockNumPerBatch; \
-    uint32_t cmpMaxBlockNumPerBatch; \
-    uint32_t oriKvStride; \
-    uint32_t cmpKvStride; \
-
-
 struct ConstInfo{
     COMMON_CONST_INFO;
     INFER_CONST_INFO;
-};
-
-/* only support b32 or b64 */
-struct CVSharedParams {
-    CV_SHARED_PARAMS;
 };
 }
 

@@ -65,10 +65,20 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
+    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
         OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim),
+            "In MXFP8 fullquant scenario, when rope exist, "
+            "the d size of query and key must be 64 or 128, but current is %u.",
+            fiaInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
+        OP_LOGE(fiaInfo.opName,
+            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.",
+            fiaInfo.qkHeadDim),
+        return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -265,7 +275,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                     keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim),
                 return ge::GRAPH_FAILED);
         }
-    } else {
+    } else if (inputLayout == "BSND") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
         keyRopeN = keyRopeShape.GetDim(DIM_NUM_2);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {

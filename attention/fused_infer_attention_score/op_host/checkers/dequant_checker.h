@@ -69,6 +69,7 @@ private:
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo);
@@ -120,6 +121,7 @@ private:
     ge::graphStatus CheckKScaleShapeForPerTokenHeadPAMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
+    int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo);
 
 private:
     bool enablePerblockQuant_ = false;

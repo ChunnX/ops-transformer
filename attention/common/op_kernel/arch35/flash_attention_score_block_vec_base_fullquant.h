@@ -675,6 +675,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaAttenMask
 {
     if constexpr (hasAtten && isMlaFullQuant) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
+        attenMaskInfo.attenMaskS1Offset = 0;    // 0: 默认值
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
         this->MlaBoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
@@ -829,8 +830,16 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1N
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 queryScaleUb = this->queryScaleQue[runInfo.multiCoreIdxMod2].template AllocTensor<T>();
                 deScaleQOffset = runInfo.queryOffset / constInfo.dSize + constInfo.subBlockIdx * runInfo.halfS1RealSize;
-                if (runInfo.halfS1RealSize > 0) {
+                if (runInfo.halfS1RealSize >= 8) {  // datacopy参数count限制32字节对齐，8*sizeof(float)=32
                     DataCopy(queryScaleUb, this->deScaleQGm[deScaleQOffset], (runInfo.halfS1RealSize + 7) >> 3 << 3);
+                } else if (runInfo.halfS1RealSize > 0) {
+                    DataCopyExtParams dataCopyExtParams;
+                    dataCopyExtParams.blockCount = 1;
+                    dataCopyExtParams.blockLen = runInfo.halfS1RealSize * sizeof(float);
+                    dataCopyExtParams.dstStride = 0;
+                    dataCopyExtParams.srcStride = 0;
+                    DataCopyPadExtParams<float> dataCopyPadParams;
+                    DataCopyPad(queryScaleUb, this->deScaleQGm[deScaleQOffset], dataCopyExtParams, dataCopyPadParams);
                 }
                 this->queryScaleQue[runInfo.taskIdMod2].template EnQue(queryScaleUb);
                 this->queryScaleQue[runInfo.taskIdMod2].template DeQue<T>();

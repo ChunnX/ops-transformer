@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file distribute_barrier.cpp
@@ -25,22 +25,23 @@ using namespace AscendC;
 using namespace DistributeBarrierImpl;
 
 extern "C" __global__ __aicore__ void distribute_barrier(GM_ADDR xRef, GM_ADDR timeOut, GM_ADDR elasticInfo,
-                                                         GM_ADDR xRefOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-  REGISTER_TILING_DEFAULT(DistributeBarrierTilingData);
-  TPipe pipe;
+                                                         GM_ADDR xRefOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+{
+    REGISTER_TILING_DEFAULT(DistributeBarrierTilingData);
+    TPipe pipe;
 
-  GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingGM);
+    GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingGM);
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-  DistributeBarrier<DTYPE_X_REF> op;
-  op.Init(timeOut, elasticInfo, workspaceGM, &pipe, &tilingData);
-  op.Process();
+    DistributeBarrier<DTYPE_X_REF> op;
+    op.Init(nullptr, timeOut, elasticInfo, workspaceGM, &pipe, &tilingData);
+    op.Process();
 #elif ((ORIG_DTYPE_X_REF == DT_BF16) || (ORIG_DTYPE_X_REF == DT_FLOAT16) || (ORIG_DTYPE_X_REF == DT_FLOAT) || \
        (ORIG_DTYPE_X_REF == DT_BOOL) || (ORIG_DTYPE_X_REF == DT_INT8) || (ORIG_DTYPE_X_REF == DT_INT16) ||      \
        (ORIG_DTYPE_X_REF == DT_INT32) || (ORIG_DTYPE_X_REF == DT_INT64) || (ORIG_DTYPE_X_REF == DT_UINT8) ||    \
        (ORIG_DTYPE_X_REF == DT_UINT16) || (ORIG_DTYPE_X_REF == DT_UINT32) || (ORIG_DTYPE_X_REF == DT_UINT64))
-  DistributeBarrier<DTYPE_X_REF> op;
-  op.Init(timeOut, elasticInfo, workspaceGM, &pipe, &tilingData);
-  op.Process();
+    DistributeBarrier<DTYPE_X_REF> op;
+    op.Init(nullptr, timeOut, elasticInfo, workspaceGM, &pipe, &tilingData);
+    op.Process();
 #endif
 }

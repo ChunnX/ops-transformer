@@ -4140,47 +4140,6 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyEmptyTensor()
     emptyTensor = 0;
 }
 
-void PromptFlashAttentionTilingV2::UpdateTilingKeyPFAMask(PromptFlashAttentionTilingDataV2 &tilingData, ge::DataType inputDataType) 
-{
-    if (enablePerblockQuant || enableIFAMLAFullQuant || inputDataType == ge::DT_FLOAT16 || inputDataType == ge::DT_BF16) {
-        PFAMask = 0;
-        return;
-    }
-    auto pfaMask = tilingData.promptAttentionBaseParams.get_useMask();
-    if (pfaMask == 0U) {
-        PFAMask = PFAMask_DISABLE_MASK;
-    } else if (pfaMask == 1 && tilingData.promptAttentionBaseParams.get_sparseMode() == SPARSE_MODE_BAND) {
-        PFAMask = PFAMask_ENABLE_MASK_BAND;
-    } else {
-        PFAMask = PFAMask_ENABLE_MASK_NO_BAND;
-    }
-}
-
-void PromptFlashAttentionTilingV2::UpdateTilingKeyPFAMatMulType(PromptFlashAttentionTilingDataV2 &tilingData, ge::DataType inputDataType) 
-{
-    if (enablePerblockQuant || enableIFAMLAFullQuant || inputDataType == ge::DT_FLOAT16 || inputDataType == ge::DT_BF16) {
-        pFAMatMulType = 0;
-        return;
-    }
-    auto dSize = tilingData.promptAttentionBaseParams.get_qkHeadSize();
-    if (dSize <= 64) dSize = 64; // 64: adjust qk headsize
-    else if (dSize <= 128) dSize = 128; // 128: adjust qk headsize
-    else if (dSize <= 256) dSize = 256; // 256: adjust qk headsize
-    else if (dSize <= 512) dSize = 512; // 512: adjust qk headsize
-    else if (dSize <= 576) dSize = 576; // 576: adjust qk headsize
-    if (dSize == 512) { // 512: qk head size
-        if (enablePA) {
-            pFAMatMulType = PFAMatMulType_MM_PA_D512;
-        } else {
-            pFAMatMulType = PFAMatMulType_MM_IFA_MLA;
-        }
-    } else if (enablePA) {
-        pFAMatMulType = PFAMatMulType_MM_PA;
-    } else {
-        pFAMatMulType = PFAMatMulType_MM_PFA;
-    }
-}
-
 void PromptFlashAttentionTilingV2::UpdateTilingKeyEnableKVPrefix() 
 {
     enableKVPrefix = isKVHasPrefix;
@@ -4206,8 +4165,6 @@ bool PromptFlashAttentionTilingV2::TilingGetTilingKeyAttentionAscendC(ContextPar
     UpdateTilingKeyIsPa(inputDataType);
     UpdateTilingKeyIsFd(inputDataType);
     UpdateTilingKeyEmptyTensor();
-    UpdateTilingKeyPFAMask(tilingData, inputDataType);
-    UpdateTilingKeyPFAMatMulType(tilingData, inputDataType);
     UpdateTilingKeyEnableKVPrefix();
     UpdateTilingKeySplitCoreMode();
     return true;
@@ -5209,13 +5166,14 @@ void PromptFlashAttentionTilingV2::SetTilingKey(ContextParamsForPFATiling& conte
     uint64_t gen_tilingkey = GET_TPL_TILING_KEY(static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config),
                                                 static_cast<uint64_t>(pseMode), static_cast<uint64_t>(quantMode), hasAttenMask,
                                                 hasRope, isPa, isFd, emptyTensor,
-                                                static_cast<uint64_t>(PFAMask), static_cast<uint64_t>(pFAMatMulType), static_cast<uint64_t>(enableKVPrefix), static_cast<uint64_t>(enableS1OutSplit));
+                                                static_cast<uint64_t>(enableKVPrefix), static_cast<uint64_t>(enableS1OutSplit));
     context_->SetTilingKey(gen_tilingkey);
     OP_LOGI(contextKeyParams.opName, "The new template tilingkey is %llu.", gen_tilingkey);
-    OP_LOGI(contextKeyParams.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, pFAMatMulType: %llu, enableKVPrefix: %llu, enableS1OutSplit:%llu.",
+    OP_LOGI(contextKeyParams.opName, "The new template tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
+            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, enableKVPrefix: %llu, enableS1OutSplit:%llu.",
             static_cast<uint64_t>(inOutLayoutType), static_cast<uint64_t>(config), static_cast<uint64_t>(pseMode),
-            static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor, static_cast<uint64_t>(PFAMask),
-            static_cast<uint64_t>(pFAMatMulType), static_cast<uint64_t>(enableKVPrefix), static_cast<uint64_t>(enableS1OutSplit));
+            static_cast<uint64_t>(quantMode), hasAttenMask, hasRope, isPa, isFd, emptyTensor,
+            static_cast<uint64_t>(enableKVPrefix), static_cast<uint64_t>(enableS1OutSplit));
 }
 
 ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttentionTilingDataV2& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling) {
@@ -5240,13 +5198,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttention
     } else {
         uint64_t cap = context_->GetRawTilingData()->GetCapacity();
         OP_LOGI(contextParamsForPFATiling.opName, "TilingData context GetCapacity: %lu, faRunFlag_ is %d", cap, faRunFlag_);
-        if (contextParamsForPFATiling.inputDataType != ge::DT_BF16 && contextParamsForPFATiling.inputDataType != ge::DT_FLOAT16) {
-            PFAFullQuantTilingData* tiling = context_->GetTilingData<PFAFullQuantTilingData>();
-            tiling->MigrateFromLegacyFormat(tilingData);
-        } else {
-            PromptFlashAttentionTilingDataV2* tiling = context_->GetTilingData<PromptFlashAttentionTilingDataV2>();
-            *tiling = tilingData;
-        }
+        PromptFlashAttentionTilingDataV2* tiling = context_->GetTilingData<PromptFlashAttentionTilingDataV2>();
+        *tiling = tilingData;
     }
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context_->SetScheduleMode(BATCH_MODE_SCHEDULE);

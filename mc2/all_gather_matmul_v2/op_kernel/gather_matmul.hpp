@@ -79,6 +79,7 @@ public:
         int32_t rankIdx;
         int32_t rankSize;
         bool needFixpipe;
+        bool accumWorkSpacePingPong;
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -90,11 +91,13 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_,
                LayoutA layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_,
-               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
+               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_,
+               bool accumWorkSpacePingPong_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
               layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPeerMem(ptrPeerMem_),
               layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_)
+              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_),
+              accumWorkSpacePingPong(accumWorkSpacePingPong_)
         {
         }
     };
@@ -161,7 +164,7 @@ public:
         BlockMmad blockMmad(resource);
 
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
-        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -209,7 +212,7 @@ public:
     {
         FixpipeBlockMmad fixpipeBlockMmad(resource);
 
-        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -259,9 +262,9 @@ public:
 
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
-        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t blockSize = static_cast<uint64_t>(blockM) * kAlign;
+        uint64_t outputBlockSize = static_cast<uint64_t>(blockM) * params.problemShape.n();
+        uint64_t mnSize = static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -292,8 +295,7 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
-                                        + params.layoutC.GetOffset(offsetC);
+                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -346,9 +348,9 @@ public:
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
-        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t blockSize = static_cast<uint64_t>(blockM) * kAlign;
+        uint64_t outputBlockSize = static_cast<uint64_t>(blockM) * params.problemShape.n();
+        uint64_t mnSize = static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -379,8 +381,11 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
+                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                if (params.accumWorkSpacePingPong) {
+                    gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
+                }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取

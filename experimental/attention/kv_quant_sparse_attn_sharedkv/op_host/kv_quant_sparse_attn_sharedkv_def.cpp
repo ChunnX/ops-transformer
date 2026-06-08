@@ -22,82 +22,82 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
+            .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("cmp_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
+            .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("ori_sparse_indices")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cmp_sparse_indices")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_block_table")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cmp_block_table")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_ori_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_cmp_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("seqused_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("seqused_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("sinks")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("kv_quant_mode").AttrType(REQUIRED).Int(1);
         this->Attr("tile_size").AttrType(OPTIONAL).Int(64); // tile_size默认值64
         this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // rope_head_dim默认值64

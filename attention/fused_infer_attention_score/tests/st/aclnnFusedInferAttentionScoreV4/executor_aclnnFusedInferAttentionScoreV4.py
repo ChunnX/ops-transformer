@@ -1413,7 +1413,7 @@ def _t_indequant_ds_act(ifa_param):
         mask_tensor = ifa_param['mask_cur'].numpy()
 
     kv_smax = k_tensor.shape[2]
-    if act_seq != None and act_seq != -1:
+    if act_seq is not None and act_seq != -1:
         kv_smax = act_seq
 
     s2Inner = np.minimum(512, kv_smax)
@@ -1540,7 +1540,7 @@ def _t_indequant_ds_act_golden(ifa_param):
         lse = None
 
     kv_smax = k_tensor.shape[2]
-    if act_seq != None and act_seq != -1:
+    if act_seq is not None and act_seq != -1:
         kv_smax = act_seq
 
     s2Inner = np.minimum(512, kv_smax)
@@ -4405,7 +4405,7 @@ def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=Fals
     """
     Compute the softmax function for each channel of the input x.
     """
-    if update == None:
+    if update is None:
         if is_fp16:
             x = x.astype(np.float32)
         x_max = np.max(x, axis=-1, keepdims=True)
@@ -6129,7 +6129,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         actualSeqLengthsKV = trans_tnd_actseq(actualSeqLengthsKV)
     # >> actualSeqLengths预处理：actualSeqLengths为单值场景，如果长度为1且b不为1，则将actualSeqLengths扩展为b个单值的列表
     if inputLayout != "TND" and inputLayout != "NTD_TND":
-        if actualSeqLengths != None:
+        if actualSeqLengths is not None:
             if len(actualSeqLengths) == 1 and len(actualSeqLengths) != q_shape[0]:
                 actualSeqLengths_item = actualSeqLengths[0]
                 for b_count in range(batch - 1):
@@ -6137,7 +6137,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
             # >> actualSeqLengths预处理：actualSeqLengths长度超过
             if len(actualSeqLengths) > batch:
                 actualSeqLengths = actualSeqLengths[:batch]
-        if actualSeqLengthsKV != None:
+        if actualSeqLengthsKV is not None:
             if len(actualSeqLengthsKV) == 1 and len(actualSeqLengthsKV) != q_shape[0]:
                 actualSeqLengthsKV_item = actualSeqLengthsKV[0]
                 for b_count in range(batch - 1):
@@ -7535,7 +7535,7 @@ class MaskGenerator():
             npu_mask = np.ones(npu_m_shape, dtype='uint8')
         cpu_mask = cls._create_mask(m_shape, pre_tokens, next_tokens)
         if pad_flag:
-            if batch == None:
+            if batch is None:
                 cpu_mask = cls._random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
                 npu_mask[:cpu_mask.shape[0], :cpu_mask.shape[1]] = cpu_mask
                 return cpu_mask, npu_mask
@@ -7560,7 +7560,7 @@ class MaskGenerator():
             npu_mask = np.array(re_mask_npu_batch).astype(m_dtype)
             return cpu_mask, npu_mask
         else:
-            if batch == None:
+            if batch is None:
                 cpu_mask = cls._random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
                 return cpu_mask, cpu_mask
             for i in range(batch):
@@ -9228,7 +9228,7 @@ def load_kv_cache(input_data: InputDataset):
     block_table_tensor = torch.tensor(block_table, dtype=torch.int32)
     input_data.kwargs["blockTableOptional"] = torch.tensor(block_table_tensor, dtype=torch.int32).reshape(blocktable_shape).npu()
 
-    if input_data.kwargs["keyRopeOptional"] != None:
+    if input_data.kwargs["keyRopeOptional"] is not None:
         k_rope_cache = input_data.kwargs.pop("k_rope_cache")
         k_rope_cache = torch.tensor(k_rope_cache, dtype=torch.float32).to(dtype=input_data.kwargs["keyRopeOptional"].dtype).reshape(k_rope_cache.shape).npu()
         input_data.kwargs["keyRopeOptional"] = k_rope_cache
@@ -9277,7 +9277,7 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         tensor_list[0] = query = input_data.kwargs["query"].to(dtype=torch.int8).cpu().numpy()
         tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
         tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
-    elif input_data.kwargs["antiquantScaleOptional"] != None:
+    elif input_data.kwargs["antiquantScaleOptional"] is not None:
         tensor_list[0] = query = input_data.kwargs["query"].to(dtype=torch.float32).cpu().numpy()
         tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
         tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
@@ -9286,35 +9286,35 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.float16).cpu().numpy()
         tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.float16).cpu().numpy()
         
-    tensor_list[3] = pse = input_data.kwargs["pseShiftOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["pseShiftOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[4] = attenmask = input_data.kwargs["attenMaskOptional"].to(dtype=torch.bool).cpu().numpy() if input_data.kwargs["attenMaskOptional"] != None else np.array([], dtype=np.float32)
+    tensor_list[3] = pse = input_data.kwargs["pseShiftOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["pseShiftOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[4] = attenmask = input_data.kwargs["attenMaskOptional"].to(dtype=torch.bool).cpu().numpy() if input_data.kwargs["attenMaskOptional"] is not None else np.array([], dtype=np.float32)
 
-    tensor_list[5] = dequantscale1 = input_data.kwargs["deqScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale1Optional"] != None else np.array([], dtype=np.float32)
-    tensor_list[6] = quantscale1 = input_data.kwargs["quantScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale1Optional"] != None else np.array([], dtype=np.float32)
-    tensor_list[7] = dequantscale2 = input_data.kwargs["deqScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale2Optional"] != None else np.array([], dtype=np.float32)
+    tensor_list[5] = dequantscale1 = input_data.kwargs["deqScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale1Optional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[6] = quantscale1 = input_data.kwargs["quantScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale1Optional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[7] = dequantscale2 = input_data.kwargs["deqScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale2Optional"] is not None else np.array([], dtype=np.float32)
 
-    tensor_list[8] = quantscale2 = input_data.kwargs["quantScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale2Optional"] != None else np.array([], dtype=np.float32)
-    tensor_list[9] = quantoffset2 = input_data.kwargs["quantOffset2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantOffset2Optional"] != None else np.array([], dtype=np.float32)
-    tensor_list[10] = antiquantscale = input_data.kwargs["antiquantScaleOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantScaleOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[11] = antiquantoffset = input_data.kwargs["antiquantOffsetOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantOffsetOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[12] = blocktable = input_data.kwargs["blockTableOptional"].cpu().numpy() if input_data.kwargs["blockTableOptional"] != None else np.array([], dtype=np.int32)
+    tensor_list[8] = quantscale2 = input_data.kwargs["quantScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale2Optional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[9] = quantoffset2 = input_data.kwargs["quantOffset2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantOffset2Optional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[10] = antiquantscale = input_data.kwargs["antiquantScaleOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[11] = antiquantoffset = input_data.kwargs["antiquantOffsetOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[12] = blocktable = input_data.kwargs["blockTableOptional"].cpu().numpy() if input_data.kwargs["blockTableOptional"] is not None else np.array([], dtype=np.int32)
 
-    tensor_list[13] = q_padding_size = input_data.kwargs["queryPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["queryPaddingSizeOptional"] != None else np.array([], dtype=np.uint64)
-    tensor_list[14] = padding_size = input_data.kwargs["kvPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["kvPaddingSizeOptional"] != None else np.array([], dtype=np.uint64)
-    tensor_list[15] = k_antiquantscale = input_data.kwargs["keyAntiquantScaleOptional"].cpu() if input_data.kwargs["keyAntiquantScaleOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[16] = k_antiquantoffset = input_data.kwargs["keyAntiquantOffsetOptional"].cpu() if input_data.kwargs["keyAntiquantOffsetOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[17] = v_antiquantscale = input_data.kwargs["valueAntiquantScaleOptional"].cpu() if input_data.kwargs["valueAntiquantScaleOptional"] != None else np.array([], dtype=np.float32)
+    tensor_list[13] = q_padding_size = input_data.kwargs["queryPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["queryPaddingSizeOptional"] is not None else np.array([], dtype=np.uint64)
+    tensor_list[14] = padding_size = input_data.kwargs["kvPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["kvPaddingSizeOptional"] is not None else np.array([], dtype=np.uint64)
+    tensor_list[15] = k_antiquantscale = input_data.kwargs["keyAntiquantScaleOptional"].cpu() if input_data.kwargs["keyAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[16] = k_antiquantoffset = input_data.kwargs["keyAntiquantOffsetOptional"].cpu() if input_data.kwargs["keyAntiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[17] = v_antiquantscale = input_data.kwargs["valueAntiquantScaleOptional"].cpu() if input_data.kwargs["valueAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
 
-    tensor_list[18] = v_antiquantoffset = input_data.kwargs["valueAntiquantOffsetOptional"].cpu() if input_data.kwargs["valueAntiquantOffsetOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[19] = k_prefix = input_data.kwargs["keySharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["keySharedPrefixOptional"] != None else np.array([], dtype=np.int8)
-    tensor_list[20] = v_prefix = input_data.kwargs["valueSharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["valueSharedPrefixOptional"] != None else np.array([], dtype=np.int8)
+    tensor_list[18] = v_antiquantoffset = input_data.kwargs["valueAntiquantOffsetOptional"].cpu() if input_data.kwargs["valueAntiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[19] = k_prefix = input_data.kwargs["keySharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["keySharedPrefixOptional"] is not None else np.array([], dtype=np.int8)
+    tensor_list[20] = v_prefix = input_data.kwargs["valueSharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["valueSharedPrefixOptional"] is not None else np.array([], dtype=np.int8)
     
-    tensor_list[23] = q_rope = input_data.kwargs["queryRopeOptional"].cpu().numpy() if input_data.kwargs["queryRopeOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[24] = k_rope = input_data.kwargs["keyRopeOptional"].cpu().numpy() if input_data.kwargs["keyRopeOptional"] != None else np.array([], dtype=np.float32)
+    tensor_list[23] = q_rope = input_data.kwargs["queryRopeOptional"].cpu().numpy() if input_data.kwargs["queryRopeOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[24] = k_rope = input_data.kwargs["keyRopeOptional"].cpu().numpy() if input_data.kwargs["keyRopeOptional"] is not None else np.array([], dtype=np.float32)
 
-    tensor_list[26] = k_rope_antiquantScale = input_data.kwargs["keyRopeAntiquantScaleOptional"].cpu().numpy() if input_data.kwargs["keyRopeAntiquantScaleOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[27] = dequantScale_query = input_data.kwargs["dequantScaleQueryOptional"].cpu().numpy() if input_data.kwargs["dequantScaleQueryOptional"] != None else np.array([], dtype=np.float32)
-    tensor_list[28] = sinks = input_data.kwargs["learnableSinkOptional"].cpu().numpy() if input_data.kwargs["learnableSinkOptional"] != None else np.array([], dtype=np.float32)
+    tensor_list[26] = k_rope_antiquantScale = input_data.kwargs["keyRopeAntiquantScaleOptional"].cpu().numpy() if input_data.kwargs["keyRopeAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[27] = dequantScale_query = input_data.kwargs["dequantScaleQueryOptional"].cpu().numpy() if input_data.kwargs["dequantScaleQueryOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[28] = sinks = input_data.kwargs["learnableSinkOptional"].cpu().numpy() if input_data.kwargs["learnableSinkOptional"] is not None else np.array([], dtype=np.float32)
 
     shape_input[0] = list(input_data.kwargs["query"].shape)
     dtype_input[0] = dtype_map[input_data.kwargs["query"].dtype]
@@ -9325,12 +9325,12 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
     shape_input[2] = list(input_data.kwargs["value"][0].shape)
     dtype_input[2] = dtype_map[input_data.kwargs["value"][0].dtype]
 
-    if input_data.kwargs["pseShiftOptional"] != None:
+    if input_data.kwargs["pseShiftOptional"] is not None:
         params['flaglist'][3] = 1
         dtype_input[3] = dtype_map[input_data.kwargs["pseShiftOptional"].dtype]
         shape_input[3] = list(input_data.kwargs["pseShiftOptional"].shape)
 
-    if input_data.kwargs["attenMaskOptional"] != None:
+    if input_data.kwargs["attenMaskOptional"] is not None:
         params['flaglist'][4] = 1
         range_input[4][0] = [0, 1]
         dtype_input[4] = dtype_map[input_data.kwargs["attenMaskOptional"].dtype]
@@ -9350,42 +9350,42 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         KV_S = shape_input[1][1] if input_data.kwargs["inputLayout"] in ['BSND', 'BSH'] else shape_input[1][2]
         params["actualseqlengthskv"] = [KV_S]
 
-    if input_data.kwargs["deqScale1Optional"] != None:
+    if input_data.kwargs["deqScale1Optional"] is not None:
         params['flaglist'][7] = 1
         dtype_input[5] = dtype_map[input_data.kwargs["deqScale1Optional"].dtype]
         shape_input[5] = list(input_data.kwargs["deqScale1Optional"].shape)
 
-    if input_data.kwargs["quantScale1Optional"] != None:
+    if input_data.kwargs["quantScale1Optional"] is not None:
         params['flaglist'][8] = 1
         dtype_input[6] = dtype_map[input_data.kwargs["quantScale1Optional"].dtype]
         shape_input[6] = list(input_data.kwargs["quantScale1Optional"].shape)
 
-    if input_data.kwargs["deqScale2Optional"] != None:
+    if input_data.kwargs["deqScale2Optional"] is not None:
         params['flaglist'][9] = 1
         dtype_input[7] = dtype_map[input_data.kwargs["deqScale2Optional"].dtype]
         shape_input[7] = list(input_data.kwargs["deqScale2Optional"].shape)
 
-    if input_data.kwargs["quantScale2Optional"] != None:
+    if input_data.kwargs["quantScale2Optional"] is not None:
         params['flaglist'][10] = 1
         dtype_input[8] = dtype_map[input_data.kwargs["quantScale2Optional"].dtype]
         shape_input[8] = list(input_data.kwargs["quantScale2Optional"].shape)
     
-    if input_data.kwargs["quantOffset2Optional"] != None:
+    if input_data.kwargs["quantOffset2Optional"] is not None:
         params['flaglist'][11] = 1
         dtype_input[9] = dtype_map[input_data.kwargs["quantOffset2Optional"].dtype]
         shape_input[9] = list(input_data.kwargs["quantOffset2Optional"].shape)
 
-    if input_data.kwargs["antiquantScaleOptional"] != None:
+    if input_data.kwargs["antiquantScaleOptional"] is not None:
         params['flaglist'][12] = 1
         dtype_input[10] = dtype_map[input_data.kwargs["antiquantScaleOptional"].dtype]
         shape_input[10] = list(input_data.kwargs["antiquantScaleOptional"].shape)
     
-    if input_data.kwargs["antiquantOffsetOptional"] != None:
+    if input_data.kwargs["antiquantOffsetOptional"] is not None:
         params['flaglist'][13] = 1
         dtype_input[11] = dtype_map[input_data.kwargs["antiquantOffsetOptional"].dtype]
         shape_input[11] = list(input_data.kwargs["antiquantOffsetOptional"].shape)
     
-    if input_data.kwargs["blockTableOptional"] != None:
+    if input_data.kwargs["blockTableOptional"] is not None:
         params['flaglist'][14] = 1
         dtype_input[12] = dtype_map[input_data.kwargs["blockTableOptional"].dtype]
         shape_input[12] = list(input_data.kwargs["blockTableOptional"].shape)
@@ -9396,54 +9396,54 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         shape_input[21] = cache_shape
         shape_input[22] = cache_shape
     
-    if input_data.kwargs["queryPaddingSizeOptional"] != None:
+    if input_data.kwargs["queryPaddingSizeOptional"] is not None:
         params['flaglist'][15] = 1
         range_input[15][0] = q_padding_size
         dtype_input[13] = dtype_map[input_data.kwargs["queryPaddingSizeOptional"].dtype]
         shape_input[13] = list(input_data.kwargs["queryPaddingSizeOptional"].shape)
     
-    if input_data.kwargs["kvPaddingSizeOptional"] != None:
+    if input_data.kwargs["kvPaddingSizeOptional"] is not None:
         params['flaglist'][16] = 1
         range_input[16][0] = padding_size
         dtype_input[14] = dtype_map[input_data.kwargs["kvPaddingSizeOptional"].dtype]
         shape_input[14] = list(input_data.kwargs["kvPaddingSizeOptional"].shape)
 
-    if input_data.kwargs["keyAntiquantScaleOptional"] != None:
+    if input_data.kwargs["keyAntiquantScaleOptional"] is not None:
         params['flaglist'][17] = 1
         dtype_input[15] = dtype_map[input_data.kwargs["keyAntiquantScaleOptional"].dtype]
         shape_input[15] = list(input_data.kwargs["keyAntiquantScaleOptional"].shape)
     
-    if input_data.kwargs["keyAntiquantOffsetOptional"] != None:
+    if input_data.kwargs["keyAntiquantOffsetOptional"] is not None:
         params['flaglist'][18] = 1
         dtype_input[16] = dtype_map[input_data.kwargs["keyAntiquantOffsetOptional"].dtype]
         shape_input[16] = list(input_data.kwargs["keyAntiquantOffsetOptional"].shape)
     
-    if input_data.kwargs["valueAntiquantScaleOptional"] != None:
+    if input_data.kwargs["valueAntiquantScaleOptional"] is not None:
         params['flaglist'][19] = 1
         dtype_input[17] = dtype_map[input_data.kwargs["valueAntiquantScaleOptional"].dtype]
         shape_input[17] = list(input_data.kwargs["valueAntiquantScaleOptional"].shape)
     
-    if input_data.kwargs["valueAntiquantOffsetOptional"] != None:
+    if input_data.kwargs["valueAntiquantOffsetOptional"] is not None:
         params['flaglist'][20] = 1
         dtype_input[18] = dtype_map[input_data.kwargs["valueAntiquantOffsetOptional"].dtype]
         shape_input[18] = list(input_data.kwargs["valueAntiquantOffsetOptional"].shape)
     
-    if input_data.kwargs["keySharedPrefixOptional"] != None:
+    if input_data.kwargs["keySharedPrefixOptional"] is not None:
         params['flaglist'][21] = 1
         dtype_input[19] = dtype_map[input_data.kwargs["keySharedPrefixOptional"].dtype]
         shape_input[19] = list(input_data.kwargs["keySharedPrefixOptional"].shape)
     
-    if input_data.kwargs["valueSharedPrefixOptional"] != None:
+    if input_data.kwargs["valueSharedPrefixOptional"] is not None:
         params['flaglist'][22] = 1
         dtype_input[20] = dtype_map[input_data.kwargs["valueSharedPrefixOptional"].dtype]
         shape_input[20] = list(input_data.kwargs["valueSharedPrefixOptional"].shape)
     
-    if input_data.kwargs["queryRopeOptional"]!= None:
+    if input_data.kwargs["queryRopeOptional"]is not None:
         params['flaglist'][26] = 1
         dtype_input[23] = dtype_map[input_data.kwargs["queryRopeOptional"].dtype]
         shape_input[23] = list(input_data.kwargs["queryRopeOptional"].shape)
         
-    if input_data.kwargs["keyRopeOptional"]!= None:
+    if input_data.kwargs["keyRopeOptional"]is not None:
         params['flaglist'][27] = 1
         dtype_input[24] = dtype_map[input_data.kwargs["keyRopeOptional"].dtype]
         shape_input[24] = list(input_data.kwargs["keyRopeOptional"].shape)
@@ -9501,7 +9501,7 @@ def aclnn_op_func_fia_cpu(input_data : InputDataset, is_benchmark_task, is_prepr
     else:
         output = FiaOpForward(tensor_list, params).forward()
 
-    if input_data.kwargs["quantScale2Optional"] != None:
+    if input_data.kwargs["quantScale2Optional"] is not None:
         output = output.to(dtype=torch.int8)
     else:
         output = output.to(dtype=input_data.kwargs["query"].dtype)
@@ -9519,7 +9519,7 @@ class fusedInferAttentionScoreApi(BaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         # 将cache生成逻辑数据直接存放input_data里
         input_data = overwrite_structured_mask(input_data)
-        if input_data.kwargs["blockTableOptional"] != None: 
+        if input_data.kwargs["blockTableOptional"] is not None: 
             init_kv_cache(input_data, is_benchmark_task = True, is_preprocess=True)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
@@ -9540,7 +9540,7 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         torch.npu.synchronize()
         input_args = []  # 算子的入参列表
-        if input_data.kwargs["blockTableOptional"] != None: 
+        if input_data.kwargs["blockTableOptional"] is not None: 
             load_kv_cache(input_data)
 
         
@@ -9548,13 +9548,13 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
         input_args, output_packages = super().init_by_input_data(input_data)
         
         AclIntArrayPtr=ctypes.POINTER(AclIntArray)
-        if input_data.kwargs["actualSeqLengthsOptional"] == None or input_data.kwargs["actualSeqLengthsOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsOptional"][0] < 0:
+        if input_data.kwargs["actualSeqLengthsOptional"] is None or input_data.kwargs["actualSeqLengthsOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsOptional"][0] < 0:
             input_args[5] = ctypes.cast(None, AclIntArrayPtr)
 
-        if input_data.kwargs["actualSeqLengthsKvOptional"] == None or input_data.kwargs["actualSeqLengthsKvOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsKvOptional"][0] < 0:
+        if input_data.kwargs["actualSeqLengthsKvOptional"] is None or input_data.kwargs["actualSeqLengthsKvOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsKvOptional"][0] < 0:
             input_args[6] = ctypes.cast(None, AclIntArrayPtr)
 
-        if input_data.kwargs["actualSharedPrefixLenOptional"] == None or input_data.kwargs["actualSharedPrefixLenOptional"][0] == arr_tuple_none or input_data.kwargs["actualSharedPrefixLenOptional"][0] < 0:
+        if input_data.kwargs["actualSharedPrefixLenOptional"] is None or input_data.kwargs["actualSharedPrefixLenOptional"][0] == arr_tuple_none or input_data.kwargs["actualSharedPrefixLenOptional"][0] < 0:
             input_args[23] = ctypes.cast(None, AclIntArrayPtr)
 
         output_packages = []  # 算子的出参数据包列表

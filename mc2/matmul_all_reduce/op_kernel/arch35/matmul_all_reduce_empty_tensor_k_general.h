@@ -28,7 +28,7 @@ constexpr uint32_t EMPTY_TENSOR_BIAS_UB_FACTOR = 1;
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename YType>
+template <typename YType, int commMode>
 class MatmulAllReduceEmptyTensorKGeneral
 {
 public:
@@ -51,8 +51,8 @@ public:
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         notifyFlag_ = (GetBlockIdx() == 0);
         if (notifyFlag_) {
-            hcclHandleId_ =
-                hccl_.AllReduce(addrs_->cGM, addrs_->outputGM, cOffset_, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM, 1U);
+            hcclHandleId_ = hccl_.template AllReduce(
+                addrs_->cGM, addrs_->outputGM, cOffset_, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM, 1U);
         }
     }
 
@@ -152,7 +152,7 @@ private:
     uint64_t cOffset_;
     TPipe* tPipe_;
     bool notifyFlag_{false};
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
     AscendC::HcclHandle hcclHandleId_;
 };
 
@@ -164,11 +164,11 @@ private:
     GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingDataA5, tilingData, tilingGM)
 #endif
 
-#define INVOKE_MC2_EMPTY_TENSOR_OP_IMPL()                                                              \
+#define INVOKE_MC2_EMPTY_TENSOR_OP_IMPL(commMode)                                                      \
     do {                                                                                               \
         GET_TILING_DATA_FOR_EMPTY_TENSOR();                                                            \
         MC2GmAddrs addrs = {nullptr, nullptr, biasGM, addGM, cGM, nullptr, cGM};                       \
-        MatmulAllReduceEmptyTensorKGeneral<DTYPE_Y> op(&addrs, (MC2TilingHeader*)&tilingData, &tPipe); \
+        MatmulAllReduceEmptyTensorKGeneral<DTYPE_Y, commMode> op(&addrs, (MC2TilingHeader*)&tilingData, &tPipe); \
         op.Init();                                                                                     \
         op.Process();                                                                                  \
     } while (0)

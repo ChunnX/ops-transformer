@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct QliMetaData {
+    struct QliMetadata {
         uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
         uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
     };
 };
 
-static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetaData));
+static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetadata));
 };
 
 #endif
