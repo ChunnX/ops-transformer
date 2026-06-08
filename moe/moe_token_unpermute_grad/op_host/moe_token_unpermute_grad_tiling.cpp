@@ -242,7 +242,6 @@ static bool CoreSplitInfoProbIsNotNone(
 static ge::graphStatus MoeTokenUnpermuteGradCoreSplitInfo(
     const gert::TilingContext* context, MoeTokenUnpermuteGradTilingData& tiling)
 {
-    // 直接用 unpermutedTokensGrad 的类型，无需判断
     auto tokensDtype = context->GetOptionalInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType();
     uint32_t tokensTypeLength = GetLengthByType(tokensDtype); // sizeof(bfloat16)
 
@@ -290,9 +289,6 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
     MoeTokenUnpermuteGradTilingData tiling;
     const gert::StorageShape* unpermutedOutputDShape = context->GetOptionalInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
-    
- 	auto permutedTokensTensor = context->GetOptionalInputTensor(INPUT_PERMUTED_TOKENS_IDX);
- 	const gert::StorageShape* permutedTokensShape = (permutedTokensTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
 
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape = (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
