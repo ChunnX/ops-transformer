@@ -50,7 +50,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_fp32)
                                               // attr
                                               {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
                                                 {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
-                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
+                                                {"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
     string expectTilingData =
@@ -79,7 +79,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_fp16)
                                               // attr
                                               {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
                                                 {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
-                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
+                                                {"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
     string expectTilingData =
@@ -108,7 +108,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16)
                                               // attr
                                               {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
                                                 {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
-                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
+                                                {"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
     string expectTilingData =
@@ -137,7 +137,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16_mix)
                                               // attr
                                               {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
                                                 {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
-                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                                {"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 0; // tilngkey
     string expectTilingData =

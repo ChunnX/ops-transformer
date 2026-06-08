@@ -79,7 +79,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -163,7 +163,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -247,7 +247,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -331,7 +331,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -415,7 +415,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -499,7 +499,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -583,7 +583,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }
@@ -667,7 +667,7 @@
                     "value": 0
                 },
                 {
-                    "name": "padded_mode",
+                    "name": "drop_and_pad",
                     "dtype": "bool",
                     "value": null
                 }

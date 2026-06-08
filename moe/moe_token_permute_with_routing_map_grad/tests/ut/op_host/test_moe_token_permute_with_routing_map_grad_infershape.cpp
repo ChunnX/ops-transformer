@@ -42,7 +42,7 @@ TEST_F(MoeTokenPermuteWithRoutingMapGrad,infershape_bf16)
         {// attr
             {"num_experts", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
             {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
-            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"drop_and_pad", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         }
     );
 

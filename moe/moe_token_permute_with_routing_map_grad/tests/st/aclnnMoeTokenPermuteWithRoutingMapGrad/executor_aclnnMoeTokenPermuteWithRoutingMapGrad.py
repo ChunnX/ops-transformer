@@ -36,7 +36,7 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         num_tokens = input_data.kwargs['tokensNum']
         hidden_size = input_data.kwargs['permutedTokenOutputGrad'].shape[1]
         num_experts = input_data.kwargs["numExperts"]
-        drop_and_pad = input_data.kwargs["padded_mode"]
+        drop_and_pad = input_data.kwargs["drop_and_pad"]
         num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
         case_id = self.task_result.case_config.id
@@ -47,7 +47,7 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         else:
             self.prob_type=self.torch_type
         input_data.kwargs['tokensNum'] = num_tokens
-        input_data.kwargs["padded_mode"] = drop_and_pad
+        input_data.kwargs["drop_and_pad"] = drop_and_pad
         input_data.kwargs["numExperts"] = num_experts
         sortedIndices = input_data.kwargs['sortedIndices']
         
@@ -202,7 +202,7 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         num_tokens = input_data.kwargs['tokensNum']
         hidden_size = input_data.kwargs['permutedTokenOutputGrad'].shape[1]
         num_experts = input_data.kwargs["numExperts"]
-        drop_and_pad = input_data.kwargs["padded_mode"]
+        drop_and_pad = input_data.kwargs["drop_and_pad"]
         num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
         if not self.prob_is_none: 
@@ -241,6 +241,43 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
 
 @register("AclnnBaseApi_aclnn_moe_token_permute_with_routing_map_grad")
 class AclnnMoeTokenPermuteWithRoutingMapGradApi(AclnnBaseApi):
+    def init_by_input_data(self, input_data: InputDataset):
+        input_args, output_packages = super().init_by_input_data(input_data)
+        case_id = self.task_result.case_config.id
+        prob_is_none_list = [True, False]
+        prob_is_none = prob_is_none_list[case_id % 2]
+
+        num_tokens = int(input_data.kwargs["tokensNum"])
+        num_experts = int(input_data.kwargs["numExperts"])
+        hidden_size = int(input_data.kwargs["permutedTokenOutputGrad"].shape[1])
+        token_dtype = input_data.kwargs["permutedTokenOutputGrad"].dtype
+
+        tokens_grad = torch.zeros((num_tokens, hidden_size), dtype=token_dtype)
+        if self.device in ("pyaclnn", "npu"):
+            tokens_grad = tokens_grad.npu()
+        output_packages[0] = self.torch_tensor_to_acl(tokens_grad)
+
+        out_start = len(input_args) - len(output_packages)
+        input_args[out_start] = output_packages[0]
+
+        if prob_is_none:
+            AclTensorPtr = ctypes.POINTER(AclTensor)
+            input_args[1] = ctypes.cast(input_args[1], AclTensorPtr)
+            dummy_probs_grad = torch.zeros(1, dtype=token_dtype)
+            if self.device in ("pyaclnn", "npu"):
+                dummy_probs_grad = dummy_probs_grad.npu()
+            output_packages[1] = self.torch_tensor_to_acl(dummy_probs_grad)
+            input_args[out_start + 1] = output_packages[1]
+        else:
+            prob_dtype = input_data.kwargs["permutedProbsOutputGradOptional"].dtype
+            probs_grad = torch.zeros((num_tokens, num_experts), dtype=prob_dtype)
+            if self.device in ("pyaclnn", "npu"):
+                probs_grad = probs_grad.npu()
+            output_packages[1] = self.torch_tensor_to_acl(probs_grad)
+            input_args[out_start + 1] = output_packages[1]
+
+        return input_args, output_packages
+
     def after_call(self, output_packages):
         case_id = self.task_result.case_config.id
         prob_is_none_list = [True,False]

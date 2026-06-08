@@ -192,15 +192,13 @@ static bool CheckOutputShapeValid(
                 "The dim 0 of probsGradOutOptional should be tokensNum(%ld), but got %ld.", tokensNum,
                 probsGradShape.GetDim(0)),
             return false);
-        if (dropAndPad) {
-            OP_CHECK(
-                probsGradShape.GetDim(1) == numExperts,
-                OP_LOGE(
-                    ACLNN_ERR_PARAM_INVALID,
-                    "In dropAndPad mode, the dim 1 of probsGradOutOptional should be numExperts(%ld), but got %ld.",
-                    numExperts, probsGradShape.GetDim(1)),
-                return false);
-        }
+        OP_CHECK(
+            probsGradShape.GetDim(1) == numExperts,
+            OP_LOGE(
+                ACLNN_ERR_PARAM_INVALID,
+                "The dim 1 of probsGradOutOptional should be numExperts(%ld), but got %ld.", numExperts,
+                probsGradShape.GetDim(1)),
+            return false);
     }
     return true;
 }

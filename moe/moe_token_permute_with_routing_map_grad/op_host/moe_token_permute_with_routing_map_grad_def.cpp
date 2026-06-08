@@ -52,7 +52,7 @@ public:
 
         this->Attr("num_experts").AttrType(REQUIRED).Int();
         this->Attr("tokens_num").AttrType(REQUIRED).Int();
-        this->Attr("padded_mode").AttrType(OPTIONAL).Bool(false);
+        this->Attr("drop_and_pad").AttrType(OPTIONAL).Bool(false);
 
         this->Output("tokens_grad_out")
             .ParamType(REQUIRED)

@@ -35,7 +35,7 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map_grad(
         KernelMoeTokenUnpermute<DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, int32_t, DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, false> op;
         op.Init(permutedTokenOutPutGrad, sortedIndices, nullptr, tokensGradOut, &moe_token_unpermute_tiling_data_in);
         op.Process();
-    } else if (TILING_KEY_IS(1000)) {
+    } else if (TILING_KEY_IS(1000) || TILING_KEY_IS(1001)) {
         KernelMoeTokenPermuteDropPadGrad<DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, DTYPE_PERMUTED_TOKEN_OUTPUT_GRAD, int32_t> op;
         op.Init(
             permutedTokenOutPutGrad, permutedProbsOutPutGradOptional, sortedIndices, tokensGradOut, probsGradOutOptional,

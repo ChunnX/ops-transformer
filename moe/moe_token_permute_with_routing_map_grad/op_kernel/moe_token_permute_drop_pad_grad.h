@@ -303,10 +303,10 @@ template <typename TokenT, typename ProbT, typename IdxT>
 __aicore__ inline void KernelMoeTokenPermuteDropPadGrad<TokenT, ProbT, IdxT>::CopyTokenIn(
     const IdxT in_token_index, const int64_t h_index, const int64_t h_length)
 {
-    LocalTensor<TokenT> tokensLocal = tokensInQue_.template AllocTensor<TokenT>();
     if (in_token_index < 0 || in_token_index >= numOutTokens_) {
         return;
     }
+    LocalTensor<TokenT> tokensLocal = tokensInQue_.template AllocTensor<TokenT>();
     int64_t offset = in_token_index * hiddenSize_ + h_index * hiddenSplitedLength_;
 
     if (likely((h_length * sizeof(TokenT)) % BLOCK_SIZE == 0)) {
