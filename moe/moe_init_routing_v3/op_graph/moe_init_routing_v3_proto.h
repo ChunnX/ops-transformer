@@ -44,8 +44,8 @@ namespace ge {
 * @li expert_tokens_count_or_cumsum: A 1D tensor. represents the number of tokens processed by each expert and the
                                        cumulative value. The value is controlled by expert_tokens_num_flag to output.
                                        Type is:Int64. shape is (expert_end - expert_start, ). Format support ND.
-* @li expanded_scale: A 1D tensor when quant_mode in [-1, 0, 1, 13]. Shape is: (B*S*K). Type is:Float32. 
-                      The data type must be the same as that of scale.
+* @li expanded_scale: A 1D tensor when quant_mode in [-1, 0, 1, 13]. Shape is: (B*S*K).
+                      Type is:Float32. The data type must be the same as that of scale.
                       A 2D tensor when quant_mode in [2, 3]. Shape is: (B*S*K, M), in which M is CeilAlign(CeilDiv(H, 32), 2). Type is: Float8_E8M0. 
                       A 3D tensor when quant_mode in [11, 12] (FP8 PerBlock量化，BlockSize=128).
                       Shape is: (B*S*K, M, 2), in which M is CeilAlign(CeilDiv(H, 256), 2).
