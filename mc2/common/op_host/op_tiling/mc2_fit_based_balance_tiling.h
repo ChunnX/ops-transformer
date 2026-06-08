@@ -21,7 +21,11 @@
 #include "matmul_performance_arch35.h"
 #include "hccl_formulaic_tiling.h"
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+constexpr static double CALC_COMM_RATIO = 1.0;
+#else
 constexpr static double CALC_COMM_RATIO = 2.0;
+#endif
 
 class Mc2FitBasedBalanceTiling {
 public:

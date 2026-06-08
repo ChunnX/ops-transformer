@@ -116,7 +116,11 @@ public:
     const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
 
 private:
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    const uint64_t WINDOW_LEN = 8;
+#else
     const uint64_t WINDOW_LEN = 4;
+#endif  
     static constexpr uint64_t CUBE_BLOCK = 16UL;
     uint32_t blockIdx_;
 };
@@ -357,7 +361,12 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBValidMN()
 
 __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBParam()
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // 910_96: cv配比1:1，单个vec核处理整块，不做N方向双核切分
+    ubParams_.fixpipeSplitN = false;
+#else
     ubParams_.fixpipeSplitN = params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1;
+#endif
     ubParams_.offsetM = params_.mIndex * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset;
     ubParams_.offsetN = params_.nIndex * tilingData_->matmulTiling.baseN + params_.nSplitAddrOffset;
     ubParams_.singleM = ubParams_.fixpipeSplitN
@@ -384,7 +393,12 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockUBParam()
 template <bool aTrans, bool bTrans>
 __aicore__ inline void Mc2QuantBmmAswBlock::UpdatePerBlockMmParam()
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // 910_96: cv配比1:1，单个vec核处理整块，不做N方向双核切分
+    mmParams_.fixpipeSplitN = false;
+#else
     mmParams_.fixpipeSplitN = params_.singleCoreN > PER_BLOCK_SIZE || params_.singleCoreM == 1;
+#endif
     if ASCEND_IS_AIC {
         if constexpr (aTrans) {
             mmParams_.fixSrcStride = DequantBmm::Align(params_.singleCoreM, static_cast<uint64_t>(DATA_BLOCK));

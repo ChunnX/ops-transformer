@@ -308,22 +308,33 @@ bool Mc2AdaptiveSlidingWindowTiling::AnalyseSlidingWinInfo()
 bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
 {
     if (inputParams_.isPerBlock) {
-        // when m or n is not divisible by 128, baseM or baseN is 128,
-        // to prevent the division of tail blocks into two vector cores from generating a non-factor of 128.
-        // when m <= 128, baseM is 128.
-        // only one of baseM and baseN can be 256, with baseM taking priority.
-        if (inputParams_.mSize <= PER_BLOCK_SIZE || inputParams_.mSize % PER_BLOCK_SIZE != 0UL) {
+        // host侧用运行时socVersion/npuArch区分910_96(cv 1:1)，不依赖device编译宏__NPU_ARCH__
+        bool isDav9201 =
+            (platform_ascendc::PlatformAscendC(context_->GetPlatformInfo()).GetCurNpuArch() == NpuArch::DAV_9201);
+        if (isDav9201) {
+            // 910_96: cv配比1:1，单个vec核处理整块baseM*baseN的反量化，vec侧UB按整块开；
+            // 为使整块UB预算与平台容量匹配，perblock基本块固定为128*128
             adaptiveWin_.baseM = PER_BLOCK_SIZE;
-            if (inputParams_.nSize % PER_BLOCK_SIZE == 0UL) {
-                adaptiveWin_.baseN = PER_BLOCK_BASE_SIZE_256;
+            adaptiveWin_.baseN = PER_BLOCK_SIZE;
+            adaptiveWin_.baseK = PER_BLOCK_SIZE;
+        } else {
+            // when m or n is not divisible by 128, baseM or baseN is 128,
+            // to prevent the division of tail blocks into two vector cores from generating a non-factor of 128.
+            // when m <= 128, baseM is 128.
+            // only one of baseM and baseN can be 256, with baseM taking priority.
+            if (inputParams_.mSize <= PER_BLOCK_SIZE || inputParams_.mSize % PER_BLOCK_SIZE != 0UL) {
+                adaptiveWin_.baseM = PER_BLOCK_SIZE;
+                if (inputParams_.nSize % PER_BLOCK_SIZE == 0UL) {
+                    adaptiveWin_.baseN = PER_BLOCK_BASE_SIZE_256;
+                } else {
+                    adaptiveWin_.baseN = PER_BLOCK_SIZE;
+                }
             } else {
+                adaptiveWin_.baseM = PER_BLOCK_BASE_SIZE_256;
                 adaptiveWin_.baseN = PER_BLOCK_SIZE;
             }
-        } else {
-            adaptiveWin_.baseM = PER_BLOCK_BASE_SIZE_256;
-            adaptiveWin_.baseN = PER_BLOCK_SIZE;
+            adaptiveWin_.baseK = PER_BLOCK_SIZE;
         }
-        adaptiveWin_.baseK = PER_BLOCK_SIZE;
     } else {
         adaptiveWin_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
         adaptiveWin_.baseM =

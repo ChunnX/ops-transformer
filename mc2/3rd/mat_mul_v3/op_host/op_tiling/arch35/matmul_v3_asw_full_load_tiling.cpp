@@ -107,6 +107,7 @@ namespace mc2_matmul_v3_advanced {
 using namespace strategy;
 
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, DAV_3510, FULL_LOAD_BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, DAV_9201, FULL_LOAD_BASE);
 
 void Mc2MatMulV3AswFullLoadTiling::FullLoadPre()
 {

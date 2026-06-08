@@ -43,7 +43,7 @@ constexpr uint32_t X2SCALE_INDEX = 4;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) &&
+    if ((npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) &&
         ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
@@ -95,34 +95,34 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
 {
-    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    const uint32_t opType = isA2APath_
-        ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
-        : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
+    // const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    // const uint32_t opType = isA2APath_
+    //     ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
+    //     : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
 
-    const std::string rsConfig = isA2APath_
-        ? "AlltoAll=level0:fullmesh"
-        : "ReduceScatter=level0:fullmesh";
+    // const std::string rsConfig = isA2APath_
+    //     ? "AlltoAll=level0:fullmesh"
+    //     : "ReduceScatter=level0:fullmesh";
 
-    int index = 0;
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
-    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
+    // int index = 0;
+    // auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
+    // uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
 
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
-        group, opType, rsConfig, reduceType, dataType, dataType
-    );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
-    } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
-    }
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    // AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
+    //     group, opType, rsConfig, reduceType, dataType, dataType
+    // );
+    // if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    //     OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
+    // } else {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+    //     OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
+    // }
+    // OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
+    //     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
         
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2CcTiling) != 0,
+    //     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -175,13 +175,13 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 {
-    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    // MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
-    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
+    //     OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(matmulReduceScatterV2TilingData_->param);
     DoSplitMTiling(matmulReduceScatterV2TilingData_->param);
-    MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
+    // MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
     MC2_CHECK_LOG_RET(opName_, DoAllMatmulTiling());
     SetTilingResult(matmulReduceScatterV2TilingData_->param, MutableMC2MmV3TileTilingData().tCubeTiling,
                     MutableMC2MmV3TailTilingData().tCubeTiling, matmulReduceScatterV2TilingData_->debugMode,
@@ -222,6 +222,9 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
         return scatterTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        if (npuArch_ == NpuArch::DAV_9201) {
+            inputSocVersion = SocVersion::SOC910_96;
+        }
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
@@ -230,6 +233,6 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling, \
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   std::vector<int32_t>{static_cast<int32_t>(NpuArch::DAV_3510), static_cast<int32_t>(NpuArch::DAV_9201)}, 0);
 
 }

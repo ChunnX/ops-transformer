@@ -96,13 +96,13 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     auto&& cfg = tilingData_->param;
 
     // 初始化 HCCL
-    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
-    hccl_.InitV2(contextGM, hcclInitTilingV2);
-    hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    // uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
+    // hccl_.InitV2(contextGM, hcclInitTilingV2);
+    // hccl_.SetCcTilingV2(hcclCcTilingOffset);
 
     // 读取上下文和配置
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
+    // context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
     debugMode_ = tilingData_->debugMode;
@@ -110,22 +110,26 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = context_->rankId;
+    // rankId_ = context_->rankId;
+    rankId_ = 0; // AIC 核上无法获取 rankId，默认设为0
     aivNum_ = cfg.aicCoreNum * GetTaskRation(); // 启用的AIV 数量, 此模板会全启用
 
     // all2all 通信相关参数, 划分workspace
     fullMN_ = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankN);  // M * N
-    sendBuf_ = workspaceGM;                                                         // [0, fullMN)
-    recvBuf_ = sendBuf_ + fullMN_ * sizeof(C_DTYPE);                                // [fullMN, 2*fullMN)
+    // sendBuf_ = workspaceGM;                                                         // [0, fullMN)
+    // recvBuf_ = sendBuf_ + fullMN_ * sizeof(C_DTYPE);                                // [fullMN, 2*fullMN)
+    sendBuf_ = cGM_;
+    recvBuf_ = workspaceGM;
+    (void)workspaceGM;
 }
 
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::PostProcess()
 {
     // 等待执行完成后，最后终止hcclserver
-    if ((GetBlockIdx() == 0) && (g_coreType == AIV)) {
-        hccl_.Finalize();
-    }
+    // if ((GetBlockIdx() == 0) && (g_coreType == AIV)) {
+    //     hccl_.Finalize();
+    // }
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -189,7 +193,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         mmv3.Process(isLast && (i == (count - 1)));    // 执行 MatMul
 
         // AIC 侧做完 Matmul 计算后通知 AIV 进行后处理
-        CubeNotifyVector();
+        // CubeNotifyVector();
     }
     
     mmv3.End();
@@ -206,84 +210,84 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     const uint32_t count, 
     const bool isTail) 
 {
-    auto&& cfg = tilingData_->param;
+    // auto&& cfg = tilingData_->param;
 
-    // 每个 rank 应得的 M 维度大小
-    uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
-    // 每个 rank 分片的元素数量（M_per_rank * N）
-    uint64_t rankSliceElems = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
-    // 每个 rank 分片的字节数
-    uint64_t rankSliceBytes = rankSliceElems * sizeof(C_DTYPE);
+    // // 每个 rank 应得的 M 维度大小
+    // uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
+    // // 每个 rank 分片的元素数量（M_per_rank * N）
+    // uint64_t rankSliceElems = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
+    // // 每个 rank 分片的字节数
+    // uint64_t rankSliceBytes = rankSliceElems * sizeof(C_DTYPE);
 
-    // All2All 的 stride（单位：元素数），即每张卡数据在全局中的间隔
-    uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
-    // 通信重复次数, 1次
-    uint8_t repeat = 1;
-    // 若是尾块，通信 handleId 存放的起始偏移为 tileCnt
-    uint32_t handleShift = isTail ? cfg.tileCnt : 0;
+    // // All2All 的 stride（单位：元素数），即每张卡数据在全局中的间隔
+    // uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
+    // // 通信重复次数, 1次
+    // uint8_t repeat = 1;
+    // // 若是尾块，通信 handleId 存放的起始偏移为 tileCnt
+    // uint32_t handleShift = isTail ? cfg.tileCnt : 0;
 
-    // --- 指针初始化 ---
-    GM_ADDR currSendPtr = sendGMAddr; // 当前发送缓冲区起始地址
-    GM_ADDR currRecvPtr = recvGMAddr; // 当前接收缓冲区起始地址
-    GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
+    // // --- 指针初始化 ---
+    // GM_ADDR currSendPtr = sendGMAddr; // 当前发送缓冲区起始地址
+    // GM_ADDR currRecvPtr = recvGMAddr; // 当前接收缓冲区起始地址
+    // GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
 
-    // --- Prologue: 启动第 0 轮通信 ---
-    VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
-        currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
-    );
+    // // --- Prologue: 启动第 0 轮通信 ---
+    // VecWaitCube(); // 确保依赖的 MatMul 已完成
+    // handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
+    //     currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
+    // );
     
-    // 移动指针准备下一轮
-    currSendPtr += rankSliceBytes;
-    currRecvPtr += rankSliceBytes;
-    currOutPtr += rankSliceBytes;
+    // // 移动指针准备下一轮
+    // currSendPtr += rankSliceBytes;
+    // currRecvPtr += rankSliceBytes;
+    // currOutPtr += rankSliceBytes;
 
-    // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
-    for (uint32_t i = 0; i < count - 1; i++) {
-        // 1. 等待上一轮 (i) 通信结束
-        if (GetBlockIdx() == 0) {
-            hccl_.Wait(handles_[i + handleShift]); 
-        }
-        SyncAll<true>();
+    // // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
+    // for (uint32_t i = 0; i < count - 1; i++) {
+    //     // 1. 等待上一轮 (i) 通信结束
+    //     if (GetBlockIdx() == 0) {
+    //         hccl_.Wait(handles_[i + handleShift]); 
+    //     }
+    //     SyncAll<true>();
 
-        // 2. 启动下一轮 (i+1) 通信
-        VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
-            currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
-        );
+    //     // 2. 启动下一轮 (i+1) 通信
+    //     VecWaitCube(); 
+    //     handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
+    //         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
+    //     );
 
-        // 3. 执行上一轮 (i) 数据的 ReduceSum
-        // 计算地址 = 当前指针 - 一步偏移
-        GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-        GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
+    //     // 3. 执行上一轮 (i) 数据的 ReduceSum
+    //     // 计算地址 = 当前指针 - 一步偏移
+    //     GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
+    //     GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
-        tPipe_->Reset();
-        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
-        reduceSum_.ExecuteReduceSum();
+    //     tPipe_->Reset();
+    //     reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
+    //     reduceSum_.ExecuteReduceSum();
 
-        // 指针前移
-        currSendPtr += rankSliceBytes;
-        currRecvPtr += rankSliceBytes;
-        currOutPtr += rankSliceBytes;
-    }
+    //     // 指针前移
+    //     currSendPtr += rankSliceBytes;
+    //     currRecvPtr += rankSliceBytes;
+    //     currOutPtr += rankSliceBytes;
+    // }
 
-    // --- Epilogue: 处理最后一轮 ---
-    uint32_t lastIdx = count - 1;
+    // // --- Epilogue: 处理最后一轮 ---
+    // uint32_t lastIdx = count - 1;
     
-    // 等待最后一轮通信结束
-    if (GetBlockIdx() == 0) {
-        hccl_.Wait(handles_[lastIdx + handleShift]); 
-    }
-    SyncAll<true>();
+    // // 等待最后一轮通信结束
+    // if (GetBlockIdx() == 0) {
+    //     hccl_.Wait(handles_[lastIdx + handleShift]); 
+    // }
+    // SyncAll<true>();
 
-    // 执行最后一轮数据的 reduceSum
-    // 此时的计算地址同样是 "当前指针 - 偏移量"
-    GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
-    GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
+    // // 执行最后一轮数据的 reduceSum
+    // // 此时的计算地址同样是 "当前指针 - 偏移量"
+    // GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
+    // GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
-    tPipe_->Reset();
-    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
-    reduceSum_.ExecuteReduceSum();
+    // tPipe_->Reset();
+    // reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
+    // reduceSum_.ExecuteReduceSum();
 }
 
 TEMPLATE_CLASS_PARAMS

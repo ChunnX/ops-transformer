@@ -19,7 +19,11 @@
 #define ENALBE_ND2NZ 1
 
 #if defined(__CCE_KT_TEST__)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+#define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 1
+#else
 #define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
+#endif
 #define SET_G_CORE_TYPE_IS_AIC thread_local int g_coreType = 1
 #define DTYPE_X1 half
 #define DTYPE_Y half

@@ -75,7 +75,11 @@ constexpr uint64_t M_THRESHOLD = 256;
 constexpr uint64_t MIX_BLOCK_NUM = 24;
 constexpr uint64_t MIN_SPLITK_K = 1000;
 constexpr uint64_t MAX_SPLITK_K = 4608;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+constexpr uint64_t UB_SIZE = 360448;
+#else
 constexpr uint64_t UB_SIZE = 196352;
+#endif
 constexpr uint64_t MIN_CORE_SPLITK = 8;
 constexpr uint64_t MIN_SPLITK_MN64 = 6144;
 constexpr uint64_t DELTAK_PER_CORE = 1024;
@@ -1126,7 +1130,11 @@ void Mc2MatmulV3BaseTiling::CalcNd2NzTiling(uint64_t dtypeSize, uint64_t nValue,
     constexpr uint64_t mataD = 16384;
     constexpr uint64_t minN = 7168;
     // mata 交织场景
-    if (dValue % mataD == 0 && nValue >= minN && compileInfo_.ubSize == UB_SIZE &&
+    auto platformInfo = context_.GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t ubSizePlatform = 0;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatform);
+    if (dValue % mataD == 0 && nValue >= minN && compileInfo_.ubSize == ubSizePlatform &&
         (args_.aType == ge::DT_FLOAT16 || args_.aType == ge::DT_BF16) && compileInfo_.aicNum >= 24) {  // 24 核最小核数
         baseN = 96;   // baseN 经验值 96
         baseD = 512;  // baseD 经验值 512

@@ -14,17 +14,23 @@
 #include <cstdint>
 #include "mc2_log.h"
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+constexpr uint64_t AIC_AIV_RATIO = 1;  // aic:aiv按照1：1配比
+#else
+constexpr uint64_t AIC_AIV_RATIO = 2;  // aic:aiv按照1：2配比
+#endif
+
 namespace mc2tiling{
 // 根据ascendc提供的aic aiv数量，按照aic:aiv=1:2比例设置逻辑核数量，以aic和aiv/2较小的值为基点
 inline uint64_t GetNumBlocks(const uint64_t aicNum, const uint64_t aivNum, const char* debugDesc)
 {
-    uint64_t halfAivNum = aivNum / 2;                            // aic:aiv按照1：2配比
+    uint64_t halfAivNum = aivNum / AIC_AIV_RATIO;                            // aic:aiv按照1：2配比
     uint64_t numBlocks = std::min(aicNum, halfAivNum);
-    if(numBlocks != aicNum || numBlocks != aivNum * 2) {          // aic:aiv按照1：2配比
+    if(numBlocks != aicNum || numBlocks != aivNum * AIC_AIV_RATIO) {          // aic:aiv按照1：2配比
         OP_LOGI(debugDesc, 
-                "aicNum is %lu, aivNum is %lu. Since aicNum != 2 * aivNum, "
+                "aicNum is %lu, aivNum is %lu. Since aicNum != " + std::to_string(AIC_AIV_RATIO) + " * aivNum, "
                 "the actual number of enabled AIC cores is %lu, and the number of AIV cores is %lu.",
-                aicNum, aivNum, numBlocks, numBlocks * 2);        // aic:aiv按照1：2配比
+                aicNum, aivNum, numBlocks, numBlocks * AIC_AIV_RATIO);        // aic:aiv按照1：2配比
     }
     OP_TILING_CHECK(
         (numBlocks == 0U),

@@ -123,7 +123,20 @@ class MatmulReduceScatterV2 : public OpDef {
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
         .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->MC2().HcclGroup("group");
+    // this->MC2().HcclGroup("group");
+
+    OpAICoreConfig aicore_config_910_96;
+    aicore_config_910_96.DynamicCompileStaticFlag(true)
+        .DynamicFormatFlag(true)
+        .DynamicRankSupportFlag(true)
+        .DynamicShapeSupportFlag(true)
+        .NeedCheckSupportFlag(false)
+        .PrecisionReduceFlag(true)
+        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+        .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape,复用二进制,后续图支持后修改
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+        .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
+    this->AICore().AddConfig("ascend910_96", aicore_config_910_96);
 
     OpAICoreConfig aicore_config_910b;
     aicore_config_910b.Input("x1")
@@ -232,7 +245,7 @@ class MatmulReduceScatterV2 : public OpDef {
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
     this->AICore().AddConfig("ascend910b", aicore_config_910b);
     this->AICore().AddConfig("ascend910_93", aicore_config_910b);
-    this->MC2().HcclGroup("group");
+    // this->MC2().HcclGroup("group");
   }
 };
 

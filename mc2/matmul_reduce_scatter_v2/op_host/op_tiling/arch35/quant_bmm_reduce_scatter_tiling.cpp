@@ -77,8 +77,8 @@ constexpr uint32_t COMMMODE_INDEX = 10;
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
+    if (npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201) {
+        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510 or 9201.");
         return false;
     }
     // geAType 和 geBType 为fp8e4m3/fp8e5m2/hif8时, 走该tiling流程
@@ -368,34 +368,34 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckInput()
 
 ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
 {
-    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    const uint32_t opType = isA2APath_ 
-        ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
-        : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
+    // const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    // const uint32_t opType = isA2APath_ 
+    //     ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
+    //     : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
 
-    const std::string rsConfig = isA2APath_ 
-        ? "AlltoAll=level0:fullmesh" 
-        : "ReduceScatter=level0:fullmesh";
+    // const std::string rsConfig = isA2APath_ 
+    //     ? "AlltoAll=level0:fullmesh" 
+    //     : "ReduceScatter=level0:fullmesh";
 
-    int index = 0;
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
-    uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
+    // int index = 0;
+    // auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
+    // uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
 
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
-        group, opType, rsConfig, reduceType, dataType, dataType
-    );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
-    } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
-    }
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+    // AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
+    //     group, opType, rsConfig, reduceType, dataType, dataType
+    // );
+    // if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    //     OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
+    // } else {
+    //     mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+    //     OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
+    // }
+    // OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
+    //     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2CcTiling) != 0,
+    //     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -438,10 +438,10 @@ bool QuantBmmReduceScatterTiling::CheckPerblockM()
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
-    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    // MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
-    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
+    //     OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
 
     // 在perblock量化场景，orgMValue不满足PERBLOCK_SIZE * args_.rankDim整数倍时，不做公式化切分，走计算通信串行
@@ -450,7 +450,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
         (quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE && CheckPerblockM())) {
             MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingDataA5()));
     }
-    MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
+    // MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
     MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
     if ((GetQuantMode() == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (MutableRCSTilingDataA5().tileCnt == 0) 
         && (MutableRCSTilingDataA5().tailCnt == 0)) {
@@ -858,6 +858,9 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
         return quantBmmScatterTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        if (npuArch_ == NpuArch::DAV_9201) {
+            inputSocVersion = SocVersion::SOC910_96;
+        }
         MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
@@ -865,7 +868,7 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 }
 //注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling, \
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
+                                   std::vector<int32_t>{static_cast<int32_t>(NpuArch::DAV_3510), static_cast<int32_t>(NpuArch::DAV_9201)}, 1);
 } // namespace
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

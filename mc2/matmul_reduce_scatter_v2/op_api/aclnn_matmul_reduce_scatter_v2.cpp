@@ -522,7 +522,7 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
                                                        uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_ERR_INNER;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 || GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
         if (commMode == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[MatmulReduceScatterV2] CommMode is nullptr.");
             return ACLNN_ERR_PARAM_NULLPTR;
@@ -568,7 +568,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
     }
 
     char* commMode = nullptr;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if ((GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) || (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201)) {
         commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         commMode = "aiv";
@@ -578,7 +578,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_ERR_INNER;
     }
     
-    SetNnopbaseHcclServerTypeByArch(executor, commMode);
+    // SetNnopbaseHcclServerTypeByArch(executor, commMode);
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
         OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulReduceScatterV2", "This is an error in launch aicore");
