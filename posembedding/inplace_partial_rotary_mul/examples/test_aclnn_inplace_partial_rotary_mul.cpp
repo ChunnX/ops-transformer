@@ -79,7 +79,7 @@ int main() {
     std::vector<int64_t> cosShape = {1, 1, 1, 128};
     std::vector<int64_t> sinShape = {1, 1, 1, 128};
     int64_t rotary_mode = 1;
-    std::vector<int64_t> partialSlice = {0, 0};
+    std::vector<int64_t> partialSlice = {0, 128};
 
     void* xDeviceAddr = nullptr;
     void* cosDeviceAddr = nullptr;
