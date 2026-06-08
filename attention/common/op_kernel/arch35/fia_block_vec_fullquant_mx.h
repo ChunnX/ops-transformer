@@ -337,8 +337,8 @@ public:
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
         // Band head intra-skip: reduce originN for subLoop 0 (BMM1 produced fewer valid columns)
-        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < mxfp8s2RealSize) {
-            mxfp8s2RealSize -= runInfo.bandHeadIntraSkip;
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < s2CalcSize) {
+            s2CalcSize -= runInfo.bandHeadIntraSkip;
         }
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
