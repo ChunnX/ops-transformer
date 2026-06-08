@@ -252,7 +252,9 @@ aclnnStatus aclnnAttentionUpdate(
 
 - 确定性计算：
   - aclnnAttentionUpdate默认确定性实现。
-- 序列并行的并行度sp取值范围[1, 16]。
+- 序列并行的并行度sp取值范围：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：[1, 128]。
+  - <term>Ascend 950PR/Ascend 950DT</term>：[1, 16]。
 - headDim取值范围[8, 512]且是8的倍数。
 - 支持空Tensor。
 
