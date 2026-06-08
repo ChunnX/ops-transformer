@@ -34,7 +34,7 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor([False, False, False, False, False, False, False, False],
         [False, False, False, True, True, True, True, True])
-    def MoeDistributeDispatchV3(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
+    def MoeDistributeDispatch(context: Tensor, x: Tensor, expert_ids: Tensor, scales: Optional[Tensor],
                                 x_active_mask: Optional[Tensor], expert_scales: Optional[Tensor], 
                                 elastic_info: Optional[Tensor], performance_info: Optional[Tensor], *, 
                                 ep_world_size: int, ep_rank_id: int, moe_expert_num: int, ccl_buffer_size: int,
@@ -162,8 +162,8 @@ if _TORCHAIR_AVAILABLE:
             .output("expand_scales", "DT_FLOAT")
         )
 
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch_v3.default)
-    def converter_moe_distribute_dispatch_v3(
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch.default)
+    def converter_moe_distribute_dispatch(
         context: Tensor,
         x: Tensor,
         expert_ids: Tensor,
@@ -196,7 +196,7 @@ if _TORCHAIR_AVAILABLE:
         if quant_mode == 0:
             expand_x_dtype = x.dtype
 
-        return MoeDistributeDispatchV3(context=context,
+        return MoeDistributeDispatch(context=context,
                                         x=x,
                                         expert_ids=expert_ids,
                                         scales=scales,

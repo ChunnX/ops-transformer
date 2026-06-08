@@ -35,7 +35,7 @@ if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
         [False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False],
         [False, False, False, False, False, False, True, True, True, True, True, True, True, True, True, True])
-    def MoeDistributeCombineV3(context: Tensor, expand_x: Tensor, expert_ids: Tensor,
+    def MoeDistributeCombine(context: Tensor, expand_x: Tensor, expert_ids: Tensor,
                             assist_info_for_combine: Tensor, ep_send_counts: Tensor,
                             expert_scales: Tensor, tp_send_counts: Optional[Tensor],
                             x_active_mask: Optional[Tensor], expand_scales: Optional[Tensor],
@@ -253,8 +253,8 @@ if _TORCHAIR_AVAILABLE:
 
         return x
 
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_combine_v3.default)
-    def convert_npu_moe_distribute_combine_v3(
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_moe_distribute_combine.default)
+    def convert_npu_moe_distribute_combine(
         context: Tensor,
         expand_x: Tensor,
         expert_ids: Tensor,
@@ -289,7 +289,7 @@ if _TORCHAIR_AVAILABLE:
         const_expert_num: int = 0,
         meta_outputs: TensorSpec = None):
 
-        return MoeDistributeCombineV3(context=context,
+        return MoeDistributeCombine(context=context,
                                     expand_x=expand_x,
                                     expert_ids=expert_ids,
                                     assist_info_for_combine=assist_info_for_combine,
