@@ -273,6 +273,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     globalHistBoundaryNum_ = (tileNum_ - 1) * tileLen_ + tailTileLen_;
     remainK_ = kValue_;
 
+    // 4.5. Clear globalHist for all AIVs (including those with tileNum_=0)
+    // This ensures ReduceGlobalHist doesn't sum garbage data from idle AIVs
+    {
+        LocalTensor<int32_t> globalHist = globalHistBuf_.Get<int32_t>();
+        SToVSync();
+        Duplicate<int32_t>(globalHist, 0, numValue_);
+        VToMTE3Sync();
+        DataCopyExtParams params{1, static_cast<uint32_t>(numValue_ * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(globalHistGm_[GetBlockIdx() * numValue_], globalHist, params);
+    }
+
     // 5. RADIX LOOP
     bool earlyExit = false;
     for (int32_t roundId = round_ - 1; roundId >= 0; roundId--) {
