@@ -525,7 +525,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.barrier_all()
                                 T.tile.mul(rg_tmp_ub, diff_ub, weight_ub[i])
                                 T.barrier_all()
-                                T.tile.select(rg_ub[i, :], mask_ub, rg_tmp_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                                T.tile.select(rg_tmp_ub, mask_ub, rg_tmp_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                                T.barrier_all()
+                                T.copy(rg_tmp_ub, rg_ub[i, :])
                                 T.barrier_all()
 
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
