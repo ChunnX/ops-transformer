@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_tiling.h
@@ -56,7 +56,7 @@ constexpr uint32_t ACTUAL_SEQ_K_INDEX = 8;
 constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
 constexpr uint32_t BLOCK_TABLE_INDEX = 10;
 constexpr uint32_t METADATA_INDEX = 12;
-constexpr uint32_t quant_lightning_indexer = 0;
+constexpr uint32_t SPARSE_INDICES_INDEX = 0;
 
 // Attributes Index
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
@@ -82,21 +82,21 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t G_SIZE_LIMIT_950 = 24;
-constexpr uint32_t G_SIZE_LIMIT_32_950 = 32; 
+constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 8/16/24/32/64
 constexpr uint32_t G_SIZE_LIMIT_8_950 = 8;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
- 	 
+
 // constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
 // constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
 
 constexpr uint32_t V1_OP_VERSION = 1;
 constexpr uint32_t V2_OP_VERSION = 2;
 
-// constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+// constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME),
 //                                             sizeof(V2_OP_NAME)});
 
 // -----------算子TilingData定义---------------
@@ -278,4 +278,4 @@ private:
 };
 
 }  // namespace optiling
-#endif  // quant_lightning_indexer_TILING_H_
+#endif  // QUANT_LIGHTNING_INDEXER_V2_TILING_H

@@ -42,17 +42,25 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
                                                 block_table=None, output_idx_offset=None, metadata=None, 
                                                 layout_q="BSND", layout_k="BSND", max_seqlen_q=-1,
                                                 mask_mode=0, cmp_ratio=1, return_value=0):
-            keyHeadNum = key.shape[1] if layout_k == "TND" else key.shape[2]
+            key_head_num = key.shape[1] if layout_k == "TND" else key.shape[2]
 
             if layout_q == "BSND":
-                sparse_indices_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.int32, device="meta")
+                sparse_indices_out = torch.empty(
+                    [query.shape[0], query.shape[1], key_head_num, topk],
+                    dtype=torch.int32, device="meta")
             else:
-                sparse_indices_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.int32, device="meta")
+                sparse_indices_out = torch.empty(
+                    [query.shape[0], key_head_num, topk],
+                    dtype=torch.int32, device="meta")
             if return_value:
                 if layout_q == "BSND":
-                    sparse_values_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.bfloat16, device="meta")
+                    sparse_values_out = torch.empty(
+                        [query.shape[0], query.shape[1], key_head_num, topk],
+                        dtype=torch.bfloat16, device="meta")
                 else:
-                    sparse_values_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.bfloat16, device="meta")
+                    sparse_values_out = torch.empty(
+                        [query.shape[0], key_head_num, topk],
+                        dtype=torch.bfloat16, device="meta")
             else:
                 sparse_values_out = torch.empty([0], dtype=torch.bfloat16, device="meta")
             return (sparse_indices_out, sparse_values_out)
