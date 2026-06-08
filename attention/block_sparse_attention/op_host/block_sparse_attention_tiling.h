@@ -195,6 +195,7 @@ private:
         uint32_t &curTaskNum, uint32_t &curQBlockNum);
     ge::graphStatus FillTilingData(gert::TilingContext *bsaContext);
     uint64_t GenerateTilingKey(gert::TilingContext *bsaContext);
+    bool GetEnableDN() const;
     
 private:
     uint32_t batch_ = 0;

@@ -153,8 +153,10 @@ public:
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
     {
-        // DN 下两个 AIV 沿 S1 对半切核：单 AIV 处理 m 个 S1 列（典型 64）、全部 S2 列
-        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
+        // DN 下两个 AIV 沿 S1 对半切核：单 AIV 处理 m 个 S1 列（典型 64）、全部 S2 列。
+        // 切核点必须按 32 对齐（§3.3.4）——与 BMM1 SPLIT_N fixpipe 的 nSize=RoundUp(S1,32)+dualDstCtl 切法一致；
+        // 这样 mCopyOffset 恒为 16 的倍数，解折叠 cgNum=mRound/16 不会截断（脏尾列已由 fixpipe/Stage 2 处理）
+        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 32) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
         if (m == 0) {

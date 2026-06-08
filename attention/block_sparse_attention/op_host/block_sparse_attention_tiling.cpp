@@ -876,8 +876,31 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
+
+    // DN（softmax 列归约）使能位（十亿位 = 10^9）：满足全部静态启用条件时置 1，
+    // kernel 侧据此把 USE_DN_FLAG 模板参数置真，走列归约路径；否则回退 ND 行归约
+    if (GetEnableDN()) {
+        tilingKey += 1000000000ULL;
+    }
     
     return tilingKey;
+}
+
+bool BSATiling::GetEnableDN() const
+{
+    // DN 列归约当前仅支持以下静态条件全部成立：
+    //   - Atlas A5（950）；DN 路径仅在 arch35 实现
+    //   - bf16 输入；DN epilogue/解折叠为 bf16 专用特化
+    //   - 无 attention mask（maskType_ == 0）
+    //   - 头维 D ≤ 128 且 LOW_HIGH_MIXED（=> kvBaseTile_ 取 256）；
+    //     解折叠/伪宽行常量按 S2=256 写死，kvBaseTile_ 非 256 会算错
+    // 运行期条件（sOuter≥128、qSeqlen%32==0、kvSeqlen>128）在动态 shape 下 host 取不到，
+    // 由调用方保证（见方案 §六 启用条件）。
+    return socVer_ == SOC_VER_950_CODE
+        && dataType_ == ge::DT_BF16
+        && maskType_ == 0
+        && embeddingSize_ <= D_SIZE_128
+        && innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED;
 }
 
 ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,

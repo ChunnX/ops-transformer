@@ -118,7 +118,7 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
 
 using namespace BsaKernelArch35;
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat>
+template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat, bool USE_DN_FLAG = false>
 __global__ __aicore__ void BsaInferIntfRegular(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
     GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
@@ -155,8 +155,8 @@ __global__ __aicore__ void BsaInferIntfRegular(
         DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
     // 处理单个tile内Q和K的matmul
     // DN 路径下 A/B 槽角色互换：A=K(ColumnMajor)、B=Q(RowMajor)，等效 SetTensorA(K)+SetTensorB(Q, transpose=true)
-    // 第一阶段按 dtype 临时限定 bf16 走 DN（fp16 仍走 ND），三个 Stage 全部落地后应改由 tilingKey 控制
-    constexpr bool USE_DN = std::is_same_v<InDtype, bfloat16_t>;
+    // 是否走 DN 列归约由 host tilingKey（GetEnableDN 校验静态启用条件后置位）经模板参数 USE_DN_FLAG 显式传入
+    constexpr bool USE_DN = USE_DN_FLAG;
     using ElementAQK = std::conditional_t<USE_DN, ElementK, ElementQ>;
     using LayoutAQK = std::conditional_t<USE_DN, LayoutK, LayoutQ>;
     using ElementBQK = std::conditional_t<USE_DN, ElementQ, ElementK>;

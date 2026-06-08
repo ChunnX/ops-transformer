@@ -99,25 +99,37 @@ extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* que
     TILING_KEY_IS(QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY);
     TILING_KEY_IS(QF16_KVF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
     TILING_KEY_IS(QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_DN_KEY);
+    TILING_KEY_IS(QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_DN_KEY);
 
     #if TILING_KEY_VAR == QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
-            half, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+            half, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND, false>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
     #elif TILING_KEY_VAR == QF16_KVF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
-            half, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+            half, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD, false>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
     #elif TILING_KEY_VAR == QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
-            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND, false>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
     #elif TILING_KEY_VAR == QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
-            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD, false>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_DN_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND, true>(
+                query, key, value, mask, blockTable, attentionOut,
+                actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
+    #elif TILING_KEY_VAR == QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_DN_KEY
+        BsaInferIntfRegular<
+            bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD, true>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
     #endif
