@@ -156,15 +156,22 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
                  output_dir: Path, case_names: List[str] = None,
                  device_id: int = 0) -> Optional[Path]:
     """Run each case as a separate msprof invocation. Returns merged op_summary.csv."""
+    import csv as csv_mod
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     names = case_names or [f"case_{i}" for i in range(len(cases))]
     log_lines = []
-
     all_csvs = []
+
+    perf_csv = output_dir / "perf.csv"
+    csv_f = open(perf_csv, "w", newline="")
+    csv_w = csv_mod.DictWriter(csv_f, ["#","case","dir","avg_us","mode","error"])
+    csv_w.writeheader()
+
     for i, (c, name) in enumerate(zip(cases, names)):
         tag = f"{'hot' if c.get('S1',9999)>cold_thr else 'cold'}{i}"
-        case_dir = output_dir / f"case_{i:04d}"
+        case_dir_name = f"case_{i:04d}"
+        case_dir = output_dir / case_dir_name
         case_dir.mkdir(parents=True, exist_ok=True)
 
         script = build_case_script(c, runs, name, device_id)
@@ -184,13 +191,15 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
         stderr = result.stderr.strip()
         crashed = False
         error_msg = ""
+        avg_us = 0.0
+        mode = "hot" if c.get("S1", 9999) > cold_thr else "cold"
 
         if result.returncode != 0:
             crashed = True
             error_msg = f"exit={result.returncode}"
         if "CASE_DONE" not in stdout:
             crashed = True
-            error_msg = error_msg or "CASE_DONE not found in output"
+            error_msg = error_msg or "CASE_DONE not found"
         if stderr:
             error_msg = (error_msg + "; " + stderr)[:500]
 
@@ -199,7 +208,6 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
             "error": error_msg, "name": name,
         }))
 
-        # Collect op_summary.csv
         prof_dirs = sorted(msprof_dir.glob("PROF_*"), reverse=True)
         if prof_dirs:
             csv_files = sorted(prof_dirs[0].glob(
@@ -212,8 +220,21 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
                 print(f"  [{name}] OK  avg={avg_us:.1f}us")
             else:
                 print(f"  [{name}] NO CSV")
+                crashed = True
+                error_msg = error_msg or "no op_summary.csv"
         else:
             print(f"  [{name}] NO PROF_DIR {error_msg}")
+            crashed = True
+
+        csv_w.writerow({
+            "#": i + 1, "case": name, "dir": case_dir_name,
+            "avg_us": "" if crashed else f"{avg_us:.1f}",
+            "mode": "CRASH" if crashed else mode,
+            "error": error_msg,
+        })
+        csv_f.flush()
+
+    csv_f.close()
 
     # Write log
     log_path = output_dir / "_perf_log.jsonl"

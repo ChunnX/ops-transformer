@@ -99,30 +99,13 @@ if __name__ == "__main__":
                       f"{s['max_us']:>9.2f}  {s['mode']:>6}  │")
         print(f"└{SEP}┘")
 
-        import csv as csv_mod
-        perf_csv = out / "perf.csv"
-        with open(perf_csv, "w", newline="") as f:
-            w = csv_mod.DictWriter(f, ["#","case","dir","avg_us","min_us","max_us","mode","error"])
-            w.writeheader()
-            for idx, name in enumerate(run_cases):
-                if idx >= len(stats):
-                    continue
-                s = stats[idx]
-                is_crash = s["mode"] == "CRASH"
-                w.writerow(dict(
-                    **{"#": idx + 1},
-                    case=name,
-                    dir=f"case_{idx:04d}",
-                    avg_us="" if is_crash else s["avg_us"],
-                    min_us="" if is_crash else s["min_us"],
-                    max_us="" if is_crash else s["max_us"],
-                    mode=s["mode"],
-                    error=s.get("error", "") if is_crash else "",
-                ))
-        print(f"[perf] {perf_csv}")
+        print(f"[perf] {out / 'perf.csv'}")
         if crashed:
             print(f"\n[perf] {len(crashed)} cases crashed:")
-            for key in crashed: print(f"  {key}")
+            for idx in crashed:
+                if idx < len(run_cases):
+                    print(f"  case_{idx:04d}  {run_cases[idx]}")
+
         sys.exit(0)
 
     # ── 选择后端 ──
