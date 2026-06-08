@@ -329,7 +329,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
                 // === DUMP 200: After TwiddleInB16 (first round, first tile) ===
                 if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<int16_t> xDumpInt16 = curBuf.Get<int16_t>();
+                    LocalTensor<IN_T> xDumpB16 = curBuf.Get<IN_T>();
+                    LocalTensor<int16_t> xDumpInt16 = xDumpB16[tileLen_].template ReinterpretCast<int16_t>();
                     AscendC::DumpTensor(xDumpInt16, 200, 32);
                 }
 
@@ -337,7 +338,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
                 // === DUMP 300: After DoAndMask (first round, first tile) ===
                 if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<int16_t> xDumpInt16 = curBuf.Get<int16_t>();
+                    LocalTensor<IN_T> xDumpB16 = curBuf.Get<IN_T>();
+                    LocalTensor<int16_t> xDumpInt16 = xDumpB16[tileLen_].template ReinterpretCast<int16_t>();
                     AscendC::DumpTensor(xDumpInt16, 300, 32);
                 }
 
@@ -385,8 +387,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
         if (GetBlockIdx() == 0) {
-            AscendC::printf("[DUMP500] round=%d boundaryBin=%d boundaryBinPrev=%d involvedMask16_=0x%04x remainK_=%lu totalDefinitelyInTopK_=%lu\n",
-                roundId, boundaryBin, boundaryBinPrev, involvedMask16_, remainK_, totalDefinitelyInTopK_);
+            AscendC::printf("[DUMP500] round=%d boundaryBin=%d boundaryBinPrev=%d involvedMask16_=%d remainK_=%lu totalDefinitelyInTopK_=%lu\n",
+                roundId, boundaryBin, boundaryBinPrev, static_cast<int32_t>(involvedMask16_), remainK_, totalDefinitelyInTopK_);
         }
 
         // i. Shift mask
@@ -1085,7 +1087,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     // === DUMP 730: rsvdCnt after GatherMask ===
     if (GetBlockIdx() == 0 && tileGmOffset == 0) {
         AscendC::printf("[DUMP730] GT rsvdCnt=%lu curTileK=%d->%d\n",
-            rsvdCnt, curTileK + static_cast<int32_t>(rsvdCnt), curTileK);
+            rsvdCnt, curTileK, curTileK - static_cast<int32_t>(rsvdCnt));
     }
 
     curTileK -= static_cast<int32_t>(rsvdCnt);
