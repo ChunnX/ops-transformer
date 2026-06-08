@@ -53,7 +53,7 @@ public:
         // k == 1时，expandedX/bias大小是row_num, h，其他情况是k*row_num, h
         // k表示从总的专家E中选出K个专家， E表示expert num,即专家数，E需要大于等于K
         k1 = k == 1;
-        k4 = k <= 4;
+        k4 = k <= 8;
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
