@@ -41,7 +41,6 @@ bool UnQuantMatmulAllReduceTiling310::IsCapable()
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
 {
-    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
