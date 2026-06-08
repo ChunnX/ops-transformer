@@ -32,7 +32,7 @@
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
 
-#include "common/quant_block_sparse_attention_kvcache.h"
+#include "quant_block_sparse_attention_kvcache.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
