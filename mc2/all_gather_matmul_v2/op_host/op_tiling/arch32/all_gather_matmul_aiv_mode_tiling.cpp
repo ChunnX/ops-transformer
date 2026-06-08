@@ -394,7 +394,7 @@ static ge::graphStatus PrintfTilingData(gert::TilingContext *context, AllGatherM
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.aivNum=%u", info.aivNum);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.totalUbSize=%u", info.totalUbSize);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.isTransposeX2=%d", info.isTransposeX2);
-
+    
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.k0=%u", coctiling.k0);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.n0=%u", coctiling.n0);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData coctiling.mLoop=%u", coctiling.mLoop);
@@ -413,7 +413,7 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     int32_t mAlign = AlignUp(info.M, nElemAlign);
     int32_t kAlign = AlignUp(info.K, nElemAlign);
     int32_t nAlign = AlignUp(info.N, nElemAlign);
-
+    
     info.aAlignSize = 0;
     info.bAlignSize = 0;
     info.hasAAlign = hasAAlign;
@@ -473,7 +473,7 @@ static bool CheckDtypeX2(gert::TilingContext *context, AllGatherMatmulAIVModeInf
     return false;
 }
 
-bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
+bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize) 
 {
     if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
         AllGatherV2MatmulNPU91093FourRankINT8Tiling(cocTilingData);
@@ -491,7 +491,7 @@ bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info,
     return false;
 }
 
-bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type)
+bool SetTilingDataA2(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize, bool isInt4Type) 
 {
     if (rankSize == RANKSIZE_TWO && info.quantFlag) {
         AllGatherV2MatmulNPU910BTwoRankINT8Tiling(cocTilingData);
@@ -531,11 +531,11 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGI("Enter AllGatherMatmulAIVMode tiling func.");
-
+    
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batchMode = 1U;
     auto ret = context->SetScheduleMode(batchMode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    GE_ASSERT_GRAPH_SUCCESS(ret); 
 
     // 1. tilingData
     AllGatherMatmulAIVModeTilingData *tilingData = context->GetTilingData<AllGatherMatmulAIVModeTilingData>();
@@ -557,7 +557,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
         AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "AllGatherMatmulAIVMode GetPlatformInfoAndSetTiling Failed"),
         return ge::GRAPH_FAILED);
-
+    
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     const char* opName = context->GetNodeName();
@@ -593,16 +593,6 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
         }
     }
 
-    info.is910C = false;
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
-
-    std::string socVersion;
-    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
-    if (socVersion == "Ascend910_93") {
-        info.is910C = true;
-    }
-
     uint64_t tilingKey = INIT_TILINGKEY;
     GetTilingKey(tilingKey, info, context);
     context->SetTilingKey(tilingKey);
@@ -612,6 +602,16 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "workSpaces is nullptr."),
                return ge::GRAPH_FAILED);
+    
+    info.is910C = false;
+    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+
+    std::string socVersion;
+    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    if (socVersion == "Ascend910_93") {
+        info.is910C = true;
+    }
 
     // Tiling
     SetTilingData(tilingData->cocTiling, info, rankSize, isA4W4);
@@ -625,7 +625,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
         elementSize = D_TYPE_SIZE_MAP.at(aType);
         nElemAlign = HALF_KBYTE / elementSize;
     }
-
+    
     uint64_t userWorkSpaceSize = 0;
     GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, info);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkSpaceSize;
