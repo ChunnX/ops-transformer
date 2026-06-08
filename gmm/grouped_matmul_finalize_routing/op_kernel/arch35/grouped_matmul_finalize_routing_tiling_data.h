@@ -36,6 +36,7 @@ struct GMMFinalizeRoutingDataParams {
     uint8_t hasBias = 0;
     uint32_t deterministicFlag = 0;
     uint32_t deterWorkspaceSize = 0;
+    uint32_t reserved = 0;
 };
 #pragma pack(pop)
 
