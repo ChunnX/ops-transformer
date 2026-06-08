@@ -15,6 +15,7 @@
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_common_log.h"
+#include <string.h>
 
 namespace fallback {
 inline const char* kInnerDebug = "MmAllReduceFallback";
@@ -207,9 +208,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+        isCommMode = (std::strcmp(comm_para.comm_mode, "ccu") == 0 || std::strcmp(comm_para.comm_mode, "ai_cpu") == 0);
     }
 
     switch (quant_para.type) {

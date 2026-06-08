@@ -73,7 +73,7 @@ static aclnnStatus InnerMatmulAllReduceV3GetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && *executor != nullptr && executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
@@ -115,7 +115,11 @@ aclnnStatus aclnnMatmulAllReduceV3(
     }
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+            char* commMode = static_cast<char*>(NnopbaseGetUserHandle(executor));
+            if (commMode == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceV3, NnopbaseGetUserHandle get commMode is nullptr.");
+                return ACLNN_ERR_INNER;
+            }
             if (strcmp(commMode, COMM_MODE_CCU) == 0) {
                 OP_LOGD("A5 aclnnMatmulAllReduceV3, commMode is 'ccu', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
