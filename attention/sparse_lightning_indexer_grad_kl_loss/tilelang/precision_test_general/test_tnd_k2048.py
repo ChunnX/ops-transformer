@@ -40,10 +40,19 @@ sparse_indices = torch.full((t1, n2, topk), -1, dtype=torch.int32).npu()
 for i in range(t2):
     sparse_indices[0, 0, i] = i
 
-softmax_max = torch.randn(n2, t1, G, dtype=torch.float32).npu()
-softmax_sum = torch.randn(n2, t1, G, dtype=torch.float32).npu()
-
 scale_value = 1.0 / math.sqrt(d_query)
+
+with torch.no_grad():
+    k_mqa = key.squeeze(1)
+    k_rope_mqa = key_rope.squeeze(1)
+    q_full = torch.cat([query, query_rope], dim=-1)
+    k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
+    bmm1_full = torch.matmul(q_full, k_full.t())
+    bmm1_scaled = bmm1_full.float() * scale_value
+    sm_max_val = bmm1_scaled.max(dim=-1).values
+    sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
+    softmax_max = sm_max_val.reshape(n2, t1, G).contiguous().float()
+    softmax_sum = sm_sum_val.reshape(n2, t1, G).contiguous().float()
 
 print("\n[1] TileLang...")
 try:
