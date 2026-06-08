@@ -336,6 +336,10 @@ public:
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
+        // Band head intra-skip: reduce originN for subLoop 0 (BMM1 produced fewer valid columns)
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < mxfp8s2RealSize) {
+            mxfp8s2RealSize -= runInfo.bandHeadIntraSkip;
+        }
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
@@ -1144,6 +1148,12 @@ public:
         maskInfo.gSize = constInfo.realGSize;
         maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
         maskInfo.s2dealNum = s2RealSize;
+        // Band head intra-skip: shift mask s2 start for subLoop 0
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U) {
+            maskInfo.s2StartIdx += runInfo.bandHeadIntraSkip;
+            maskInfo.s2dealNum = s2RealSize > runInfo.bandHeadIntraSkip ?
+                                 s2RealSize - runInfo.bandHeadIntraSkip : s2RealSize;
+        }
         maskInfo.s2Size = runInfo.actS2Size;
         maskInfo.nBaseSize = s2BaseSizeCur;
         maskInfo.preToken = constInfo.preTokens;
