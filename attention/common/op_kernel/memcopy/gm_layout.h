@@ -236,12 +236,16 @@ struct GmLayout<GmFormat::PA_BnBsND> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d,
+                                      uint64_t bn2stride = 0, uint64_t n2Stride = 0) {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t nStride = dStride * d;
         uint64_t bsStride = nStride * n;
         uint64_t bnStride = bsStride * blockSize;
+        if (bn2stride != 0) {
+            bnStride = bn2stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
     }
 };
