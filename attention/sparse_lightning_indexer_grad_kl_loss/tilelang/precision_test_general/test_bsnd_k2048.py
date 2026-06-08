@@ -38,7 +38,7 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
             s2RealLen = topk
         else:
             s2RealLen = s2RealSize
-        sparse_indices[:, s1Idx, 0, 0:s2RealLen] = (torch.randint(0, s2RealSize, (s2RealLen,)).to(torch.int32)).npu()
+        sparse_indices[:, s1Idx, 0, 0:s2RealLen] = torch.randperm(s2RealSize, dtype=torch.int32)[:s2RealLen].npu()
         sparse_indices[:, s1Idx, 0, s2RealLen:topk] = -1
     sc = 1.0 / math.sqrt(D)
     with torch.no_grad():
@@ -131,7 +131,7 @@ if tl_ok and off_ok:
         if not ok: all_pass = False
         print(f"  Loss: abs_diff={la:.6f}, rel_err={lr:.6f}, tl={ltl:.6f}, off={loff:.6f} [{'PASS' if ok else 'FAIL'}]")
 
-    print("\n[4] 诊断: Python参考计算")
+    print("\n[4] 诊断: Python参考计�?)
     from sparse_lightning_indexer_grad_kl_loss import _preprocess_gather, _compute_vector_outputs
     S2_pad = (S2 + 128 - 1) // 128 * 128
     k_p = torch.nn.functional.pad(k, (0,0,0,0,0,S2_pad-S2,0,0)) if S2_pad > S2 else k

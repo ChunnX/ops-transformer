@@ -286,13 +286,7 @@ def diag_kernel(
                         T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx*n_block:(n_idx+1)*n_block])
                         T.barrier_all()
 
-                    # Skip dWeight/reluGrad/Loss computation for diagnosis
-                    T.tile.fill(dWeight[bz, s1_id, 0:Nidx1], 0.0)
-                    T.barrier_all()
-                    T.tile.fill(reluGradRes[bz, s1_id, 0:Nidx1, 0:n_block], 0.0)
-                    T.barrier_all()
-                    T.tile.fill(LossOut[bz, s1_id, 0:16], 0.0)
-                    T.barrier_all()
+                    pass
 
                 T.set_cross_flag("V", 2)
 

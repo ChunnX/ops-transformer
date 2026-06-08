@@ -38,7 +38,7 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
             s2RealLen = topk
         else:
             s2RealLen = s2RealSize
-        sparse_indices[:, s1Idx, 0, 0:s2RealLen] = (torch.randint(0, s2RealSize, (s2RealLen,)).to(torch.int32)).npu()
+        sparse_indices[:, s1Idx, 0, 0:s2RealLen] = torch.randperm(s2RealSize, dtype=torch.int32)[:s2RealLen].npu()
         sparse_indices[:, s1Idx, 0, s2RealLen:topk] = -1
     sc = 1.0 / math.sqrt(D)
     with torch.no_grad():
