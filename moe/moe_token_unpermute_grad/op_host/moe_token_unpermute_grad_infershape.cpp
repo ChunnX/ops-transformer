@@ -95,9 +95,8 @@ static ge::graphStatus InferDataType4MoeTokenUnpermuteGrad(gert::InferDataTypeCo
         Ops::Base::ToString(context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX)).c_str());
     context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
     context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
-    if (context->GetOptionalInputDataType(INPUT_PERMUTED_TOKENS_IDX) != ge::DT_UNDEFINED) {
-        context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_PERMUTED_TOKENS_IDX));
-    }
+    context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_PERMUTED_TOKENS_IDX));
+    
     // 混精场景PROBGRAD dtype与PROB一致，与PERMUTED_TOKENS不一致
     if (context->GetOptionalInputDataType(INPUT_PROB_IDX) != ge::DT_UNDEFINED) {
         context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_PROB_IDX));
