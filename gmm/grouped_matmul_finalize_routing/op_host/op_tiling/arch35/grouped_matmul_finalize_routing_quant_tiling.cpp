@@ -76,7 +76,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
     OP_CHECK_IF(sharedInputOffset_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "share_input_offset", std::to_string(sharedInputOffset_),
-                    StrCat("shareInputOffset must be less than or equal to batch(", outputBs_, ")")),
+                    BuildString("shareInputOffset must be less than or equal to batch(", outputBs_, ")")),
                 return false);
 
     OP_CHECK_IF(outputDtype > OUT_DTYPE_BF16_INDEX,
@@ -100,7 +100,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "attrs",
                     std::to_string(attrs->GetAttrNum()),
-                    StrCat("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
+                    BuildString("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
                 return false);
     const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
@@ -369,7 +369,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
         sharedInputLen_ > outputBs_,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "shared_input",
                                               std::to_string(sharedInputLen_),
-                                              StrCat("shared_input_len must be less than or equal to batch(",
+                                              BuildString("shared_input_len must be less than or equal to batch(",
                                                      outputBs_, ")")),
         return false);
 
@@ -377,7 +377,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "share_input_offset, shared_input",
                     std::to_string(sharedInputOffset_ + sharedInputLen_),
-                    StrCat("shareInputOffset plus sharedInputLen must be less than or equal to batch(",
+                    BuildString("shareInputOffset plus sharedInputLen must be less than or equal to batch(",
                            outputBs_, ")")),
                 return false);
 
@@ -397,14 +397,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "row_index",
                                                       std::to_string(rowIndex_),
-                                                      StrCat("rowIndex must be less than or equal to M (",
+                                                      BuildString("rowIndex must be less than or equal to M (",
                                                              inputParams_.mSize, ")")),
                 return false);
 
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "output_bs",
                                                       std::to_string(outputBs_),
-                                                      StrCat("outputBS must be less than or equal to M (",
+                                                      BuildString("outputBS must be less than or equal to M (",
                                                              inputParams_.mSize, ")")),
                 return false);
     return true;

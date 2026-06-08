@@ -538,7 +538,7 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    StrCat("when the format of weight is FRACTAL_NZ, fifth dimension must be ", weightNzLastDim,
+                    BuildString("when the format of weight is FRACTAL_NZ, fifth dimension must be ", weightNzLastDim,
                            " for ", (isWeight4Bit ? "4-bit" : "8-bit"), " weight")),
                 return false);
     OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
@@ -552,7 +552,7 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         inputParams_.opType, "weight", ShapeToString(wShape),
-                        StrCat("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
+                        BuildString("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
                                "ceil(kSize/16) = ",
                                CeilDiv(inputParams_.kSize, WEIGHTNZ_16))),
                     return false);
@@ -560,14 +560,14 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
             wShapeDimSecond != CeilDiv(inputParams_.nSize, weightNzLastDim),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 inputParams_.opType, "weight", ShapeToString(wShape),
-                StrCat("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(nSize/",
+                BuildString("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(nSize/",
                        weightNzLastDim, ") = ", CeilDiv(inputParams_.nSize, weightNzLastDim))),
             return false);
     } else {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         inputParams_.opType, "weight", ShapeToString(wShape),
-                        StrCat("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
+                        BuildString("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
                                "ceil(nSize/16) = ",
                                CeilDiv(inputParams_.nSize, WEIGHTNZ_16))),
                     return false);
@@ -575,7 +575,7 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
             wShapeDimSecond != CeilDiv(inputParams_.kSize, weightNzLastDim),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 inputParams_.opType, "weight", ShapeToString(wShape),
-                StrCat("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/",
+                BuildString("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/",
                        weightNzLastDim, ") = ", CeilDiv(inputParams_.kSize, weightNzLastDim))),
             return false);
     }
