@@ -283,7 +283,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                return ge::GRAPH_FAILED);
         // hifloat8只支持bf16的weights和fp32的scale
         if (inputQType_ == ge::DT_FLOAT8_E4M3FN) {
-            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) && 
+            OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) &&
                         (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
                 OP_LOGE(opName_, "When input query and key are float8_e4m3, ",
                         "the data type of the input weights, query_dequant_scale and key_dequant_scale ",
@@ -291,7 +291,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                 return ge::GRAPH_FAILED);
         } else if (inputKType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT,
-                OP_LOGE(opName_, "When input query and key are hifloat8, ", 
+                OP_LOGE(opName_, "When input query and key are hifloat8, ",
                         "the data types of the input weights, queryScale and keyScale ",
                         "must be (bfloat16, float32, float32)."),
                 return ge::GRAPH_FAILED);
@@ -312,7 +312,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
-            return ge::GRAPH_FAILED);        
+            return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
@@ -479,9 +479,9 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     } else {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must <= %u.", n1Size_, n2Size_, G_SIZE_LIMIT),
-               return ge::GRAPH_FAILED);        
+               return ge::GRAPH_FAILED);
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -523,7 +523,8 @@ ge::graphStatus QLIV2InfoParser::GetHeadDim()
             return ge::GRAPH_FAILED;
     }
     headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(dIndex);
-    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT, OP_LOGE(opName_, "input query's last dim head_dim only support 128, but now is %u.", headDim_),
+    OP_CHECK_IF(headDim_ != HEAD_DIM_LIMIT, OP_LOGE(opName_, "input query's last dim head_dim only support 128,
+        but now is %u.", headDim_),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -544,7 +545,8 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckBlockSize()
 
     OP_CHECK_IF(
         ((blockSize_ % BLOCK_SIZE_FACTOR != 0) || (blockSize_ == 0) || (blockSize_ > BLOCK_SIZE_LIMIT)),
-        OP_LOGE(opName_, "input key's block_size must be a multiple of 16 and belong to (0, 1024], but now is %d.", blockSize_),
+        OP_LOGE(opName_, "input key's block_size must be a multiple of 16 and belong to (0, 1024], but now is %d.",
+            blockSize_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -656,7 +658,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                     (opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
                     OP_LOGE(opName_,
-                                "BSND case input query, weight, actual_seq_lengths_key, block_table, sparse_indices dim 0 are %u, %u, %u, %u, %u respectively, they must be same.",
+                                "BSND case input query, weight, actual_seq_lengths_key, block_table,
+                                    sparse_indices dim 0 are %u, %u, %u, %u, %u respectively, they must be same.",
                                 bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                                 opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize(),
                                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0),
@@ -668,7 +671,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                     opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
                     OP_LOGE(opName_,
-                                "BSND case input query, weight, actual_seq_lengths_key, sparse_indices dim 0 are %u, %u, %u, %u respectively, they must be same.",
+                                "BSND case input query, weight, actual_seq_lengths_key, sparse_indices dim 0 are %u,
+                                    %u, %u, %u respectively, they must be same.",
                                 bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                                 opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize(),
                                 opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
@@ -694,7 +698,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
     }
     // -----------------------check N1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
-            OP_LOGE(opName_, "input query, weight shape dim N1 must be same, but now are %u, %u respectively, they must be same.",
+            OP_LOGE(opName_, "input query, weight shape dim N1 must be same, but now are %u, %u respectively,
+                they must be same.",
             opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim), n1Size_),
             return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
@@ -873,7 +878,7 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLITilingInfo *tilingInf
         workspaceSize +=
             V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     }
-    
+
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
