@@ -74,7 +74,7 @@ __aicore__ constexpr TPosition GetC2Position() {
     hasAtten, OUTPUT_T, isPa
 
 #define TEMPLATE_INTF \
-    template <typename INPUT_T, typename T, LayOutTypeEnum qLayout, BSAKvLayout kvLayout, \
+    template <typename INPUT_T, typename T, BSALayout qLayout, BSAKvLayout kvLayout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
     DTemplateType dVTemplateType, bool hasAtten,\
     typename OUTPUT_T, bool isPa>
@@ -89,7 +89,7 @@ __aicore__ constexpr TPosition GetC2Position() {
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
-    X(qLayout, LayOutTypeEnum, LayOutTypeEnum::LAYOUT_TND) \
+    X(qLayout, BSALayout, BSALayout::TND) \
     X(kvLayout, BSAKvLayout, BSAKvLayout::PA_BNSD) \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \

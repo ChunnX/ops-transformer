@@ -907,7 +907,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
 
     int64_t attenOutOffset = constInfo.dSizeV;
-    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == BSALayout::TND) {
         attenOutOffset = constInfo.n2GDv;
         if (constInfo.isPfaGS1Merge) {
             attenOutOffset = 0;
@@ -916,26 +916,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
         } else if (constInfo.isGqa) {
             attenOutOffset = constInfo.dSizeV;
         }
-    } else {
-        if (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH)) {
-            attenOutOffset = constInfo.n2GDv;
-            if (constInfo.isPfaGS1Merge) {
-                attenOutOffset = 0;
-                dataCopyParams.blockLen *= constInfo.gSize;
-                dataCopyParams.blockCount /= constInfo.gSize;
-            } else if (constInfo.isGqa) {
-                attenOutOffset = constInfo.dSizeV;
-            }
-        } else if (constInfo.layoutType == (uint8_t)LayOutTypeEnum::LAYOUT_SBH) {
-            attenOutOffset = constInfo.bN2GDv;
-        }
-        if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
-            attenOutOffset = constInfo.n2GDv;
-        }
     }
 
-    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && (constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_BSH) || constInfo.layoutType == static_cast<uint8_t>(LayOutTypeEnum::LAYOUT_TND))) {
+    if (constInfo.isPfaGS1Merge && dSizeAligned64 - constInfo.dSizeV != 0 && constInfo.layoutType == static_cast<uint8_t>(BSALayout::TND)) {
         for(int64_t i = 0; i < runInfo.vec2S1BaseSize / constInfo.gSize; i++){
             attenOutOffset = i * constInfo.dSizeV * constInfo.gSize * constInfo.n2Size;
             dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -1222,7 +1205,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
-    if (qLayout == LayOutTypeEnum::LAYOUT_TND || qLayout == LayOutTypeEnum::LAYOUT_NTD) {
+    if (qLayout == BSALayout::TND) {
         intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
     } else {
         intriParams1.dstStride = 0;
