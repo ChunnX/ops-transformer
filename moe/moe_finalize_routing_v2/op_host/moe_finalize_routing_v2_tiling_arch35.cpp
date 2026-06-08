@@ -58,6 +58,7 @@ const static int64_t ATTR_DROP_PAD_MODE_IDX = 0LL;
 const static int64_t ATTR_ZERO_EXPERT_RANGE_IDX = 1LL;
 const static int64_t ATTR_COPY_EXPERT_RANGE_IDX = 2LL;
 const static int64_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3LL;
+const static int64_t ATTR_K_IDX = 4LL;
 
 class MoeFinalizeRoutingV2Regbase : public MoeFinalizeRoutingTilingV2
 {
@@ -181,7 +182,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
 {
     if (!scalesShape) {
         hasScales_ = false;
-        k = 1;
+        // k = 1;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -600,6 +601,10 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "H", "GRAPH_FAILED",
             "failed to get H."), return ge::GRAPH_FAILED);
 
+    auto kPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kPtr);
+    k = *kPtr;
+    // 先用k赋值，后用scale的shape赋值覆盖，保证存量用例的兼容性
     auto scalesShape = context_->GetOptionalInputShape(SCALES_IDX);
     OP_CHECK_IF(
         GetK(scalesShape) != ge::GRAPH_SUCCESS,
