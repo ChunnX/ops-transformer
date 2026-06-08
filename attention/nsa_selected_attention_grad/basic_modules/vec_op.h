@@ -437,13 +437,13 @@ __aicore__ inline void VecOp<NSAGT>::CalAttenMsk(const uint64_t indicesGmOffset,
             Duplicate(tmpTensor, scalar, mask, 1, 0, 0);
         }
 
-    if (s1Index + 1 < selectedS2) {
-        int64_t mskLen = static_cast<int64_t>(params.sftBaseN) - static_cast<int64_t>(selectIdx + 1) * selectedBlockSize;
-        if (mskLen > 0) {
-            tmpTensor = pTensor[(selectIdx + 1) * selectedBlockSize + pOffset];
-            Duplicate(tmpTensor, scalar, mskLen);
+        if (s1Index + 1 < selectedS2) {
+            uint32_t mskLen = params.sftBaseN - (selectIdx + 1) * selectedBlockSize;
+            if (mskLen != 0) {
+                tmpTensor = pTensor[(selectIdx + 1) * selectedBlockSize + pOffset];
+                Duplicate(tmpTensor, scalar, mskLen);
+            }
         }
-    }
     }
 }
 

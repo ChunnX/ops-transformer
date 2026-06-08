@@ -762,10 +762,10 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalAttenMsk(const int32_t p
          * 2.如果需要掩掉的块不仅仅在对角线上，则后面所有的块都需要被掩掉
          */
         if (lastS1Index + 1 < selectedS2) {
-            int64_t mskLen = static_cast<int64_t>(selectedBlockCount - (selectIdx + 1)) * static_cast<int64_t>(selectedBlockSize);
+            uint32_t mskLen = (selectedBlockCount - (selectIdx + 1)) * selectedBlockSize;
             if (mskLen != 0) {
                 tmpTensor = pTensor[(selectIdx + 1) * selectedBlockSize + pOffset];
-                Duplicate(tmpTensor, scalar, mskLen);
+                Duplicate(tmpTensor, scalar, (selectedBlockCount - (selectIdx + 1)) * selectedBlockSize);
             }
         }
     }
