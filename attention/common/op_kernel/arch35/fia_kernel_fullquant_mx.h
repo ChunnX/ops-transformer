@@ -28,7 +28,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "fia_tiling_data_fullquant_mx.h"
+#include "fia_tiling_data_fullquant.h"
 
 using namespace AscendC;
 using namespace optiling;
