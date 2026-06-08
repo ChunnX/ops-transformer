@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MixedQuantSparseFlashMla - Flash Decode 设计方案</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-light: #dbeafe;
+    --accent: #f59e0b;
+    --accent-light: #fef3c7;
+    --danger: #ef4444;
+    --success: #10b981;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --bg: #f8fafc;
+    --card-bg: #ffffff;
+    --border: #e2e8f0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 2em; color: var(--primary); border-bottom: 3px solid var(--primary); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { font-size: 1.5em; color: var(--primary); margin-top: 32px; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--primary); }
+  h3 { font-size: 1.2em; color: var(--text); margin-top: 20px; margin-bottom: 12px; }
+  h4 { font-size: 1.05em; color: var(--text-light); margin-top: 16px; margin-bottom: 8px; }
+  p { margin-bottom: 12px; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card-highlight {
+    background: var(--primary-light);
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-warning {
+    background: var(--accent-light);
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .math-block {
+    background: #f1f5f9;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    font-family: 'KaTeX_Main', 'Times New Roman', serif;
+    overflow-x: auto;
+  }
+  .math-inline { font-family: 'KaTeX_Main', 'Times New Roman', serif; }
+  .formula-label {
+    font-size: 0.85em;
+    color: var(--text-light);
+    margin-bottom: 4px;
+  }
+  .formula-box {
+    background: var(--primary-light);
+    border: 2px solid var(--primary);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    text-align: center;
+    font-family: 'KaTeX_Main', 'Times New Roman', serif;
+    font-size: 1.1em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.95em;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+  td { background: var(--card-bg); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
+  .tag-new { background: var(--primary-light); color: var(--primary); }
+  .tag-modified { background: var(--accent-light); color: var(--accent); }
+  .tag-existing { background: #f1f5f9; color: var(--text-light); }
+  .tag-gap { background: #fef2f2; color: var(--danger); }
+  pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+  }
+  .comment { color: #94a3b8; }
+  .keyword { color: #c084fc; }
+  .type { color: #67e8f9; }
+  .func { color: #fbbf24; }
+  .string { color: #86efac; }
+  .number { color: #f472b6; }
+  .highlight-line { background: rgba(251, 191, 36, 0.15); display: block; }
+  .svg-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .svg-container svg { display: block; margin: 0 auto; }
+  .toc {
+    background: var(--card-bg);
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .toc h3 { color: var(--primary); margin-bottom: 12px; border: none; padding: 0; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { padding: 4px 0; }
+  .toc li a { color: var(--primary); text-decoration: none; }
+  .toc li a:hover { text-decoration: underline; }
+  .toc .toc-l2 { padding-left: 20px; }
+  .toc .toc-l3 { padding-left: 40px; font-size: 0.9em; }
+  .step-box {
+    display: flex;
+    align-items: flex-start;
+    margin: 12px 0;
+    gap: 12px;
+  }
+  .step-num {
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9em;
+    flex-shrink: 0;
+  }
+  .step-content { flex: 1; }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .badge-aic { background: #dbeafe; color: #2563eb; }
+  .badge-aiv { background: #fef3c7; color: #f59e0b; }
+  .badge-fd-new { background: #dcfce7; color: #10b981; }
+  .badge-fd-mod { background: #fce7f3; color: #ec4899; }
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .comparison-grid .card { margin-bottom: 0; }
+  @media (max-width: 768px) {
+    .comparison-grid { grid-template-columns: 1fr; }
+    .container { padding: 12px; }
+    h1 { font-size: 1.5em; }
+    h2 { font-size: 1.2em; }
+  }
+  .arrow-right::after { content: " → "; font-weight: bold; }
+  .arrow-down::after { content: " ↓ "; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Title -->
+<h1>MixedQuantSparseFlashMla — Flash Decode (FD) 设计方案</h1>
+<p style="color:var(--text-light);margin-bottom:24px;">
+  版本: v1.0 | 目标架构: <span class="badge badge-aic">arch35</span> (Ascend 950PR/950DT) | 
+  核型: <span class="badge badge-aic">AIC×36</span> + <span class="badge badge-aiv">AIV×72</span> | 
+  s2切分步长: 128
+</p>
+
+<!-- TOC -->
+<div class="toc">
+  <h3>目录</h3>
+  <ul>
+    <li><a href="#sec1">1. Flash Decode 原理与数学推导</a></li>
+    <li class="toc-l2"><a href="#sec1-1">1.1 标准注意力公式</a></li>
+    <li class="toc-l2"><a href="#sec1-2">1.2 Online Flash Softmax (单核)</a></li>
+    <li class="toc-l2"><a href="#sec1-3">1.3 Flash Decode 多核分解</a></li>
+    <li class="toc-l2"><a href="#sec1-4">1.4 LSE (Log-Sum-Exp) 输出</a></li>
+    <li class="toc-l2"><a href="#sec1-5">1.5 数值稳定性分析</a></li>
+    <li><a href="#sec2">2. 当前算子现状分析</a></li>
+    <li class="toc-l2"><a href="#sec2-1">2.1 当前流水线流程</a></li>
+    <li class="toc-l2"><a href="#sec2-2">2.2 Buffer 分配</a></li>
+    <li class="toc-l2"><a href="#sec2-3">2.3 跨核同步机制</a></li>
+    <li class="toc-l2"><a href="#sec2-4">2.4 当前 Softmax / LSE 处理与缺陷</a></li>
+    <li class="toc-l2"><a href="#sec2-5">2.5 FD 支持的关键缺口</a></li>
+    <li><a href="#sec3">3. FD 改造方案设计</a></li>
+    <li class="toc-l2"><a href="#sec3-1">3.1 总览与对比</a></li>
+    <li class="toc-l2"><a href="#sec3-2">3.2 多核切分策略</a></li>
+    <li class="toc-l2"><a href="#sec3-3">3.3 Vec1 修改: 拷出 max+sum</a></li>
+    <li class="toc-l2"><a href="#sec3-4">3.4 Vec2 修改: 拷出 partial O + 规约</a></li>
+    <li class="toc-l2"><a href="#sec3-5">3.5 规约阶段详细设计</a></li>
+    <li class="toc-l2"><a href="#sec3-6">3.6 Buffer 布局变更</a></li>
+    <li class="toc-l2"><a href="#sec3-7">3.7 Metadata 结构变更</a></li>
+    <li class="toc-l2"><a href="#sec3-8">3.8 跨核同步设计</a></li>
+    <li class="toc-l2"><a href="#sec3-9">3.9 边界情况处理</a></li>
+    <li><a href="#sec4">4. 各阶段伪代码</a></li>
+    <li class="toc-l2"><a href="#sec4-1">4.1 ProcessVec1 (FD 修改)</a></li>
+    <li class="toc-l2"><a href="#sec4-2">4.2 ProcessVec2 (FD 修改)</a></li>
+    <li class="toc-l2"><a href="#sec4-3">4.3 ProcessFdReduction (新增)</a></li>
+    <li class="toc-l2"><a href="#sec4-4">4.4 FlashUpdateLastNoDiv (新增 VF)</a></li>
+    <li><a href="#sec5">5. 流水线与数据流图</a></li>
+    <li class="toc-l2"><a href="#sec5-1">5.1 FA 与 FD 流水线对比</a></li>
+    <li class="toc-l2"><a href="#sec5-2">5.2 FD 规约数据流图</a></li>
+    <li class="toc-l2"><a href="#sec5-3">5.3 跨核同步时序图</a></li>
+    <li><a href="#sec6">6. 实现清单</a></li>
+  </ul>
+</div>
+
+<!-- ==================== Section 1: FD Principle ==================== -->
+<h2 id="sec1">1. Flash Decode 原理与数学推导</h2>
+
+<h3 id="sec1-1">1.1 标准注意力公式</h3>
+<div class="card">
+<p>对于查询向量 <span class="math-inline">q ∈ ℝ<sup>d</sup></span> 和键/值序列 <span class="math-inline">K ∈ ℝ<sup>s₂×d</sup></span>, <span class="math-inline">V ∈ ℝ<sup>s₂×d</sup></span>, 注意力输出为:</p>
+<div class="math-block">
+  O = softmax( qK<sup>T</sup> / √d ) · V
+</div>
+<p>展开元素级别，令 <span class="math-inline">s<sub>k</sub> = q · k<sub>k</sub> / √d</span> 表示位置 k 的缩放点积分数:</p>
+<div class="math-block">
+  O = Σ<sub>k=0..s₂-1</sub> exp(s<sub>k</sub> − m) · v<sub>k</sub> / Σ<sub>k=0..s₂-1</sub> exp(s<sub>k</sub> − m)
+</div>
+<p>其中 <span class="math-inline">m = max<sub>k</sub> s<sub>k</sub></span> 为全局最大分数，用于数值稳定性（加减常数在分子分母间抵消）。</p>
+</div>
+
+<h3 id="sec1-2">1.2 Online Flash Softmax (单核迭代)</h3>
+<div class="card">
+<p>当 KV 序列分块迭代处理时（如 FlashAttention），softmax 统计量需增量累积。第 <span class="math-inline">j</span> 次迭代产生:</p>
+<ul>
+  <li><span class="math-inline">m<sup>(j)</sup></span>: 已见分数的运行最大值</li>
+  <li><span class="math-inline">ℓ<sup>(j)</sup></span>: <span class="math-inline">Σ exp(s<sub>k</sub> − m<sup>(j)</sup>)</span> 的运行求和</li>
+  <li><span class="math-inline">O<sup>(j)</sup></span>: <span class="math-inline">Σ exp(s<sub>k</sub> − m<sup>(j)</sup>) · v<sub>k</sub></span> 的运行加权求和</li>
+</ul>
+
+<div class="step-box"><div class="step-num">1</div><div class="step-content"><strong>更新全局最大值</strong>: <span class="math-inline">m<sup>(j)</sup> = max(m<sup>(j-1)</sup>, m̃<sub>j</sub>)</span></div></div>
+<div class="step-box"><div class="step-num">2</div><div class="step-content"><strong>计算修正因子</strong>: <span class="math-inline">α = exp(m<sup>(j-1)</sup> − m<sup>(j)</sup>)</span>, 当 <span class="math-inline">m<sup>(j)</sup> > m<sup>(j-1)</sup></span> 时 <span class="math-inline">α < 1</span>, 无溢出风险</div></div>
+<div class="step-box"><div class="step-num">3</div><div class="step-content"><strong>更新运行求和</strong>: <span class="math-inline">ℓ<sup>(j)</sup> = α · ℓ<sup>(j-1)</sup> + Σ<sub>k∈tile_j</sub> exp(s<sub>k</sub> − m<sup>(j)</sup>)</span></div></div>
+<div class="step-box"><div class="step-num">4</div><div class="step-content"><strong>更新运行输出</strong>: <span class="math-inline">O<sup>(j)</sup> = α · O<sup>(j-1)</sup> + Σ<sub>k∈tile_j</sub> exp(s<sub>k</sub> − m<sup>(j)</sup>) · v<sub>k</sub></span></div></div>
+<div class="step-box"><div class="step-num">5</div><div class="step-content"><strong>最终归一化</strong>: <span class="math-inline">O<sub>final</sub> = O<sup>(J)</sup> / ℓ<sup>(J)</sup></span></div></div>
+
+<p><strong>正确性证明</strong>: 处理所有 tile 后, <span class="math-inline">m<sup>(J)</sup> = m</span> (全局最大), <span class="math-inline">ℓ<sup>(J)</sup> = Σ exp(s<sub>k</sub> − m)</span>, <span class="math-inline">O<sup>(J)</sup> = Σ exp(s<sub>k</sub> − m) · v<sub>k</sub></span>, 因此 <span class="math-inline">O<sup>(J)</sup>/ℓ<sup>(J)</sup> = softmax(qK<sup>T</sup>/√d) · V</span>。</p>
+</div>
+
+<h3 id="sec1-3">1.3 Flash Decode: 多核分解推导</h3>
+<div class="card-highlight">
+<p>这是 <strong>FD 的核心推导</strong>。当 s₂ 被切分到 N 个核并行计算时, 如何从各核的 partial 结果恢复全局注意力输出。</p>
+
+<h4>Split 定义</h4>
+<p>核 <span class="math-inline">i</span> 处理 KV 范围 <span class="math-inline">R<sub>i</sub> = [start<sub>i</sub>, end<sub>i</sub>)</span>, 步长 128。各 split 互不重叠且覆盖完整序列。</p>
+
+<h4>各核 Partial 计算</h4>
+<div class="formula-box">
+  partial_max<sub>i</sub> = max<sub>k∈R<sub>i</sub></sub> s<sub>k</sub><br>
+  partial_sum<sub>i</sub> = Σ<sub>k∈R<sub>i</sub></sub> exp(s<sub>k</sub> − partial_max<sub>i</sub>)<br>
+  partial_O<sub>i</sub> = Σ<sub>k∈R<sub>i</sub></sub> exp(s<sub>k</sub> − partial_max<sub>i</sub>) · v<sub>k</sub>  &nbsp;&nbsp;<span class="tag tag-new">未归一化</span>
+</div>
+<p><strong>关键</strong>: <span class="math-inline">partial_O<sub>i</sub></span> 是<strong>未归一化</strong>的加权求和 — 不除以 <span class="math-inline">partial_sum<sub>i</sub></span>。各核使用自己的局部最大值作为参考点。</p>
+
+<h4>全局规约推导</h4>
+
+<div class="step-box"><div class="step-num">3.1</div><div class="step-content">
+  <strong>定义全局最大值</strong>:<br>
+  <span class="math-inline">global_max = max<sub>i</sub> partial_max<sub>i</sub> = max<sub>k=0..s₂-1</sub> s<sub>k</sub> = m</span>
+</div></div>
+
+<div class="step-box"><div class="step-num">3.2</div><div class="step-content">
+  <strong>推导修正因子</strong>: 对 <span class="math-inline">k ∈ R<sub>i</sub></span>:<br>
+  <span class="math-inline">exp(s<sub>k</sub> − global_max) = exp(s<sub>k</sub> − partial_max<sub>i</sub>) · exp(partial_max<sub>i</sub> − global_max)</span><br>
+  定义 <strong>correction<sub>i</sub> = exp(partial_max<sub>i</sub> − global_max)</strong>
+</div></div>
+
+<div class="step-box"><div class="step-num">3.3</div><div class="step-content">
+  <strong>推导全局求和</strong>:<br>
+  <span class="math-inline">global_sum = Σ<sub>i</sub> correction<sub>i</sub> · partial_sum<sub>i</sub></span>
+</div></div>
+
+<div class="formula-box">
+  global_sum = Σ<sub>i=0..N-1</sub> exp(partial_max<sub>i</sub> − global_max) · partial_sum<sub>i</sub>
+</div>
+
+<div class="step-box"><div class="step-num">3.4</div><div class="step-content">
+  <strong>推导全局输出</strong>:<br>
+  <span class="math-inline">global_O = Σ<sub>i</sub> correction<sub>i</sub> · partial_O<sub>i</sub></span>
+</div></div>
+
+<div class="formula-box">
+  global_O = Σ<sub>i=0..N-1</sub> exp(partial_max<sub>i</sub> − global_max) · partial_O<sub>i</sub>
+</div>
+
+<div class="step-box"><div class="step-num">3.5</div><div class="step-content">
+  <strong>最终归一化</strong>:
+</div></div>
+
+<div class="formula-box" style="border-color: var(--success); background: #dcfce7;">
+  <strong>final_O = global_O / global_sum</strong>
+</div>
+
+<p><strong>等价性验证</strong>: 由构造可得 <span class="math-inline">final_O = softmax(qK<sup>T</sup>/√d) · V</span>, 与完整序列计算结果<strong>数学等价</strong>（除浮点舍入误差）。</p>
+</div>
+
+<h3 id="sec1-4">1.4 LSE (Log-Sum-Exp) 输出</h3>
+<div class="card">
+<p>LSE 用于下游自回归推理（如 KV cache 合并）。定义:</p>
+<div class="math-block">lse = log Σ<sub>k=0..s₂-1</sub> exp(s<sub>k</sub>)</div>
+<p>从全局规约结果推导:</p>
+<div class="math-block">
+  lse = log[ exp(global_max) · Σ exp(s<sub>k</sub> − global_max) ]<br>
+     = global_max + log( Σ exp(s<sub>k</sub> − global_max) )<br>
+     = global_max + log(global_sum)
+</div>
+<div class="formula-box">
+  <strong>lse = global_max + log(global_sum)</strong>
+</div>
+<p><strong>注</strong>: 分数 <span class="math-inline">s<sub>k</sub></span> 已包含 softmax_scale（vec1 中 Muls 已应用），因此 partial_max/sum/O 均反映缩放后的分数，无需额外缩放修正。</p>
+</div>
+
+<h3 id="sec1-5">1.5 数值稳定性分析</h3>
+<div class="card">
+<h4>修正因子边界</h4>
+<p>对任意 split <span class="math-inline">i</span>: <span class="math-inline">partial_max<sub>i</sub> ≤ global_max</span>, 因此:</p>
+<div class="math-block">0 < correction<sub>i</sub> = exp(partial_max<sub>i</sub> − global_max) ≤ 1</div>
+
+<h4>无溢出保证</h4>
+<ul>
+  <li><span class="math-inline">correction<sub>i</sub> · partial_sum<sub>i</sub></span> 和 <span class="math-inline">correction<sub>i</sub> · partial_O<sub>i</sub></span> 均 ≤ 原始 partial 值</li>
+  <li>全局规约仅涉及 ≤1 的乘法和加法 — 无指数增长</li>
+  <li>包含全局最大值的 split: <span class="math-inline">correction = 1</span>；远离全局最大的 split: <span class="math-inline">correction</span> 可能趋近 0，天然剪枝低分位置</li>
+</ul>
+
+<h4>FP32 精度保障</h4>
+<ul>
+  <li><span class="math-inline">partial_sum/partial_O</span> 在 FP32 累积（vec1/vec2 阶段）</li>
+  <li><span class="math-inline">correction</span> 在 FP32 计算: <span class="math-inline">exp(partial_max − global_max)</span>, 参数 ≤ 0, 结果 ∈ (0, 1]</li>
+  <li>全局规约在 FP32 累积，最终除法后可选 Cast 到输出 dtype</li>
+</ul>
+</div>
+
+<!-- ==================== Section 2: Current Status ==================== -->
+<h2 id="sec2">2. 当前算子现状分析</h2>
+
+<h3 id="sec2-1">2.1 当前流水线流程</h3>
+<div class="card">
+<p>当前使用 <strong>3 阶段三缓冲流水线</strong>, <span class="math-inline">taskId % 3</span> 索引, 处理 kvSeqLen (s₂) 以 <span class="math-inline">s₂BaseSize=128</span> 为步长的循环:</p>
+
+<table>
+  <tr><th>流水线槽位</th><th><span class="badge badge-aic">AIC (Cube)</span></th><th><span class="badge badge-aiv">AIV (Vector)</span></th></tr>
+  <tr><td>task[N]</td><td><strong>Bmm1</strong>: Q·K<sup>T</sup> → UB (Fixpipe)</td><td><strong>V0</strong>: KV 反量化 FP8→BF16, 输出到 L1 (或 GM)</td></tr>
+  <tr><td>task[N-1]</td><td><strong>Bmm2</strong>: P·V → UB (Fixpipe)</td><td><strong>Vec1</strong>: 读 Bmm1 → Muls(scale)+SoftmaxFlashV2+Cast+ND2NZ → 写 P 到 L1</td></tr>
+  <tr><td>task[N-2]</td><td>(空闲)</td><td><strong>Vec2</strong>: 读 Bmm2 → FlashUpdate O, 最后迭代: O = (prev·expMax+cur)/sum → Cast bf16 → 写 GM</td></tr>
+</table>
+
+<p><strong>关键参数</strong>: s₁BaseSize=64, s₂BaseSize=128, dSize=512, CV_RATIO=2, softmax_scale=1/√d</p>
+</div>
+
+<h3 id="sec2-2">2.2 Buffer 分配</h3>
+<div class="card">
+<h4>AIV (Vector) 侧 — UB</h4>
+<table>
+  <tr><th>Buffer</th><th>大小</th><th>用途</th></tr>
+  <tr><td>softmaxSumBuf[0,1]</td><td>256B × 2</td><td>Flash softmax 运行求和 (fp32), <span class="math-inline">multiCoreIdxMod2</span> 索引</td></tr>
+  <tr><td>softmaxMaxBuf[0,1]</td><td>256B × 2</td><td>Flash softmax 运行最大值 (fp32)</td></tr>
+  <tr><td>softmaxExpBuf[0,1]</td><td>256B × 2</td><td>Flash softmax exp 修正因子 (fp32)</td></tr>
+  <tr><td>stage2OutBuf</td><td>32×512×4 = 64KB</td><td>Vec2 累积输出 (fp32)</td></tr>
+  <tr><td>stage1OutQue[0,1]</td><td>~8.4KB × 2</td><td>Vec1 softmax P 输出 (bf16, NZ layout)</td></tr>
+  <tr><td>bmm1Buffers (DB)</td><td>~8KB × 2</td><td>Bmm1 结果 (CROSS_CORE_SYNC_BOTH)</td></tr>
+  <tr><td>bmm2Buffers (Single)</td><td>~32KB</td><td>Bmm2 结果 (CROSS_CORE_SYNC_BOTH)</td></tr>
+  <tr><td>commonTBuf</td><td>512B</td><td>VF API 临时工作区</td></tr>
+  <tr><td>sinksBuf</td><td>512B</td><td>Attention sinks 数据</td></tr>
+</table>
+
+<h4>AIC (Cube) 侧 — L1/L0</h4>
+<table>
+  <tr><th>Buffer</th><th>大小</th><th>用途</th></tr>
+  <tr><td>l1QBuffers</td><td>64×512×2 = 64KB</td><td>Query 矩阵 (Bmm1 左输入)</td></tr>
+  <tr><td>l1PBuffers</td><td>64×128×2 = 16KB</td><td>P 矩阵 (Vec1→AIC Bmm2, FORWARD sync)</td></tr>
+  <tr><td>l1RightBuffers</td><td>128×512×2 = 128KB (3-buffer)</td><td>KV 反量化结果 (V0→AIC, FORWARD sync)</td></tr>
+</table>
+</div>
+
+<h3 id="sec2-3">2.3 跨核同步机制</h3>
+<div class="card">
+<table>
+  <tr><th>Buffer</th><th>Sync 类型</th><th>生产者</th><th>消费者</th><th>机制</th></tr>
+  <tr><td>bmm1Buffers</td><td>CROSS_CORE_SYNC_BOTH</td><td>AIC Fixpipe</td><td>AIV Vec1 读</td><td>SetCrossCore / WaitCrossCore</td></tr>
+  <tr><td>bmm2Buffers</td><td>CROSS_CORE_SYNC_BOTH</td><td>AIC Fixpipe</td><td>AIV Vec2 读</td><td>SetCrossCore / WaitCrossCore</td></tr>
+  <tr><td>l1PBuffers</td><td>CROSS_CORE_SYNC_FORWARD</td><td>AIV 写 P</td><td>AIC Bmm2 读</td><td>outputBuf.SetCrossCore()</td></tr>
+  <tr><td>l1RightBuffers</td><td>CROSS_CORE_SYNC_FORWARD</td><td>AIV V0 写 KV</td><td>AIC Bmm1 读</td><td>outputL1.SetCrossCore()</td></tr>
+  <tr><td>v0ResGmBuffers</td><td>CROSS_CORE_SYNC_BACKWARD</td><td>AIV 写 GM</td><td>AIC 从 GM 读</td><td>v0ResGm.SetCrossCore() (IS_SPLIT_G)</td></tr>
+  <tr><td>SyncAll</td><td>全局</td><td>—</td><td>—</td><td>Process 启动时调用 (needInit)</td></tr>
+</table>
+</div>
+
+<h3 id="sec2-4">2.4 当前 Softmax / LSE 处理与缺陷</h3>
+<div class="card-warning">
+<table>
+  <tr><th>方面</th><th>当前状态</th><th>问题</th></tr>
+  <tr><td><code>return_softmax_lse</code> 属性</td><td>op_def 中定义, 默认 false</td><td><span class="tag tag-gap">README: "预留参数，当前暂不支持"</span></td></tr>
+  <tr><td><code>softmax_lse</code> 输出 tensor</td><td>定义为可选输出 (DT_FLOAT32)</td><td><span class="tag tag-gap">README: "目前输出为无效值"</span></td></tr>
+  <tr><td><code>softmaxLseOffset</code></td><td>RunInfo 字段存在, 由 kvcache.h 填充</td><td><span class="tag tag-gap">从未使用 — kernel 无 GM 写入</span></td></tr>
+  <tr><td><code>isFd</code> 模板参数</td><td>存在于模板签名</td><td><span class="tag tag-gap">所有 tiling key 中硬编码 FLASH_DECODE=0</span></td></tr>
+  <tr><td>LSE 计算</td><td>softmaxMax + log(softmaxSum) 在 UB 中可获取</td><td><span class="tag tag-gap">从未计算/写入 GM</span></td></tr>
+  <tr><td>FD metadata</td><td>FD_METADATA_SIZE=8 已定义</td><td><span class="tag tag-gap">从未填充或消费</span></td></tr>
+</table>
+</div>
+
+<h3 id="sec2-5">2.5 FD 支持的关键缺口</h3>
+<div class="card">
+<table>
+  <tr><th>缺口</th><th>描述</th><th>所需变更 <span class="tag tag-new">NEW</span></th></tr>
+  <tr><td>FD kernel 实例化</td><td>FLASH_DECODE=0; 所有 tiling key 禁用</td><td>添加 FLASH_DECODE=1 tiling key; isFd=true 实例化</td></tr>
+  <tr><td>FD metadata</td><td>FD_METADATA_SIZE=8 已定义但从未填充</td><td>Tiling 填充 fdMetadata[AIV_CORE_NUM][8]; kernel 解析 FD 调度信息</td></tr>
+  <tr><td>LSE 输出</td><td>softmax_lse GM tensor 传入但从未写入</td><td>规约后: lse = global_max + log(global_sum) → softmaxLseGm</td></tr>
+  <tr><td>FD workspace</td><td>metadata 中有 workspaceIdx 但未接线</td><td>分配 GM workspace 存储 partial max+sum+O</td></tr>
+  <tr><td>多核规约</td><td>当前 softmax max/sum 是核组内部</td><td>跨核 LSE 合并 + partial O 规约</td></tr>
+  <tr><td>流水线适配</td><td>单遍 flash attention</td><td>FD 变体: per-split 循环 + 最终 LSE 规约</td></tr>
+  <tr><td>Vec2 LastDiv</td><td>最后迭代除以 softmax_sum</td><td>FD: 跳过 LastDiv, 保留 partial O 未归一化</td></tr>
+</table>
+</div>
+
+<!-- ==================== Section 3: FD Modification Design ==================== -->
+<h2 id="sec3">3. FD 改造方案设计</h2>
+
+<h3 id="sec3-1">3.1 总览与对比</h3>
+<div class="comparison-grid">
+  <div class="card">
+    <h4 style="color:var(--text-light);">FA (当前)</h4>
+    <ul>
+      <li>单核覆盖 <strong>所有</strong> s₂ 循环</li>
+      <li>Online softmax 跨 s₂ 迭代累积</li>
+      <li>Vec2: FlashUpdateLast + LastDiv + 直接输出</li>
+      <li>输出直接写 attentionOutGm</li>
+      <li>LSE: <span style="color:var(--danger)">未输出</span></li>
+    </ul>
+  </div>
+  <div class="card-highlight">
+    <h4 style="color:var(--primary);">FD (改造后)</h4>
+    <ul>
+      <li>多核各覆盖 <strong>一个</strong> s₂ split (128 tokens)</li>
+      <li>Partial online softmax; 全局跨核规约</li>
+      <li>Vec2: FlashUpdateLastNoDiv + 拷出 partial O</li>
+      <li>规约核写入 attentionOutGm</li>
+      <li>LSE: <span style="color:var(--success)">global_max + log(global_sum)</span></li>
+    </ul>
+  </div>
+</div>
+
+<h3 id="sec3-2">3.2 多核切分策略</h3>
+<div class="card">
+<p>s₂ 维度 (<span class="math-inline">kvSeqLen</span>) 被切分为 <span class="math-inline">N = ceil(kvSeqLen / 128)</span> 个 split, 每个 AIV 核组处理一个 split, 通过 <strong>FD metadata</strong> 传入计算范围。</p>
+
+<div class="svg-container">
+<svg width="680" height="220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2563eb"/></marker>
+    <linearGradient id="splitGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:0.8"/>
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:0.8"/>
+    </linearGradient>
+  </defs>
+  <!-- KV sequence bar -->
+  <rect x="20" y="30" width="640" height="40" rx="4" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="340" y="55" text-anchor="middle" font-size="14" fill="#64748b" font-weight="600">kvSeqLen (s₂) — 完整 KV 序列</text>
+  <!-- Split divisions -->
+  <rect x="20" y="30" width="128" height="40" rx="4" fill="#dbeafe" stroke="#2563eb"/>
+  <rect x="148" y="30" width="128" height="40" rx="4" fill="#fef3c7" stroke="#f59e0b"/>
+  <rect x="276" y="30" width="128" height="40" rx="4" fill="#dcfce7" stroke="#10b981"/>
+  <rect x="404" y="30" width="128" height="40" rx="4" fill="#fce7f3" stroke="#ec4899"/>
+  <rect x="532" y="30" width="128" height="40" rx="4" fill="#e0e7ff" stroke="#6366f1"/>
+  <text x="84" y="55" text-anchor="middle" font-size="11" fill="#2563eb">Split 0</text>
+  <text x="212" y="55" text-anchor="middle" font-size="11" fill="#f59e0b">Split 1</text>
+  <text x="340" y="55" text-anchor="middle" font-size="11" fill="#10b981">Split 2</text>
+  <text x="468" y="55" text-anchor="middle" font-size="11" fill="#ec4899">Split 3</text>
+  <text x="596" y="55" text-anchor="middle" font-size="11" fill="#6366f1">Split 4</text>
+  <!-- Core assignments -->
+  <text x="20" y="95" font-size="12" fill="#1e293b" font-weight="600">核组分配:</text>
+  <rect x="20" y="105" width="128" height="36" rx="4" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="84" y="128" text-anchor="middle" font-size="10" fill="#2563eb">Core 0 (Red)</text>
+  <rect x="148" y="105" width="128" height="36" rx="4" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="212" y="128" text-anchor="middle" font-size="10" fill="#f59e0b">Core 1</text>
+  <rect x="276" y="105" width="128" height="36" rx="4" fill="#dcfce7" stroke="#10b981"/>
+  <text x="340" y="128" text-anchor="middle" font-size="10" fill="#10b981">Core 2</text>
+  <rect x="404" y="105" width="128" height="36" rx="4" fill="#fce7f3" stroke="#ec4899"/>
+  <text x="468" y="128" text-anchor="middle" font-size="10" fill="#ec4899">Core 3</text>
+  <rect x="532" y="105" width="128" height="36" rx="4" fill="#e0e7ff" stroke="#6366f1"/>
+  <text x="596" y="128" text-anchor="middle" font-size="10" fill="#6366f1">Core 4</text>
+  <!-- Arrows -->
+  <line x1="84" y1="70" x2="84" y2="105" stroke="#2563eb" marker-end="url(#arrowhead)"/>
+  <line x1="212" y1="70" x2="212" y2="105" stroke="#f59e0b" marker-end="url(#arrowhead)"/>
+  <line x1="340" y1="70" x2="340" y2="105" stroke="#10b981" marker-end="url(#arrowhead)"/>
+  <line x1="468" y1="70" x2="468" y2="105" stroke="#ec4899" marker-end="url(#arrowhead)"/>
+  <line x1="596" y1="70" x2="596" y2="105" stroke="#6366f1" marker-end="url(#arrowhead)"/>
+  <!-- Reduction -->
+  <text x="20" y="170" font-size="12" fill="#1e293b" font-weight="600">规约:</text>
+  <rect x="20" y="180" width="640" height="30" rx="4" fill="#dcfce7" stroke="#10b981"/>
+  <text x="340" y="200" text-anchor="middle" font-size="11" fill="#10b981" font-weight="600">Core 0 (Reduction Core) — 合并所有 split 的 partial max+sum+O → final output</text>
+</svg>
+</div>
+
+<p><strong>切分示例</strong> (kvSeqLen=640, batch=2, head=128):</p>
+<pre><span class="comment">// kvSeqLen=640 → N = ceil(640/128) = 5 splits</span>
+<span class="comment">// (b=0, h=0): 5 splits → 5 AIV cores (core 0..4), core 0 是规约核</span>
+<span class="comment">// (b=0, h=1): 5 splits → 5 AIV cores (core 5..9), core 5 是规约核</span>
+<span class="comment">// 总计: batch * n2 * g * N AIV 核; 上限 72 核</span></pre>
+</div>
+
+<h3 id="sec3-3">3.3 Vec1 修改: 拷出 max+sum 到 GM</h3>
+<div class="card">
+<p><span class="badge badge-fd-mod">MODIFIED</span> ProcessVec1 — 在最后一个 s₂ 循环后, 拷出 partial softmax 状态到 GM workspace:</p>
+
+<div class="step-box"><div class="step-num">1</div><div class="step-content">现有 softmax 流程<strong>完全保留</strong> (ProcessVec1Vf, SFAUpdateExpSumAndExpMax, DataCopy to L1)</div></div>
+<div class="step-box"><div class="step-num">2</div><div class="step-content"><strong>新增</strong>: 最后 s₂ 循环 (<span class="math-inline">s2LoopCount == s2LoopLimit</span>) 后:<br>
+  &bull; <code>DataCopy(lseWorkspaceGm + maxOffset, softmaxMaxBuf, s1LocalSize)</code><br>
+  &bull; <code>DataCopy(lseWorkspaceGm + sumOffset, softmaxSumBuf, s1LocalSize)</code></div></div>
+<div class="step-box"><div class="step-num">3</div><div class="step-content"><strong>Workspace 布局</strong>: 每个 split 存储 <code>[max (s₁ fp32)] + [sum (s₁ fp32)]</code>, 偏移由 FD metadata 的 workspaceIdx 决定</div></div>
+</div>
+
+<h3 id="sec3-4">3.4 Vec2 修改: 拷出 partial O + 规约</h3>
+<div class="card">
+<p><span class="badge badge-fd-mod">MODIFIED</span> ProcessVec2 — 分为两个阶段:</p>
+
+<h4>阶段 1: Partial 计算 (所有 FD 核)</h4>
+<ul>
+  <li>中间迭代: <strong>不变</strong> (FlashUpdateNew — 含修正但无除法)</li>
+  <li>最后迭代: <span class="badge badge-fd-new">NEW</span> 使用 <code>FlashUpdateLastNoDiv</code> — <strong>跳过 LastDiv</strong>, 保留 partial O 未归一化</li>
+  <li>拷出 partial O 到 GM: <code>DataCopyPad(partialOWorkspaceGm + oOffset, vec2ResUb, ...)</code></li>
+</ul>
+
+<h4>阶段 2: 规约 (仅规约核)</h4>
+<ul>
+  <li>全局 barrier: <strong>GM polling</strong> (非 CrossCoreSetFlag — 该 API 仅支持核组内 AIC↔AIV 配对同步)</li>
+  <li>规约核读取所有 partial max+sum+O, 计算全局结果</li>
+  <li>非规约核: barrier 后直接退出</li>
+</ul>
+</div>
+
+<h3 id="sec3-5">3.5 规约阶段详细设计</h3>
+<div class="card-highlight">
+<p><span class="badge badge-fd-new">NEW</span> <code>ProcessFdReduction</code> — 仅规约核执行:</p>
+
+<div class="step-box"><div class="step-num">1</div><div class="step-content">
+  <strong>找到全局最大值</strong>: <span class="math-inline">global_max = max(partial_max₀, ..., partial_max<sub>N-1</sub>)</span><br>
+  从 lseWorkspaceGm 逐 split 读入, 用 <code>Max</code> API 做元素级 max
+</div></div>
+
+<div class="step-box"><div class="step-num">2</div><div class="step-content">
+  <strong>计算修正因子和全局求和</strong>:<br>
+  <span class="math-inline">correction<sub>i</sub> = exp(partial_max<sub>i</sub> − global_max)</span><br>
+  <span class="math-inline">global_sum = Σ correction<sub>i</sub> · partial_sum<sub>i</sub></span><br>
+  使用 <code>Sub</code>+<code>Exp</code>+<code>Mul</code>+<code>Add</code> 基础矢量 API
+</div></div>
+
+<div class="step-box"><div class="step-num">3</div><div class="step-content">
+  <strong>累积修正后的 partial O</strong>:<br>
+  <span class="math-inline">global_O = Σ correction<sub>i</sub> · partial_O<sub>i</sub></span><br>
+  correction 从 [s₁] 广播到 [s₁, d] — 使用 <code>DIST_BRC_B32</code> VF 加载模式
+</div></div>
+
+<div class="step-box"><div class="step-num">4</div><div class="step-content">
+  <strong>归一化</strong>: <code>final_O = global_O / global_sum</code>, 使用 <code>LastDivNew</code> (global_sum 广播到 d 维度)
+</div></div>
+
+<div class="step-box"><div class="step-num">5</div><div class="step-content">
+  <strong>输出</strong>: <code>Cast(bf16)</code> → <code>attentionOutGm</code>; <code>lse = global_max + log(global_sum)</code> → <code>softmaxLseGm</code>
+</div></div>
+</div>
+
+<h3 id="sec3-6">3.6 Buffer 布局变更</h3>
+<div class="card">
+<h4>GM Workspace 新增</h4>
+<table>
+  <tr><th>Buffer</th><th>大小公式</th><th>典型值 (B=1, S₁=64, D=512)</th><th>用途</th></tr>
+  <tr><td><span class="tag tag-new">lseWorkspaceGm</span></td><td>max_splits × B × S₁ × 2 × sizeof(float)</td><td>72 × 1 × 64 × 2 × 4 ≈ 36KB</td><td>存储 partial [max, sum]</td></tr>
+  <tr><td><span class="tag tag-new">partialOWorkspaceGm</span></td><td>max_splits × B × S₁ × D × sizeof(float)</td><td>72 × 1 × 64 × 512 × 4 ≈ 9MB</td><td>存储 partial 未归一化 O</td></tr>
+  <tr><td><span class="tag tag-new">fdCompletionGm</span></td><td>max_splits × sizeof(uint32)</td><td>72 × 4 ≈ 288B</td><td>GM polling barrier 完成标志</td></tr>
+  <tr><td><strong>总计</strong></td><td colspan="2"><strong>≈ 9.4 MB</strong></td><td>FD 中间结果</td></tr>
+</table>
+
+<h4>UB Buffer 复用 (规约阶段)</h4>
+<table>
+  <tr><th>Buffer</th><th>复用来源</th><th>大小</th><th>规约用途</th></tr>
+  <tr><td>stage2OutBuf</td><td>Vec2 输出 buffer</td><td>64KB</td><td>读 partial O / 累积 final O</td></tr>
+  <tr><td>softmaxMaxBuf[0]</td><td>softmax buffer</td><td>256B</td><td>累积 globalMax</td></tr>
+  <tr><td>softmaxSumBuf[0]</td><td>softmax buffer</td><td>256B</td><td>累积 globalSum</td></tr>
+  <tr><td>commonTBuf</td><td>临时 buffer</td><td>512B</td><td>exp(correction) 临时</td></tr>
+</table>
+<p><strong>无需新增 UB 分配</strong> — 所有规约 buffer 复用 Vec2 阶段已有 buffer（规约在 Vec2 完成后执行）。</p>
+</div>
+
+<h3 id="sec3-7">3.7 Metadata 结构变更</h3>
+<div class="card">
+<h4>FD Metadata (per AIV core)</h4>
+<table>
+  <tr><th>Index</th><th>名称</th><th>类型</th><th>描述</th><th>标签</th></tr>
+  <tr><td>0</td><td>FD_CORE_ENABLE_INDEX</td><td>uint32</td><td>核是否启用</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>1</td><td>FD_BN2_IDX_INDEX</td><td>uint32</td><td>(batch × n₂) 组合索引</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>2</td><td>FD_M_IDX_INDEX</td><td>uint32</td><td>(g × s₁_block) 组合索引</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>3</td><td>FD_WORKSPACE_IDX_INDEX</td><td>uint32</td><td>GM workspace 偏移 (split 索引)</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>4</td><td>FD_WORKSPACE_NUM_INDEX</td><td>uint32</td><td>该 (b,h) 的总 split 数</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>5</td><td>FD_M_START_INDEX</td><td>uint32</td><td>起始 s₁ block 索引</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>6</td><td>FD_M_NUM_INDEX</td><td>uint32</td><td>s₁ block 数量</td><td><span class="tag tag-existing">EXISTING</span></td></tr>
+  <tr><td>7</td><td>FD_IS_REDUCTION_CORE_INDEX</td><td>uint32</td><td>是否为规约核 (1=是, 0=否)</td><td><span class="tag tag-new">NEW</span></td></tr>
+</table>
+
+<p><strong>Metadata 生成 (Tiling 侧)</strong>:</p>
+<pre><span class="comment">// 对每个 (batch, head, s1_block) 组:</span>
+<span class="type">uint32_t</span> N_splits = ceil(kvSeqLen[b] / <span class="number">128</span>);
+<span class="keyword">for</span> (split_id = <span class="number">0</span>; split_id < N_splits; split_id++) {
+    assign AIV core: core_id = next available core
+    workspaceIdx = split_id  <span class="comment">// 该 (b,h) 组内的相对偏移</span>
+    workspaceNum = N_splits
+    isReductionCore = (split_id == <span class="number">0</span>)  <span class="comment">// 第一个 split 的核为规约核</span>
+}</pre>
+</div>
+
+<h3 id="sec3-8">3.8 跨核同步设计</h3>
+<div class="card-warning">
+<p><strong>重要</strong>: <code>CrossCoreSetFlag/CrossCoreWaitFlag</code> 仅支持<strong>核组内 AIC↔AIV 配对同步</strong>, 不能跨核组全局 barrier。FD 需要跨核组同步, 必须使用<strong>GM polling</strong> 机制。</p>
+
+<h4>两级同步</h4>
+<div class="step-box"><div class="step-num">L1</div><div class="step-content">
+  <strong>计算-规约 Barrier (GM polling)</strong>:<br>
+  &bull; 各计算核完成 partial 计算后, 在 <code>fdCompletionGm</code> 写入完成标志 (uint32 值 = 1)<br>
+  &bull; 规约核 polling <code>fdCompletionGm</code> 的对应位置, 等所有 numSplits 个标志就绪<br>
+  &bull; <code>fdCompletionGm</code> 布局: <code>[numSplits]</code> uint32 值, 由 FD metadata 的 completionOffset 索引<br>
+  &bull; 优势: 简单可靠, 无需额外硬件同步 API; 劣势: polling 有微小延迟
+</div></div>
+<div class="step-box"><div class="step-num">L2</div><div class="step-content">
+  <strong>规约-输出</strong>: 规约核独占写入各自的 attentionOutGm 区域, 无需额外同步<br>
+  每个 (b,h) 的输出到独立内存区域, 无重叠
+</div></div>
+
+<h4>AIC-AIV 协调</h4>
+<p>FD 模式下 AIC 侧<strong>最小修改</strong>: 每个 AIC 核处理其分配的 s₂ split (而非完整 s₂)。现有 <code>CrossCoreSetFlag&lt;0, PIPE_MTE3&gt;(15)</code> 模式<strong>复用</strong> (这是核组内配对同步, 不受全局 barrier 限制)。AIC 完成 Bmm1/Bmm2 后退出。</p>
+</div>
+
+<h3 id="sec3-9">3.9 边界情况处理</h3>
+<div class="card">
+<table>
+  <tr><th>边界情况</th><th>处理策略</th></tr>
+  <tr><td>尾部 split (s₂RealSize < 128)</td><td>复用现有 ComputeBmm1Tail 逻辑; FD metadata 中的 s2LoopLimit 限制迭代次数</td></tr>
+  <tr><td>单 split (kvSeqLen ≤ 128)</td><td>FD 退化为 FA: 单核既是计算核又是规约核, 直接 LastDiv + 输出, 跳过 GM workspace 和规约</td></tr>
+  <tr><td>空核 (coreEnable = 0)</td><td>未分配的核跳过所有处理 (同当前 FA)</td></tr>
+  <tr><td>多 s₁ block per 核</td><td>FD metadata 的 mStart/mNum 允许单核处理多个 s₁ block; 每个 block 独立写 workspace</td></tr>
+  <tr><td>混合 batch 长度</td><td>不同 batch 元素的 kvSeqLen 不同 → 不同 N_splits; workspaceNum 字段处理差异</td></tr>
+</table>
+</div>
+
+<!-- ==================== Section 4: Pseudocode ==================== -->
+<h2 id="sec4">4. 各阶段伪代码</h2>
+
+<h3 id="sec4-1">4.1 ProcessVec1 (FD 修改)</h3>
+<div class="card">
+<pre><span class="keyword">void</span> <span class="func">ProcessVec1</span>(...) {
+    <span class="comment">// ========== 现有 softmax 流程 (完全不变) ==========</span>
+    bmm1ResBuf.<span class="func">WaitCrossCore</span>();
+    <span class="comment">// ProcessVec1Vf: Muls(scale) + SoftmaxFlashV2 + Cast + ND2NZ</span>
+    <span class="comment">// SFAUpdateExpSumAndExpMax</span>
+    <span class="comment">// DataCopy softmax P to L1</span>
+    bmm1ResBuf.<span class="func">SetCrossCore</span>();
+
+<span class="highlight-line">    <span class="comment">// ========== NEW: FD - 写 partial max/sum 到 GM workspace ==========</span></span>
+<span class="highlight-line">    <span class="keyword">if constexpr</span> (isFd) {</span>
+<span class="highlight-line">        <span class="keyword">if</span> (runInfo.s2LoopCount == runInfo.s2LoopLimit) {</span>
+<span class="highlight-line">            <span class="comment">// 重新读取最新的 sum/max (已被 SFAUpdateExpSumAndExpMax 更新)</span></span>
+<span class="highlight-line">            LocalTensor&lt;<span class="type">float</span>&gt; finalSumUb = softmaxSumBuf[...].<span class="func">Get</span>&lt;<span class="type">float</span>&gt;();</span>
+<span class="highlight-line">            LocalTensor&lt;<span class="type">float</span>&gt; finalMaxUb = softmaxMaxBuf[...].<span class="func">Get</span>&lt;<span class="type">float</span>&gt;();</span>
+<span class="highlight-line"></span>
+<span class="highlight-line">            <span class="comment">// 偏移计算:</span></span>
+<span class="highlight-line">            <span class="comment">//   每个 split 存储 [max(halfMRealSize fp32)] + [sum(halfMRealSize fp32)]</span></span>
+<span class="highlight-line">            <span class="comment">//   maxOffset = fdWorkspaceIdx * 2 * halfMRealSizeAligned</span></span>
+<span class="highlight-line">            <span class="comment">//   sumOffset = maxOffset + halfMRealSizeAligned</span></span>
+<span class="highlight-line">            <span class="type">int64_t</span> halfMAligned = runInfo.halfMRealSize; <span class="comment">// 1 fp32 per row, 32 rows per subBlock</span></span>
+<span class="highlight-line">            <span class="type">int64_t</span> maxOffset = runInfo.fdWorkspaceIdx * <span class="number">2</span> * halfMAligned;</span>
+<span class="highlight-line">            <span class="type">int64_t</span> sumOffset = maxOffset + halfMAligned;</span>
+<span class="highlight-line">            <span class="type">int64_t</span> s1LocalSize = runInfo.halfMRealSize; <span class="comment">// 每行 1 个 fp32 值</span></span>
+<span class="highlight-line"></span>
+<span class="highlight-line">            <span class="func">DataCopy</span>(lseWorkspaceGm + maxOffset, finalMaxUb, s1LocalSize);</span>
+<span class="highlight-line">            <span class="func">DataCopy</span>(lseWorkspaceGm + sumOffset, finalSumUb, s1LocalSize);</span>
+<span class="highlight-line">        }</span>
+<span class="highlight-line">    }</span>
+}</pre>
+<p><strong>关键点</strong>: 现有 softmax 流程<strong>零修改</strong>, FD 逻辑纯粹是<strong>追加</strong>的。</p>
+</div>
+
+<h3 id="sec4-2">4.2 ProcessVec2 (FD 修改)</h3>
+<div class="card">
+<pre><span class="keyword">void</span> <span class="func">ProcessVec2</span>(...) {
+    bmm2ResBuf.<span class="func">WaitCrossCore</span>();
+    LocalTensor&lt;<span class="type">T</span>&gt; vec2ResUb = stage2OutBuf.<span class="func">Get</span>&lt;<span class="type">T</span>&gt;();
+    LocalTensor&lt;<span class="type">T</span>&gt; mmRes = bmm2ResBuf.<span class="func">GetTensor</span>&lt;<span class="type">T</span>&gt;();
+    <span class="type">int64_t</span> vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+
+    <span class="comment">// ========== 中间迭代 (不变) ==========</span>
+    <span class="keyword">if</span> (runInfo.s2LoopCount == <span class="number">0</span>) {
+        <span class="func">DataCopy</span>(vec2ResUb, mmRes, vec2CalcSize); <span class="comment">// 首次: 直接存 bmm2 结果</span>
+    } <span class="keyword">else if</span> (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+        <span class="comment">// 中间: FlashUpdateNew — 含修正但无除法</span>
+        <span class="func">FlashUpdateNew</span>&lt;T, Q_T, OUTPUT_T, dTemplateAlign64&gt;(
+            vec2ResUb, mmRes, vec2ResUb, expUb, ...);
+    }
+
+    <span class="comment">// ========== 最后迭代: FD 分支 ==========</span>
+    <span class="keyword">else</span> { <span class="comment">// s2LoopCount == s2LoopLimit</span>
+<span class="highlight-line">        <span class="keyword">if constexpr</span> (!isFd) {</span>
+<span class="highlight-line">            <span class="comment">// ---- NON-FD: 原始行为 ----</span></span>
+<span class="highlight-line">            <span class="func">FlashUpdateLastNew</span>(vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, ...);</span>
+<span class="highlight-line">            <span class="comment">// 含除法: O = (prev*expMax + cur) / softmaxSum</span></span>
+<span class="highlight-line">            <span class="func">CopyOutAttentionOut</span>(runInfo, constInfo, vec2ResUb, ...);</span>
+<span class="highlight-line">        } <span class="keyword">else</span> {</span>
+<span class="highlight-line">            <span class="comment">// ---- FD: 无除法, 写 partial O 到 workspace ----</span></span>
+<span class="highlight-line">            <span class="func">FlashUpdateLastNoDiv</span>&lt;T, Q_T, OUTPUT_T, dTemplateAlign64&gt;(</span>
+<span class="highlight-line">                vec2ResUb, mmRes, vec2ResUb, expUb, ...);</span>
+<span class="highlight-line">            <span class="comment">// 无除法: O_partial = prev*expMax + cur (保留未归一化)</span></span>
+<span class="highlight-line"></span>
+<span class="highlight-line">            <span class="comment">// 拷出 partial O 到 GM workspace</span></span>
+<span class="highlight-line">            <span class="type">int64_t</span> oOffset = runInfo.fdWorkspaceIdx * s1BaseSize * dTemplateAlign64;</span>
+<span class="highlight-line">            <span class="func">DataCopyPad</span>(partialOWorkspaceGm + oOffset, vec2ResUb, oCopyParams);</span>
+<span class="highlight-line">        }</span>
+<span class="highlight-line">    }</span>
+
+    bmm2ResBuf.<span class="func">SetCrossCore</span>();
+}</pre>
+</div>
+
+<h3 id="sec4-3">4.3 ProcessFdReduction (新增规约阶段)</h3>
+<div class="card-highlight">
+<pre><span class="keyword">void</span> <span class="func">ProcessFdReduction</span>(RunInfo &runInfo, ConstInfo &constInfo) {
+<span class="highlight-line">    <span class="keyword">if constexpr</span> (!isFd) <span class="keyword">return</span>;</span>
+
+    <span class="comment">// ========== 角色检查 ==========</span>
+<span class="highlight-line">    <span class="keyword">if</span> (!runInfo.isReductionCore) {</span>
+<span class="highlight-line">        <span class="func">SetFlag</span>&lt;HardEvent::V_MTE3&gt;(vToMte3Id); <span class="comment">// 确保 GM 写完成</span></span>
+<span class="highlight-line">        <span class="func">WaitFlag</span>&lt;HardEvent::V_MTE3&gt;(vToMte3Id);</span>
+<span class="highlight-line">        <span class="comment">// 在 GM workspace 的完成标志区写入本核完成信号</span></span>
+<span class="highlight-line">        <span class="func">DataCopy</span>(fdCompletionGm + runInfo.fdCompletionOffset, completionFlagValue, <span class="number">1</span>);</span>
+<span class="highlight-line">        <span class="keyword">return</span>; <span class="comment">// 非规约核退出</span></span>
+<span class="highlight-line">    }</span>
+
+    <span class="comment">// ========== 全局 Barrier (GM polling) ==========</span>
+<span class="highlight-line">    <span class="comment">// CrossCoreSetFlag/CrossCoreWaitFlag 是核组内 AIC↔AIV 配对同步, 不能跨核组全局 barrier。</span></span>
+<span class="highlight-line">    <span class="comment">// FD 全局 barrier 使用 GM 完成标志 + polling:</span></span>
+<span class="highlight-line">    <span class="comment">//   1. 各计算核完成 partial 计算后, 在 fdCompletionGm 写入标志 (如 1)</span></span>
+<span class="highlight-line">    <span class="comment">//   2. 规约核 polling fdCompletionGm, 等所有 numSplits 个标志就绪</span></span>
+<span class="highlight-line">    <span class="keyword">for</span> (<span class="type">uint32_t</span> i = <span class="number">0</span>; i < numSplits; i++) {</span>
+<span class="highlight-line">        <span class="comment">// Polling: 读取 fdCompletionGm[completionBase + i], 等值为 1</span></span>
+<span class="highlight-line">        <span class="func">PollGmCompletion</span>(fdCompletionGm + completionBase + i); <span class="comment">// GM polling barrier</span></span>
+<span class="highlight-line">    }</span>
+
+    <span class="comment">// ========== 单 split 边界: 直接除法输出 ==========</span>
+    <span class="keyword">if</span> (numSplits == <span class="number">1</span>) {
+        <span class="func">LastDivNew</span>(vec2ResUb, vec2ResUb, sumUb, ...); <span class="comment">// 等价 FA 模式</span>
+        <span class="func">CopyOutAttentionOut</span>(...);
+        <span class="func">ComputeLseOutputVF</span>(lseUb, sumUb, maxUb, ...);
+        <span class="func">DataCopy</span>(softmaxLseGm + lseOffset, lseUb, ...);
+        <span class="keyword">return</span>;
+    }
+
+    <span class="comment">// ========== Step 1: 找全局最大值 ==========</span>
+    <span class="func">DataCopy</span>(globalMaxUb, lseWorkspaceGm + <span class="number">0</span>, s1LocalSize); <span class="comment">// 初始化为 split 0</span>
+    <span class="keyword">for</span> (splitIdx = <span class="number">1</span>; splitIdx < numSplits; splitIdx++) {
+        <span class="highlight-line">        <span class="func">DataCopy</span>(partialMaxUb, lseWorkspaceGm + splitIdx*<span class="number">2</span>*halfMAligned, s1LocalSize);</span>
+        <span class="func">Max</span>(globalMaxUb, globalMaxUb, partialMaxUb, s1LocalSize); <span class="comment">// 元素级 max</span>
+    }
+
+    <span class="comment">// ========== Step 2: 修正因子 + 全局求和 ==========</span>
+    <span class="func">Duplicate</span>(globalSumUb, (<span class="type">T</span>)<span class="number">0.0</span>, s1LocalSize);
+    <span class="keyword">for</span> (splitIdx = <span class="number">0</span>; splitIdx < numSplits; splitIdx++) {
+        <span class="func">DataCopy</span>(partialMaxUb, lseWorkspaceGm + splitIdx*<span class="number">2</span>*halfMAligned, ...);
+        <span class="func">DataCopy</span>(partialSumUb, lseWorkspaceGm + splitIdx*<span class="number">2</span>*halfMAligned + halfMAligned, ...);
+        <span class="func">Sub</span>(correctionUb, partialMaxUb, globalMaxUb, ...);     <span class="comment">// partialMax - globalMax</span>
+        <span class="func">Exp</span>(correctionUb, correctionUb, ...);                  <span class="comment">// exp(correction) ∈ (0,1]</span>
+        <span class="func">Mul</span>(correctionSumUb, correctionUb, partialSumUb, ...); <span class="comment">// correction * partialSum</span>
+        <span class="func">Add</span>(globalSumUb, globalSumUb, correctionSumUb, ...);  <span class="comment">// globalSum += ...</span>
+    }
+
+    <span class="comment">// ========== Step 3: 累积修正后的 partial O ==========</span>
+    <span class="func">Duplicate</span>(finalOUb, (<span class="type">T</span>)<span class="number">0.0</span>, vec2CalcSize);
+    <span class="keyword">for</span> (splitIdx = <span class="number">0</span>; splitIdx < numSplits; splitIdx++) {
+        <span class="comment">// 重算 correction (同 Step 2)</span>
+        <span class="func">Sub</span>(correctionUb, partialMaxUb, globalMaxUb, ...);
+        <span class="func">Exp</span>(correctionUb, correctionUb, ...);
+        <span class="comment">// 读 partial O from GM</span>
+        <span class="func">DataCopyPad</span>(partialOUb, partialOWorkspaceGm + splitIdx*oSizePerSplit, ...);
+        <span class="comment">// correction 广播 [s₁] → [s₁, d]: 使用 DIST_BRC_B32 VF 加载</span>
+        <span class="comment">// finalO += correction * partialO (新增 FdReduceAccum_VF 自定义函数)</span>
+        <span class="comment">// 注意: ReduceFinalRes_VF 的签名和语义不同, 不能直接复用</span>
+        <span class="func">FdReduceAccum_VF</span>(finalOUb, correctionUb, partialOUb, m, d);
+    }
+
+    <span class="comment">// ========== Step 4: 除以 global_sum (广播) ==========</span>
+    <span class="func">LastDivNew</span>(finalOUb, finalOUb, globalSumFloatUb, ...); <span class="comment">// globalSum 广播到 d 维度</span>
+
+    <span class="comment">// ========== Step 5: Cast + 写 attentionOutGm ==========</span>
+    <span class="func">Cast</span>(attenOutBf16, finalOUb, CAST_ROUND, ...);
+    <span class="func">DataCopyPad</span>(attentionOutGm + attentionOutOffset, attenOutBf16, ...);
+
+    <span class="comment">// ========== Step 6: 计算 + 写 LSE ==========</span>
+    <span class="comment">// lse = globalMax + log(globalSum)</span>
+    <span class="func">ComputeLseOutputVF</span>(lseUb, globalSumUb, globalMaxUb, ...);
+    <span class="func">DataCopy</span>(softmaxLseGm + lseOffset, lseUb, ...);
+}</pre>
+</div>
+
+<h3 id="sec4-4">4.4 FlashUpdateLastNoDiv (新增 VF 函数)</h3>
+<div class="card">
+<p><span class="badge badge-fd-new">NEW</span> 与 <code>FlashUpdateLastBasicVF</code> 结构相同, 但<strong>移除 Div 步骤</strong>:</p>
+<pre><span class="keyword">template</span>&lt;<span class="type">typename T</span>, <span class="type">typename INPUT_T</span>, <span class="type">typename OUTPUT_T</span>, <span class="type">uint16_t srcD</span>&gt;
+<span class="keyword">__simd_vf__ inline void</span> <span class="func">FlashUpdateLastNoDivVF</span>(
+    __ubuf__ <span class="type">float</span>* dstUb, __ubuf__ <span class="type">float</span>* curUb,
+    __ubuf__ <span class="type">float</span>* preUb, __ubuf__ <span class="type">float</span>* expMaxUb,
+    <span class="type">const uint16_t</span> m, <span class="type">const uint16_t</span> d)
+{
+    <span class="comment">// dstTensor = preTensor * expMaxTensor + curTensor</span>
+    <span class="comment">// NOTE: NO Div by expSumTensor (关键差异)</span>
+    <span class="keyword">for</span> (<span class="type">uint16_t</span> i = <span class="number">0</span>; i < m; ++i) {
+        <span class="func">LoadAlign</span>&lt;T, DIST_BRC_B32&gt;(vreg_exp_max, expMaxUb + i*reduceSize);
+        <span class="keyword">for</span> (<span class="type">uint16_t</span> j = <span class="number">0</span>; j < dLoops; ++j) {
+            <span class="func">LoadAlign</span>(vreg_input_pre, preUb + i*d + j*floatRepSize);
+            <span class="func">LoadAlign</span>(vreg_input_cur, curUb + i*d + j*floatRepSize);
+<span class="highlight-line">            <span class="func">Mul</span>(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);  <span class="comment">// prev * expCorrection</span></span>
+<span class="highlight-line">            <span class="func">Add</span>(vreg_add, vreg_mul, vreg_input_cur, preg_all);  <span class="comment">// + current (NO Div)</span></span>
+            <span class="func">StoreAlign</span>(dstUb + i*d + j*floatRepSize, vreg_add, preg_all);
+        }
+    }
+}</pre>
+<p><strong>实质</strong>: <code>FlashUpdateLastNoDiv</code> 计算 <span class="math-inline">dst = prev × expCorrection + cur</span>, 与 <code>FlashUpdateNew</code> 数学等价。独立命名是为了语义清晰和未来扩展。</p>
+</div>
+
+<h3 id="sec4-5">4.5 FdReduceAccum_VF (新增自定义规约累积函数)</h3>
+<div class="card">
+<p><span class="badge badge-fd-new">NEW</span> 注意: 现有 <code>ReduceFinalRes_VF</code> 的签名和语义与 FD 规约需求不同 (它使用 <code>DIST_BLK</code> 而非 <code>DIST_BRC_B32</code>), 因此需要新增自定义 VF 函数:</p>
+<pre><span class="keyword">template</span>&lt;<span class="type">typename T</span>&gt;
+<span class="keyword">__simd_vf__ inline void</span> <span class="func">FdReduceAccumVF</span>(
+    __ubuf__ <span class="type">float</span>* dstUb,     <span class="comment">// final_O (累积目标)</span>
+    __ubuf__ <span class="type">float</span>* corrUb,     <span class="comment">// correction [s₁] (每行一个 fp32)</span>
+    __ubuf__ <span class="type">float</span>* partialOUb, <span class="comment">// partial_O [s₁×d]</span>
+    <span class="type">const uint16_t</span> m,      <span class="comment">// halfMRealSize (有效行数)</span>
+    <span class="type">const uint16_t</span> d)      <span class="comment">// dTemplateAlign64 (列数)</span>
+{
+    <span class="comment">// finalO += correction * partialO (correction 广播 [s₁] → [s₁,d])</span>
+    <span class="keyword">for</span> (<span class="type">uint16_t</span> i = <span class="number">0</span>; i < m; ++i) {
+        <span class="comment">// 关键: 使用 DIST_BRC_B32 广播每行的 correction 值到所有 d 列</span>
+        <span class="func">LoadAlign</span>&lt;T, DIST_BRC_B32&gt;(vreg_corr, corrUb + i*reduceSize);
+        <span class="keyword">for</span> (<span class="type">uint16_t</span> j = <span class="number">0</span>; j < dLoops; ++j) {
+            <span class="func">LoadAlign</span>(vreg_finalO, dstUb + i*d + j*floatRepSize);
+            <span class="func">LoadAlign</span>(vreg_partialO, partialOUb + i*d + j*floatRepSize);
+            <span class="func">Mul</span>(vreg_mul, vreg_corr, vreg_partialO, preg_all); <span class="comment">// correction * partialO</span>
+            <span class="func">Add</span>(vreg_finalO, vreg_finalO, vreg_mul, preg_all); <span class="comment">// finalO += ...</span>
+            <span class="func">StoreAlign</span>(dstUb + i*d + j*floatRepSize, vreg_finalO, preg_all);
+        }
+    }
+}</pre>
+<p><strong>与 ReduceFinalRes_VF 的差异</strong>: <code>ReduceFinalRes_VF</code> 使用 <code>DIST_BLK</code> 加载 lse (block 模式), 而 FD 规约需要 <code>DIST_BRC_B32</code> 加载 correction (单值广播模式)。这是关键区别, 不可直接复用。</p>
+</div>
+
+<!-- ==================== Section 5: Diagrams ==================== -->
+<h2 id="sec5">5. 流水线与数据流图</h2>
+
+<h3 id="sec5-1">5.1 FA 与 FD 流水线对比</h3>
+<div class="svg-container">
+<svg width="1000" height="380" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#334155"/></marker>
+  </defs>
+  <!-- Title -->
+  <text x="500" y="20" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">流水线对比: FA (左) vs FD (右)</text>
+  
+  <!-- FA Pipeline (Left) -->
+  <text x="200" y="50" text-anchor="middle" font-size="13" font-weight="700" fill="#2563eb">FA: 单核完整 s₂</text>
+  
+  <!-- Time axis -->
+  <line x1="30" y1="65" x2="30" y2="360" stroke="#94a3b8" stroke-width="1"/>
+  <text x="30" y="360" text-anchor="middle" font-size="10" fill="#94a3b8">时间</text>
+  
+  <!-- AIC lane -->
+  <rect x="70" y="70" width="280" height="25" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="210" y="88" text-anchor="middle" font-size="10" fill="#2563eb" font-weight="600">AIC: Bmm1 → Bmm2 → Bmm1 → Bmm2 → ...</text>
+  
+  <!-- AIV lane -->
+  <rect x="70" y="100" width="280" height="25" rx="3" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="210" y="118" text-anchor="middle" font-size="10" fill="#f59e0b" font-weight="600">AIV: V0 → Vec1 → Vec2 → V0 → Vec1 → Vec2 → ...</text>
+  
+  <!-- FA flow details -->
+  <rect x="70" y="140" width="130" height="30" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="135" y="160" text-anchor="middle" font-size="9" fill="#2563eb">s₂ loop 0</text>
+  <rect x="210" y="140" width="130" height="30" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="275" y="160" text-anchor="middle" font-size="9" fill="#2563eb">s₂ loop 1</text>
+  
+  <rect x="70" y="175" width="130" height="30" rx="3" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="135" y="195" text-anchor="middle" font-size="9" fill="#f59e0b">Vec2 (LastDiv)</text>
+  <rect x="210" y="175" width="130" height="30" rx="3" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="275" y="195" text-anchor="middle" font-size="9" fill="#f59e0b">Vec2 (Update)</text>
+  
+  <!-- FA final -->
+  <rect x="70" y="220" width="280" height="30" rx="3" fill="#dcfce7" stroke="#10b981"/>
+  <text x="210" y="240" text-anchor="middle" font-size="10" fill="#10b981" font-weight="600">Vec2 (LastDiv) → CopyOut → O 写 GM</text>
+  
+  <text x="210" y="270" text-anchor="middle" font-size="11" fill="#ef4444" font-weight="600">LSE: ✗ 未输出</text>
+  
+  <!-- FD Pipeline (Right) -->
+  <text x="750" y="50" text-anchor="middle" font-size="13" font-weight="700" fill="#10b981">FD: 多核各处理 s₂ split</text>
+  
+  <!-- Core 0 -->
+  <rect x="500" y="70" width="500" height="25" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="750" y="88" text-anchor="middle" font-size="10" fill="#2563eb" font-weight="600">Core 0 (规约核): V0 → Vec1 → Vec2(NoDiv) → write max+sum+O to GM</text>
+  
+  <!-- Core 1 -->
+  <rect x="500" y="100" width="500" height="25" rx="3" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="750" y="118" text-anchor="middle" font-size="10" fill="#f59e0b" font-weight="600">Core 1: V0 → Vec1 → Vec2(NoDiv) → write max+sum+O to GM</text>
+  
+  <!-- Core 2 -->
+  <rect x="500" y="130" width="500" height="25" rx="3" fill="#fce7f3" stroke="#ec4899"/>
+  <text x="750" y="148" text-anchor="middle" font-size="10" fill="#ec4899" font-weight="600">Core 2: V0 → Vec1 → Vec2(NoDiv) → write max+sum+O to GM</text>
+  
+  <!-- Barrier -->
+  <rect x="500" y="165" width="500" height="25" rx="3" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="750" y="183" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">CrossCoreSetFlag + CrossCoreWaitFlag — 全局 Barrier</text>
+  
+  <!-- Reduction phase -->
+  <rect x="500" y="200" width="500" height="50" rx="3" fill="#dcfce7" stroke="#10b981"/>
+  <text x="750" y="218" text-anchor="middle" font-size="10" fill="#10b981" font-weight="600">Core 0 (规约核): Reduction Phase</text>
+  <text x="750" y="238" text-anchor="middle" font-size="9" fill="#10b981">Step1: globalMax | Step2: globalSum | Step3: global_O | Step4: Div | Step5: Cast+Output</text>
+  
+  <!-- Non-reduction cores -->
+  <rect x="500" y="260" width="500" height="25" rx="3" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="750" y="278" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">Core 1, 2, ...: Barrier 后退出 (无规约工作)</text>
+  
+  <text x="750" y="310" text-anchor="middle" font-size="11" fill="#10b981" font-weight="600">LSE: ✓ global_max + log(global_sum) → softmaxLseGm</text>
+  
+  <!-- Divider -->
+  <line x1="380" y1="40" x2="380" y2="340" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="4"/>
+</svg>
+</div>
+
+<h3 id="sec5-2">5.2 FD 规约数据流图</h3>
+<div class="svg-container">
+<svg width="1000" height="450" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arr2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2563eb"/></marker>
+    <marker id="arrG" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#10b981"/></marker>
+  </defs>
+  
+  <text x="500" y="25" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">FD 规约数据流图</text>
+  
+  <!-- Compute cores (left) -->
+  <text x="120" y="55" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">计算核 (各 s₂ split)</text>
+  
+  <!-- Core 0 -->
+  <rect x="40" y="70" width="160" height="90" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="120" y="90" text-anchor="middle" font-size="11" font-weight="600" fill="#2563eb">Core 0 (Split 0)</text>
+  <text x="120" y="108" text-anchor="middle" font-size="10" fill="#1e293b">partial_max₀</text>
+  <text x="120" y="124" text-anchor="middle" font-size="10" fill="#1e293b">partial_sum₀</text>
+  <text x="120" y="140" text-anchor="middle" font-size="10" fill="#1e293b">partial_O₀ [s₁×d]</text>
+  
+  <!-- Core 1 -->
+  <rect x="40" y="170" width="160" height="90" rx="6" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="120" y="190" text-anchor="middle" font-size="11" font-weight="600" fill="#f59e0b">Core 1 (Split 1)</text>
+  <text x="120" y="208" text-anchor="middle" font-size="10" fill="#1e293b">partial_max₁</text>
+  <text x="120" y="224" text-anchor="middle" font-size="10" fill="#1e293b">partial_sum₁</text>
+  <text x="120" y="240" text-anchor="middle" font-size="10" fill="#1e293b">partial_O₁ [s₁×d]</text>
+  
+  <!-- Core N-1 -->
+  <rect x="40" y="270" width="160" height="90" rx="6" fill="#fce7f3" stroke="#ec4899"/>
+  <text x="120" y="290" text-anchor="middle" font-size="11" font-weight="600" fill="#ec4899">Core N-1 (Split N-1)</text>
+  <text x="120" y="308" text-anchor="middle" font-size="10" fill="#1e293b">partial_max<sub>N-1</sub></text>
+  <text x="120" y="324" text-anchor="middle" font-size="10" fill="#1e293b">partial_sum<sub>N-1</sub></text>
+  <text x="120" y="340" text-anchor="middle" font-size="10" fill="#1e293b">partial_O<sub>N-1</sub> [s₁×d]</text>
+  
+  <!-- GM Workspace (center) -->
+  <rect x="280" y="70" width="180" height="300" rx="6" fill="#f1f5f9" stroke="#64748b"/>
+  <text x="370" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="#1e293b">GM Workspace</text>
+  
+  <!-- lseWorkspace -->
+  <rect x="290" y="110" width="160" height="100" rx="4" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="370" y="130" text-anchor="middle" font-size="10" font-weight="600" fill="#2563eb">lseWorkspaceGm</text>
+  <text x="370" y="148" text-anchor="middle" font-size="9" fill="#1e293b">[max₀, sum₀]</text>
+  <text x="370" y="164" text-anchor="middle" font-size="9" fill="#1e293b">[max₁, sum₁]</text>
+  <text x="370" y="180" text-anchor="middle" font-size="9" fill="#1e293b">[max<sub>N-1</sub>, sum<sub>N-1</sub>]</text>
+  <text x="370" y="200" text-anchor="middle" font-size="8" fill="#64748b">2×s₁ fp32 per split</text>
+  
+  <!-- partialOWorkspace -->
+  <rect x="290" y="220" width="160" height="100" rx="4" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="370" y="240" text-anchor="middle" font-size="10" font-weight="600" fill="#f59e0b">partialOWorkspaceGm</text>
+  <text x="370" y="260" text-anchor="middle" font-size="9" fill="#1e293b">partial_O₀</text>
+  <text x="370" y="276" text-anchor="middle" font-size="9" fill="#1e293b">partial_O₁</text>
+  <text x="370" y="292" text-anchor="middle" font-size="9" fill="#1e293b">partial_O<sub>N-1</sub></text>
+  <text x="370" y="312" text-anchor="middle" font-size="8" fill="#64748b">s₁×d fp32 per split</text>
+  
+  <!-- Arrows from cores to workspace -->
+  <line x1="200" y1="108" x2="290" y2="130" stroke="#2563eb" marker-end="url(#arr2)" stroke-width="1.5"/>
+  <line x1="200" y1="140" x2="290" y2="260" stroke="#f59e0b" marker-end="url(#arr2)" stroke-width="1.5"/>
+  <line x1="200" y1="208" x2="290" y2="164" stroke="#f59e0b" marker-end="url(#arr2)" stroke-width="1.5"/>
+  <line x1="200" y1="240" x2="290" y2="276" stroke="#f59e0b" marker-end="url(#arr2)" stroke-width="1.5"/>
+  <line x1="200" y1="308" x2="290" y2="180" stroke="#ec4899" marker-end="url(#arr2)" stroke-width="1.5"/>
+  <line x1="200" y1="340" x2="290" y2="292" stroke="#ec4899" marker-end="url(#arr2)" stroke-width="1.5"/>
+  
+  <!-- Reduction core (right) -->
+  <rect x="540" y="70" width="440" height="300" rx="6" fill="#dcfce7" stroke="#10b981"/>
+  <text x="760" y="95" text-anchor="middle" font-size="12" font-weight="700" fill="#10b981">规约核 (Reduction Core)</text>
+  
+  <!-- Reduction steps -->
+  <rect x="550" y="110" width="420" height="28" rx="3" fill="white" stroke="#10b981"/>
+  <text x="760" y="128" text-anchor="middle" font-size="10" fill="#1e293b" font-weight="600">Step 1: global_max = max(partial_max₀, ..., partial_max<sub>N-1</sub>)</text>
+  
+  <rect x="550" y="145" width="420" height="28" rx="3" fill="white" stroke="#10b981"/>
+  <text x="760" y="163" text-anchor="middle" font-size="10" fill="#1e293b" font-weight="600">Step 2: correction<sub>i</sub> = exp(partial_max<sub>i</sub> − global_max); global_sum = Σ corr·sum</text>
+  
+  <rect x="550" y="180" width="420" height="28" rx="3" fill="white" stroke="#10b981"/>
+  <text x="760" y="198" text-anchor="middle" font-size="10" fill="#1e293b" font-weight="600">Step 3: global_O = Σ correction<sub>i</sub> · partial_O<sub>i</sub> (corr 广播 [s₁]→[s₁,d])</text>
+  
+  <rect x="550" y="215" width="420" height="28" rx="3" fill="white" stroke="#10b981"/>
+  <text x="760" y="233" text-anchor="middle" font-size="10" fill="#1e293b" font-weight="600">Step 4: final_O = global_O / global_sum (sum 广播 [s₁]→[s₁,d])</text>
+  
+  <rect x="550" y="250" width="420" height="28" rx="3" fill="white" stroke="#10b981"/>
+  <text x="760" y="268" text-anchor="middle" font-size="10" fill="#1e293b" font-weight="600">Step 5: Cast(bf16) → attentionOutGm; lse → softmaxLseGm</text>
+  
+  <!-- UB buffers -->
+  <rect x="550" y="290" width="200" height="60" rx="4" fill="#f1f5f9" stroke="#64748b"/>
+  <text x="650" y="308" text-anchor="middle" font-size="9" font-weight="600" fill="#1e293b">UB Buffer (复用)</text>
+  <text x="650" y="324" text-anchor="middle" font-size="8" fill="#64748b">stage2OutBuf (64KB)</text>
+  <text x="650" y="340" text-anchor="middle" font-size="8" fill="#64748b">softmaxMax/SumBuf</text>
+  
+  <rect x="770" y="290" width="200" height="60" rx="4" fill="#f1f5f9" stroke="#64748b"/>
+  <text x="870" y="308" text-anchor="middle" font-size="9" font-weight="600" fill="#1e293b">GM Output</text>
+  <text x="870" y="324" text-anchor="middle" font-size="8" fill="#64748b">attentionOutGm [bf16]</text>
+  <text x="870" y="340" text-anchor="middle" font-size="8" fill="#64748b">softmaxLseGm [fp32]</text>
+  
+  <!-- Arrows from workspace to reduction -->
+  <line x1="460" y1="160" x2="550" y2="128" stroke="#10b981" marker-end="url(#arrG)" stroke-width="2"/>
+  <line x1="460" y1="260" x2="550" y2="198" stroke="#10b981" marker-end="url(#arrG)" stroke-width="2"/>
+  
+  <!-- Arrow from reduction to output -->
+  <line x1="550" y1="268" x2="770" y2="324" stroke="#10b981" marker-end="url(#arrG)" stroke-width="1.5"/>
+  <line x1="550" y1="268" x2="770" y2="340" stroke="#10b981" marker-end="url(#arrG)" stroke-width="1.5"/>
+  
+  <!-- Correction broadcast illustration -->
+  <rect x="560" y="380" width="420" height="50" rx="4" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="770" y="400" text-anchor="middle" font-size="10" font-weight="600" fill="#f59e0b">广播机制: correction [s₁] → [s₁, d]</text>
+  <text x="770" y="420" text-anchor="middle" font-size="9" fill="#1e293b">LoadAlign&lt;T, DIST_BRC_B32&gt;(vreg_corr, corrUb + i*reduceSize) — 每行一个 fp32 复制到 d=512 列</text>
+</svg>
+</div>
+
+<h3 id="sec5-3">5.3 跨核同步时序图</h3>
+<div class="svg-container">
+<svg width="900" height="300" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arr3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#64748b"/></marker>
+  </defs>
+  
+  <text x="450" y="20" text-anchor="middle" font-size="15" font-weight="700" fill="#1e293b">FD 跨核同步时序图</text>
+  
+  <!-- Core labels -->
+  <text x="130" y="50" text-anchor="middle" font-size="11" font-weight="600" fill="#f59e0b">Core 1 (计算)</text>
+  <text x="300" y="50" text-anchor="middle" font-size="11" font-weight="600" fill="#ec4899">Core 2 (计算)</text>
+  <text x="470" y="50" text-anchor="middle" font-size="11" font-weight="600" fill="#6366f1">Core 3 (计算)</text>
+  <text x="700" y="50" text-anchor="middle" font-size="11" font-weight="600" fill="#10b981">Core 0 (规约)</text>
+  
+  <!-- Vertical time lines -->
+  <line x1="130" y1="60" x2="130" y2="280" stroke="#f59e0b" stroke-width="1.5"/>
+  <line x1="300" y1="60" x2="300" y2="280" stroke="#ec4899" stroke-width="1.5"/>
+  <line x1="470" y1="60" x2="470" y2="280" stroke="#6366f1" stroke-width="1.5"/>
+  <line x1="700" y1="60" x2="700" y2="280" stroke="#10b981" stroke-width="1.5"/>
+  
+  <!-- Computation bars -->
+  <rect x="80" y="70" width="50" height="80" rx="2" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="105" y="85" text-anchor="middle" font-size="8" fill="#f59e0b">V0+V1+V2</text>
+  <text x="105" y="100" text-anchor="middle" font-size="8" fill="#f59e0b">NoDiv</text>
+  <text x="105" y="115" text-anchor="middle" font-size="8" fill="#f59e0b">Write GM</text>
+  
+  <rect x="250" y="70" width="50" height="80" rx="2" fill="#fce7f3" stroke="#ec4899"/>
+  <text x="275" y="85" text-anchor="middle" font-size="8" fill="#ec4899">V0+V1+V2</text>
+  <text x="275" y="100" text-anchor="middle" font-size="8" fill="#ec4899">NoDiv</text>
+  <text x="275" y="115" text-anchor="middle" font-size="8" fill="#ec4899">Write GM</text>
+  
+  <rect x="420" y="70" width="50" height="80" rx="2" fill="#e0e7ff" stroke="#6366f1"/>
+  <text x="445" y="85" text-anchor="middle" font-size="8" fill="#6366f1">V0+V1+V2</text>
+  <text x="445" y="100" text-anchor="middle" font-size="8" fill="#6366f1">NoDiv</text>
+  <text x="445" y="115" text-anchor="middle" font-size="8" fill="#6366f1">Write GM</text>
+  
+  <rect x="650" y="70" width="50" height="80" rx="2" fill="#dcfce7" stroke="#10b981"/>
+  <text x="675" y="85" text-anchor="middle" font-size="8" fill="#10b981">V0+V1+V2</text>
+  <text x="675" y="100" text-anchor="middle" font-size="8" fill="#10b981">NoDiv</text>
+  <text x="675" y="115" text-anchor="middle" font-size="8" fill="#10b981">Write GM</text>
+  
+  <!-- SET flags + GM write -->
+  <rect x="85" y="160" width="45" height="20" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="107" y="175" text-anchor="middle" font-size="8" font-weight="600" fill="#2563eb">GM=1</text>
+  <rect x="255" y="160" width="45" height="20" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="277" y="175" text-anchor="middle" font-size="8" font-weight="600" fill="#2563eb">GM=1</text>
+  <rect x="425" y="160" width="45" height="20" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="447" y="175" text-anchor="middle" font-size="8" font-weight="600" fill="#2563eb">GM=1</text>
+  <rect x="655" y="160" width="45" height="20" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="677" y="175" text-anchor="middle" font-size="8" font-weight="600" fill="#2563eb">GM=1</text>
+  
+  <!-- Polling barrier line -->
+  <line x1="50" y1="190" x2="850" y2="190" stroke="#ef4444" stroke-width="2" stroke-dasharray="6"/>
+  <text x="450" y="205" text-anchor="middle" font-size="10" font-weight="700" fill="#ef4444">◆ GM Polling Barrier — 规约核轮询 fdCompletionGm 等所有标志就绪 ◆</text>
+  
+  <!-- Compute cores exit -->
+  <text x="130" y="230" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">EXIT</text>
+  <text x="300" y="230" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">EXIT</text>
+  <text x="470" y="230" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">EXIT</text>
+  
+  <!-- Reduction core: polling + reduction -->
+  <rect x="620" y="220" width="100" height="25" rx="2" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="670" y="240" text-anchor="middle" font-size="9" font-weight="600" fill="#f59e0b">Polling OK</text>
+  
+  <!-- Reduction phase for Core 0 -->
+  <rect x="630" y="245" width="70" height="30" rx="2" fill="#dcfce7" stroke="#10b981"/>
+  <text x="665" y="265" text-anchor="middle" font-size="9" font-weight="600" fill="#10b981">Reduction</text>
+  
+  <rect x="630" y="278" width="70" height="16" rx="2" fill="#dcfce7" stroke="#10b981"/>
+  <text x="665" y="290" text-anchor="middle" font-size="8" fill="#10b981">Output</text>
+</svg>
+</div>
+
+<!-- ==================== Section 6: Implementation Checklist ==================== -->
+<h2 id="sec6">6. 实现清单</h2>
+<div class="card">
+<table>
+  <tr><th>#</th><th>组件</th><th>文件</th><th>变更描述</th><th>标签</th></tr>
+  <tr><td>1</td><td>Metadata</td><td>op_kernel/..._metadata.h</td><td>添加 <code>FD_IS_REDUCTION_CORE_INDEX = 7</code></td><td><span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>2</td><td>Kernel 主循环</td><td>op_kernel/arch35/..._scfa_kernel.h</td><td>添加 <code>isFd</code> 分支: 读 FD metadata, 遍历分配的 s₂ split, 调用 ProcessFdReduction</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>3</td><td>Vec1</td><td>op_kernel/arch35/..._scfa_block_vector.h</td><td>最后 s₂ loop: DataCopy softmaxMax+Sum 到 lseWorkspaceGm</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>4</td><td>Vec2</td><td>op_kernel/arch35/..._scfa_block_vector.h</td><td>FD 模式: 跳过 LastDiv, DataCopy partial O 到 partialOWorkspaceGm</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>5</td><td>规约</td><td>op_kernel/arch35/..._scfa_block_vector.h</td><td>新增 <code>ProcessFdReduction</code>: 读 partial, 规约, 输出</td><td><span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>6</td><td>VF 函数</td><td>VF flashupdate_new.h</td><td>新增 <code>FlashUpdateLastNoDiv</code>: 同 FlashUpdateLast 但无 Div</td><td><span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>7</td><td>VF 函数</td><td>VF flash_decode.h</td><td>新增 <code>FdReduceAccum_VF</code>: correction 广播 + Mul + Add 累积</td><td><span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>8</td><td>VF 函数</td><td>VF flash_decode.h</td><td>新增 <code>ComputeLseOutputVF</code>: lse = max + log(sum)</td><td><span class="tag tag-new">NEW</span></td></tr>
+  <tr><td>8</td><td>GM buffer 初始化</td><td>op_kernel/arch35/..._scfa_kernel.h</td><td><code>InitGlobalBuffer</code>: 添加 lseWorkspaceGm + partialOWorkspaceGm</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>9</td><td>Tiling</td><td>op_host/..._tiling.cpp</td><td>生成 FD metadata, 计算 workspace 偏移, 确定规约核</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>10</td><td>Tiling Data</td><td>op_host/..._tiling.h</td><td>添加 FD workspace 大小字段到 TilingData</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>11</td><td>Tiling Key</td><td>op_host/..._tiling_key.h</td><td>扩展 <code>FLASH_DECODE=1</code> tiling key 组合</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>12</td><td>入口</td><td>op_kernel/..._mla.cpp</td><td>传入 softmax_lse 和 workspace 到 FD kernel; FLASH_DECODE 模板参数启用</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>13</td><td>LSE 输出</td><td>op_api/</td><td>激活 <code>return_softmax_lse</code> 参数, 正确计算输出 shape</td><td><span class="tag tag-modified">MOD</span></td></tr>
+  <tr><td>14</td><td>UT 测试</td><td>tests/</td><td>FD 模式测试: 多 split 规约精度验证, LSE 输出验证, 边界用例</td><td><span class="tag tag-new">NEW</span></td></tr>
+</table>
+</div>
+
+<div class="card" style="margin-top:32px; text-align:center; color:var(--text-light); font-size:0.9em;">
+  <p>MixedQuantSparseFlashMla Flash Decode 设计方案 v1.0 | arch35 (Ascend 950PR/950DT)</p>
+  <p>生成时间: 2026-06-01</p>
+</div>
+
+</div>
+</body>
+</html>
