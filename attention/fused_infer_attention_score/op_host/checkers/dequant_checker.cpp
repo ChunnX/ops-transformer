@@ -789,41 +789,46 @@ ge::graphStatus DequantChecker::CheckDequantScaleQueryMLAFullquant(const FiaTili
     const uint32_t dequantScaleQueryDimNum = dequantScaleQueryShape.GetDimNum();
 
     if (fiaInfo.qLayout == FiaLayout::BSH) {
-        OP_CHECK_IF((queryDimNum != dequantScaleQueryDimNum),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario (layout of query is %s), "
-                            "the dim num of dequantScaleQuery(%u) should be equal to query(%u).",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryDimNum, queryDimNum),
-                    return ge::GRAPH_FAILED);
+        if ((queryDimNum != dequantScaleQueryDimNum)) {
+            std::string dimStr =
+                std::to_string(dequantScaleQueryDimNum) + "D" + " and " + std::to_string(queryDimNum) + "D" ;
+            std::string reasonMsg =
+                "In MLA fullquant scenario, the shape dim of dequantScaleQuery and query must be the same";
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "dequant_scale_query and query",
+                dimStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
+        if ((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
                         (queryInputShape.GetDim(DIM_NUM_1) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
-                        (*fiaInfo.opParamInfo.numHeads != dequantScaleQueryShape.GetDim(DIM_NUM_2)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario (layout of query is %s), "
-                            "the shape of dequantScaleQuery([%ld, %ld, %ld]) should be [%ld, %ld, %ld].",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                            dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
-                            queryInputShape.GetDim(DIM_NUM_0), queryInputShape.GetDim(DIM_NUM_1),
-                            *fiaInfo.opParamInfo.numHeads),
-                    return ge::GRAPH_FAILED);
+                        (*fiaInfo.opParamInfo.numHeads != dequantScaleQueryShape.GetDim(DIM_NUM_2))) {
+            std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
+            std::string reasonMsg = "In MLA fullquant scenario, the shape of dequantScaleQuery "
+                "should be equal to the shape of query (with the 2nd dim replaced by numHeads)";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BNSD ||
                fiaInfo.qLayout == FiaLayout::TND) {
-        OP_CHECK_IF((dequantScaleQueryDimNum != queryDimNum - NUM1),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario (layout of query is %s), "
-                            "the dim num of dequantScaleQuery(%u) should be equal to [queryDimNum - 1](%u).",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryDimNum, queryDimNum - 1),
-                    return ge::GRAPH_FAILED);
+        if ((dequantScaleQueryDimNum != queryDimNum - NUM1)) {
+            std::string dimStr = std::to_string(dequantScaleQueryDimNum) + "D";
+            std::string reasonMsg =
+                "In MLA fullquant scenario, the shape dim of dequantScaleQuery should be equal to queryDimNum - 1";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                dimStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
 
         for (uint32_t i = 0; i < dequantScaleQueryDimNum; i++) {
-            OP_CHECK_IF((queryInputShape.GetDim(i) != dequantScaleQueryShape.GetDim(i)),
-                        OP_LOGE(fiaInfo.opName,
-                                "In MLA fullquant scenario (layout of query is %s), "
-                                "the %urd dim of dequantScaleQuery(%ld) should be equal to query(%ld).",
-                                LayoutToSerialString(fiaInfo.qLayout).c_str(), i, dequantScaleQueryShape.GetDim(i),
-                                queryInputShape.GetDim(i)),
-                        return ge::GRAPH_FAILED);
+            if ((queryInputShape.GetDim(i) != dequantScaleQueryShape.GetDim(i))) {
+                std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
+                std::string reasonMsg = "In MLA fullquant scenario, the " + std::to_string(i) +
+                    "th dim of dequantScaleQuery should be equal to the " + std::to_string(i) + "th dim of query";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                    shapeStr.c_str(), reasonMsg.c_str());
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -872,37 +877,34 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
     const uint32_t mxfp8BlockSize = 64;
     // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj] 
-    OP_CHECK_IF((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+    if ((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                     (fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
                     (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
-                    (keyAntiquantScaleShape.GetDim(DIM_NUM_4) != 2),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario (layout of key is %s), "
-                        "the shape of keyAntiquantScale([%ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld].",
-                        LayoutToSerialString(fiaInfo.kvLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_3), keyAntiquantScaleShape.GetDim(DIM_NUM_4),
-                        fiaInfo.totalBlockNum, fiaInfo.n2Size, fiaInfo.blockSize,
-                        CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize), 2),
-                return ge::GRAPH_FAILED);
+                    (keyAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
+        std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
+        std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of key is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+            ", the shape of keyAntiquantScale should be [totalBlockNum, n2Size, blockSize, qkHeadDim/64, 2]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     // BnNBsD pa value --[blocknum, kv_n, blocksize/64, v_D, 2]
-    OP_CHECK_IF((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+    if ((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                     (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
                         valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
                     (fiaInfo.vHeadDim) != valueAntiquantScaleShape.GetDim(DIM_NUM_3) ||
-                    (valueAntiquantScaleShape.GetDim(DIM_NUM_4) != 2),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario (layout of value is %s), "
-                        "the shape of valueAntiquantScale([%ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld].",
-                        LayoutToSerialString(fiaInfo.kvLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_3), valueAntiquantScaleShape.GetDim(DIM_NUM_4),
-                        fiaInfo.totalBlockNum, fiaInfo.n2Size,
-                        CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)),
-                        fiaInfo.vHeadDim, 2),
-                return ge::GRAPH_FAILED);
+                    (valueAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
+        std::string shapeStr = Ops::Base::ToString(valueAntiquantScaleShape);
+        std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+            ", the shape of valueAntiquantScale should be [totalBlockNum, n2Size, blockSize/64, vHeadDim, 2]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -918,40 +920,36 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
     const uint32_t d0 = 16;
     const int32_t d0Temp = 16;
     // NZ pa key --[blocknum, kv_n, blocksize/16, k_D/64, 16, 2]
-    OP_CHECK_IF((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+    if ((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                     (CeilDivision(fiaInfo.blockSize, d0Temp) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
                     (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
                     (d0 != keyAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
-                    (keyAntiquantScaleShape.GetDim(DIM_NUM_5) != 2),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant decode scenario (layout of key is %s), "
-                        "the shape of keyAntiquantScale([%ld, %ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld, %ld].",
-                        LayoutToSerialString(fiaInfo.kvLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_3), keyAntiquantScaleShape.GetDim(DIM_NUM_4),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_5), fiaInfo.totalBlockNum, 
-                        fiaInfo.n2Size, CeilDivision(fiaInfo.blockSize, d0Temp),
-                        CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize), d0, 2),
-                return ge::GRAPH_FAILED);
+                    (keyAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
+        std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
+        std::string reasonMsg = "In MXFP8 fullquant decode scenario when layout of key is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+            ", the shape of keyAntiquantScale should be [totalBlockNum, n2Size, blockSize/d0Temp, qkHeadDim/64, d0, 2]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     // NZ pa value --[blocknum, kv_n, v_D/16, blocksize/64, D0, 2]
-    OP_CHECK_IF((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+    if ((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                     (CeilDivision(fiaInfo.vHeadDim, d0) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
                     (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
                         valueAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
                     (d0 != valueAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
-                    (valueAntiquantScaleShape.GetDim(DIM_NUM_5) != 2),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant decode scenario (layout of value is %s), "
-                        "the shape of valueAntiquantScale([%ld, %ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld, %ld].",
-                        LayoutToSerialString(fiaInfo.kvLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_3), valueAntiquantScaleShape.GetDim(DIM_NUM_4),
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_5), fiaInfo.totalBlockNum, 
-                        fiaInfo.n2Size, CeilDivision(fiaInfo.vHeadDim, d0),
-                        CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)), d0, 2),
-                return ge::GRAPH_FAILED);
+                    (valueAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
+        std::string shapeStr = Ops::Base::ToString(valueAntiquantScaleShape);
+        std::string reasonMsg = "In MXFP8 fullquant decode scenario, when layout of value is " +
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+            ", the shape of valueAntiquantScale should be [totalBlockNum, n2Size, vHeadDim/d0, blockSize/64, d0, 2]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -981,54 +979,55 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     bool enableMxfp8Decode = (fiaInfo.gSize * fiaInfo.s1Size <= 80);
 
     // qscale dim支持4维[T, N, D//64, 2]和5维[N2, T, G, D//64, 2]
-    OP_CHECK_IF((dequantScaleQueryDimNum != 4 && dequantScaleQueryDimNum != 5),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario (layout of query is %s, layout of kv is %s), "
-                        "the dim num of dequantScaleQuery(%u) should be equal to 4/5.",
-                        LayoutToSerialString(fiaInfo.qLayout).c_str(), LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                        dequantScaleQueryDimNum),
-                return ge::GRAPH_FAILED);
+    if ((dequantScaleQueryDimNum != 4 && dequantScaleQueryDimNum != 5)) {
+        std::string dimStr = std::to_string(dequantScaleQueryDimNum) + "D";
+        std::string reasonMsg = "In MXFP8 fullquant scenario, the shape dim of dequantScaleQuery should be 4 or 5";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+            dimStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     // kvscale dim
-    OP_CHECK_IF((keyAntiquantScaleDimNum != scaleKVDim || valueAntiquantScaleDimNum != scaleKVDim),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario (layout of query is %s, layout of kv is %s), "
-                        "the dim num of keyAntiquantScale(%u)/valueAntiquantScale(%u) should be equal to %u.",
-                        LayoutToSerialString(fiaInfo.qLayout).c_str(), LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                        keyAntiquantScaleDimNum, valueAntiquantScaleDimNum, scaleKVDim),
-                return ge::GRAPH_FAILED);
+    if ((keyAntiquantScaleDimNum != scaleKVDim || valueAntiquantScaleDimNum != scaleKVDim)) {
+        std::string dimStr = std::to_string(keyAntiquantScaleDimNum) + "D and " +
+            std::to_string(valueAntiquantScaleDimNum) + "D";
+        std::string reasonMsg = "In MXFP8 fullquant scenario, the shape dim of keyAntiquantScale and "
+            "valueAntiquantScale should both be " + std::to_string(scaleKVDim) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
+            dimStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // TND prefill/decode qkv scale
     // prefill query -- [T, N, D//64, 2]; decode query -- [N2, T, G, D//64, 2]
     if (dequantScaleQueryDimNum == 4) {
-        OP_CHECK_IF(((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
+        if (((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n1Size != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
                     (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
                     dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
-                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_3))),
-                OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant scenario (layout of query is %s), "
-                    "the shape of dequantScaleQuery([%ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_3), queryInputShape.GetDim(DIM_NUM_0),
-                    fiaInfo.n1Size, CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
-                return ge::GRAPH_FAILED);
+                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_3)))) {
+            std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
+            std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of query is " +
+                std::string(LayoutToSerialString(fiaInfo.qLayout)) +
+                ", the shape of dequantScaleQuery should be [T, N, D//64, 2]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_CHECK_IF(((fiaInfo.n2Size != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
+        if (((fiaInfo.n2Size != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
                     (queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
                     (fiaInfo.gSize != dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
                     (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
                     dequantScaleQueryShape.GetDim(DIM_NUM_3)) ||
-                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_4))),
-                OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant scenario (layout of query is %s), "
-                    "the shape of dequantScaleQuery([%ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_3), dequantScaleQueryShape.GetDim(DIM_NUM_4),
-                    fiaInfo.n2Size, queryInputShape.GetDim(DIM_NUM_0), fiaInfo.gSize,
-                    CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
-                return ge::GRAPH_FAILED);
+                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_4)))) {
+            std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
+            std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of query is " +
+                std::string(LayoutToSerialString(fiaInfo.qLayout)) +
+                ", the shape of dequantScaleQuery should be [N2, T, G, D//64, 2]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     // shape告警
     if (!enableMxfp8Decode && dequantScaleQueryDimNum == 5) {
@@ -1046,12 +1045,12 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     }
     // kv scale
     if (fiaInfo.pageAttentionFlag) {
-        OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::BnNBsD && fiaInfo.kvLayout != FiaLayout::NZ),
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario, "
-                        "the layout of key(%s) only support BnNBsD/NZ when PA enabled.",
-                        LayoutToSerialString(fiaInfo.kvLayout).c_str()),
-                return ge::GRAPH_FAILED);
+        if ((fiaInfo.kvLayout != FiaLayout::BnNBsD && fiaInfo.kvLayout != FiaLayout::NZ)) {
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "key",
+                LayoutToSerialString(fiaInfo.kvLayout).c_str(),
+                "In MXFP8 fullquant scenario, the layout of key only supports BnNBsD or NZ when PA is enabled");
+            return ge::GRAPH_FAILED;
+        }
         if (ge::GRAPH_SUCCESS != CheckDequantScaleBnNBsDShapeMXFP8(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
@@ -1060,31 +1059,31 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         }
     } else {
         // key -- [T, N, D/64, 2]
-        OP_CHECK_IF((keyInputShape.GetDim(DIM_NUM_0) != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+        if ((keyInputShape.GetDim(DIM_NUM_0) != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                         (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                         (CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                        (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != 2),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario (layout of key is %s), "
-                            "the shape of keyAntiquantScale([%ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld].",
-                            LayoutToSerialString(fiaInfo.kvLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                            keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                            keyAntiquantScaleShape.GetDim(DIM_NUM_3), keyInputShape.GetDim(DIM_NUM_0),
-                            fiaInfo.n2Size, CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
-                    return ge::GRAPH_FAILED);
+                        (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
+            std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
+            std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of key is " +
+                std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
+                ", the shape of keyAntiquantScale should be [T, N, D/64, 2]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
         // value -- [T/64, N, D, 2]
-        OP_CHECK_IF((GetValueScaleActualKVlens4TNDNoPa(fiaInfo) != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
+        if ((GetValueScaleActualKVlens4TNDNoPa(fiaInfo) != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                         (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                         (valueInputShape.GetDim(DIM_NUM_2) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                        (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario (layout of value is %s), "
-                            "the shape of valueAntiquantScale([%ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld].",
-                            LayoutToSerialString(fiaInfo.kvLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                            valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                            valueAntiquantScaleShape.GetDim(DIM_NUM_3), GetValueScaleActualKVlens4TNDNoPa(fiaInfo),
-                            fiaInfo.n2Size, valueInputShape.GetDim(DIM_NUM_2), 2),
-                    return ge::GRAPH_FAILED);
+                        (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
+            std::string shapeStr = Ops::Base::ToString(valueAntiquantScaleShape);
+            std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
+                std::string(LayoutToSerialString(fiaInfo.kvLayout)) + 
+                ", the shape of valueAntiquantScale should be [T/64, N, D, 2]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                shapeStr.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1166,111 +1165,110 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapePerblock(const FiaTilingIn
 
     // NTD_TND格式 scale dim = 3
     if (fiaInfo.qLayout == FiaLayout::NTD) {
-        OP_CHECK_IF((dequantScaleQueryShape.GetDimNum() != DIM_NUM_3) ||
-                        (keyAntiquantScaleShape.GetDimNum() != DIM_NUM_3) ||
-                        (valueAntiquantScaleShape.GetDimNum() != DIM_NUM_3),
-                    OP_LOGE(fiaInfo.opName,
-                            "In per-block quant scenario, when layout is %s, the dim num of "
-                            "dequantScaleQuery(%u), keyAntiquantScale(%u) and valueAntiquantScale(%u) must be %u.",
-                            fiaInfo.opParamInfo.layOut, dequantScaleQueryShape.GetDimNum(),
-                            keyAntiquantScaleShape.GetDimNum(), valueAntiquantScaleShape.GetDimNum(), DIM_NUM_3),
-                    return ge::GRAPH_FAILED);
+        if ((dequantScaleQueryShape.GetDimNum() != DIM_NUM_3) ||
+            (keyAntiquantScaleShape.GetDimNum() != DIM_NUM_3) ||
+            (valueAntiquantScaleShape.GetDimNum() != DIM_NUM_3)) {
+            std::string dimStr = std::to_string(dequantScaleQueryShape.GetDimNum()) + "D, " +
+                                 std::to_string(keyAntiquantScaleShape.GetDimNum()) + "D and " +
+                                 std::to_string(valueAntiquantScaleShape.GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                fiaInfo.opName, "dequant_scale_query, key_antiquant_scale and value_antiquant_scale",
+                dimStr.c_str(),
+                "In per-block quant scenario, when layout is NTD_TND, the shape dims of "
+                "dequantScaleQuery, keyAntiquantScale and valueAntiquantScale must all be 3D");
+            return ge::GRAPH_FAILED;
+        }
 
         if (fiaInfo.isMaxWorkspace) {
             return ge::GRAPH_SUCCESS;
         }
 
         // dequantScaleQuery [N, T/128+B, D/256]
-        OP_CHECK_IF(
-            (dequantScaleQueryShape.GetDim(DIM_NUM_0) != fiaInfo.n1Size) ||
-                (dequantScaleQueryShape.GetDim(DIM_NUM_1) != fiaInfo.qTSize / fp8QBlockSize + fiaInfo.bSize) ||
-                (dequantScaleQueryShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize)),
-            OP_LOGE(fiaInfo.opName,
-                    "In per-block quant scenario, when layout is %s, "
-                    "the shape of dequantScaleQuery([%ld, %ld, %ld]) should be [%u, %u, %u].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2), fiaInfo.n1Size,
-                    fiaInfo.qTSize / fp8QBlockSize + fiaInfo.bSize, CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize)),
-            return ge::GRAPH_FAILED);
+        if ((dequantScaleQueryShape.GetDim(DIM_NUM_0) != fiaInfo.n1Size) ||
+            (dequantScaleQueryShape.GetDim(DIM_NUM_1) != fiaInfo.qTSize / fp8QBlockSize + fiaInfo.bSize) ||
+            (dequantScaleQueryShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize))) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "dequant_scale_query",
+                Ops::Base::ToString(dequantScaleQueryShape).c_str(),
+                "In per-block quant scenario, when layout is NTD_TND, the shape of dequantScaleQuery "
+                "should be [n1Size, qTSize/128+bSize, qkHeadDim/256]");
+            return ge::GRAPH_FAILED;
+        }
 
         // keyAntiquantScale/valueAntiquantScale [N, T/256+B, D/256]
-        OP_CHECK_IF(
-            (keyAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.n2Size) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize)),
-            OP_LOGE(fiaInfo.opName,
-                    "In per-block quant scenario, when layout is %s, "
-                    "the shape of keyAntiquantScale([%ld, %ld, %ld]) should be [%u, %u, %u].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                    keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2), fiaInfo.n2Size,
-                    fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize, CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize)),
-            return ge::GRAPH_FAILED);
+        if ((keyAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.n2Size) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.qkHeadDim, fp8KVBlockSize))) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleShape).c_str(),
+                "In per-block quant scenario, when layout is NTD_TND, the shape of keyAntiquantScale "
+                "should be [n2Size, kTSize/256+bSize, qkHeadDim/256]");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF(
-            (valueAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.n2Size) ||
-                (valueAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize) ||
-                (valueAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.vHeadDim, fp8KVBlockSize)),
-            OP_LOGE(fiaInfo.opName,
-                    "In per-block quant scenario, when layout is %s, "
-                    "the shape of keyAntiquantScale([%ld, %ld, %ld]) should be [%u, %u, %u].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                    valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                    fiaInfo.n2Size, fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize,
-                    CeilDivision(fiaInfo.vHeadDim, fp8KVBlockSize)),
-            return ge::GRAPH_FAILED);
+        if ((valueAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.n2Size) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.kTSize / fp8KVBlockSize + fiaInfo.bSize) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.vHeadDim, fp8KVBlockSize))) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleShape).c_str(),
+                "In per-block quant scenario, when layout is NTD_TND, the shape of valueAntiquantScale "
+                "should be [n2Size, kTSize/256+bSize, vHeadDim/256]");
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_CHECK_IF((dequantScaleQueryShape.GetDimNum() != DIM_NUM_4) ||
-                        (keyAntiquantScaleShape.GetDimNum() != DIM_NUM_4) ||
-                        (valueAntiquantScaleShape.GetDimNum() != DIM_NUM_4),
-                    OP_LOGE(fiaInfo.opName,
-                            "In per-block quant scenario, when layout is %s, the dim num of "
-                            "dequantScaleQuery(%u), keyAntiquantScale(%u) and valueAntiquantScale(%u) must be %u.",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDimNum(),
-                            keyAntiquantScaleShape.GetDimNum(), valueAntiquantScaleShape.GetDimNum(), DIM_NUM_4),
-                    return ge::GRAPH_FAILED);
+        if ((dequantScaleQueryShape.GetDimNum() != DIM_NUM_4) ||
+            (keyAntiquantScaleShape.GetDimNum() != DIM_NUM_4) ||
+            (valueAntiquantScaleShape.GetDimNum() != DIM_NUM_4)) {
+            std::string dimStr = std::to_string(dequantScaleQueryShape.GetDimNum()) + "D, " +
+                                 std::to_string(keyAntiquantScaleShape.GetDimNum()) + "D and " +
+                                 std::to_string(valueAntiquantScaleShape.GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                fiaInfo.opName, "dequant_scale_query, key_antiquant_scale and value_antiquant_scale",
+                dimStr.c_str(),
+                "In per-block quant scenario, when layout is not NTD_TND, the shape dims of "
+                "dequantScaleQuery, keyAntiquantScale and valueAntiquantScale must all be 4D");
+            return ge::GRAPH_FAILED;
+        }
 
         // dequantScaleQuery [B, N, S/128, 1]
-        OP_CHECK_IF((dequantScaleQueryShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
-                        (dequantScaleQueryShape.GetDim(DIM_NUM_1) != fiaInfo.n1Size) ||
-                        (dequantScaleQueryShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s1Size, fp8QBlockSize)) ||
-                        (dequantScaleQueryShape.GetDim(DIM_NUM_3) != NUM1),
-                    OP_LOGE(fiaInfo.opName,
-                            "In per-block quant scenario, when layout is %s, "
-                            "the shape of dequantScaleQuery([%ld, %ld, %ld, %ld]) should be [%u, %u, %u, %u].",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                            dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
-                            dequantScaleQueryShape.GetDim(DIM_NUM_3), fiaInfo.bSize, fiaInfo.n1Size,
-                            CeilDivision(fiaInfo.s1Size, fp8QBlockSize), NUM1),
-                    return ge::GRAPH_FAILED);
+        if ((dequantScaleQueryShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
+            (dequantScaleQueryShape.GetDim(DIM_NUM_1) != fiaInfo.n1Size) ||
+            (dequantScaleQueryShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s1Size, fp8QBlockSize)) ||
+            (dequantScaleQueryShape.GetDim(DIM_NUM_3) != NUM1)) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "dequant_scale_query",
+                Ops::Base::ToString(dequantScaleQueryShape).c_str(),
+                "In per-block quant scenario, when layout is not NTD_TND, the shape of dequantScaleQuery "
+                "should be [bSize, n1Size, s1Size/128, 1]");
+            return ge::GRAPH_FAILED;
+        }
 
         // keyAntiquantScale/valueAntiquantScale [B, N, S/256, 1]
-        OP_CHECK_IF(
-            (keyAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.n2Size) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize))) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != NUM1),
-            OP_LOGE(fiaInfo.opName,
-                    "In per-block quant scenario, when layout is %s, "
-                    "the shape of keyAntiquantScale([%ld, %ld, %ld, %ld]) should be [%u, %u, %ld, %u].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                    keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                    keyAntiquantScaleShape.GetDim(DIM_NUM_3), fiaInfo.bSize, fiaInfo.n2Size,
-                    CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize)), NUM1),
-            return ge::GRAPH_FAILED);
+        if ((keyAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.n2Size) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize))) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != NUM1)) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleShape).c_str(),
+                "In per-block quant scenario, when layout is not NTD_TND, the shape of keyAntiquantScale "
+                "should be [bSize, n2Size, s2Size/256, 1]");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF(
-            (valueAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
-                (valueAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.n2Size) ||
-                (valueAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize))) ||
-                (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != NUM1),
-            OP_LOGE(fiaInfo.opName,
-                    "In per-block quant scenario, when layout is %s, "
-                    "the shape of valueAntiquantScale([%ld, %ld, %ld, %ld]) should be [%u, %u, %ld, %u].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                    valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                    valueAntiquantScaleShape.GetDim(DIM_NUM_3), fiaInfo.bSize, fiaInfo.n2Size,
-                    CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize)), NUM1),
-            return ge::GRAPH_FAILED);
+        if ((valueAntiquantScaleShape.GetDim(DIM_NUM_0) != fiaInfo.bSize) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_1) != fiaInfo.n2Size) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_2) != CeilDivision(fiaInfo.s2Size, int64_t(fp8KVBlockSize))) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != NUM1)) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleShape).c_str(),
+                "In per-block quant scenario, when layout is not NTD_TND, the shape of valueAntiquantScale "
+                "should be [bSize, n2Size, s2Size/256, 1]");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1428,7 +1426,7 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
     const std::vector<std::string> supportedLayoutListINT8 = {
         "BSH", "BSND", "TND", "BSH_NBSD", "BSND_NBSD", "TND_NTD"};
     
-        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
+    if ((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
         (std::find(supportedLayoutListFP8.begin(), supportedLayoutListFP8.end(), inputLayout) ==
                  supportedLayoutListFP8.end()),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
@@ -1437,7 +1435,7 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
                 "layout must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
+    if (fiaInfo.inputQType == ge::DT_INT8 &&
         (std::find(supportedLayoutListINT8.begin(), supportedLayoutListINT8.end(), inputLayout) ==
                  supportedLayoutListINT8.end()),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
@@ -1920,11 +1918,11 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
     const std::vector<std::string> supportedLayoutList = {
         "BSH", "BSND", "BNSD", "BNSD_BSND", "TND"};
 
-    OP_CHECK_IF(
-        (std::find(supportedLayoutList.begin(), supportedLayoutList.end(), inputLayout) == supportedLayoutList.end()),
-        OP_LOGE(fiaInfo.opName, "In antiquant scenario, inputLayout only supports (BSH, BNSD, BSND, BNSD_BSND, TND), "
-                                "but got %s.", inputLayout.c_str()),
-        return ge::GRAPH_FAILED);
+    if ((std::find(supportedLayoutList.begin(), supportedLayoutList.end(), inputLayout) == supportedLayoutList.end())) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+            inputLayout.c_str(), "In antiquant scenario, inputLayout only supports BSH, BNSD, BSND, BNSD_BSND or TND");
+        return ge::GRAPH_FAILED;
+    }
 
     OP_CHECK_IF(
         (fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND"),

@@ -40,7 +40,9 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
-        OP_LOGE(fiaInfo.opName, "Data format must be ND/NCHW/NHWC/NCDHW!");
+        OP_LOGE_FOR_INVALID_FORMAT(fiaInfo.opName, ATTEN_MASK_NAME,
+            Ops::Base::ToString(fiaInfo.opParamInfo.attenMask.desc->GetOriginFormat()).c_str(),
+            "ND, NCHW, NHWC or NCDHW");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -301,12 +303,13 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                 const std::vector<std::string> layoutSupportList = {
                     "BSH", "BSND", "BNSD", "BNSD_BSND",
                 };
-                OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr) == layoutSupportList.end(),
-                    OP_LOGE(fiaInfo.opName,
-                        "In gqa noquant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, "
-                        "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
-                        layoutStr.c_str()),
-                    return ge::GRAPH_FAILED);
+                if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
+                    == layoutSupportList.end()) {
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layoutStr.c_str(), 
+                        "In gqa noquant situation, when rope is not enabled, qkHeadDim = vHeadDim and "
+                        "sparseMode is 0 or 1, the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
+                    return ge::GRAPH_FAILED;
+                }
             } else {
                 OP_LOGE(fiaInfo.opName,
                         "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
@@ -397,13 +400,12 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
                         };
                         std::string layoutStr(fiaInfo.opParamInfo.layOut);
                         std::string layout = layoutStr;
-                        OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                            OP_LOGE(fiaInfo.opName,
-                                "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, "
-                                "when sparseMode = 0 or 1, "
-                                "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
-                                layout.c_str()),
-                            return ge::GRAPH_FAILED);
+                        if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+                            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask",
+                                layout.c_str(), "In gqa noquant situation, when rope is not used and qkHeadDim = vHeadDim and sparseMode is 0 or 1, "
+                                "the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
+                            return ge::GRAPH_FAILED;
+                        }
                     } else {
                         OP_LOGE(fiaInfo.opName,
                                 "In gqa no quant situation, rope exits or qkHeadDim != vHeadDim, "
