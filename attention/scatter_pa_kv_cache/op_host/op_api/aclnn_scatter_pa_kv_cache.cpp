@@ -518,7 +518,7 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
     bool isScatterModeEmpty = (scatterModeOptional == nullptr ||
                                strlen(scatterModeOptional) == 0 ||
                                strcmp(scatterModeOptional, "None") == 0);
-    if (isKey3Dim && isScatterModeEmptyt) {
+    if (isKey3Dim && isScatterModeEmpty) {
         bool isCacheNonContiguous = IsSupportNonContiguousCache(key, keyCacheRef, value, valueCacheRef);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(key, keyCacheRef, value, valueCacheRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
