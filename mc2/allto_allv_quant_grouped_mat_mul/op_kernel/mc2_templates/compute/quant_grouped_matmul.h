@@ -1,18 +1,18 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file quant_grouped_matmul.h
  * \brief
  */
- 
+
 #ifndef MC2_QUANT_GROUPED_MATMUL_H
 #define MC2_QUANT_GROUPED_MATMUL_H
 
@@ -38,7 +38,7 @@ public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
         GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag);
-    __aicore__ inline void Process(uint32_t expertIdx, uint32_t expertNum);
+    __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void End();
 
 protected:
@@ -76,8 +76,6 @@ private:
     TILING_TYPE *gmmArrayAddrIn_;
     GM_ADDR ttXScaleRepeatGm_ = nullptr;
     GM_ADDR ttWeightScaleRepeatGm_ = nullptr;
-    GlobalTensor<float> ttXScaleRepeatGlobalBuffer_;
-    GlobalTensor<float> ttWeightScaleRepeatGlobalBuffer_;
 };
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
@@ -107,10 +105,9 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     n1_ = tilingData_->taskTilingInfo.N1;
     bs_ = tilingData_->taskTilingInfo.BS;
     a_ = tilingData_->taskTilingInfo.A;
-    
+
     uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
     groupListGm_ = workspaceGM_;
-
     ptrTableBase_ = groupListGm_ + groupListSize;
     xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
     wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
@@ -124,8 +121,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         uint32_t expertNumMax = tilingData_->taskTilingInfo.expertNum;
         ttWeightScaleRepeatGm_ = ptrTableBase_ + TENSOR_LIST_SIZE;
         ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
-        ttWeightScaleRepeatGlobalBuffer_.SetGlobalBuffer((__gm__ float *)ttWeightScaleRepeatGm_, expertNumMax);
-        ttXScaleRepeatGlobalBuffer_.SetGlobalBuffer((__gm__ float *)ttXScaleRepeatGm_, expertNumMax);
     }
 
     const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] :
@@ -152,6 +147,27 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     if (!isLocal && expertTokenNum == 0) {
         return ;
     }
+
+    __gm__ int64_t *groupListPtr = reinterpret_cast<__gm__ int64_t *>(groupListGm_);
+    if (!isLocal) {
+        for (uint32_t idx = 0; idx < expertNum; idx++) {
+            groupListPtr[GROUP_LIST_INDEX + idx] = static_cast<int64_t>(expertTokenNum_[startExpertIdx + idx]);
+        }
+    } else {
+        groupListPtr[GROUP_LIST_INDEX] = static_cast<int64_t>(bs_);
+    }
+
+    if constexpr (PERTENSOR_QUANT_MODE) {
+        float xScaleValue = *((__gm__ float *)xScaleGM_);
+        float wScaleValue = *((__gm__ float *)weightScaleGM_);
+        __gm__ float *ttXScalePtr = reinterpret_cast<__gm__ float *>(ttXScaleRepeatGm_);
+        __gm__ float *ttWeightScalePtr = reinterpret_cast<__gm__ float *>(ttWeightScaleRepeatGm_);
+        for (uint32_t i = 0; i < expertNum; i++) {
+            ttXScalePtr[startExpertIdx + i] = xScaleValue;
+            ttWeightScalePtr[startExpertIdx + i] = wScaleValue;
+        }
+    }
+
     this->UpdateAddr(startExpertIdx, expertTokenNum);
     __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
     __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
@@ -161,44 +177,17 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     GM_ADDR scaleBPtr;
     GM_ADDR xScalePtr;
     if constexpr (PERTENSOR_QUANT_MODE) {
-        float xScaleValue = *((__gm__ float *)xScaleGM_);
-        float wScaleValue = *((__gm__ float *)weightScaleGM_);
-        for (uint32_t i = 0; i < expertNum; i++) {
-            ttXScaleRepeatGlobalBuffer_.SetValue(i, xScaleValue);
-            ttWeightScaleRepeatGlobalBuffer_.SetValue(i, wScaleValue);
-        }
-        uint32_t ttScaleCacheLineNum = CeilDiv(sizeof(float) * expertNum, 64U);
-        for (uint32_t cacheLineIdx = 0; cacheLineIdx < ttScaleCacheLineNum; cacheLineIdx++) {
-            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(ttWeightScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
-            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(ttXScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
-        }
         scaleBPtr = BuildPtrTable(ttWeightScaleRepeatGm_, 2);
         xScalePtr = ttXScaleRepeatGm_;
     } else if constexpr (MX_QUANT_MODE) {
-            scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
-            xScalePtr = xScaleGM_;
+        scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+        xScalePtr = xScaleGM_;
     } else {
         scaleBPtr = nullptr;
         xScalePtr = nullptr;
     }
     GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
-    uint64_t groupListToken = isLocal ? bs_ : expertTokenNum;
-    if (!isLocal) {
-        for (uint32_t idx = 0; idx < expertNum; idx++) {
-            groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX + idx,
-                expertTokenNum_[startExpertIdx + idx]);
-        }
-    } else {
-        groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-    }
-    uint32_t groupListCacheLineNum = CeilDiv(sizeof(int64_t) * expertNum, 64U);
-    for (uint32_t cacheLineIdx = 0; cacheLineIdx < groupListCacheLineNum; cacheLineIdx++) {
-        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_[cacheLineIdx * 8]);
-    }
     Mc2GroupedMatmulTilingData::GMMQuantParams localQuantParams = gmmTilingData_->gmmQuantParams;
     localQuantParams.groupNum = expertNum;
     Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
