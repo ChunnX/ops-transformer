@@ -428,8 +428,7 @@ namespace SplitFuse {
                     gActualQseqlen,
                     true,
                     (LSE_MODE == Epilogue::LseMode::OUT_ONLY),
-                    gLse
-                );
+                    gLse);
 #endif
             }
         }
