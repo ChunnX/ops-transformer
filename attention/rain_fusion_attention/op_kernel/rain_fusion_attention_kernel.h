@@ -324,7 +324,7 @@ namespace RainFusion {
                 }
 
                 uint32_t lastSelectIdx = static_cast<int32_t>(
-                    gSelectIdx.GetValue(curSelectIdx * static_cast<uint64_t>(maxKvBlockNum) + curSelectNum - 1));
+                    gSelectIdx.GetValue(curSelectIdx * maxKvBlockNum + curSelectNum - 1));
                 uint32_t kvYBlockNum = (kvSeqlen + qBlockY - 1) / qBlockY; // CeilDiv
                 uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ?
                     qBlockY * (curSelectNum - 1) + kvSeqlen % qBlockY : qBlockY * curSelectNum;
