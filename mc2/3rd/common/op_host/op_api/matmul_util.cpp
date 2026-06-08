@@ -32,6 +32,7 @@
 #include "op_api/op_api_def.h"
 #include "common/op_host/op_api/cube_util.h"
 #include "common/op_host/math_util.h"
+#include "log/log.h"
 
 using namespace std;
 using namespace op;
@@ -147,8 +148,18 @@ static bool CheckDtypeValid(
 
 static bool CheckShapeValid(const aclTensor* self, const aclTensor* mat2, bool transposeX2 = false)
 {
-    OP_CHECK_WRONG_DIMENSION(mat2, DIMS_TWO, return false);
-    OP_CHECK_WRONG_DIMENSION(self, DIMS_TWO, return false);
+    if (mat2->GetViewShape().GetDimNum() != DIMS_TWO) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM("Matmul", "mat2",
+            (std::to_string(mat2->GetViewShape().GetDimNum()) + "D").c_str(),
+            (std::to_string(DIMS_TWO) + "D").c_str());
+        return false;
+    }
+    if (self->GetViewShape().GetDimNum() != DIMS_TWO) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM("Matmul", "self",
+            (std::to_string(self->GetViewShape().GetDimNum()) + "D").c_str(),
+            (std::to_string(DIMS_TWO) + "D").c_str());
+        return false;
+    }
     op::Shape mat2Shape = mat2->GetViewShape();
     op::Shape selfShape = self->GetViewShape();
     int64_t mat2KDim = transposeX2 ? mat2Shape.GetDim(K_DIM_SELF_IDX) : mat2Shape.GetDim(M_DIM_SELF_IDX);
