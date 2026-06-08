@@ -73,15 +73,52 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_base.h
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_shape.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_templates_registry.h
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_mla.cpp
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_mla.h
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch22/
                 - ops/ops-transformer/attention/common/op_kernel/buffers_policy.h
                 - ops/ops-transformer/attention/common/op_kernel/buffer_manager.h
                 - ops/ops-transformer/attention/common/op_kernel/buffer.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_kvsame_bn2gs1s2.h
+                - ops/ops-transformer/attention/common/op_kernel/buffer_mix_core.h
+                - ops/ops-transformer/attention/common/op_kernel/matmul.h
+                - ops/ops-transformer/attention/common/op_kernel/FixpipeOut.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/infer_flash_attention_sparse.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_infer.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/infer_flash_attention_kvcache.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_infer.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_cube_noquant_gqa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_vec_noquant_gqa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_kernel_noquant_gqa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_tiling_data_noquant_gqa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_block_cube_noquant_mla.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_noquant_block_cube.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_base.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_noquant_block_vec_infer.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_noquant_block_kernel_base.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_noquant_block_kernel_infer.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_block_vec_base.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_block_vec_train.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_kernel_base.h
+                - ops/ops-transformer/attention/flash_attn/op_host/
+                - ops/ops-transformer/attention/flash_attn/op_kernel/
+                - ops/ops-transformer/attention/flash_attn/op_api/
+                - ops/ops-transformer/attention/flash_attn/op_graph/
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/actual_seq_len_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/actual_seq_len_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/common_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/common_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/fia_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/fia_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/learnable_sink_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/learnable_sink_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/pse_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/pse_checker.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/system_prefix_checker.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/system_prefix_checker.h
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/op_host/
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/op_kernel/
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/op_api/
             opensource_style: null  
             kernel_style: null  
         unrelease:
@@ -91,6 +128,11 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/incre_flash_attention/tests/
                 - ops/ops-transformer/attention/incre_flash_attention/docs/
                 - ops/ops-transformer/attention/incre_flash_attention/examples/
+                - ops/ops-transformer/attention/flash_attn/tests/
+                - ops/ops-transformer/attention/flash_attn/examples/
+                - ops/ops-transformer/attention/flashrecurrent_gated_delta_rule_attn/tests/
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/examples/
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/docs/
             non_delivery: null 
             open_source: null 
 
@@ -98,14 +140,19 @@ transformer-2@ops-transformer:
     src:  
         release:
             huawei_style:  
-                - ops/ops-transformer/attention/common/op_kernel/fia_public_define.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_common_regbase.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
                 - ops/ops-transformer/attention/common/op_kernel/vector_common.h
-                - ops/ops-transformer/attention/lightning_indexer/
-                - ops/ops-transformer/attention/sparse_flash_attention/
-                - ops/ops-transformer/attention/quant_lightning_indexer/
-                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/
+                - ops/ops-transformer/attention/lightning_indexer/op_host/
+                - ops/ops-transformer/attention/lightning_indexer/op_kernel/
+                - ops/ops-transformer/attention/sparse_flash_attention/op_host/
+                - ops/ops-transformer/attention/sparse_flash_attention/op_kernel/
+                - ops/ops-transformer/attention/quant_lightning_indexer/op_host/
+                - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/op_host/
+                - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/op_kernel/
+                - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/op_host/
+                - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/op_kernel/
+                - ops/ops-transformer/attention/sparse_flash_mla/op_host/
+                - ops/ops-transformer/attention/sparse_flash_mla/op_kernel/
             opensource_style: null 
             kernel_style: null 
         unrelease:
@@ -122,6 +169,7 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/tests/
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/docs/
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/examples/
+                - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/tests/
             non_delivery: null 
             open_source: null 
 
@@ -168,9 +216,22 @@ transformer-vf@ops-transformer:
     src:  
         release:
             huawei_style:  
-                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
-                - ops/ops-transformer/attention/lightning_indexer/op_kernel/arch35/vf
-                - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/arch35/vf
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_no_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_no_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_no_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_no_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_no_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_flash_decode.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_post_quant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_post_quant_gs1.h
+                - ops/ops-transformer/attention/lightning_indexer/op_kernel/arch35/vf/
+                - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/arch35/vf/
             opensource_style: null 
             kernel_style: null 
         unrelease:
@@ -182,16 +243,27 @@ transformer-3@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - ops/ops-transformer/attention/mla_prolog_v2/op_host
+                - ops/ops-transformer/attention/mla_prolog_v3/op_host/
+                - ops/ops-transformer/attention/mla_prolog_v3/op_api/
+                - ops/ops-transformer/attention/mla_prolog_v3/CMakeLists.txt
+                - ops/ops-transformer/attention/mla_prolog_v3/op_kernel/
+                - ops/ops-transformer/attention/mla_prolog_v3/op_graph/
+                - ops/ops-transformer/attention/mla_prolog_v2/op_host/
+                - ops/ops-transformer/attention/mla_prolog_v2/op_api/
                 - ops/ops-transformer/attention/mla_prolog_v2/CMakeLists.txt
-                - ops/ops-transformer/attention/mla_prolog_v2/op_kernel
-                - ops/ops-transformer/attention/mla_prolog_v2/op_graph
-                - ops/ops-transformer/attention/mla_prolog/op_host
+                - ops/ops-transformer/attention/mla_prolog_v2/op_kernel/
+                - ops/ops-transformer/attention/mla_prolog_v2/op_graph/
+                - ops/ops-transformer/attention/mla_prolog/op_host/
+                - ops/ops-transformer/attention/mla_prolog/op_api/
                 - ops/ops-transformer/attention/mla_prolog/CMakeLists.txt
-                - ops/ops-transformer/attention/mla_prolog/op_kernel
-                - ops/ops-transformer/attention/mla_prolog/op_graph
+                - ops/ops-transformer/attention/mla_prolog/op_kernel/
+                - ops/ops-transformer/attention/mla_prolog/op_graph/
+                - ops/ops-transformer/attention/common/op_host/split_core.cpp
                 - ops/ops-transformer/attention/common/op_host/split_core.h
-                - ops/ops-transformer/attention/common/op_kernel/matmul.h
+                - ops/ops-transformer/attention/common/op_host/split_core_v2.cpp
+                - ops/ops-transformer/attention/common/op_host/split_core_v2.h
+                - ops/ops-transformer/attention/common/op_kernel/aicpu_common.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_api/
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch22
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/op_api
@@ -211,22 +283,33 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_split_Bbn2s2_Us2.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_dd.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_cube.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_processor.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_antiquant_w4.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_antiquant_w8.h
+                - ops/ops-transformer/attention/common/op_kernel/load_balance/
             opensource_style: null 
             kernel_style: null  
         unrelease:
             test_code:  
-                - ops/ops-transformer/attention/mla_prolog_v2/tests
-                - ops/ops-transformer/attention/mla_prolog_v2/examples
+                - ops/ops-transformer/attention/mla_prolog_v3/tests/
+                - ops/ops-transformer/attention/mla_prolog_v3/examples/
+                - ops/ops-transformer/attention/mla_prolog_v3/README.md
+                - ops/ops-transformer/attention/mla_prolog_v3/docs/
+                - ops/ops-transformer/attention/mla_prolog_v2/tests/
+                - ops/ops-transformer/attention/mla_prolog_v2/examples/
                 - ops/ops-transformer/attention/mla_prolog_v2/README.md
-                - ops/ops-transformer/attention/mla_prolog_v2/docs
-                - ops/ops-transformer/attention/mla_prolog/tests
-                - ops/ops-transformer/attention/mla_prolog/examples
+                - ops/ops-transformer/attention/mla_prolog_v2/docs/
+                - ops/ops-transformer/attention/mla_prolog/tests/
+                - ops/ops-transformer/attention/mla_prolog/examples/
                 - ops/ops-transformer/attention/mla_prolog/README.md
-                - ops/ops-transformer/attention/mla_prolog/docs
-                - ops/ops-transformer/attention/fused_infer_attention_score/tests
+                - ops/ops-transformer/attention/mla_prolog/docs/
+                - ops/ops-transformer/attention/fused_infer_attention_score/tests/
                 - ops/ops-transformer/attention/fused_infer_attention_score/README.md
-                - ops/ops-transformer/attention/fused_infer_attention_score/examples
-                - ops/ops-transformer/attention/fused_infer_attention_score/docs
+                - ops/ops-transformer/attention/fused_infer_attention_score/examples/
+                - ops/ops-transformer/attention/fused_infer_attention_score/docs/
             non_delivery: null 
             open_source: null 
     
@@ -234,15 +317,43 @@ transformer-5@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_cube.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_processor.h
-                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_baseapi.h
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_fullquant_mx.cpp
+                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_fullquant_mx.h
                 - ops/ops-transformer/attention/common/op_kernel/array.h
+                - ops/ops-transformer/attention/common/op_kernel/axis.h
                 - ops/ops-transformer/attention/common/op_kernel/memory_copy.h
                 - ops/ops-transformer/attention/common/op_kernel/CopyInL1.h
-                - ops/ops-transformer/attention/common/op_kernel/FixpipeOut.h
+                - ops/ops-transformer/attention/common/op_kernel/memcopy/
+                - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask_gs1.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_vec_flashdecode_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_kernel_fullquant_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/fia_tiling_data_fullquant_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_cube_gqa_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_cube_mla_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_cube_mx_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_base_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_infer_gqa_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_infer_mla_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_infer_mx_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_base_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_no_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_fullquant_unaligned256_no_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_fullquant_unaligned256_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_fullquant_unaligned512_no_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_fullquant_unaligned512_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_no_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned256_no_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned256_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_no_update_mx.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_update_mx.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
@@ -263,8 +374,6 @@ transformer-5@ops-transformer:
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/softmax_lse_checker.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_mla.h
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/ifa_service_matmul_full_quant.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch35/service/antiquant_preprocessor_q.h
-                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/vf/vf_antiquant.h
             opensource_style: null  
             kernel_style: null  
         unrelease:
