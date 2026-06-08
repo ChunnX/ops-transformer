@@ -151,7 +151,8 @@ public:
         L1TileShape::K, L1TileShape::N);
 
     CATLASS_DEVICE
-    BlockMmad(Arch::Resource<ArchTag> &resource, __gm__ int32_t* flagPtr = nullptr, int32_t expertPerRank = 0, uint32_t l1BufAddrStart = 0)
+    BlockMmad(Arch::Resource<ArchTag> &resource, __gm__ int32_t* flagPtr = nullptr,
+        int32_t expertPerRank = 0, uint32_t l1BufAddrStart = 0)
     {
         syncGroupIdx = 0;
         ptrSoftFlagBase_ = flagPtr;
@@ -279,11 +280,13 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE3>(EVENT_ID0);
             AscendC::GlobalTensor<int32_t> flagGlobal;
-            flagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(ptrSoftFlagBase_) + (expertPerRank_ + AscendC::GetBlockIdx()) * FLAGSTRIDE);
+            flagGlobal.SetGlobalBuffer(
+                reinterpret_cast<__gm__ int32_t*>(ptrSoftFlagBase_) +
+                (expertPerRank_ + AscendC::GetBlockIdx()) * FLAGSTRIDE);
             AscendC::DataCopy(flagGlobal, l1FTensor[target * 16], FLAGSTRIDE);
         }
         else {
-            for(;syncGroupIdx <= target; syncGroupIdx++) {
+            for (; syncGroupIdx <= target; syncGroupIdx++) {
                 int32_t flagId = syncGroupIdx / 15 + flag;
                 AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagId);
             }
@@ -487,7 +490,7 @@ private:
             if constexpr (std::is_same_v<ElementA, int8_t>) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
             }
-            #ifdef __TILE_SYNC__
+#ifdef __TILE_SYNC__
             if (params.flag > 0) {
                 int32_t flagId = params.flag + params.syncLoopIdx / 8;
                 AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagId);

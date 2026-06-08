@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
@@ -181,9 +181,7 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
 
-
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-
             auto gmTileC = gmC[loopIdx * blockN];
 
             auto &ubC = ubCList[ubListId];
@@ -274,7 +272,7 @@ public:
             ubListId = (ubListId + 1 < UB_STAGES) ? (ubListId + 1) : 0;
         }
 
-        if(tasksForIdx > 0){
+        if (tasksForIdx > 0) {
             LayoutPerTokenScale layoutGmPerTokenScale2{tasksForIdx};
 
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -284,8 +282,6 @@ public:
                 gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0],
                 layoutGmPerTokenScale2, layoutGmPerTokenScale2);
         }
-
-
     }
 
 private:
@@ -309,7 +305,6 @@ private:
     AscendC::LocalTensor<half> ubQuantF16List[UB_STAGES];
     AscendC::LocalTensor<float> ubPerTokenScaleOutput;
 
-
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
     CopyUbToGmDequantScale copyUbToGmDequantScale;
@@ -317,4 +312,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_HPP
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP

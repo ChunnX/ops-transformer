@@ -184,164 +184,165 @@ FORCE_INLINE_AICORE void AIVRDMAPostSend(
 template <bool IS_A2>
 class HcclShmem {
 public:
-    #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
-        std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
-                          __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
-        Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-        AscendC::LocalTensor<int32_t> ub;
-        FORCE_INLINE_AICORE
-        HcclShmem()
-        {
-            auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            if constexpr(IS_A2) {
-                WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
-                m_rank = WinContext_->rankId;
-                m_rankSize = WinContext_->rankNum;
-            } else {
-                WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
-                m_rank = WinContext_->localUsrRankId;
-                m_rankSize = WinContext_->rankSize;
-            }
-            m_segmentSize = WinContext_->winSize;
+#ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
+    std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
+                      __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
+    AscendC::LocalTensor<int32_t> ub;
+    FORCE_INLINE_AICORE
+    HcclShmem()
+    {
+        auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        if constexpr(IS_A2) {
+            WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+            m_rank = WinContext_->rankId;
+            m_rankSize = WinContext_->rankNum;
+        } else {
+            WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
+            m_rank = WinContext_->localUsrRankId;
+            m_rankSize = WinContext_->rankSize;
         }
+        m_segmentSize = WinContext_->winSize;
+    }
 #else
-        FORCE_INLINE_AICORE
-        HcclShmem()
-        {
-            m_segmentSize = SHMEM_MEM;
-        }
-        FORCE_INLINE_AICORE
-        void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize)
-        {
-            symmetricPtr = symmetricPtr_;
-            m_rank = rank;
-            m_rankSize = rankSize;
-        }
+    FORCE_INLINE_AICORE
+    HcclShmem()
+    {
+        m_segmentSize = SHMEM_MEM;
+    }
+    FORCE_INLINE_AICORE
+    void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize)
+    {
+        symmetricPtr = symmetricPtr_;
+        m_rank = rank;
+        m_rankSize = rankSize;
+    }
 #endif
 
     FORCE_INLINE_AICORE
     GM_ADDR operator() () const {   // No parameters: return pointer to local peermem
-        #ifdef HCCL_COMM
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
-                } else {
-                    return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localInput.addr);
-                }
+#ifdef HCCL_COMM
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
             } else {
-                return (GM_ADDR)(WinContext_->localWindowsIn);
+                return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localInput.addr);
             }
+        } else {
+            return (GM_ADDR)(WinContext_->localWindowsIn);
+        }
 #else
-            return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
+        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
 #endif
     }
 
     FORCE_INLINE_AICORE
-    GM_ADDR operator() (int32_t index) const {  // With index parameter: return pointer to the base address of remote peermem
-        #ifdef HCCL_COMM
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsIn[index]);
-                } else {
-                    if (index == WinContext_->rankId) {
-                        return (GM_ADDR)(WinContext_->data[index].localInput.addr);
-                    } else {
-                        return (GM_ADDR)(WinContext_->data[index].remoteInput.addr);
-                    }
-                }
+    GM_ADDR operator() (int32_t index) const {
+        // With index parameter: return pointer to the base address of remote peermem
+#ifdef HCCL_COMM
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsIn[index]);
             } else {
-                return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
-                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+                if (index == WinContext_->rankId) {
+                    return (GM_ADDR)(WinContext_->data[index].localInput.addr);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[index].remoteInput.addr);
+                }
             }
+        } else {
+            return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
+                ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+        }
 #else
-            return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
+        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
 #endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR operator () (int64_t offset, int32_t rankId) const  {
-        #ifdef HCCL_COMM
-            if (offset < 0 || offset >= m_segmentSize) {
-                return nullptr;
-            }
-            if (rankId < 0 || rankId >= m_rankSize) {
-                return nullptr;
-            }
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
-                } else {
-                    if (rankId == WinContext_->rankId) {
-                        return (GM_ADDR)(WinContext_->data[rankId].localInput.addr + offset);
-                    } else {
-                        return (GM_ADDR)(WinContext_->data[rankId].remoteInput.addr + offset);
-                    }
-                }
+#ifdef HCCL_COMM
+        if (offset < 0 || offset >= m_segmentSize) {
+            return nullptr;
+        }
+        if (rankId < 0 || rankId >= m_rankSize) {
+            return nullptr;
+        }
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsIn[rankId] + offset);
             } else {
-                return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
-                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
+                if (rankId == WinContext_->rankId) {
+                    return (GM_ADDR)(WinContext_->data[rankId].localInput.addr + offset);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[rankId].remoteInput.addr + offset);
+                }
             }
+        } else {
+            auto *remoteRes = (HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr);
+            return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn : remoteRes->windowsIn) + offset;
+        }
 #else
-            return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
+        return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
 #endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr() const {
-        #ifdef HCCL_COMM
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
-                } else {
-                    return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localOutput.addr);
-                }
+#ifdef HCCL_COMM
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
             } else {
-                return nullptr;
+                return (GM_ADDR)(WinContext_->data[WinContext_->rankId].localOutput.addr);
             }
-#else
+        } else {
             return nullptr;
+        }
+#else
+        return nullptr;
 #endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int32_t rankId) const {
-        #ifdef HCCL_COMM
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsOut[rankId]);
-                } else {
-                    if (rankId == WinContext_->rankId) {
-                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr);
-                    } else {
-                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr);
-                    }
-                }
+#ifdef HCCL_COMM
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsOut[rankId]);
             } else {
-                return nullptr;
+                if (rankId == WinContext_->rankId) {
+                    return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr);
+                }
             }
-#else
+        } else {
             return nullptr;
+        }
+#else
+        return nullptr;
 #endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int64_t offset, int32_t rankId) const {
-        #ifdef HCCL_COMM
-            if constexpr(IS_A2) {
-                if (WinContext_->multiFlag == 0U) {
-                    return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
-                } else {
-                    if (rankId == WinContext_->rankId) {
-                        return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr + offset);
-                    } else {
-                        return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr + offset);
-                    }
-                }
+#ifdef HCCL_COMM
+        if constexpr(IS_A2) {
+            if (WinContext_->multiFlag == 0U) {
+                return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
             } else {
-                return nullptr;
+                if (rankId == WinContext_->rankId) {
+                    return (GM_ADDR)(WinContext_->data[rankId].localOutput.addr + offset);
+                } else {
+                    return (GM_ADDR)(WinContext_->data[rankId].remoteOutput.addr + offset);
+                }
             }
-#else
+        } else {
             return nullptr;
+        }
+#else
+        return nullptr;
 #endif
     }
 
@@ -355,11 +356,9 @@ public:
         return m_rankSize;
     }
 
-
     FORCE_INLINE_AICORE
     ~HcclShmem() {
     }
-
 
     FORCE_INLINE_AICORE
     void CrossRankSync() {
@@ -369,7 +368,7 @@ public:
         int count = gm_load(sync_base) + 1;
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
-        for(int i = vec_id; i < m_rankSize; i += vec_size) {
+        for (int i = vec_id; i < m_rankSize; i += vec_size) {
             __gm__ int32_t* sync_remote = (__gm__ int32_t*)((*this)(i)) + flag_offset + m_rank * 16;
             gm_store(sync_remote, count);
             gm_dcci((__gm__ uint8_t*)sync_remote);
@@ -380,7 +379,6 @@ public:
         AscendC::SyncAll<true>();
         gm_store(sync_base, count);
     }
-
 
     FORCE_INLINE_AICORE
     void InitStatusTargetSum()
@@ -394,7 +392,8 @@ public:
         GlobalTensor<int32_t> selfStatusTensor;
         selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)((*this)() + flag_offset));
         __asm__ __volatile__("");
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor[coreIdx * UB_ALIGN]);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            selfStatusTensor[coreIdx * UB_ALIGN]);
         __asm__ __volatile__("");
         int32_t state = selfStatusTensor(coreIdx * UB_ALIGN);
         if (state == 0) {
@@ -407,7 +406,8 @@ public:
             epStateValue_ = 0;
         }
         __asm__ __volatile__("");
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor[coreIdx * UB_ALIGN]);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            selfStatusTensor[coreIdx * UB_ALIGN]);
         __asm__ __volatile__("");
     }
 
@@ -511,8 +511,9 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
 
             while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
-                AscendC::DataCopy<float>(statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)],
-                                intriParams);
+                AscendC::DataCopy<float>(
+                    statusTensor, epStatusSpaceGlobalTensor_[startRankId_ * stateOffset_ / sizeof(float)],
+                    intriParams);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
@@ -534,7 +535,6 @@ public:
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
     }
 
-
     FORCE_INLINE_AICORE
     __gm__ int32_t* SyncBaseAddr() {
         uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
@@ -549,8 +549,5 @@ private:
     float sumTarget_{0.0};
     int32_t epStateValue_;
 };
-
-
-
 
 #endif

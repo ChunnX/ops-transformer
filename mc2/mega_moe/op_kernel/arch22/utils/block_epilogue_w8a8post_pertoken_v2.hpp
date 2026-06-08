@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
@@ -86,14 +86,13 @@ public:
         {}
     };
 
-
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
     {
-        //ub:192KB
+        // ub:192KB
         n0 = params.n0;
         size_t ubOffset = 0;
-        for(int32_t i = 0; i < 2; i++) {
+        for (int32_t i = 0; i < 2; i++) {
             ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += max_len * sizeof(ElementC);
             ubDList[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
@@ -120,12 +119,10 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-
     }
     CATLASS_DEVICE
     ~BlockEpilogue()
     {
-
     }
     CATLASS_DEVICE
     void operator() (
@@ -136,7 +133,7 @@ public:
         int32_t groupIdx,
         int32_t preSrcExpertSum,
         AscendC::GlobalTensor<int32_t> preSumBeforeRank
-    ){
+    ) {
         is_ping = !is_ping;
         auto event_id = is_ping ? EVENT_ID0 : EVENT_ID1;
         auto event_id_2 = is_ping ? EVENT_ID2 : EVENT_ID3;
@@ -151,7 +148,6 @@ public:
         LayoutC layoutGM{actualBlockShape.m(), actualBlockShape.n(), params.n2};
         LayoutC layoutUB{actualBlockShape.m(), actualBlockShape.n(), n0};
 
-
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event_id);
         copyGmToUbC(ubC, gmTileC, layoutUB, layoutGM);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event_id);
@@ -159,7 +155,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event_id);
         AscendC::Cast<float, ElementC, false>(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, -1, repeat, {1, 1, 8, 4});
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(event_id);
-
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event_id_2);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(event_id_2);
@@ -213,7 +208,7 @@ public:
             int32_t stData = max(stRankInExpert, stTile);
             int32_t edData = min(edRankInExpert, edTile);
             uint32_t lenData = edData - stData;
-            if (lenData <= 0){
+            if (lenData <= 0) {
                 continue;
             }
 
@@ -247,7 +242,6 @@ public:
             tileOffset += lenData;
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(event_id);
-
     }
 private:
 
@@ -262,7 +256,6 @@ private:
     int32_t n0;
     bool is_ping = false;
 
-
     int32_t repeat = 128;
 
     CopyGmToUbC copyGmToUbC;
@@ -273,4 +266,4 @@ private:
     Layout3D tokenPerExpertLayout;
 };
 }
-#endif
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP

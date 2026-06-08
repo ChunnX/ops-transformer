@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
@@ -196,11 +196,10 @@ private:
     AscendC::LocalTensor<float> ubCFp32List[UB_STAGES];
     AscendC::LocalTensor<float> ubMulList[UB_STAGES];
 
-
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
 };
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_HPP
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP

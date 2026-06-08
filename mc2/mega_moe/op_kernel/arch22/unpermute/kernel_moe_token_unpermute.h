@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MOE_TOKEN_UNPERMUTE
-#define MOE_TOKEN_UNPERMUTE
+#ifndef KERNEL_MOE_TOKEN_UNPERMUTE
+#define KERNEL_MOE_TOKEN_UNPERMUTE
 
 #include "kernel_operator.h"
 #include "moe_token_unpermute_tiling.h"
@@ -163,7 +163,6 @@ KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(GM_ADDR permuted_tokens, GM_ADD
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Process()
 {
-
     if (blockIdx >= blockNum) {
         return;
     }

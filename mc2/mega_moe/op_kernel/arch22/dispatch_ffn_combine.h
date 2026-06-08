@@ -1,7 +1,7 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -80,7 +80,7 @@ private:
     int32_t rank;
     int32_t rankSize;
     int32_t aivNum;
-    
+
     int32_t m0;
     int32_t k0;
     int32_t n0;
@@ -219,7 +219,7 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
     using D1Type = Gemm::GemmType<int8_t, layout::RowMajor>;
 
     using D2Type = typename std::conditional<
-        std::is_same_v<CType_, bfloat16_t>, 
+        std::is_same_v<CType_, bfloat16_t>,
         Gemm::GemmType<bfloat16_t, layout::RowMajor>,
         Gemm::GemmType<CType_, layout::RowMajor>
         >::type;
