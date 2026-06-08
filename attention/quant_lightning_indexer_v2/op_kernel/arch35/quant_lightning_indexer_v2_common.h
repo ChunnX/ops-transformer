@@ -15,6 +15,7 @@
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
+
 namespace QLICommon {
 
 // 与tiling的layout保持一致
@@ -24,7 +25,8 @@ enum class LI_LAYOUT : uint32_t {
     PA_BSND = 2
 };
 
-template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T, const bool PAGE_ATTENTION = false,
+template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
+    const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
 struct QLIType {
     static_assert(
@@ -55,7 +57,7 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1;    
+    uint32_t actS2SizeOrig = 1;
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
