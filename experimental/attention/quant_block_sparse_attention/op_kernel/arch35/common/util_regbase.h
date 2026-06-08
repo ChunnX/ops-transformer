@@ -72,6 +72,7 @@ enum class SparseType : uint8_t {
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
     int64_t s1oIdx; \
+    int64_t n1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
     int32_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
@@ -211,6 +212,7 @@ struct RunInfo {
     int64_t dSizeV; \
     int64_t dBasicBlock; \
     int64_t dSizeRope; \
+    int64_t n1size;     \
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
@@ -280,25 +282,6 @@ struct RunInfo {
     float pScale;\
     float sinkValue = 0.0f;
 
-
-#define ROPE_INFO \
-    /* rope参数 */ \
-    int64_t s1DR; \
-    int64_t gS1DR; \
-    int64_t n2GS1DR; \
-    int64_t s2DR; \
-    int64_t n2S2DR; \
-    int64_t gDR; \
-    int64_t n2DR; \
-    int64_t bN2DR; \
-    int64_t n2GDR; \
-    int64_t bN2GDR; \
-    int64_t s2BaseN2DR; \
-    int64_t s2BaseBN2DR; \
-    int64_t s1BaseN2GDR; \
-    int64_t s1BaseBN2GDR; \
-    int64_t s1BaseDR; \
-    int64_t s2BaseDR; \
 
 #define INFER_CONST_INFO \
     /* 推理新增 */ \

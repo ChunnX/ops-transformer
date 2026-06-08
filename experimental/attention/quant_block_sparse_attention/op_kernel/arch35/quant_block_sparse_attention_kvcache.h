@@ -93,32 +93,25 @@ __aicore__ inline void GetKVSeqLengthForTensorList(RunParamStr& runParam,
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx,
-    __gm__ int64_t* actualSeqQlenAddr, int64_t actualSeqMin)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int64_t* actualSeqQlenAddr)
 {
-    if (constInfo.isActualLenDimsNull) {
-        int64_t actualMSize = constInfo.s1Size;
-        return actualMSize;
-    }
-    
-    int64_t actualMSize = 0;
-    if constexpr (layout == BSALayout::TND) {
-        actualMSize = (bIdx == 0) ? actualSeqQlenAddr[0] :
-            actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
+    int64_t actualS1Size = 0;
+    if constexpr (qLayout == BSALayout::TND) {
+        if (constInfo.isActualLenDimsNull) {
+            int64_t actualS1Size = constInfo.s1Size;
+        } else {
+            actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] : ctualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
+        }
     } else {
-        actualMSize = (constInfo.actualSeqLenSize == actualSeqMin) ? 
-            actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+
     }
-    
-    return actualMSize;
+    return actualS1Size;
 }
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx,
-    __gm__ int64_t* actualSeqKvlenAddr, int64_t actualSeqKVMin)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int64_t* actualSeqKvlenAddr)
 {
-    int64_t actualS2Size = 0;
     
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = (constInfo.isKvContinuous == 1) ? constInfo.s2Size :
@@ -137,6 +130,10 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
     }
     
     return actualS2Size;
+    int64_t actualS2Size = 0;
+    if constexpr (kvLayout == BSAKvLayout::PA_BNSD) {
+        
+    }
 }
 
 TEMPLATE_INTF
@@ -178,17 +175,14 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam,
     GlobalTensor<INPUT_T>& keyGm, __gm__ int64_t *actualSeqQlenAddr,
     __gm__ int64_t * actualSeqKvlenAddr)
 {
-    constexpr int64_t actualSeqMin = 1;
-    constexpr int64_t actualSeqKVMin = 1;
-    
     // TensorList场景获取不同batch的KvSeq长度
     GetKVSeqLengthForTensorList<TEMPLATE_INTF_ARGS>(runParam, constInfo, bIdx, keyGm);
 
     // 计算实际序列长度
     int64_t actualS1Size = CalculateActualS1Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, bIdx, actualSeqQlenAddr, actualSeqMin);
+        runParam, constInfo, bIdx, actualSeqQlenAddr);
     int64_t actualS2Size = CalculateActualS2Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, bIdx, actualSeqKvlenAddr, actualSeqKVMin);
+        runParam, constInfo, bIdx, actualSeqKvlenAddr);
 
     // 初始化padding大小
     InitQueryLeftPaddingSize<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualS1Size);
