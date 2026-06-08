@@ -1262,7 +1262,6 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     selfDataStatusGMAiv.SetValue(0, 16); // 初始化为0，表示数据未准备好
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
     AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
-    AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
 
     LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
     GlobalTensor<uint32_t> selfDataStatusGMAivSendDump;
@@ -1293,6 +1292,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     constexpr int64_t WAIT_RDMA_READ_TIMEOUT_CYCLES = 5000000000;
     int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
+        AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
         DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
         readFlagValue = readFlagValueGt.GetValue(0);
@@ -1300,12 +1300,12 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             break;
         }
         if (AscendC::GetSystemCycle() - startCycle >= WAIT_RDMA_READ_TIMEOUT_CYCLES) {
-            dumpLt.SetValue(0, readFlagValue);
+            dumpLt.SetValue(0, static_cast<uint64_t>(readFlagValue));
             PipeBarrier<PIPE_ALL>();
             DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
             DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
             PipeBarrier<PIPE_ALL>();
-            assert(false && "Dispatch DFX: RDMA Read timeout!");
+            // assert(false && "Dispatch DFX: RDMA Read timeout!");
         }
     }
 
