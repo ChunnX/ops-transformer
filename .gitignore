@@ -25,6 +25,8 @@ cmake-build-*
 build/
 build_out/
 output/
+/torch_extension/dist/
+/torch_extension/npu_ops_transformer.egg-info/
 
 # binary files
 *.so
