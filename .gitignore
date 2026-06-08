@@ -48,3 +48,5 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+.workflow/raw/design/qkv_rms_norm_rope_cache_with_kscale

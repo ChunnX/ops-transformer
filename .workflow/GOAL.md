@@ -57,7 +57,7 @@
 | 决策项 | 选择 | 原因 |
 |--------|------|------|
 | op_api 模式 | 模式 A (L2→L0 自包含) | 参考 nsa_compress_with_cache |
-| op_api 目录 | 根目录 `op_api/` | 参考 mla_prolog_v3 风格 |
+| op_api 目录 | `op_host/op_api/`（嵌套在 op_host 内） | 参考 nsa_compress_with_cache 风格 |
 | op_graph | 不交付 | 首期只交付 ACLNN 直调路径 |
 | epsilon 类型 | float | 用户确认 |
 | tiling | 不交付（后续阶段） | 与 kernel 紧密相关 |

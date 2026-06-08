@@ -88,22 +88,77 @@
 ### 任务 3.3: 编译验证 + UT 通过
 **完成标准**: 所有源文件编译通过，UT 全部 pass
 
+## 阶段四：op_api 接口修正
+
+### 任务 4.1: 统一小写算子名
+**目标**: 将源码目录和小写构建入口统一为 `attention/qkv_rms_norm_rope_cache_with_kscale/`
+**完成标准**:
+- 源码目录不再使用 `qkv_rms_norm_rope_cache_with_k_scale`
+- `--ops=qkv_rms_norm_rope_cache_with_kscale` 可完成 op_host/op_api 构建
+
+### 任务 4.2: 拆分 rotation 输入
+**目标**: 将单个 `rotation` 输入拆分为 `q_rotation` 和 `k_rotation`
+**完成标准**:
+- op_host def 中包含 `q_rotation`/`k_rotation`
+- infershape 和 L2 shape check 校验二者 shape 均为 `[D, D]`
+- L0/L2 ACLNN 签名和文档示例一致
+
+### 任务 4.3: cache 参数 inplace 化
+**目标**: `k_cache`、`v_cache`、`k_scale_cache` 作为输入输出复用参数原地更新
+**完成标准**:
+- def 输出名使用 `k_cache`、`v_cache`、`k_scale_cache`
+- L0 `OP_INPUT`/`OP_OUTPUT` 使用同一 tensor，实现 `Ref` 关系
+- L2 不再暴露独立 cache out 参数，也不对 cache 输入做 Contiguous 替换
+- autogen inner 代码包含 `NnopbaseSetRef` 映射
+
+## 阶段五：ACLNN 接口检查与代码重构
+
+### 任务 5.1: ACLNN 接口参数检查
+**目标**: 检查 inplace 参数和多输出处理是否符合规范
+**完成标准**:
+- inplace 参数（kCache/vCache/kScaleCache）L2 签名、L0 OP_INPUT/OP_OUTPUT、def 注册均正确
+- 多输出处理与 scatter_pa_kv_cache/gather_pa_kv_cache 参考一致（tuple 返回所有输出）
+**结果**: ✅ 三次验证完成，L0 改为 tuple 返回所有 5 个输出
+
+### 任务 5.2: ACLNN 代码实现检查和修复
+**目标**: 参考 grouped_matmul_finalize_routing checker 模式重构校验逻辑
+**目标文件**:
+- `op_host/op_api/qkv_rms_norm_rope_cache_with_kscale_checker.h`（新增→二次重构为class-based）
+- `op_host/op_api/aclnn_qkv_rms_norm_rope_cache_with_kscale.cpp`（重构→二次使用CHECK_RET）
+**完成标准**:
+- 使用参数结构体 + OP_LOGE_FOR_* 宏 + class-based checker
+- 编译通过 + 57/57 测试通过
+**结果**: ✅ 二次验证改进完成
+
+### 任务 5.3: cache 参数非连续性问题
+**目标**: 确保 k_cache/v_cache/k_scale_cache 的原始 stride 不被破坏
+**目标文件**: `op_host/qkv_rms_norm_rope_cache_with_k_scale_def.cpp`
+**完成标准**:
+- 移除 cache 参数的 AutoContiguous()
+- L2 不对 cache 参数调用 Contiguous()
+- 编译通过 + 57/57 测试通过
+**结果**: ✅ 二次验证通过，与scatter/gather/quant_grouped_matmul_inplace_add参考一致
+
 ## 当前进度
 
 - [x] 阶段一：项目脚手架 + op_host 基础 ← **已完成**
 - [x] 阶段二：op_api ACLNN 接口 ← **已完成**
 - [x] 阶段三：测试 + 文档 + 验收 ← **已完成**
+- [x] 阶段四：op_api 接口修正 ← **已完成**
+- [x] 阶段五：ACLNN 接口检查与代码重构 ← **已完成**
 
 ## 技术决策
 
 | 决策项 | 选择 | 参考 |
 |--------|------|------|
 | op_api 模式 | 模式 A (L2→L0 自包含) | nsa_compress_with_cache |
-| op_api 目录 | 根目录 op_api/ | mla_prolog_v3 |
+| op_api 目录 | op_host/op_api/（嵌套） | nsa_compress_with_cache |
 | op_graph | 不交付 | 首期只 ACLNN 直调 |
 | epsilon 类型 | float | 用户确认 |
 | tiling | 不交付（后续阶段） | 与 kernel 紧密相关 |
 | 测试范围 | 仅 op_api UT | 无 kernel 不需要 golden |
+| 生成器命名 | def 文件名匹配 CANN autogen | CANN 将 `KScale` 生成成 `k_scale`，def 文件命名为 `qkv_rms_norm_rope_cache_with_k_scale_def.cpp` 直接匹配，无需 alias |
+| cache inplace 处理 | cache 输入直接作为输出传给 L0 | 参考 quant_grouped_matmul_inplace_add 的 Ref 参数模式 |
 
 ## 风险与应对
 
