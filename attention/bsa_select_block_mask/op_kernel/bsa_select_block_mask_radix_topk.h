@@ -266,7 +266,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
     // 4. Reset state variables
     involvedMask16_ = 0;
-    andMask16_ = static_cast<int16_t>(0xC000);  // ((1<<2)-1) << (16-2)
+    andMask16_ = static_cast<int16_t>(((1 << bitsPerRound_) - 1) << (16 - bitsPerRound_));
     totalDefinitelyInTopK_ = 0;
     boundaryBin = 0;
     boundaryBinPrev = 1;
