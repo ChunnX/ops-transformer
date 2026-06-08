@@ -65,7 +65,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
     const aclTensorList* weightScales2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
+    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
@@ -110,7 +110,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, scalesOptional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
         combineQuantMode, const_cast<char*>(commAlg), 0, "swiglu",
         std::numeric_limits<float>::max(), ge::DT_UNDEFINED, false, false, 0,
         yOut, expertTokenNumsOut, workspaceSize, executor);
