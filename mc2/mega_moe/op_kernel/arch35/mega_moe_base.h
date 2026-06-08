@@ -21,6 +21,15 @@
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
 
+// 分块流式 dispatch 的 token 分批粒度(见 mega_moe.h)。CHUNK 越大 ⇒ 大 bs 时分片数越少 ⇒
+// 源 mask 推送的跨卡 MTE 搬运(DataCopyPad 直写对端 win)次数 & 接收端 chunk 迭代越少。
+// 取 8192(=32*256): CHUNK/8=1024B 切片 32B 对齐;
+// 段 A/B UB 峰值仍安全(triple 用 DISPATCH_TRIPLE_TILE 解耦, 不随 CHUNK 增长)。不改 win 槽位大小。
+constexpr int32_t DISPATCH_TOKEN_CHUNK = 8192;
+constexpr int32_t DISPATCH_MASK_SLICE_BYTES = DISPATCH_TOKEN_CHUNK / 8;  // 1024B / chunk
+// tripleTensor_ 每批最多这么多行(*32B), 与 CHUNK 解耦, 使 CHUNK 可调大而 UB 不爆。
+constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
+
 struct Mc2MoeContext {
     uint32_t epRankId;
     uint32_t epRankSize;
@@ -49,8 +58,9 @@ struct PeermemInfo {
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
         // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
-        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
-        // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
+        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 算好), 接收端直接读 count。
+        // 分块流式不改变槽位大小: 源按 chunk 分片填同一 mask 区(末片 clamp 到 maskAlignSize, 不越界 count),
+        // 故 win 布局/host CCL buffer 大小完全不变。须与 mega_moe.h Init 的 maskAlignSize_/maskSlotSize_ 一致。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
             (int64_t)sizeof(int32_t);

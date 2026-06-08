@@ -47,7 +47,7 @@ namespace {
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t MAX_BS = 512LL;
+    const static int64_t MAX_BS = 512000LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
