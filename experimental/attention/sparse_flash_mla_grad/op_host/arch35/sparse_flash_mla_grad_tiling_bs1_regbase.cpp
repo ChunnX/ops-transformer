@@ -157,15 +157,12 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
     int64_t selectBlockCount = 4096;
-    int64_t softmaxL1SelectBlockCount = std::max(static_cast<int64_t>(tmpData.ori_selected_block_count + tmpData.cmp_selected_block_count), static_cast<int64_t>(128));
 
     int64_t mm4WorkspaceLen = selectBlockCount * tmpData.d * B32;
     int64_t mm5WorkspaceLen = selectBlockCount * tmpData.d1 * B32;
     int64_t dSinkWorkspaceLen = tmpData.g * tmpData.n2 * B32;
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
-
-    int64_t softmaxL1WorkspaceLen = softmaxL1SelectBlockCount * tmpData.g * B32 * coreNum;
 
     int64_t dqWorkspaceLen = tmpData.dqWorkspaceLen;
     int64_t doriKVWorkspaceLen = tmpData.doriKVWorkspaceLen;
@@ -176,8 +173,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     workspaces[0] += selectedKWorkspaceLen * coreNum;
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen + dSinkWorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + doriKVWorkspaceLen + dcmpKVWorkspaceLen;
-    workspaces[0] += softmaxL1WorkspaceLen;
-
 
     baseParams_->set_selectedKWorkSpaceOffset(0);
     int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
@@ -193,8 +188,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     workspaceOffsets = workspaceOffsets + doriKVWorkspaceLen;
     postTilingData_->set_dCmpKVWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dcmpKVWorkspaceLen;
-    baseParams_->set_softmaxL1WorkspaceOffset(workspaceOffsets);
-    workspaceOffsets = workspaceOffsets + softmaxL1WorkspaceLen;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -523,6 +516,25 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::CheckOutShapeInfo(const gert::Shap
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus SparseFlashMlaGradBs1Regbase::GetOriWinToken(int64_t oriMaskMode)
+{
+    if (oriMaskMode != 4) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    auto oriWinLeft = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_LEFT));
+    auto oriWinRight = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
+    oriWinLeft = oriWinLeft == -1 ? INT32_MAX : oriWinLeft;
+    oriWinRight = oriWinRight == -1 ? INT32_MAX : oriWinRight;
+    if (oriWinLeft < 0 || oriWinRight < 0) {
+        OP_LOGE(context_, "ori_win_left and ori_win_right should be greater than or equal to 0 or equal to -1, but got ori_win_left: [%ld], ori_win_right: [%ld].", oriWinLeft, oriWinRight);
+        return ge::GRAPH_FAILED;
+    }
+    baseParams_->set_oriWinLeft(oriWinLeft);
+    baseParams_->set_oriWinRight(oriWinRight);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF((context_->GetInputShape(static_cast<size_t>(InputIndex::Q)) == nullptr),
@@ -576,6 +588,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         if (strcmp(layoutQ, TND_STR) == 0) {
             tmpData.t2 = oriKVShape.GetDim(DIM_0);
             tmpData.n2 = oriKVShape.GetDim(DIM_1);
+            tmpData.s2 = tmpData.t2;
         } else {
             tmpData.s2 = oriKVShape.GetDim(DIM_1);
             tmpData.n2 = oriKVShape.GetDim(DIM_2);
@@ -604,6 +617,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         if (strcmp(layoutQ, TND_STR) == 0) {
             tmpData.t3 = cmpKVShape.GetDim(DIM_0);
             tmpData.n2 = cmpKVShape.GetDim(DIM_1);
+            tmpData.s3 = tmpData.t3;
         } else {
             tmpData.s3 = cmpKVShape.GetDim(DIM_1);
             tmpData.n2 = cmpKVShape.GetDim(DIM_2);
@@ -616,19 +630,14 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     auto out = context_->GetInputShape(static_cast<size_t>(InputIndex::OUT))->GetStorageShape();
 
     auto oriSparseIndices = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ORI_SPARSE_INDICES));
-    if (oriSparseIndices != nullptr){
+    if (oriSparseIndices != nullptr) {
         tmpData.oriKVSparse = true;
         const gert::Shape &oriSparseIndicesShape = oriSparseIndices->GetStorageShape();
         auto ori_selected_block_count = oriSparseIndicesShape.GetDim(dimSize - 1);
-        if (ori_selected_block_count <= 0 || ori_selected_block_count > 2048) {
-            OP_LOGE(context_, "SparseFlashMlaGrad only support ori_selected_block_count range [1, 2048] now, but got ori_selected_block_count=%ld.", 
-                ori_selected_block_count);
-            return ge::GRAPH_FAILED;
-        }
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     } else {
-        auto ori_selected_block_count = tmpData.s2;
+        int64_t ori_selected_block_count = 0;
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     }
@@ -638,15 +647,10 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         tmpData.cmpKVSparse = true;
         const gert::Shape &cmpSparseIndicesShape = cmpSparseIndices->GetStorageShape();
         auto cmp_selected_block_count = cmpSparseIndicesShape.GetDim(dimSize - 1);
-        if (cmp_selected_block_count <= 0 || cmp_selected_block_count > 2048) {
-            OP_LOGE(context_, "SparseFlashMlaGrad only support cmp_selected_block_count range [1, 2048] now, but got cmp_selected_block_count=%ld.", 
-                cmp_selected_block_count);
-            return ge::GRAPH_FAILED;
-        }
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     } else {
-        auto cmp_selected_block_count = tmpData.s3;
+        int64_t cmp_selected_block_count = 0;
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     }
@@ -662,14 +666,15 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         tmpData.usedSeqOriKV = true;
         const gert::Shape &usedSeqOriKVShape = usedSeqOriKV->GetStorageShape();
     }
-    auto oriWinLeft = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_LEFT));
-    baseParams_->set_oriWinLeft(oriWinLeft);
-    auto oriWinRight = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
-    baseParams_->set_oriWinRight(oriWinRight);
+
     auto oriMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::ORI_MASK_MODE));
     baseParams_->set_oriSparseMode(oriMaskMode);
     auto cmpMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
     baseParams_->set_cmpSparseMode(cmpMaskMode);
+    if (GetOriWinToken(oriMaskMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     auto cmpRatio = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_RATIO));
     if (cmpRatio < 1 || cmpRatio > 128) {
         OP_LOGE(context_, "cmp_ratio must be range [1,128], but now get input cmp_ratio [%ld]!", cmpRatio);
@@ -771,7 +776,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_n2(tmpData.n2);
     baseParams_->set_s1(tmpData.s1);
     baseParams_->set_s2(tmpData.s2);
-    baseParams_->set_s3(tmpData.s3);
     baseParams_->set_s3(tmpData.s3);
     // d=576 dq+drope /  d1=512 dq
     baseParams_->set_d(dimDq);

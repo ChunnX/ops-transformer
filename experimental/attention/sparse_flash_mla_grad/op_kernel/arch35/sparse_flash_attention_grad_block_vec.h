@@ -40,7 +40,6 @@ private:
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensOriK, int32_t actualSeqLensCmpK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
                                                 int64_t &accumLen, FagConstInfo constInfo);
-    __aicore__ inline void ComputeSoftmaxL1(FagConstInfo &constInfo, FagRunInfo &runInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -107,7 +106,7 @@ public:
     GlobalTensor<uint8_t> dropMaskGm, attenMaskU8Gm;
     GlobalTensor<float> pseFloatGm, softmaxLseGm, sinkGm, dsinkGm, oriSoftmaxL1Gm, cmpSoftmaxL1Gm;
     GM_ADDR pseSlope;
-    GlobalTensor<float> softmaxL1WorkSpaceGm, dsinkWorkSpaceGm;
+    GlobalTensor<float> dsinkWorkSpaceGm;
 
     // GlobalTensor<int32_t> topkIndicesGm; // 待删除
     GlobalTensor<int32_t> oritopkIndicesGm;
@@ -129,15 +128,13 @@ public:
     // ub buffer
     TQue<QuePosition::VECIN, 1> attenMaskOrYInQue;
     TQue<QuePosition::VECIN, 1> pseOrDyInQue;
-    TQue<QuePosition::VECIN, 1> sotmaxL1Que[2];
     TQue<QuePosition::VECOUT, 1> dSOutQue;
     TQue<QuePosition::VECOUT, 1> pOutQue;
-    TQue<QuePosition::VECOUT, 2> softmaxL1OutQue;
+    TQue<QuePosition::VECOUT, 1> softmaxL1OutQue;
     TQue<QuePosition::VECIN, 1> LseQue[2];
     TQue<QuePosition::VECIN, 1> sinkQue;
     TQue<QuePosition::VECOUT, 1> dSinkQue;
     TBuf<> softmaxSinkResBuf[2];
-    TBuf<> softmaxL1SumBuf[2];
     TBuf<> softmaxGradResBuf;
     TBuf<> dropMaskBuf;
     TBuf<> dropmaskIndexVecBuf;
@@ -221,10 +218,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR ori_
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->baseParams.dSinkWorkSpaceOffset / sizeof(float)); //todo offset
     }
-    int64_t firstHalfGSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
-    int64_t selectedBlockCount = Max(constInfo.selectedBlockCount, VECTOR_BASEN);
-    int64_t softmaxL1WSOffset = tilingData->baseParams.softmaxL1WorkspaceOffset / sizeof(float) + this->cBlockIdx * selectedBlockCount * constInfo.commonConstInfo.gSize + this->vSubBlockIdx * firstHalfGSize * selectedBlockCount;
-    softmaxL1WorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + softmaxL1WSOffset);
 }
  
 TEMPLATES_DEF_NO_DEFAULT
@@ -241,9 +234,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer(FagConstInfo &co
      * LseQue: forlse double buffer
      **/
     pipe->InitBuffer(attenMaskOrYInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
-    pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
-    sotmaxL1Que[0] = attenMaskOrYInQue;
-    sotmaxL1Que[1] = pseOrDyInQue;
+    pipe->InitBuffer(pseOrDyInQue, 1, VECTOR_BASEM * VECTOR_BASEN * sizeof(OUTDTYPE));
 
     pipe->InitBuffer(softmaxGradResBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
     pipe->InitBuffer(softmaxSinkResBuf[0], 64 * sizeof(float));
@@ -255,9 +246,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer(FagConstInfo &co
 
     pipe->InitBuffer(dSOutQue, 1, VECTOR_BASEM * VREG_SIZE + VREG_SIZE + DETER_EXCEED_USE_SIZE);
     pipe->InitBuffer(pOutQue, 1, VECTOR_BASEM * VREG_SIZE + VREG_SIZE);
-    pipe->InitBuffer(softmaxL1OutQue, 2, 128 * sizeof(float));
-    pipe->InitBuffer(softmaxL1SumBuf[0], 128 * sizeof(float));
-    pipe->InitBuffer(softmaxL1SumBuf[1], 128 * sizeof(float));
+    pipe->InitBuffer(softmaxL1OutQue, 1, 128 * sizeof(float));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -303,8 +292,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
 
-    // printf("ScatterAddDeter>>>> coreid: %u\n", this->vBlockIdx);
-
+    SetAtomicAdd<CALC_TYPE>();
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
         usedBS1Index = runInfo.sTaskId * usedCoreNum + idx;
         if (!GetBS1Index(usedBS1Index, bIdx, s1Idx, bS1Index, accumS1Len, accumS2Len, accumS3Len, actualSeqLensQ,
@@ -312,10 +300,15 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         {
             continue;
         }        
-        // GetRunInfo(bIdx, s1Idx, runInfo, constInfo, accumS1Len, accumS2Len, accumS3Len, actualSeqLensQ, actualSeqLensOriK, actualSeqLensCmpK);
 
         // 对应s2real的平均和取模值，做均分操作
         int64_t actualSelectedBlockCount = runInfo.isOriKV ? actualOriSelectedBlockCount : actualCmpSelectedBlockCount;
+        if (runInfo.isOriKV) {
+            actualSelectedBlockCount = runInfo.kvSeqOffset + PROCESS_KV_SIZE < actualOriSelectedBlockCount ? PROCESS_KV_SIZE : actualOriSelectedBlockCount - runInfo.kvSeqOffset;
+        } else {
+            actualSelectedBlockCount = runInfo.kvSeqOffset + PROCESS_KV_SIZE < actualCmpSelectedBlockCount ? PROCESS_KV_SIZE : actualCmpSelectedBlockCount - runInfo.kvSeqOffset;
+        }
+        actualSelectedBlockCount = Max(actualSelectedBlockCount, 0);
         int64_t remainder = actualSelectedBlockCount % totalVec;
         int64_t avgSize = actualSelectedBlockCount / totalVec;
         // 前remainder 个块分配 avgSize + 1， 其余分配avgSize
@@ -330,7 +323,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         int64_t s2SrcOffset = this->vBlockIdx < remainder ? (this->vBlockIdx * (avgSize + 1)) :
                                 (remainder * (avgSize + 1) + (this->vBlockIdx - remainder) * avgSize);
         
-        SetAtomicAdd<CALC_TYPE>();
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
         // printf("runInfo.deterTaskIdMod2: %d, coreNum: %d, idx: %d\n", runInfo.deterTaskIdMod2, coreNum, idx);
@@ -340,24 +332,23 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         int64_t currentMm5SrcOffset = runInfo.deterTaskIdMod2 * 4096 * constInfo.commonConstInfo.dSizeV * coreNum +
                                     idx * 4096 * constInfo.commonConstInfo.dSizeV +
                                     s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
-        runInfo.keyOffsetWithRope = accumS2Len * constInfo.n2Size * constInfo.dTotalSize;
+        int64_t keyOffsetWithRope = accumS2Len * constInfo.n2Size * constInfo.dTotalSize;
         if (!runInfo.isOriKV) {
-            runInfo.keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;
+            keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;
         }
         // if (!runInfo.isSparse){
             // todo currentMm4SrcOffset currentMm5SrcOffset 待适配非sparse场景
         // }
 
-        int64_t kvOffset = runInfo.isSparse ? runInfo.keyOffsetWithRope : runInfo.keyOffsetWithRope + s2SrcOffset * constInfo.dTotalSize;
-        if (runInfo.isOriKV) {
+        int64_t kvOffset = runInfo.isSparse ? keyOffsetWithRope : keyOffsetWithRope + s2SrcOffset * constInfo.dTotalSize + runInfo.kvSeqOffset * constInfo.dTotalSize;
+        if (runInfo.isOriKV && !runInfo.isSparse) {
             kvOffset += tilingData->baseParams.oriSparseMode == 4 ? winStart * constInfo.dTotalSize : 0;
         }
         GlobalTensor<float> dkOutGm = dkWorkSpaceGm[kvOffset];
         // printf("this->vBlockIdx: %u, runInfo.isSparse: %d, kvOffset: %d, runInfo.keyOffsetWithRope: %d, s2SrcOffset: %d, currentMm4SrcOffset: %d, currentMm5SrcOffset: %d, maxLoops: %d\n", this->vBlockIdx, runInfo.isSparse, kvOffset, runInfo.keyOffsetWithRope, s2SrcOffset, currentMm4SrcOffset, currentMm5SrcOffset, maxLoops);
-
         // 1 - main loop
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        uint64_t gmOffset = bS1Index * (constInfo.n2Size * currentSelectedBlockCount) + s2SrcOffset;
+        uint64_t gmOffset = bS1Index * (constInfo.n2Size * currentSelectedBlockCount) + s2SrcOffset + runInfo.kvSeqOffset;
         for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
             WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
             DataCopy(dkInTensor,
@@ -427,7 +418,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             DataCopy(dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * HEAD_DIM_ALIGN], dkInTensor, tailRows * HEAD_DIM_ALIGN);
         }
-        
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         // V核同步等待所有V核完成某一个C核上S2的计算
@@ -833,100 +823,33 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
     ///////////////////////////////////////////////////////////////
     // VF2: pse + attenMask + muls + simpleSoftmax copyIn+calculate
     ///////////////////////////////////////////////////////////////
-    // LocalTensor<CALC_TYPE> softmaxL1ResTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
-    LocalTensor<CALC_TYPE> softmaxL1SumTensor = softmaxL1SumBuf[0].Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> softmaxL1ResTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
     float pScalar = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.commonConstInfo.gSize));
     if (runInfo.isSparse) {
         CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, false, false, false, VECTOR_BASEM, VECTOR_BASEN, true>(
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2],
-            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1SumTensor, pseSlope, pScalar, runInfo.needCleanSoftmaxL1);
-        AscendC::TEventID mte3WaitV = GetTPipePtr()->AllocEventID<AscendC::HardEvent::V_MTE3>();
-        SetFlag<HardEvent::V_MTE3>(mte3WaitV);
-        WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-            // TODO copy p out
-        DataCopyExtParams dataCopyGmParams;
-        dataCopyGmParams.blockCount = 1;
-        dataCopyGmParams.blockLen = runInfo.halfGRealSize * sizeof(CALC_TYPE) * VECTOR_BASEN; // 0.5 * G * 128
-        dataCopyGmParams.srcStride = 0;
-        dataCopyGmParams.dstStride = 0;
-        DataCopyPad(softmaxL1WorkSpaceGm[runInfo.halfGRealSize * runInfo.blkCntOffset], mm2ResTensor, dataCopyGmParams);
-        
-        // printf("softmaxl1 offset1: %d, runInfo.needCleanSoftmaxL1: %d\n", runInfo.halfGRealSize * runInfo.blkCntOffset, runInfo.needCleanSoftmaxL1);
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(32), static_cast<uint32_t>(128)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // AscendC::DumpTensor(softmaxL1WorkSpaceGm[runInfo.halfGRealSize * runInfo.blkCntOffset], 310, 32 * 128, shapeInfo);
-        // AscendC::DumpTensor(softmaxL1SumTensor, 313, 1 * 32);
+            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1ResTensor, pseSlope, pScalar);
     } else {
         CalculatePseMulsSelSimpleSoftMax<OUTDTYPE, CALC_TYPE, false, false, false, VECTOR_BASEM, VECTOR_BASEN, false>(
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2],
-            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1SumTensor, pseSlope, pScalar, false);
+            attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1ResTensor, pseSlope, pScalar);
     }
+    softmaxL1OutQue.EnQue(softmaxL1ResTensor);
+    softmaxL1OutQue.DeQue<CALC_TYPE>();
 
-    if (runInfo.isSparse && runInfo.needComputeSoftmaxL1) {
-        ComputeSoftmaxL1(constInfo, runInfo);
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ComputeSoftmaxL1(FagConstInfo &constInfo, FagRunInfo &runInfo)
-{
-    event_t eventIDMTE3ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-    SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-    WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-
-    DataCopyPadExtParams<CALC_TYPE> softmaxPadParams;
     DataCopyExtParams dataCopyGmParams;
     dataCopyGmParams.blockCount = 1;
+    dataCopyGmParams.blockLen = runInfo.commonRunInfo.s2RealSize * sizeof(CALC_TYPE);
     dataCopyGmParams.srcStride = 0;
-    dataCopyGmParams.dstStride = VECTOR_BASEN * sizeof(CALC_TYPE) / 32;
-    DataCopyExtParams dataCopyGmOutParams;
-    dataCopyGmOutParams.blockCount = 1;
-
-    int64_t actualSelectedBlockCount = runInfo.isOriKV ? runInfo.actualSelectedBlockCount : runInfo.actualCmpSelectedBlockCount;
-    // printf("actualSelectedBlockCount: %d, runInfo.isOriKV: %d, runInfo.actualSelectedBlockCount: %d, runInfo.actualCmpSelectedBlockCount: %d\n", actualSelectedBlockCount, runInfo.isOriKV, runInfo.actualSelectedBlockCount, runInfo.actualCmpSelectedBlockCount);
-    int64_t loopNum = CeilDiv(actualSelectedBlockCount, VECTOR_BASEN);
-    int64_t loopSize = VECTOR_BASEN;
-    int64_t loopTailSize = actualSelectedBlockCount % VECTOR_BASEN == 0 ? VECTOR_BASEN : actualSelectedBlockCount % VECTOR_BASEN;
-    LocalTensor<CALC_TYPE> softmaxL1SumTensor = softmaxL1SumBuf[0].Get<CALC_TYPE>();
-    float pScalar = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.commonConstInfo.gSize));
-    GlobalTensor<float> outputGm = runInfo.isOriKV ? oriSoftmaxL1Gm : cmpSoftmaxL1Gm;
-    
+    dataCopyGmParams.dstStride = 0;
     SetAtomicAdd<CALC_TYPE>();
-    // printf("loopNum: %d, runInfo.isOriKV: %d\n", loopNum, runInfo.isOriKV);
-    int64_t outOffset = runInfo.t1Index * runInfo.selectedBlockCount;
-    for (int64_t i = 0; i < loopNum; i++) {
-        if (i == loopNum - 1) {
-            loopSize = loopTailSize;
-        }
-        LocalTensor<CALC_TYPE> softmaxL1SrcTensor = sotmaxL1Que[i % 2].AllocTensor<CALC_TYPE>();
-        LocalTensor<CALC_TYPE> softmaxL1DstTensor = softmaxL1OutQue.AllocTensor<CALC_TYPE>();
-
-        dataCopyGmParams.blockLen = runInfo.halfGRealSize * VECTOR_BASEN * sizeof(CALC_TYPE); // 0.5 * G * 128
-        DataCopyPad(softmaxL1SrcTensor, softmaxL1WorkSpaceGm[i * runInfo.halfGRealSize * VECTOR_BASEN], dataCopyGmParams, softmaxPadParams);
-        sotmaxL1Que[i % 2].EnQue(softmaxL1SrcTensor);
-        sotmaxL1Que[i % 2].DeQue<CALC_TYPE>();
-        // pipe_barrier(PIPE_ALL);
-        // printf("softmaxl1 offset2: %d\n", i * runInfo.halfGRealSize * VECTOR_BASEN);
-        // uint32_t array[] = {static_cast<uint32_t>(32), static_cast<uint32_t>(128)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // AscendC::DumpTensor(softmaxL1SumTensor, 311, 1 * 32);
-        // AscendC::DumpTensor(softmaxL1SrcTensor, 312, 32 * 128, shapeInfo);
-
-        SoftmaxL1Reduce<CALC_TYPE>(softmaxL1DstTensor, softmaxL1SrcTensor, softmaxL1SumTensor, runInfo.halfGRealSize, loopSize, pScalar);
-        softmaxL1OutQue.EnQue(softmaxL1DstTensor);
-        softmaxL1OutQue.DeQue<CALC_TYPE>();
-        // pipe_barrier(PIPE_ALL);
-        // AscendC::DumpTensor(softmaxL1DstTensor, 313, 1 * 128, shapeInfo);
-
-        dataCopyGmOutParams.blockLen = loopSize * sizeof(CALC_TYPE);
-        DataCopyPad(outputGm[outOffset + i * VECTOR_BASEN], softmaxL1DstTensor, dataCopyGmOutParams);
-        sotmaxL1Que[i % 2].FreeTensor(softmaxL1SrcTensor);
-        softmaxL1OutQue.FreeTensor(softmaxL1DstTensor);
+    if (runInfo.isOriKV && runInfo.isSparse) {
+        DataCopyPad(oriSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);	 
+    } else if (runInfo.isSparse) {
+        DataCopyPad(cmpSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
     }
-    SetAtomicNone();
+    SetAtomicNone();	 
+    softmaxL1OutQue.FreeTensor(softmaxL1ResTensor);
 }
  
 TEMPLATES_DEF_NO_DEFAULT

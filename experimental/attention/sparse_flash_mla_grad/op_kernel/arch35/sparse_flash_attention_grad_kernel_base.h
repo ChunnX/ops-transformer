@@ -38,9 +38,9 @@ public:
     __aicore__ inline void SetConstInfo();
     __aicore__ inline void SetOptionalInfo();
     template <const bool IS_ORI_KV = true>
-    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId);
+    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, FagRunInfo &preRunInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId, int64_t kvOffset);
     template <const bool IS_ORI_KV = true>
-    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId);
+    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId, int64_t kvSeqOffset);
     __aicore__ inline void Process();
     template <bool IS_MM1_MM2 = true>
     __aicore__ inline int64_t GetQueryOffset(FagRunInfo &runInfo);
@@ -160,9 +160,13 @@ protected:
     VecBlockType vecBlock;
 
     int64_t blkCntOffset = 0;
+    int64_t oriKvOffset = 0;
+    int64_t cmpKvOffset = 0;
     int64_t actualSelectedBlockCount = 0;
     int64_t actualOriSelectedBlockCount = 0;
     int64_t actualCmpSelectedBlockCount = 0;
+    int64_t maxOriSeqKV = 0;
+    int64_t maxCmpSeqKV = 0;
 
     int64_t usedT1Index = 0; // 用于负载均衡
     int64_t t1Index = 0;
@@ -193,6 +197,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[1]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
     }
 }
 
@@ -210,6 +215,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[1]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[1]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
     } 
 }
 
@@ -300,9 +307,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
         mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                                 tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float));
     } else {
-        int64_t mm4ResWorkSpaceOffset = tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float) + cBlockIdx * Max<int64_t>(constInfo.selectedBlockCount, 128) * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize * 2;	 
+        int64_t mm4ResWorkSpaceOffset = tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float) + cBlockIdx * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSize * 2;	 
         mm4ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResWorkSpaceOffset);	 
-        int64_t mm5ResWorkSpaceOffset = tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float) + cBlockIdx * Max<int64_t>(constInfo.selectedBlockCount, 128) * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV * 2;	 
+        int64_t mm5ResWorkSpaceOffset = tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float) + cBlockIdx * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSizeV * 2;	 
         mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResWorkSpaceOffset);
     }
 }
@@ -335,6 +342,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.oriSelectedBlockCount = tilingData->baseParams.oriselectedBlockCount;
     constInfo.cmpSelectedBlockCount = tilingData->baseParams.cmpselectedBlockCount;
     constInfo.selectedBlockCount = constInfo.oriSelectedBlockCount + constInfo.cmpSelectedBlockCount;
+    // printf("oriSelectedBlockCount: %d, cmpSelectedBlockCount: %d, selectedBlockCount: %d\n", constInfo.oriSelectedBlockCount, constInfo.cmpSelectedBlockCount, constInfo.selectedBlockCount);
     constInfo.commonConstInfo.gSize = tilingData->baseParams.g;
     constInfo.halfGRealSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
     constInfo.firstHalfGRealSize =  constInfo.halfGRealSize;
@@ -412,6 +420,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     int64_t remainCoreProcessNNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[2]);
     int64_t remainCoreNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[3]);
     usedCoreNum = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[4]);
+    maxOriSeqKV = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[5]);
+    maxCmpSeqKV = static_cast<int64_t>(((__gm__ int32_t *)metadataGm)[6]);
     int64_t totalCoreNum = static_cast<int64_t>(GetBlockNum());
     if (cBlockIdx >= usedCoreNum) {
         processBS1ByCore = 0;
@@ -448,7 +458,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetS
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId)
+    FagRunInfo &runInfo, FagRunInfo &preRunInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId, int64_t kvOffset)
 {
     runInfo.t1Index = t1Index;
     runInfo.t2Index = t2Index;
@@ -486,6 +496,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     } else {
         runInfo.isNextS1IdxNoChange = runInfo.blkCntOffset + constInfo.selectedCountOffset < actualCmpSelectedBlockCount;
     }
+    preRunInfo.isSecondLast = !runInfo.isNextS1IdxNoChange;
     lastT1Index = t1Index;
 
     GetDerived()->SetUniqueRunInfo(runInfo);
@@ -512,16 +523,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if constexpr(IS_ORI_KV) {
         if constexpr(IsOriKVSparse) {
             runInfo.kSelectedWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
-            runInfo.needCleanSoftmaxL1 = runInfo.blkCntOffset == 0;
-            runInfo.needComputeSoftmaxL1 = blkCntOffset + constInfo.selectedCountOffset >= runInfo.actualSelectedBlockCount;
         } else {
             runInfo.kSelectedWsAddr = runInfo.commonRunInfo.keyOffset + (runInfo.blkCntOffset + oriWinStart) * constInfo.dTotalSize;
         }
     } else {
         if constexpr(IsCmpKVSparse) {
             runInfo.kSelectedWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
-            runInfo.needCleanSoftmaxL1 = runInfo.blkCntOffset == 0;
-            runInfo.needComputeSoftmaxL1 = blkCntOffset + constInfo.selectedCountOffset >= runInfo.actualSelectedBlockCount;
         } else {
             runInfo.kSelectedWsAddr = runInfo.commonRunInfo.keyOffset + runInfo.blkCntOffset * constInfo.dTotalSize;
         }
@@ -529,7 +536,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if constexpr (IsDETER) {
         runInfo.mm4ResWsAddr = runInfo.deterTaskIdMod2 * 4096  * constInfo.dTotalSize * coreNum +
                             cBlockIdx * 4096 * constInfo.dTotalSize +
-                            runInfo.blkCntOffset * constInfo.dTotalSize;
+                            (runInfo.blkCntOffset - kvOffset) * constInfo.dTotalSize;
     } else {
         runInfo.mm4ResWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
     }
@@ -540,7 +547,7 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
 __aicore__ inline void
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(FagRunInfo &runInfo,
-                                                                                            int64_t sTaskId, int64_t deterTaskId)
+                                                        int64_t sTaskId, int64_t deterTaskId, int64_t kvSeqOffset)
 {
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod2 = sTaskId & 1;
@@ -548,6 +555,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetD
     runInfo.deterTaskIdMod2 = deterTaskId & 1;
     runInfo.isOriKV = IS_ORI_KV;
     runInfo.isSparse = IS_ORI_KV ? IsOriKVSparse : IsCmpKVSparse;
+    runInfo.kvSeqOffset = kvSeqOffset;
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

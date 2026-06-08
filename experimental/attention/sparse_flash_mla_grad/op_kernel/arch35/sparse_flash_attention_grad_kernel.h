@@ -118,7 +118,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     //     uint32_t array[] = {static_cast<uint32_t>(32), static_cast<uint32_t>(128)};
     //     AscendC::ShapeInfo shapeInfo(2, array);
     //     // dy @ v
-    //     AscendC::DumpTensor(mm1ResTensor, 111, 32 * 128, shapeInfo);
+    //     // AscendC::DumpTensor(mm1ResTensor, 111, 32 * 128, shapeInfo);
     //     // q @ k
     //     AscendC::DumpTensor(mm2ResTensor, 112, 32 * 128, shapeInfo);
     // }
@@ -282,89 +282,105 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
             this->GetActualSelCount(this->usedT1Index, this->n2Index, this->actualSelectedBlockCount);
             if constexpr(IsOriKVExist) {
-                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualOriSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                    if (taskId >= 0) {
-                        this->template SetRunInfo<true>(runInfos[taskId & 1], taskId, sTaskId, deterTaskId);
-                        ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
-                    } 
-                    int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
-                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
-                    if (taskId > 0) {
+                for (this->oriKvOffset = 0; this->oriKvOffset < this->maxOriSeqKV; this->oriKvOffset += PROCESS_KV_SIZE) {
+                    int64_t blockSize = this->oriKvOffset;
+                    int64_t tailSize = this->actualOriSelectedBlockCount - this->oriKvOffset > PROCESS_KV_SIZE ? PROCESS_KV_SIZE : this->actualOriSelectedBlockCount - this->oriKvOffset;
+                    tailSize = Max(tailSize, 0);
+                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                        if (taskId >= 0) {
+                            this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, deterTaskId, this->oriKvOffset);
+                            ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
+                        } 
+                        int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
+                        int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
+                        if (taskId > 0) {
+                            ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                        }
+                        taskId++;
+                        if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
+                            break;
+                        }
+                    }
+                    if (this->actualOriSelectedBlockCount <= 0 || tailSize == 0) {
                         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
                     }
-                    taskId++;
-                    if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
-                        break;
+                    if (deterTaskId == 0) {
+                        if ASCEND_IS_AIC {
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                        }
                     }
-                }
-                if (this->actualOriSelectedBlockCount <= 0) {
-                    ProcessNotFirst(runInfos[(taskId + 1) & 1]);
-                }
-                if (deterTaskId == 0) {
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-                    } else {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    this->template SetDeterRunInfo<true>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId, this->oriKvOffset);
+                    if (deterTaskId > 0) {
+                        if ASCEND_IS_AIC {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+                            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
+                                            this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+                        }
                     }
+                    deterTaskId++;
                 }
-                this->template SetDeterRunInfo<true>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
-                if (deterTaskId > 0) {
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-                    } else {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                        this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
-                                        this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
-                    }
-                }
-                deterTaskId++;
             }
     
             if constexpr(IsCmpKVExist) {
-                for (this->blkCntOffset = this->actualOriSelectedBlockCount; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                    if (taskId >= 0) {
-                        this->template SetRunInfo<false>(runInfos[taskId & 1], taskId, sTaskId, deterTaskId);
-                        ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
+                for (this->cmpKvOffset = 0; this->cmpKvOffset < this->maxCmpSeqKV; this->cmpKvOffset += PROCESS_KV_SIZE) {
+                    int64_t blockSize = this->actualOriSelectedBlockCount + this->cmpKvOffset;
+                    int64_t tailSize = this->actualCmpSelectedBlockCount - this->cmpKvOffset > PROCESS_KV_SIZE ? PROCESS_KV_SIZE : this->actualCmpSelectedBlockCount - this->cmpKvOffset;
+                    tailSize = Max(tailSize, 0);
+                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                        if (taskId >= 0) {
+                            this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, deterTaskId, this->cmpKvOffset);
+                            ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
+                        }
+                        int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
+                        int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
+                        if (taskId > 0) {
+                            ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                        }
+                        taskId++;
+                        if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
+                            break;
+                        }
                     }
-                    int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
-                    int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
-                    if (taskId > 0) {
+                    if (this->actualOriSelectedBlockCount >= this->actualSelectedBlockCount || tailSize == 0) {
                         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
                     }
-                    taskId++;
-                    if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
-                        break;
+                    if (deterTaskId == 0) {
+                        if ASCEND_IS_AIC {
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                        }
                     }
-                }
-                if (this->actualOriSelectedBlockCount >= this->actualSelectedBlockCount) {
-                    ProcessNotFirst(runInfos[(taskId + 1) & 1]);
-                }
-                if (deterTaskId == 0) {
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-                    } else {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    this->template SetDeterRunInfo<false>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId, this->cmpKvOffset);
+                    if (deterTaskId > 0) {
+                        if ASCEND_IS_AIC {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+                            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                        } else {
+                            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
+                                            this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+                        }
                     }
+                    deterTaskId++;
                 }
-                this->template SetDeterRunInfo<false>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
-                if (deterTaskId > 0) {
-                    if ASCEND_IS_AIC {
-                        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-                    } else {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                        this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
-                                        this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
-                    }
-                }
-                deterTaskId++;
             }
         }
         // if (sTaskId == 0) {
@@ -383,6 +399,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
     if (this->processBS1ByCore > 0) {
         if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
             CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -391,6 +409,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
                             this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
         }
         deterTaskId++;
     }
@@ -400,36 +419,47 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 
     // 分核不均匀时部分核会少一个C核的全核同步
+
     if constexpr (IsOriKVExist) {
         if (this->processBS1ByCore < this->formerCoreProcessS1Num) {
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-            } else {
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1);
-                this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
-                                this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+            for (this->oriKvOffset = 0; this->oriKvOffset < this->maxOriSeqKV; this->oriKvOffset += PROCESS_KV_SIZE) {
+                if ASCEND_IS_AIC {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+                    CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                } else {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1, this->oriKvOffset);
+                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
+                                    this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+                }
+                deterTaskId++;
             }
-            deterTaskId++;
         }
     }
     if constexpr (IsCmpKVExist) {
         if (this->processBS1ByCore < this->formerCoreProcessS1Num) {
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-            } else {
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1);
-                this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
-                                this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+            for (this->cmpKvOffset = 0; this->cmpKvOffset < this->maxCmpSeqKV; this->cmpKvOffset += PROCESS_KV_SIZE) {
+                if ASCEND_IS_AIC {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+                    CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                } else {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1, this->cmpKvOffset);
+                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
+                                    this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+                }
+                deterTaskId++;
             }
-            deterTaskId++;
         }
     }
     this->FreeEventID();
@@ -454,7 +484,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             if constexpr(IsOriKVExist) {
                 for (this->blkCntOffset = 0; this->blkCntOffset < this->actualOriSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<true>(runInfos[taskId & 1], taskId, sTaskId, 0);
+                        this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, 0, 0);
                         ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
                     } 
                     int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
@@ -472,7 +502,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             if constexpr(IsCmpKVExist) {
                 for (this->blkCntOffset = this->actualOriSelectedBlockCount; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<false>(runInfos[taskId & 1], taskId, sTaskId, 0);
+                        this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, 0, 0);
                         ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
                     }
                     int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;

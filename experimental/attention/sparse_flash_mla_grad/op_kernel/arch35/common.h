@@ -244,6 +244,7 @@ struct FagRunInfo {
     int64_t actualSelectedBlockCount = 0;
     int64_t actualCmpSelectedBlockCount = 0;
     int64_t blkCntOffset = 0;
+    int64_t kvSeqOffset = 0;
     int64_t actualSelCntOffset = 0;
 
     int64_t kSelectedWsAddr = 0;
@@ -253,6 +254,7 @@ struct FagRunInfo {
     int64_t firstHalfGRealSize = 0;
     bool isS1IdxNoChange; // s1Idx是否变化
     bool isNextS1IdxNoChange; // 下一个基本块的s1Idx是否变化（是否切换了行）
+    bool isSecondLast; // 是否是当前s1 倒数第二个基本块
     int8_t taskStep = TASK_INIT;
 
     bool isOriKV = true;
@@ -266,8 +268,6 @@ struct FagRunInfo {
     int64_t oriKVOffset = 0;
     int64_t cmpKVOffset = 0;
     bool isSparse;
-    bool needCleanSoftmaxL1;
-    bool needComputeSoftmaxL1;
 };
 
 struct SfagCVSharedParams {
