@@ -50,6 +50,7 @@ public:
 static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* opName,
     GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     GmmDsqHandlerFactory factory;
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     factory.registerHandler(NpuArch::DAV_2201,
@@ -107,6 +108,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
                    DFX_OUT(output, outputScale));
     CHECK_COND((output != nullptr), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], output must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
+    CHECK_COND((outputScale != nullptr), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], outputScale must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
         .SetXScale(xScale).SetSmoothScale(smoothScale)
@@ -140,10 +143,14 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
 
     // weight在该场景下强制绑定StorageFormat 和 ViewFormat 为NZ
     CHECK_RET(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(output != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(outputScale != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     size_t wLength = weight->Size();
+    CHECK_RET(wLength > 0, ACLNN_ERR_PARAM_INVALID);
     if (wLength == 1) {
         // 单Tensor场景
         auto w = (*weight)[0];
+        CHECK_RET(w != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         auto storgeShape = w->GetStorageShape();
         auto viewShape = w->GetViewShape();
         aclTensor *weightNZ = const_cast<aclTensor *>(w);
@@ -168,6 +175,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         // 多Tensor场景
         for (size_t i = 0; i < wLength; i++) {
             auto w = (*weight)[i];
+            CHECK_RET(w != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             auto storgeShape = w->GetStorageShape();
             auto viewShape = w->GetViewShape();
             aclTensor *weightNZ = const_cast<aclTensor *>(w);

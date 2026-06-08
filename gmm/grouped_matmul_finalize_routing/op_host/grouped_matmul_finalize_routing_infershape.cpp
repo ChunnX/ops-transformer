@@ -133,6 +133,8 @@ static ge::graphStatus SetXAndWShapesForMX(const InferShapeContext *context, Che
     params.k = params.shape_x1->GetDim(wIndex);
 
     auto shape_scale = context->GetOptionalInputShape(scaleOptionIndex);
+    OP_CHECK_IF(shape_scale == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "scale is not given."),
+        return ge::GRAPH_FAILED);
 
     params.n = params.weightTrans ? shape_scale->GetDim(DIM_ONE) : shape_scale->GetDim(DIM_TWO);
     params.e = params.shape_x2->GetDim(xIndex);
@@ -219,8 +221,10 @@ static ge::graphStatus SetupOutputAndCheckAttrs(InferShapeContext *context, cons
 {
     auto attrs = context->GetAttrs();
     auto shape_out = context->GetOutputShape(0);
+    OP_CHECK_IF(attrs == nullptr || shape_out == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(op_name, "attrs or output shape is null."), return ge::GRAPH_FAILED);
     shape_out->SetDimNum(twoDimNum);
-    const int *output_bs = attrs->GetAttrPointer<int>(outputBSAttrIndex);
+    const int64_t *output_bs = attrs->GetAttrPointer<int64_t>(outputBSAttrIndex);
     OP_CHECK_IF(output_bs == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(op_name, "output_bs is not given."), return ge::GRAPH_FAILED);
     if (output_bs != nullptr) {
@@ -235,15 +239,19 @@ static ge::graphStatus SetupOutputForMX(InferShapeContext *context, const char* 
 {
     auto attrs = context->GetAttrs();
     auto shape_out = context->GetOutputShape(0);
+    OP_CHECK_IF(attrs == nullptr || shape_out == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(op_name, "attrs or output shape is null."), return ge::GRAPH_FAILED);
     
     shape_out->SetDimNum(twoDimNum);
-    const int *output_bs = attrs->GetAttrPointer<int>(outputBSAttrIndex);
+    const int64_t *output_bs = attrs->GetAttrPointer<int64_t>(outputBSAttrIndex);
     
     if (output_bs != nullptr) {
         shape_out->SetDim(0, *output_bs);
     }
     auto x2_dim = xAndWParams.shape_x2->GetDimNum();
     auto shape_scale = context->GetOptionalInputShape(scaleOptionIndex);
+    OP_CHECK_IF(shape_scale == nullptr, OPS_REPORT_CUBE_INNER_ERR(op_name, "scale is not given."),
+        return ge::GRAPH_FAILED);
 
     shape_out->SetDim(DIM_ONE, xAndWParams.weightTrans ?
                              shape_scale->GetDim(DIM_ONE) :
@@ -268,6 +276,8 @@ static ge::graphStatus ValidateOffsetShape(const InferShapeContext *context, con
 
 static ge::graphStatus InferShapeGroupedMatmulFinalizeRouting(InferShapeContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
+        return ge::GRAPH_FAILED);
     auto op_name = context->GetNodeName();
     auto shape_x1 = context->GetInputShape(xIndex);
     auto shape_x2 = context->GetInputShape(wIndex);
@@ -421,6 +431,8 @@ static bool IsSupportMX(const gert::InferDataTypeContext *context)
 
 static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferDataTypeContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
+        return ge::GRAPH_FAILED);
     bool supportDataTypeMX = IsSupportMX(context);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||

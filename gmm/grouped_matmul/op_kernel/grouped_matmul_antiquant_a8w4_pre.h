@@ -42,7 +42,7 @@ private:
     GlobalTensor<int64_t> scaleGm;
 
     uint32_t totalGroup{0};
-    uint32_t blockDim;
+    uint32_t coreBlockDim;
     uint32_t startNum;
     uint32_t groupNum;
     bool isPerchannel = false;
@@ -103,7 +103,7 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
         lastGroupRest = tiling->n - totalGroup * 64;
         totalGroup++;
     }
-    blockDim = GetBlockNum() * GetTaskRation();
+    coreBlockDim = GetBlockNum() * GetTaskRation();
 
     for(uint32_t eStart = 0; eStart < tiling->groupNum; eStart++) {
         const size_t eStartAddrGm = eStart * tiling->n * tiling->k;
@@ -114,7 +114,10 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
         } else {
             weightBaseOffset = eStartAddrGm;
         }
-        for(uint32_t nStart = startNum; nStart < totalGroup; nStart += blockDim) {
+        if (coreBlockDim == 0) {
+            return;
+        }
+        for (uint32_t nStart = startNum; nStart < totalGroup; nStart += coreBlockDim) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 
@@ -221,7 +224,10 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
     const uint64_t scale_n = tiling->n * 2;
     int loop_size_u64 = 0;
     if (isSingleTensor == 0) {
-        for (uint32_t gIdx = startNum; gIdx < tiling->groupNum; gIdx += blockDim) {
+        if (coreBlockDim == 0) {
+            return;
+        }
+        for (uint32_t gIdx = startNum; gIdx < tiling->groupNum; gIdx += coreBlockDim) {
             scaleGm.SetGlobalBuffer(GetTensorAddr<int64_t>(gIdx, scaleTensorPtr));
             const uint64_t this_core_u64 = tiling->n;
             const uint64_t outOffset = gIdx * tiling->n;
@@ -264,9 +270,13 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
             }
         }
     } else {
-        const uint64_t each_core_u64 = (tiling->groupNum * tiling->n / blockDim) / 16 * 16;    // align to 8
-        const uint64_t this_core_u64 = startNum == blockDim - 1 ?
-            tiling->groupNum * tiling->n - each_core_u64 * (blockDim - 1) : each_core_u64;
+        if (coreBlockDim == 0) {
+            return;
+        }
+        const uint64_t each_core_u64 = (static_cast<uint64_t>(tiling->groupNum) * tiling->n / coreBlockDim) / 16 *
+                                       16;    // align to 8
+        const uint64_t this_core_u64 = startNum == coreBlockDim - 1 ?
+            static_cast<uint64_t>(tiling->groupNum) * tiling->n - each_core_u64 * (coreBlockDim - 1) : each_core_u64;
         const uint64_t start_element_u64 = each_core_u64 * startNum;
         for (int start_loc = 0; start_loc < this_core_u64; start_loc += SCALE_SIZE) {
             loop_size_u64 = SCALE_SIZE;

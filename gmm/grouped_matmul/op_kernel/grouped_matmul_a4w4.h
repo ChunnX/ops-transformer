@@ -233,8 +233,9 @@ __aicore__ inline void GMMA4W4Compute<mmType>::ProcessCommon(
         mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + tailN]);
         #ifndef __CCE_KT_TEST__
         while(mm.Iterate()) {
-            mnConfig.workSpaceOffset = mmBaseBlockOffset_ * \
-                                   (coreIdx + (cubeCount % PARALL_NUM) * tiling->coreNum);
+            mnConfig.workSpaceOffset = static_cast<uint64_t>(mmBaseBlockOffset_) *
+                                   (static_cast<uint64_t>(coreIdx) +
+                                    static_cast<uint64_t>(cubeCount % PARALL_NUM) * tiling->coreNum);
             if (cubeCount >= PARALL_NUM) {
                 CrossCoreWaitFlag(SYNC_AIV_TO_AIC); 
             }
@@ -292,15 +293,18 @@ __aicore__ inline void GMMA4W4Compute<mmType>::MMCompute(uint32_t groupIdx, MNCo
         if (unlikely(mnConfig.mIdx == mnConfig.blockDimM - 1)) {
             curSingleM = mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
         }
-        uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+        uint64_t xOffset = (static_cast<uint64_t>(mnConfig.offsetM) +
+                            static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM) * tiling->k;
         uint64_t weightOffset;
         if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == true) {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN * 64; 
+            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k +
+                           static_cast<uint64_t>(tailN) * 64;
         } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k; 
+            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k +
+                           static_cast<uint64_t>(tailN) * tiling->k;
         } else {
             // B trans and nd do not support groupListType = 2, refuse in tiling process.
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN; 
+            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN;
         }
         if(tiling->quantGroupNum == 1) {
             MMComputePerChannel(groupIdx, mnConfig, curSingleM, curSingleN, xOffset, weightOffset, tailN);
@@ -329,15 +333,17 @@ __aicore__ inline void GMMA4W4Compute<mmType>::VectorCompute(uint32_t groupIdx, 
     uint32_t curCubeSingleM;
     uint32_t vecBaseM;
     VectorTilingCalc(mnConfig, curCubeSingleN, curCubeSingleM, vecBaseM);
-    uint32_t mGlobalOffset = mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM; // 2: 2 lines int4 to 1 line int8
+    uint64_t mGlobalOffset = static_cast<uint64_t>(mnConfig.offsetM) +
+                             static_cast<uint64_t>(mnConfig.mIdx) * mnConfig.singleM;
 
-    uint64_t outOffset = mGlobalOffset * tiling->n + mnConfig.nIdx * mnConfig.singleN;
+    uint64_t outOffset = mGlobalOffset * tiling->n + static_cast<uint64_t>(mnConfig.nIdx) * mnConfig.singleN;
     uint32_t curVecBaseN = mnConfig.baseN;
     uint32_t taskRation = GetTaskRation(); // 2
     uint32_t nCount = 0;
     for (uint32_t offsetN = 0; offsetN < curCubeSingleN; offsetN += mnConfig.baseN) {
-        mnConfig.workSpaceOffset = mmBaseBlockOffset_ * \
-                                   (coreIdx + (cubeCount % PARALL_NUM) * tiling->coreNum);
+        mnConfig.workSpaceOffset = static_cast<uint64_t>(mmBaseBlockOffset_) *
+                                   (static_cast<uint64_t>(coreIdx) +
+                                    static_cast<uint64_t>(cubeCount % PARALL_NUM) * tiling->coreNum);
         if (unlikely(offsetN + mnConfig.baseN >= curCubeSingleN)) curVecBaseN = curCubeSingleN - offsetN; 
         uint32_t alignBaseN = Ceil(curVecBaseN, uint32_t(16)) * 16;  //  16: fp16 num per 32B
         uint32_t curVecBaseM = vecBaseM;
@@ -349,12 +355,13 @@ __aicore__ inline void GMMA4W4Compute<mmType>::VectorCompute(uint32_t groupIdx, 
             if (taskRation != 0 && vecCount_ % taskRation != subBlockIdx) { continue; }
             if (unlikely(offsetM + vecBaseM >= curCubeSingleM)) { curVecBaseM = curCubeSingleM - offsetM; }
             LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
-            DataCopyPad2DA4W4(mmOutLocal, mmOutGm[mmOutOffset + offsetM * curVecBaseN], curVecBaseM, curVecBaseN, curVecBaseN);
+            DataCopyPad2DA4W4(mmOutLocal, mmOutGm[mmOutOffset + static_cast<uint64_t>(offsetM) * curVecBaseN],
+                              curVecBaseM, curVecBaseN, curVecBaseN);
             vecInQueue.EnQue(mmOutLocal);
             
             ComputeDequantAndActivate(mnConfig, curVecBaseM, alignBaseN, curVecBaseN, offsetM);
             LocalTensor<DTYPE_OUT> yLocal = vecOutQueue.DeQue<DTYPE_OUT>();
-            DataCopyPad2D(yGm[outOffset + offsetM * tiling->n + offsetN], yLocal,
+            DataCopyPad2D(yGm[outOffset + static_cast<uint64_t>(offsetM) * tiling->n + offsetN], yLocal,
                           curVecBaseM, curVecBaseN, alignBaseN, tiling->n);
             vecOutQueue.FreeTensor(yLocal);
         }

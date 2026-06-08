@@ -65,7 +65,7 @@ private:
     uint32_t vK;
     uint32_t vKAlign;
     uint32_t totalGroup{0};
-    uint32_t blockDim;
+    uint32_t coreBlockDim;
     uint32_t coreId;
     uint32_t currentNum;
     uint32_t startNum;
@@ -101,7 +101,7 @@ __aicore__ inline void GMMA8W4PreProcess::Init(GM_ADDR x, GM_ADDR y, GM_ADDR gro
     }
 
     startNum = GetBlockIdx();
-    blockDim = GetBlockNum() * GetTaskRation();
+    coreBlockDim = GetBlockNum() * GetTaskRation();
 }
 
 __aicore__ inline void GMMA8W4PreProcess::Process()
@@ -147,7 +147,10 @@ __aicore__ inline void GMMA8W4PreProcess::Process()
     SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
-    for(uint32_t xloop = startNum; xloop < totalGroup; xloop += blockDim){
+    if (coreBlockDim == 0) {
+        return;
+    }
+    for (uint32_t xloop = startNum; xloop < totalGroup; xloop += coreBlockDim) {
         uint64_t startAddr = xloop * vK;
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         DataCopy(xTensor, xGm[startAddr], vK);
