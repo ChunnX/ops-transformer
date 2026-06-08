@@ -42,16 +42,16 @@ class BlockEpilogue<
 public:
     using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, half>;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using ElementOutput = typename OutputType_::Element;
     using ElementInput = typename InputType_::Element;
     using ElementMask = typename MaskType_::Element;
     using ElementSink = typename SinkType_::Element;
     using ElementFull = typename FullType_::Element;
+    using ElementOutput = typename OutputType_::Element;
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = typename InputType_::Layout;
     using LayoutMask = typename MaskType_::Layout;
     using LayoutFull = typename FullType_::Layout;
-
+    
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr SinkMode SINK_MODE = DispatchPolicy::SINK_MODE;
 
@@ -120,8 +120,8 @@ public:
     __aicore__ inline
     void SetVecMask(int32_t len)
     {
-        const int32_t MAX_MASK_LEN = 128;
         const int32_t HALF_MASK_LEN = 64;
+        const int32_t MAX_MASK_LEN = 128;
         if (len >= MAX_MASK_LEN) {
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             return;
@@ -245,13 +245,13 @@ public:
 
     __aicore__ inline
     void RowmaxTAILTILE(const AscendC::LocalTensor<half> &srcUb, const AscendC::LocalTensor<half> &rowmaxUb,
-        const AscendC::LocalTensor<half> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<half> &tvUbTensor, uint32_t tailNumRowsRound, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         if (numElems <= HALF_VECTOR_SIZE) {
             SetVecMask(numElems);
             AscendC::WholeReduceMax<half, false>(
-                rowmaxUb, srcUb, (int32_t)0, numRowsRound, 1, 1,
+                rowmaxUb, srcUb, (int32_t)0, tailNumRowsRound, 1, 1,
                 numElemsAligned / BLOCK_SIZE, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         } else {
@@ -259,7 +259,7 @@ public:
                 lsUbTensor,
                 srcUb,
                 AscendC::DataCopyParams(
-                    numRowsRound,
+                    tailNumRowsRound,
                     HALF_VECTOR_SIZE / BLOCK_SIZE,
                     (numElemsAligned - HALF_VECTOR_SIZE) / BLOCK_SIZE,
                     (numElemsAligned - HALF_VECTOR_SIZE) / BLOCK_SIZE));
@@ -270,7 +270,7 @@ public:
                     lsUbTensor,
                     srcUb[vmaxIdx * HALF_VECTOR_SIZE],
                     (uint64_t)0,
-                    numRowsRound,
+                    tailNumRowsRound,
                     AscendC::BinaryRepeatParams(
                         1, 1, 1,
                         numElemsAligned / BLOCK_SIZE,
@@ -285,7 +285,7 @@ public:
                     lsUbTensor,
                     srcUb[numElems / HALF_VECTOR_SIZE * HALF_VECTOR_SIZE],
                     (uint64_t)0,
-                    numRowsRound,
+                    tailNumRowsRound,
                     AscendC::BinaryRepeatParams(
                         1, 1, 1,
                         numElemsAligned / BLOCK_SIZE,
@@ -295,7 +295,7 @@ public:
                 AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             }
             AscendC::WholeReduceMax<half, false>(
-                rowmaxUb, lsUbTensor, (int32_t)0, numRowsRound, 1, 1,
+                rowmaxUb, lsUbTensor, (int32_t)0, tailNumRowsRound, 1, 1,
                 numElemsAligned / BLOCK_SIZE, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
         }
         AscendC::PipeBarrier<PIPE_V>();
@@ -371,13 +371,13 @@ public:
     void UpCastMask(
         const AscendC::LocalTensor<ElementMaskDst> &maskUbTensorDst,
         const AscendC::LocalTensor<ElementMaskSrc> &maskUbTensorSrc,
-        uint32_t rowNumCurLoop,
+        uint32_t rowMaskNumCurLoop,
         uint32_t columnNumRound)
     {
         AscendC::Cast<ElementMaskDst, ElementMaskSrc, false>(
             maskUbTensorDst, maskUbTensorSrc, AscendC::RoundMode::CAST_NONE, (uint64_t)0,
             NpuArch::Detail::Alignment::CeilDiv(
-                rowNumCurLoop * columnNumRound, (uint32_t)(REPEAT_SIZE_IN_BYTE / sizeof(ElementMaskDst))),
+                rowMaskNumCurLoop * columnNumRound, (uint32_t)(REPEAT_SIZE_IN_BYTE / sizeof(ElementMaskDst))),
             AscendC::UnaryRepeatParams(1, 1, 8, 4));
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -567,9 +567,9 @@ public:
 
     __aicore__ inline
     void UpdateGlobalRowSum(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound,
-        uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
+        uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t FirstStackTileFlag)
     {
-        if (isFirstStackTile) {
+        if (FirstStackTileFlag) {
             // *** gl = ll
             AscendC::DataCopy(
                 glUbTensor[rowOffset],
@@ -596,7 +596,7 @@ public:
                 1,
                 AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+            AscendC::SetVectorMask<int8_t>((uint64_t)(-1), (uint64_t)(-1));
         }
     }
 
@@ -626,7 +626,7 @@ public:
         AscendC::GlobalTensor<ElementOutput> gOutput, const LayoutOutput &layoutOutput,
         uint32_t rowOffset, uint32_t isFirstStackTile, uint32_t isFirstRowLoop,
         uint32_t columnNumRound, uint32_t pingpongFlag,
-        uint32_t curStackTileMod, bool isSplitKV)
+        uint32_t curStackTileMod, bool SplitKVFlag)
     {
         uint32_t rowNumCurLoop = layoutOutput.shape(0);
         uint32_t rowNumCurLoopRound = NpuArch::Detail::Alignment::RoundUp(rowNumCurLoop, BLOCK_SIZE);
@@ -641,7 +641,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
             }
         } else {
-            if (isFirstStackTile && isFirstRowLoop && isSplitKV) {
+            if (isFirstStackTile && isFirstRowLoop && SplitKVFlag) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
             }
         }

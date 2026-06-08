@@ -11,9 +11,9 @@
 #ifndef FUSED_COPY_L1_TO_L0A_HPP
 #define FUSED_COPY_L1_TO_L0A_HPP
 
-#include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/arch/fused_arch.hpp"
 #include "../../../attn_infra/layout/fused_layout.hpp"
+#include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/gemm/fused_gemm_type.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_copy_tla.hpp"
 
@@ -36,8 +36,8 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::zN;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_SIZE_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_SIZE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
     __aicore__ inline
     CopyL1ToL0A(){}
@@ -49,13 +49,13 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC
         LayoutDst layoutDst, LayoutSrc layoutSrc
     ){
         AscendC::LoadData2DParams loadDataParams;
+        loadDataParams.sid = 0;
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes = static_cast<uint16_t>(layoutDst.shape(3));
-        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_NUM_PER_FRACTAL;
-        loadDataParams.sid = 0;
-        loadDataParams.dstGap = layoutDst.stride(3) / ELE_NUM_PER_FRACTAL - 1;
+        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_SIZE_PER_FRACTAL;
         loadDataParams.ifTranspose = false;
         loadDataParams.addrMode = 0;
+        loadDataParams.dstGap = layoutDst.stride(3) / ELE_SIZE_PER_FRACTAL - 1;
 
         for (uint32_t i = 0; i < layoutDst.shape(1); i++) {
             AscendC::LoadData(dstTensor[i * layoutDst.stride(1)], srcTensor[i * layoutSrc.stride(1)], loadDataParams);
@@ -132,7 +132,7 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<int8_t, layout::nZ, AscendC:
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nZ;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0_INT8 =  BYTE_PER_C0 / sizeof(Element);
 
     __aicore__ inline
     CopyL1ToL0A(){}
@@ -147,12 +147,12 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<int8_t, layout::nZ, AscendC:
 
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes =
-            static_cast<uint16_t>(NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(1)));
+            static_cast<uint16_t>(NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0_INT8>(layoutDst.orgShape(1)));
         loadDataParams.srcStride = 1;
         loadDataParams.dstGap = 0;
-        loadDataParams.dstFracGap = NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(1)) - 1;
+        loadDataParams.dstFracGap = NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0_INT8>(layoutDst.orgShape(1)) - 1;
 
-        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(0)); i++) {
+        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0_INT8>(layoutDst.orgShape(0)); i++) {
             AscendC::LoadDataWithTranspose(dstTensor[i * layoutDst.stride(1) * 2],
                                            srcTensor[i * layoutSrc.stride(1)],
                                            loadDataParams);
@@ -168,7 +168,7 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
     using LayoutSrc = layout::zN;
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_SIZE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
     // Methods
 
@@ -185,9 +185,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
 
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes = static_cast<uint16_t>(layoutDst.shape(3));
-        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_NUM_PER_FRACTAL;
+        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_SIZE_PER_FRACTAL;
         loadDataParams.sid = 0;
-        loadDataParams.dstGap = layoutDst.stride(3) / ELE_NUM_PER_FRACTAL - 1;
+        loadDataParams.dstGap = layoutDst.stride(3) / ELE_SIZE_PER_FRACTAL - 1;
         loadDataParams.ifTranspose = false;
         loadDataParams.addrMode = 0;
 
@@ -205,7 +205,7 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::zN, AscendC::TPosition
     using LayoutSrc = layout::zN;
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t FLOAT_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
     // Methods
 
@@ -239,8 +239,8 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nZ;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_SIZE_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_SIZE_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
     __aicore__ inline
     CopyL1ToL0A() {};
@@ -256,13 +256,13 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes =
             static_cast<uint16_t>(NpuArch::Detail::Alignment::CeilDiv<C0_NUM_PER_FRACTAL>(layoutDst.orgShape(1)));
-        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_NUM_PER_FRACTAL;
+        loadDataParams.srcStride = layoutSrc.stride(3) / ELE_SIZE_PER_FRACTAL;
         loadDataParams.sid = 0;
-        loadDataParams.dstGap = layoutDst.stride(3) / ELE_NUM_PER_FRACTAL - 1;
+        loadDataParams.dstGap = layoutDst.stride(3) / ELE_SIZE_PER_FRACTAL - 1;
         loadDataParams.ifTranspose = true;
         loadDataParams.addrMode = 0;
 
-        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(0)); i++) {
+        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_SIZE_PER_C0>(layoutDst.orgShape(0)); i++) {
             AscendC::LoadData(dstTensor[i * layoutDst.stride(1)], srcTensor[i * layoutSrc.stride(1)], loadDataParams);
         }
     }
@@ -275,8 +275,8 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<int8_t, layout::nZ, AscendC::TPositio
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nZ;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t INT8_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t INT8_ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
     // Methods
 
@@ -293,12 +293,12 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<int8_t, layout::nZ, AscendC::TPositio
 
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes =
-            static_cast<uint16_t>(NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(1)));
+            static_cast<uint16_t>(NpuArch::Detail::Alignment::CeilDiv<INT8_NUM_PER_C0>(layoutDst.orgShape(1)));
         loadDataParams.srcStride = 1;
         loadDataParams.dstGap = 0;
-        loadDataParams.dstFracGap = NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(1)) - 1;
+        loadDataParams.dstFracGap = NpuArch::Detail::Alignment::CeilDiv<INT8_NUM_PER_C0>(layoutDst.orgShape(1)) - 1;
 
-        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_NUM_PER_C0>(layoutDst.orgShape(0)); i++) {
+        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<INT8_NUM_PER_C0>(layoutDst.orgShape(0)); i++) {
             AscendC::LoadDataWithTranspose(dstTensor[i * layoutDst.stride(1) * 2],
                                            srcTensor[i * layoutSrc.stride(1)],
                                            loadDataParams);
@@ -328,10 +328,10 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::nZ, AscendC::TPosition
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
     {
         constexpr uint8_t PAD_LIST[4] = {0, 0, 0, 0};
-        uint16_t l1M = layoutSrc.shape(0) * layoutSrc.shape(1);
-        uint16_t l1K = layoutSrc.shape(2) * layoutSrc.shape(3);
         uint16_t l0M = layoutDst.shape(0) * layoutDst.shape(1);
         uint16_t l0K = layoutDst.shape(2) * layoutDst.shape(3);
+        uint16_t l1M = layoutSrc.shape(0) * layoutSrc.shape(1);
+        uint16_t l1K = layoutSrc.shape(2) * layoutSrc.shape(3);
         // K, M need to be 16 aligned for f32
         uint16_t l1MAlign = NpuArch::Detail::Alignment::RoundUp<C0_NUM_PER_FRACTAL>(l1M);
         uint16_t l1KAlign = NpuArch::Detail::Alignment::RoundUp<C0_NUM_PER_FRACTAL>(l1K);
