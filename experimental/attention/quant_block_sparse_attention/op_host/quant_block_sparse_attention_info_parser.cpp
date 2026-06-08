@@ -238,6 +238,7 @@ ge::graphStatus QuantBlockSparseAttentionInfoParser::ParseAttributes(QuantBlockS
 
     tilingInfo.softmaxScaleVal = BSAGetFloatAttr(attrs, BSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
     tilingInfo.maskModeVal = BSAGetUintAttr(attrs, BSA_MASK_MODE_ATTR_INDEX, 0U);
+    tilingInfo.quantModeVal = BSAGetUintAttr(attrs, BSA_QUANT_MODE_ATTR_INDEX, 1U);
     tilingInfo.returnSoftmaxLseVal = BSAGetBoolAttr(attrs, BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX, false);
 
     opParamInfo.query.desc = context_->GetInputDesc(BSA_QUERY_INDEX);
