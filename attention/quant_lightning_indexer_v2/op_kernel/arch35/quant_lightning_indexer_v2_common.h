@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_v2_common.h
@@ -15,6 +15,7 @@
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
+
 namespace QLICommon {
 
 // 与tiling的layout保持一致
@@ -24,7 +25,8 @@ enum class LI_LAYOUT : uint32_t {
     PA_BSND = 2
 };
 
-template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T, const bool PAGE_ATTENTION = false,
+template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
+    const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
 struct QLIType {
     static_assert(
@@ -55,7 +57,7 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1;    
+    uint32_t actS2SizeOrig = 1;
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
@@ -120,7 +122,7 @@ struct ConstInfo {
     uint32_t cmpRatio = 1;
     bool batchSupperFlag = false;      // Qactual_seq长度是否为sB+1
     uint32_t keyStride = 0;   // key pa 0轴stride
-    uint32_t keyScaleStride = 0;  //keyScale pa 0轴stride
+    uint32_t keyScaleStride = 0;  // keyScale pa 0轴stride
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
