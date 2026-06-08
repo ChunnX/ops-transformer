@@ -213,7 +213,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == BSALayout::TND) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     }
@@ -317,7 +317,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
     constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
 
-    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == BSALayout::TND) {
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
@@ -370,7 +370,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ComputeAxisIdx(
     int64_t multiCoreInnerIdx, RunParamStr &runParam)
 {
-    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == BSALayout::TND) {
         GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
         int64_t actualS1Outersize = this->s1OuterSizeAcc + (CeilDiv(runParam.actualS1Size, this->s1BaseSize) * constInfo.n2G);
 
@@ -425,7 +425,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (qLayout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (qLayout == BSALayout::TND) {
         runInfo.boIdx = runParam.boIdx;
         runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
         runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
