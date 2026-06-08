@@ -23,14 +23,15 @@ constexpr int64_t MX_GROUP_SIZE = 64L;
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulGeluTanhQuant(
     const aclTensor *x, const aclTensor *xScale, const aclTensor *groupList, const aclTensorList *weight,
-    const aclTensorList *weightScale, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode,
-    int64_t quantDtype, bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional,
-    aclOpExecutor *executor)
+    const aclTensorList *weightScale, int64_t dequantDtype, int64_t quantDtype,
+    const char *roundModeOptional, int64_t scaleAlg, float dstTypeMax, bool transposeWeight, int64_t groupListType,
+    const aclIntArray *tuningConfigOptional, aclOpExecutor *executor)
 {
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x or weightScale is invalid.");
         return std::tuple(nullptr, nullptr);
     }
+    const char *roundMode = roundModeOptional == nullptr ? "rint" : roundModeOptional;
     int64_t m = x->GetViewShape().GetDim(0);
     auto wScale = (*weightScale)[0];
     int64_t n = transposeWeight ? wScale->GetViewShape().GetDim(1) : wScale->GetViewShape().GetDim(2);
@@ -41,7 +42,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulGeluTanhQuant(
 
     auto ret = INFER_SHAPE(GroupedMatmulGeluTanhQuant,
                            OP_INPUT(x, xScale, groupList, weight, weightScale), OP_OUTPUT(out, scaleOut),
-                           OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,
+                           OP_ATTR(dequantDtype, quantDtype, roundMode, scaleAlg, dstTypeMax, transposeWeight,
                                    groupListType, tuningConfigOptional));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
@@ -50,7 +51,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulGeluTanhQuant(
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         GroupedMatmulGeluTanhQuant, OP_INPUT(x, xScale, groupList, weight, weightScale), OP_OUTPUT(out, scaleOut),
-        OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType,
+        OP_ATTR(dequantDtype, quantDtype, roundMode, scaleAlg, dstTypeMax, transposeWeight, groupListType,
                 tuningConfigOptional));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");

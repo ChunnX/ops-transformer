@@ -62,7 +62,8 @@ __aicore__ inline void GmmGeluTanhMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR wei
         {1, 1, 1, 1},
         {x, weight, weightScale, xScale, y, groupList},
         {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
-         static_cast<uint32_t>(mmTilingData_.baseN)},
+         static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmGeluTanhQuantParams_.roundMode),
+         static_cast<uint32_t>(gmmGeluTanhQuantParams_.scaleAlg), gmmGeluTanhQuantParams_.dstTypeMax},
         gmmParams};
     QGmmKernel op;
     op(params);

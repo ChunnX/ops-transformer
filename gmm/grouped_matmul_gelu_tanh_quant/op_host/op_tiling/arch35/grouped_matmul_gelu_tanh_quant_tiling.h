@@ -13,7 +13,7 @@
 
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
-#include "../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
+#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
@@ -23,10 +23,12 @@ BEGIN_TILING_DATA_DEF(GMMGeluTanhQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
-TILING_DATA_FIELD_DEF(uint8_t, reserved1);
+TILING_DATA_FIELD_DEF(uint8_t, roundMode);
 TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
+TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
 TILING_DATA_FIELD_DEF(uint32_t, rowLen);
 TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
+TILING_DATA_FIELD_DEF(float, dstTypeMax);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMGeluTanhQuantParamsOp, GMMGeluTanhQuantParams)
 
@@ -65,7 +67,6 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
     bool CheckCoreNum() const override;
     bool CheckDtype() const;
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
@@ -74,6 +75,10 @@ private:
     void FillMmTilingData();
 
     GMMGeluTanhQuantTilingDataParams tilingData_;
+    uint8_t roundMode_ = 4;
+    uint8_t scaleAlg_ = 0;
+    float dstTypeMax_ = 0.0f;
+    ge::DataType quantDtype_ = ge::DT_FLOAT8_E4M3FN;
 };
 } // namespace optiling
 

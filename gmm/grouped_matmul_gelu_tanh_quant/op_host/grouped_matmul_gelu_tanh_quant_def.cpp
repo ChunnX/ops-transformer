@@ -11,6 +11,13 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+namespace {
+constexpr int64_t DEFAULT_DEQUANT_DTYPE = static_cast<int64_t>(ge::DT_FLOAT);
+constexpr int64_t DEFAULT_QUANT_DTYPE = static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN);
+constexpr int64_t DEFAULT_SCALE_ALG = 0;
+constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
+} // namespace
+
 class GroupedMatmulGeluTanhQuant : public OpDef {
 public:
     explicit GroupedMatmulGeluTanhQuant(const char *name) : OpDef(name)
@@ -58,10 +65,11 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("dequant_mode").AttrType(OPTIONAL).Int(2);
-        this->Attr("dequant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_FLOAT));
-        this->Attr("quant_mode").AttrType(OPTIONAL).Int(2);
-        this->Attr("quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN));
+        this->Attr("dequant_dtype").AttrType(OPTIONAL).Int(DEFAULT_DEQUANT_DTYPE);
+        this->Attr("quant_dtype").AttrType(OPTIONAL).Int(DEFAULT_QUANT_DTYPE);
+        this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
+        this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
+        this->Attr("dst_type_max").AttrType(OPTIONAL).Float(DEFAULT_DST_TYPE_MAX);
         this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
@@ -75,7 +83,6 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value", "grouped_matmul_gelu_tanh_quant_apt");
         this->AICore().AddConfig("ascend950", config950);
     }

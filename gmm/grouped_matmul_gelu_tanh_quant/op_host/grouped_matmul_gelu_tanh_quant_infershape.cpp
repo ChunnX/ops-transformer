@@ -22,8 +22,8 @@ constexpr int64_t OUT_DIM_NUM = 2;
 constexpr int64_t OUT_SCALE_DIM_NUM = 3;
 constexpr int64_t MX_GROUP_SIZE = 64;
 constexpr int64_t MX_SCALE_PAIR = 2;
-constexpr size_t ATTR_INDEX_QUANT_DTYPE = 3;
-constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
+constexpr size_t ATTR_INDEX_QUANT_DTYPE = 1;
+constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 5;
 constexpr int64_t DYNAMIC_DIM = -1;
 } // namespace
 
