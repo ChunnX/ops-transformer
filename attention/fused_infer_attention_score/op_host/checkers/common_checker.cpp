@@ -167,21 +167,21 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         ((keyD1 != valueD1) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)) || (keyBlockSize != valueBlockSize) ||
         ((keyD0 != valueD0) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " + ToString(valueShape->GetStorageShape());
-        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled."
+        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled.";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapeMsg.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((keyDimNum == 4) && ((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) || 
         (keyBlockSize != valueBlockSize) || ((keyHeadDim != valueHeadDim) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " + ToString(valueShape->GetStorageShape());
-        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled."
+        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled.";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapeMsg.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((keyDimNum == 3) && ((keyBlockNum != valueBlockNum) || (keyBlockSize != valueBlockSize) || 
         ((keyH != valueH) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " + ToString(valueShape->GetStorageShape());
-        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled."
+        std::string reason = "The dim num of key and value are inconsistent when page attention is enabled.";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapeMsg.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -469,7 +469,7 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
             "When tensorlist is used, layout TND/NTD/TND_NTD/NTD_TND is not supported!"),
         return ge::GRAPH_FAILED);
     if (fiaInfo.bSize > B_LIMIT) {
-        std::string reason = "B of query must be less than or equal to 63535 in the tensorlist scenario."
+        std::string reason = "B of query must be less than or equal to 63535 in the tensorlist scenario.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
@@ -1251,7 +1251,7 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
                 std::string reason = "D of query must be multiple of 32 in the GQA scenario when layout is " +
                     layoutStr + " and output dtype is INT8.";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
-                    std::to_string(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+                    ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
                 return false;
             }
             OP_CHECK_IF((fiaInfo.qkHeadDim % 16 != 0),

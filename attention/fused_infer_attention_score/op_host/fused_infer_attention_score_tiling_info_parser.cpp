@@ -55,51 +55,51 @@ ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
 {
     if (opParamInfo_.numHeads == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "num_heads");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "num_heads");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.scaleValue == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "scale");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "scale");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.kvHeadNums == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "num_key_value_heads");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "num_key_value_heads");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.layOut == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "input_layout");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "input_layout");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.blockSize == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "block_size");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "block_size");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.antiquantMode == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "antiquant_mode");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "antiquant_mode");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.softmaxLseFlag == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "softmax_lse_flag");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "softmax_lse_flag");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.keyAntiquantMode == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "key_antiquant_mode");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "key_antiquant_mode");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.valueAntiquantMode == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "value_antiquant_mode");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "value_antiquant_mode");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.innerPrecise == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "inner_precise");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "inner_precise");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.queryQuantMode == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "query_quant_mode");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "query_quant_mode");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.pseType == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "pse_type");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "pse_type");
         return ge::GRAPH_FAILED;
     }
 
@@ -1210,7 +1210,7 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
             opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0) {
             gert::Shape prefixShape{1};
             if (prefixShape != opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()) {
-                std::string reason = "The shape of actual_shared_prefix_len must be {1} when system prefix is enabled."
+                std::string reason = "The shape of actual_shared_prefix_len must be {1} when system prefix is enabled.";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "actual_shared_prefix_len",
  	                ToString(opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;

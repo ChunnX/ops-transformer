@@ -393,8 +393,8 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
             if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
                 std::string reason = "The dtype of output cannot be " + it->second + " when Fia graph mode is enabled.";
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "output",
-                    ToString(pseShiftDesc->GetDataType()).c_str(), reason.c_str());
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FusedInferAttentionScore", "output",
+                    it->second.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);

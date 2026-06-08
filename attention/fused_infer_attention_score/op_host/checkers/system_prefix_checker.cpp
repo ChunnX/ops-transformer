@@ -362,7 +362,7 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
     if (fiaInfo.isOutQuantEnable) {
         if (fiaInfo.outputType != ge::DT_INT8) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "output", ToString(fiaInfo.outputType).c_str(),
-                "The dtype of output must be INT8 when prefix is enabled."),
+                "The dtype of output must be INT8 when prefix is enabled.");
             return ge::GRAPH_FAILED;
         }
     }
