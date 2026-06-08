@@ -73,6 +73,7 @@ void QuantBlockSparseAttentionTiling::FillBaseParams()
     baseParams.set_qBlockSize(info.qBlockSizeVal);
     baseParams.set_kvBlockSize(info.kvBlockSizeVal);
     baseParams.set_maxBlockNumPerBatch(info.maxBlockNumPerBatch);
+    baseParams.set_paBlockStride(info.paBlockStrideVal);
     baseParams.set_softmaxScale(info.softmaxScaleVal);
 }
 
@@ -179,6 +180,7 @@ void QuantBlockSparseAttentionTiling::FillInputParams()
     inputParams.set_attenMaskS1Size(info.s1Size);
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
     inputParams.set_isRowInvalid(0);
+    inputParams.set_paBlockStride(info.paBlockStrideVal);
 }
 
 void QuantBlockSparseAttentionTiling::FillMultiCoreParams()
