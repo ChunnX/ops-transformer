@@ -47,6 +47,7 @@ public:
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+    static constexpr uint32_t dBasicBlockConst = Align64Func((uint16_t)dVBaseSize);
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
@@ -271,7 +272,7 @@ public:
         // GM Buffer
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
+                mBaseSize * dBasicBlockConst;
             int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
             // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
@@ -314,8 +315,8 @@ public:
         constInfo.gSize = this->tilingData->flashAttnBaseParams.gSize;
         constInfo.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
         constInfo.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfo.dSize = this->tilingData->flashAttnBaseParams.dSize;
-        constInfo.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
+        constInfo.dSize = dBaseSize;
+        constInfo.dSizeV = dVBaseSize;
         constInfo.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
         constInfo.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
         constInfo.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
@@ -346,7 +347,7 @@ public:
         // LSE
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
 
-        constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+        constInfo.dBasicBlock = dBasicBlockConst;
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)

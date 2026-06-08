@@ -53,6 +53,8 @@ public:
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
@@ -106,6 +108,8 @@ public:
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
@@ -230,7 +234,7 @@ public:
         }
 
         if constexpr (splitD) {
-            int64_t vec2ResultSize = mBaseSize * constInfo.dBasicBlock;
+            int64_t vec2ResultSize = mBaseSize * dTemplateAlign64;
             vec2SubBlockOffset = constInfo.subBlockIdx * vec2ResultSize >> 1;
             int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * vec2ResultSize; // 3为preload次数
             vec2ResGm[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoretotalOffset);
@@ -299,7 +303,7 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             tSize = qActSeqLensParser->GetTSize();
         }
-        int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV;
+        int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * dVBaseSize;
         int64_t singleCoreSize =
             (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
@@ -670,7 +674,7 @@ public:
         LocalTensor<OUTPUT_T> attenOut;
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
-            dSizeAligned64 = constInfo.dBasicBlock;
+            dSizeAligned64 = dTemplateAlign64;
         }
 
         attenOut.SetAddr(vec2ResUb.address_);
@@ -687,7 +691,7 @@ public:
     __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, const RunInfoX &runInfo)
     {
         // bmm2 result is on GM and global update data on UB
-        uint32_t subMBase = 8192 / constInfo.dBasicBlock;
+        uint32_t subMBase = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -704,12 +708,12 @@ public:
                 subMRealsize = runInfo.actVecMSize - mIdx;
             }
 
-            int64_t vec2CalcSize = subMRealsize * constInfo.dBasicBlock;
+            int64_t vec2CalcSize = subMRealsize * dTemplateAlign64;
             // Gm地址偏移是按照实际DSize实现的，虽然我们设置了KC=192
             int64_t mm2ResInnerOffset = mIdx * dTemplateAlign64;
             SetFlag<HardEvent::V_MTE2>(vToMte2);
             WaitFlag<HardEvent::V_MTE2>(vToMte2);
-            if (constInfo.dSizeV == dTemplateAlign64) {
+            if (dVBaseSize == dTemplateAlign64) {
                 if constexpr (useDn) {
                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
@@ -723,9 +727,9 @@ public:
                 DataCopyParams dataCopyParams;
                 DataCopyPadParams dataCopyPadParams;
                 dataCopyParams.blockCount = subMRealsize;
-                dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
-                dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+                dataCopyParams.dstStride = (dTemplateAlign64 - dVBaseSize) * sizeof(T) / blockBytes;
+                dataCopyParams.srcStride = (dTemplateAlign64 - dVBaseSize) * sizeof(T);
+                dataCopyParams.blockLen = dVBaseSize * sizeof(T);
                 if constexpr (useDn) {
                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
                                 dataCopyPadParams);
@@ -739,7 +743,7 @@ public:
             }
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
-            int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
+            int64_t vec2ResInnerOffset = mIdx * dTemplateAlign64;
             if (vec2LoopLimit > 1) {
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
@@ -751,7 +755,7 @@ public:
                     DataCopy(vec2ResUb,
                              this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
+                                                                    dTemplateAlign64 +
                                                                 vec2ResInnerOffset],
                              vec2CalcSize);
                 }
@@ -767,14 +771,14 @@ public:
                     softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[vec2ExpBufOffset];
                 if (!runInfo.isLastS2Loop) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb,
-                                                                             subMRealsize, constInfo.dBasicBlock, 0.0F,
+                                                                             subMRealsize, dTemplateAlign64, 0.0F,
                                                                              deSCalePreVValue);
                 } else {
                     int64_t vec2SumBufOffset = mIdx;
                     LocalTensor<float> sumUb =
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, 0xFF, false, false>(
-                        vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb, sumUb, subMRealsize, constInfo.dBasicBlock, 0.0F,
+                        vec2ResUb, bmm2Ub, vec2ResUb, expUb, expUb, sumUb, subMRealsize, dTemplateAlign64, 0.0F,
                         deSCalePreVValue);
                 }
             }
@@ -785,7 +789,7 @@ public:
                     LocalTensor<float> sumUb =
                         this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[vec2SumBufOffset];
                     LastDivNew<T, INPUT_T, OUTPUT_T, 0xFF, false>(vec2ResUb, vec2ResUb, sumUb, subMRealsize,
-                                                                  constInfo.dBasicBlock, 0.0F);
+                                                                  dTemplateAlign64, 0.0F);
                 }
                 CopyOutAttentionOut(runInfo, vec2ResUb, mIdx, subMRealsize);
             } else if (vec2LoopLimit > 1) {
@@ -798,7 +802,7 @@ public:
                 } else {
                     DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][constInfo.subBlockIdx *
                                                                     (runInfo.actMSize - runInfo.actVecMSize) *
-                                                                    constInfo.dBasicBlock +
+                                                                    dTemplateAlign64 +
                                                                 vec2ResInnerOffset],
                              vec2ResUb, vec2CalcSize);
                 }
@@ -872,7 +876,7 @@ public:
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
-                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, dVBaseSize,
                                           static_cast<uint32_t>(dSizeAligned64));
             }
         }
@@ -883,13 +887,13 @@ public:
     {
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
                                       .rowCount = dealRowCount,
-                                      .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
+                                      .colCount = (uint32_t)(splitD ? dTemplateAlign64 : dTemplateAlign64)};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.n2Idx,
                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
                         .dIdx = 0,
                         .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+                        .dDealSize = (uint32_t)dVBaseSize};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
@@ -900,7 +904,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+                                              dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -908,14 +912,14 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+                                              dVBaseSize, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize,
                                               *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -959,17 +963,17 @@ public:
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
-            dSizeAligned64 = constInfo.dBasicBlock;
+            dSizeAligned64 = dTemplateAlign64;
         }
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
         uint64_t gmOffset =
-            runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
+            runInfo.faTmpOutWsPos * mBaseSize * dVBaseSize + (runInfo.vecMbaseIdx + mStartVec) * dVBaseSize;
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
-        dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+        dataCopyParams.blockLen = dVBaseSize * sizeof(T);
+        dataCopyParams.srcStride = (dSizeAligned64 - dVBaseSize) / (FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
 
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
@@ -1020,15 +1024,15 @@ public:
 
             int64_t vec2CalcSize = subMRealsize * dTemplateAlign64;
             // Gm地址偏移是按照实际DSize实现的，虽然我们设置了KC=192
-            int64_t mm2ResInnerOffset = mIdx * constInfo.dSizeV;
+            int64_t mm2ResInnerOffset = mIdx * dVBaseSize;
             SetFlag<HardEvent::V_MTE2>(vToMte2);
             WaitFlag<HardEvent::V_MTE2>(vToMte2);
-            if (constInfo.dSizeV == dTemplateAlign64) {
+            if (dVBaseSize == dTemplateAlign64) {
                 if constexpr (useDn) {
                     DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
                     DataCopy(bmm2Ub,
-                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
+                             mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * dVBaseSize +
                                    mm2ResInnerOffset],
                              vec2CalcSize);
                 }
@@ -1036,16 +1040,16 @@ public:
                 DataCopyParams dataCopyParams;
                 DataCopyPadParams dataCopyPadParams;
                 dataCopyParams.blockCount = subMRealsize;
-                dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
+                dataCopyParams.dstStride = (dTemplateAlign64 - dVBaseSize) * sizeof(T) / blockBytes;
                 dataCopyParams.srcStride = 0;
-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+                dataCopyParams.blockLen = dVBaseSize * sizeof(T);
                 if constexpr (useDn) {
                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
                                 dataCopyPadParams);
                 } else {
                     DataCopyPad(
                         bmm2Ub,
-                        mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
+                        mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * dVBaseSize +
                               mm2ResInnerOffset],
                         dataCopyParams, dataCopyPadParams);
                 }
@@ -1225,16 +1229,16 @@ public:
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             OffsetCalculator<GmFormat::BSNGD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, *qActSeqLensParser);
+                                  dVBaseSize, *qActSeqLensParser);
             DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, *qActSeqLensParser);
+                                  dVBaseSize, *qActSeqLensParser);
             DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
+            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, dVBaseSize, *qActSeqLensParser);
             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
