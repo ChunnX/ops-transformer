@@ -757,7 +757,9 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
     int64_t fullLoadUB = EstimateCountingSortFullLoadUB(
         filterPerCoreTokens, coreEntries, expertCountStride, filterNeedCoreNum, actualExpertNum);
 
-    countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024) ? 1 : 0; // 增加全载模板约束条件，非量化等等
+    countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024 && ep_== 1 && quantMode_ == UN_QUANT &&
+ 	                        dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT && 
+                            actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) ? 1 : 0;
     int64_t filterChunkSize = (countingSortFullLoad_ == 1) ? 0 : COUNTING_SORT_FILTER_CHUNK_SIZE;
 
     if (countingSortFullLoad_ == 1) {
