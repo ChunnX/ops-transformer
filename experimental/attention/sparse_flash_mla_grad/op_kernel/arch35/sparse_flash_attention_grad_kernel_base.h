@@ -730,7 +730,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetT
     if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio == 1) {
         usedS3 = Max(usedS3 - usedS1 + s1Index + 1, 0);
     } else if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio != 1) {
-        int64_t oriUsedS3 = usedS3 * constInfo.cmpRatio + cmpResidualKVAddr[bIndex];
+        int64_t oriUsedS3 = usedS3 * constInfo.cmpRatio + ((__gm__ int32_t *)cmpResidualKVAddr)[bIndex];
         usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
     }
 
