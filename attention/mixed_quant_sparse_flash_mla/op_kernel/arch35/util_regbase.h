@@ -71,6 +71,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
     int64_t firstFdDataWorkspaceIdx = 0;
+    bool isS2Split = false;
 };
 
 #define COMMON_RUN_INFO \
@@ -112,6 +113,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
+    bool    isS2Split = false; \
 
 struct RunInfo {
     COMMON_RUN_INFO;

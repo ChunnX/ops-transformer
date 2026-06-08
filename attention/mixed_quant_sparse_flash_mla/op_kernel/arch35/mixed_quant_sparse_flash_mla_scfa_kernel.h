@@ -460,7 +460,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
                     bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
                     s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo,
-                        static_cast<int64_t>(s2StartIdx), static_cast<int64_t>(s2EndIdx),
+                        static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
+                        static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
                         isFirstS2RangeTask, isLastS2RangeTask);
                 }
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
@@ -552,8 +553,13 @@ __aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         runParam.oriKvLoopEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
+        runParam.isS2Split = false;
         return true;
     }
+
+    bool hasPrevCore = isFirstS2RangeTask ? (s2StartPoint > 0) : true;
+    bool hasNextCore = isLastS2RangeTask ? (s2EndPoint < totalLen) : true;
+    runParam.isS2Split = hasPrevCore || hasNextCore;
 
     int64_t oriRangeStart = rangeStart < oriLen ? rangeStart : oriLen;
     int64_t oriRangeEnd = rangeEnd < oriLen ? rangeEnd : oriLen;
@@ -641,6 +647,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
     runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;
+    runInfo.isS2Split = runParam.isS2Split;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
