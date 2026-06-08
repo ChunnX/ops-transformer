@@ -163,7 +163,7 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
     } else {
         topKValue = static_cast<uint64_t>(std::round((1.0f - sparsity) * totalXY));
     }
-    topKValue = BSAMax(topKValue, 1ULL);
+    topKValue = std::max(topKValue, static_cast<uint64_t>(1));
 
     OP_LOGD(opName, "layout: batchSize[%u] numHeads[%u] maxQSeqlen[%u] maxKvSeqlen[%u] "
             "xBlocks[%u] yBlocks[%u] topKValue[%lu].",
