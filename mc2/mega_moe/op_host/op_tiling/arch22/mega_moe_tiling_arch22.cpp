@@ -128,10 +128,39 @@ static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr)
+static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3TilingData &info, gert::TilingContext *context)
 {
     OP_TILING_CHECK(ptr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "cclBufferSize is null."), return GRAPH_FAILED);
+    const char *nodeName = K_INNER_DEBUG;
+    int64_t cclBufferSize = *ptr;
+    OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).", cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
+    OP_TILING_CHECK(cclBufferSize == 0, OP_LOGW(nodeName, "cclBufferSize is 0, skip validation."),
+                    return ge::GRAPH_SUCCESS);
+
+    int64_t bs = info.M;
+    int64_t h = info.K;
+    int64_t topK = info.topK;
+    int64_t epWorldSize = info.epWorldSize;
+    int64_t expertPerRank = info.moeExpertNum / epWorldSize;
+
+    auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
+    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(nodeName, "y desc is null."), return ge::GRAPH_FAILED);
+    ge::DataType yDtype = yDesc->GetDataType();
+    int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
+
+    int64_t leastCclBufferSize =
+        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
+        (ops::CeilAlign(bs * topK * h, ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
+        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
+
+    OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
+        OP_LOGE(nodeName, "cclBufferSize(%ld) should equal or larger than leastCclBufferSize(%ld). "
+                "bs=%ld, h=%ld, topK=%ld, epWorldSize=%ld, expertPerRank=%ld, yDtypeSize=%ld.",
+            cclBufferSize, leastCclBufferSize, bs, h, topK, epWorldSize, expertPerRank, yDtypeSize),
+        return ge::GRAPH_FAILED);
+    OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
+ 	 
     return ge::GRAPH_SUCCESS;
 }
 
@@ -314,7 +343,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         return GRAPH_FAILED);
 
     // 3. ccl_buffer_size
-    OP_TILING_CHECK(CheckCclBufferSizeAttr(cclBufferSizePtr) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckCclBufferSizeAttr(cclBufferSizePtr, info, context) != ge::GRAPH_SUCCESS,
         OP_LOGE(K_INNER_DEBUG, "CheckCclBufferSizeAttr failed."),
         return GRAPH_FAILED);
 
@@ -377,7 +406,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         static_cast<uint32_t>(ge::DT_UNDEFINED);
     info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
     info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
-    info.weight1Interleave = weight1InterleavePtr != nullptr ? static_cast<uint32_t>(*weight1InterleavePtr) : 0U;
+    info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
 
     info.worldSize = info.epWorldSize;
 
@@ -396,6 +425,14 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "worldSize=%u", info.worldSize);
 
     return ge::GRAPH_SUCCESS;
+}
+
+// 获取指定 DynamicInput 的 TensorList 长度
+static uint32_t GetDynamicInputTensorListLen(gert::TilingContext *context, uint32_t inputIndex)
+{
+    uint32_t listLen = 0;
+    while (context->GetDynamicInputTensor(inputIndex, ++listLen) != nullptr) {}
+    return listLen;
 }
 
 // 校验 weight_scales1/weight_scales2 输入（可选），quant 权重时必选
@@ -417,9 +454,7 @@ static ge::graphStatus CheckWeightScaleInput(gert::TilingContext *context, uint3
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetStorageFormat())) != ge::FORMAT_ND,
         OP_LOGE(K_INNER_DEBUG, "%s format is invalid, should be FORMAT_ND.", inputName), return GRAPH_FAILED);
 
-    // 获取scale列表长度
-    uint32_t scaleListLen = 0;
-    while (context->GetDynamicInputTensor(inputIndex, ++scaleListLen) != nullptr) {}
+    uint32_t scaleListLen = GetDynamicInputTensorListLen(context, inputIndex);
 
     OP_TILING_CHECK(scaleListLen != listLen,
         OP_LOGE(K_INNER_DEBUG,
@@ -479,11 +514,7 @@ static ge::graphStatus CheckBiasInput(gert::TilingContext *context, uint32_t inp
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat())) != ge::FORMAT_ND,
         OP_LOGE(K_INNER_DEBUG, "%s format is invalid, should be FORMAT_ND.", inputName), return GRAPH_FAILED);
 
-    uint32_t biasListLen = 0;
-    while (true) {
-        auto bTensorT = context->GetDynamicInputTensor(inputIndex, ++biasListLen);
-        if (bTensorT == nullptr) { break; }
-    }
+    uint32_t biasListLen = GetDynamicInputTensorListLen(context, inputIndex);
     OP_TILING_CHECK(biasListLen != listLen,
         OP_LOGE(K_INNER_DEBUG,
             "%s's listLen not equal to weight1's listLen, %s's listLen = %u, weight1's listLen = %u.",
@@ -529,12 +560,7 @@ static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t h
     OP_TILING_CHECK(N % 2 != 0,
         OP_LOGE(K_INNER_DEBUG, "weight1 format is invalid, the last dim should be even."), return GRAPH_FAILED);
 
-    // 统计 weight1 的 tensor list 长度
-    uint32_t listLen = 0;
-    while (true) {
-        auto wTensorT = context->GetDynamicInputTensor(WEIGHT1_INDEX, ++listLen);
-        if (wTensorT == nullptr) { break; }
-    }
+    uint32_t listLen = GetDynamicInputTensorListLen(context, WEIGHT1_INDEX);
 
     uint32_t expertPerRank;
     if (listLen == 1) {
@@ -609,11 +635,7 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
 
     uint32_t w2TensorDims = w2Tensor->GetOriginShape().GetDimNum();
     
-    uint32_t w2ListLen = 0;
-    while (true) {
-        auto wTensorT = context->GetDynamicInputTensor(WEIGHT2_INDEX, ++w2ListLen);
-        if (wTensorT == nullptr) { break; }
-    }
+    uint32_t w2ListLen = GetDynamicInputTensorListLen(context, WEIGHT2_INDEX);
     OP_TILING_CHECK(w2ListLen != listLen,
         OP_LOGE(K_INNER_DEBUG,
             "weight2's listLen not equal to weight1's listLen, "
