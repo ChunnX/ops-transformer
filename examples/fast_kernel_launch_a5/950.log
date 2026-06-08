@@ -1,0 +1,111 @@
+* Getting build dependencies for wheel...
+/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/wheel/bdist_wheel.py:4: FutureWarning: The 'wheel' package is no longer the canonical location of the 'bdist_wheel' command, and will be removed in a future release. Please update to setuptools v70.1 or later which contains an integrated version of this command.
+  warn(
+INFO: running egg_info
+INFO: writing ascend_ops.egg-info/PKG-INFO
+INFO: writing dependency_links to ascend_ops.egg-info/dependency_links.txt
+INFO: writing requirements to ascend_ops.egg-info/requires.txt
+INFO: writing top-level names to ascend_ops.egg-info/top_level.txt
+INFO: reading manifest file 'ascend_ops.egg-info/SOURCES.txt'
+INFO: writing manifest file 'ascend_ops.egg-info/SOURCES.txt'
+* Building wheel...
+/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/wheel/bdist_wheel.py:4: FutureWarning: The 'wheel' package is no longer the canonical location of the 'bdist_wheel' command, and will be removed in a future release. Please update to setuptools v70.1 or later which contains an integrated version of this command.
+  warn(
+INFO: running bdist_wheel
+INFO: running cmake_build
+/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu/utils/_path_manager.py:66: UserWarning: Permission mismatch: The owner of /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu/lib/libop_plugin_atb.so does not match.
+  warnings.warn(f"Permission mismatch: The owner of {path} does not match.")
+INFO: Using Torch path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/share/cmake/Torch
+INFO: Using Torch NPU path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu
+INFO: Using NPU_ARCH: ascend950
+-- System processer: aarch64
+-- CMAKE_ASC_COMPILER: /home/developer/Ascend/cann-9.1.0/bin/bisheng
+-- ASCEND_CANN_PACKAGE_LINUX_PATH: /home/developer/Ascend/cann-9.1.0/aarch64-linux
+-- CMAKE_ASC_LLD_LINKER: /home/developer/Ascend/cann-9.1.0/aarch64-linux/ccec_compiler/bin/ld.lld
+-- Detecting AICPU compiler: /home/developer/Ascend/cann-9.1.0/bin/bisheng
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Using Torch path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/share/cmake/Torch
+CMake Warning at /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:22 (message):
+  static library kineto_LIBRARY-NOTFOUND not found.
+Call Stack (most recent call first):
+  /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:125 (append_torchlib_if_found)
+  cmake/torch.cmake:13 (find_package)
+  CMakeLists.txt:12 (include)
+
+
+-- Found Torch: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/lib/libtorch.so  
+-- Found Torch version: 2.7.1
+-- Torch include dirs: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/include;/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/include/torch/csrc/api/include
+-- Torch libraries: torch;torch_library;/opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch/lib/libc10.so
+-- Using Torch NPU path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu
+-- Torch NPU include path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu/include
+-- Torch NPU lib path: /opt/buildtools/python-3.12.9/lib/python3.12/site-packages/torch_npu/lib
+-- Found Python3: /opt/buildtools/python-3.12.9/bin/python3 (found version "3.12.9") found components: Interpreter Development Development.Module Development.Embed 
+-- Using Ascend toolkit path: /home/developer/Ascend/cann-9.1.0
+-- Bisheng compiler path: /home/developer/Ascend/cann-9.1.0/bin/bisheng
+-- CMAKE_CURRENT_SOURCE_DIR = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/examples/fast_kernel_launch_a5/csrc/moe_distribute_combine_v2/ascend950
+-- OP_NAME: moe_distribute_combine_v2
+-- COMPILE FLAGS: --npu-arch=dav-3510 -xasc 
+-- SOURCE FILES: moe_distribute_combine_v2_a5_entry.cpp
+-- CMAKE_CURRENT_SOURCE_DIR = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/examples/fast_kernel_launch_a5/csrc/moe_distribute_dispatch_v2/ascend950
+-- OP_NAME: moe_distribute_dispatch_v2
+-- COMPILE FLAGS: --npu-arch=dav-3510 -xasc 
+-- SOURCE FILES: moe_distribute_dispatch_v2_a5_entry.cpp
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/examples/fast_kernel_launch_a5/build
+[ 14%] Building CXX object csrc/moe_distribute_dispatch_v2/ascend950/CMakeFiles/moe_distribute_dispatch_v2_obj.dir/moe_distribute_dispatch_v2_a5_entry.cpp.o
+[ 28%] Building CXX object CMakeFiles/torch_obj.dir/csrc/torch/dispatch_torch.cpp.o
+[ 42%] Building CXX object CMakeFiles/torch_obj.dir/csrc/torch/combine_torch.cpp.o
+[ 57%] Building CXX object csrc/moe_distribute_combine_v2/ascend950/CMakeFiles/moe_distribute_combine_v2_obj.dir/moe_distribute_combine_v2_a5_entry.cpp.o
+[ 71%] Building CXX object CMakeFiles/torch_obj.dir/csrc/torch/update_context_torch.cpp.o
+WARNING: kernel type of __global__ func: combine_a5_generic is not marked. auto type derivate may be failed.
+WARNING: kernel type of __global__ func: dispatch_a5_generic is not marked. auto type derivate may be failed.
+WARNING: kernel type of __global__ func: combine_a5_generic is not marked. auto type derivate may be failed.
+[ 71%] Built target moe_distribute_combine_v2_obj
+WARNING: kernel type of __global__ func: dispatch_a5_generic is not marked. auto type derivate may be failed.
+[ 71%] Built target moe_distribute_dispatch_v2_obj
+[ 71%] Built target torch_obj
+[ 85%] Building CXX object CMakeFiles/_C.dir/csrc/extension.cpp.o
+[100%] Linking CXX shared library _C.abi3.so
+Copying _C.abi3.so to ascend_ops/
+[100%] Built target _C
+INFO: CMake extensions built successfully.
+INFO: running build
+INFO: running build_py
+INFO: creating build/lib.linux-aarch64-cpython-312/ascend_ops
+INFO: copying ascend_ops/__init__.py -> build/lib.linux-aarch64-cpython-312/ascend_ops
+INFO: copying ascend_ops/_C.abi3.so -> build/lib.linux-aarch64-cpython-312/ascend_ops
+INFO: running build_ext
+INFO: installing to build/bdist.linux-aarch64/wheel
+INFO: running install
+INFO: running install_lib
+INFO: creating build/bdist.linux-aarch64/wheel
+INFO: creating build/bdist.linux-aarch64/wheel/ascend_ops
+INFO: copying build/lib.linux-aarch64-cpython-312/ascend_ops/__init__.py -> build/bdist.linux-aarch64/wheel/./ascend_ops
+INFO: copying build/lib.linux-aarch64-cpython-312/ascend_ops/_C.abi3.so -> build/bdist.linux-aarch64/wheel/./ascend_ops
+INFO: running install_egg_info
+INFO: running egg_info
+INFO: writing ascend_ops.egg-info/PKG-INFO
+INFO: writing dependency_links to ascend_ops.egg-info/dependency_links.txt
+INFO: writing requirements to ascend_ops.egg-info/requires.txt
+INFO: writing top-level names to ascend_ops.egg-info/top_level.txt
+INFO: reading manifest file 'ascend_ops.egg-info/SOURCES.txt'
+INFO: writing manifest file 'ascend_ops.egg-info/SOURCES.txt'
+INFO: Copying ascend_ops.egg-info to build/bdist.linux-aarch64/wheel/./ascend_ops-1.0.0-py3.12.egg-info
+INFO: running install_scripts
+INFO: creating build/bdist.linux-aarch64/wheel/ascend_ops-1.0.0.dist-info/WHEEL
+INFO: creating '/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/examples/fast_kernel_launch_a5/dist/.tmp-y0nf243v/ascend_ops-1.0.0-cp38-abi3-linux_aarch64.whl' and adding 'build/bdist.linux-aarch64/wheel' to it
+INFO: adding 'ascend_ops/_C.abi3.so'
+INFO: adding 'ascend_ops/__init__.py'
+INFO: adding 'ascend_ops-1.0.0.dist-info/METADATA'
+INFO: adding 'ascend_ops-1.0.0.dist-info/WHEEL'
+INFO: adding 'ascend_ops-1.0.0.dist-info/top_level.txt'
+INFO: adding 'ascend_ops-1.0.0.dist-info/RECORD'
+INFO: removing build/bdist.linux-aarch64/wheel
+Successfully built ascend_ops-1.0.0-cp38-abi3-linux_aarch64.whl
