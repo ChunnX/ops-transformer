@@ -79,15 +79,15 @@ if tl_ok and off_ok:
         has_nan = torch.isnan(tl_v).any().item()
         if has_nan:
             print(f"  {name}: contains NaN! [FAIL]"); all_pass = False; continue
-        diff = (tl_v.float() - off_v.float()).abs(); mx = diff.max().item(); re = (diff / (off_v.float().abs() + 1e-6)).mean().item()
-        ok = mx < 0.01
+        diff = (tl_v.float() - off_v.float()).abs(); mx = diff.max().item(); off_max = off_v.float().abs().max().item(); re = mx / (off_max + 1e-8)
+        ok = re < 2e-3
         if not ok: all_pass = False
         print(f"  {name}: max_diff={mx:.6f}, rel_err={re:.6f} [{'PASS' if ok else 'FAIL'}]")
     ltl, loff = loss_tl.float().item(), loss_off.float().item()
     if math.isnan(ltl):
         print(f"  Loss: tl=NaN, off={loff:.6f} [FAIL]"); all_pass = False
     else:
-        la = abs(ltl - loff); lr = la / (abs(loff) + 1e-6); ok = lr < 0.01
+        la = abs(ltl - loff); lr = la / (abs(loff) + 1e-8); ok = lr < 2e-3
         if not ok: all_pass = False
         print(f"  Loss: abs_diff={la:.6f}, rel_err={lr:.6f}, tl={ltl:.6f}, off={loff:.6f} [{'PASS' if ok else 'FAIL'}]")
     print(f"\n结果: {'所有测试通过!' if all_pass else '部分测试失败'}")

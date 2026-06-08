@@ -114,8 +114,10 @@ if tl_ok and off_ok:
             all_pass = False
             continue
         diff = (tl_v.float() - off_v.float()).abs()
-        mx = diff.max().item(); re = (diff / (off_v.float().abs() + 1e-6)).mean().item()
-        ok = mx < 0.01
+        mx = diff.max().item()
+        off_max = off_v.float().abs().max().item()
+        re = mx / (off_max + 1e-8)
+        ok = re < 2e-3
         if not ok: all_pass = False
         print(f"  {name}: max_diff={mx:.6f}, rel_err={re:.6f} [{'PASS' if ok else 'FAIL'}]")
     ltl, loff = loss_tl.float().item(), loss_off.float().item()
@@ -123,10 +125,32 @@ if tl_ok and off_ok:
         print(f"  Loss: tl=NaN, off={loff:.6f} [FAIL]")
         all_pass = False
     else:
-        la = abs(ltl - loff); lr = la / (abs(loff) + 1e-6)
-        ok = lr < 0.01
+        la = abs(ltl - loff); lr = la / (abs(loff) + 1e-8)
+        ok = lr < 2e-3
         if not ok: all_pass = False
         print(f"  Loss: abs_diff={la:.6f}, rel_err={lr:.6f}, tl={ltl:.6f}, off={loff:.6f} [{'PASS' if ok else 'FAIL'}]")
+
+    print("\n[4] 诊断: Python参考计算")
+    from sparse_lightning_indexer_grad_kl_loss import _preprocess_gather, _compute_vector_outputs
+    S2_pad = (S2 + 128 - 1) // 128 * 128
+    k_p = torch.nn.functional.pad(k, (0,0,0,0,0,S2_pad-S2,0,0)) if S2_pad > S2 else k
+    ki_p = torch.nn.functional.pad(k_index, (0,0,0,0,0,S2_pad-S2,0,0)) if S2_pad > S2 else k_index
+    gk, gki = _preprocess_gather(k_p, ki_p, sparse_indices, B, S1, S2_pad, N2, 1, K, D, DIndex)
+    bmm1_noscale = q.float() @ gk.float().transpose(-2,-1)
+    bmm2_ref = torch.relu(q_index.float() @ gki.float().transpose(-2,-1))
+    G_val = N1 // N2
+    dw_ref, rg_ref, loss_ref = _compute_vector_outputs(
+        bmm1_noscale, bmm2_ref, weights, softmax_max, softmax_sum,
+        scale, B, S1, N1, N2, G_val, Nidx1, K, D, DIndex, torch.float16)
+    print(f"  dw_ref range: [{dw_ref.float().min():.6f}, {dw_ref.float().max():.6f}]")
+    print(f"  dw_off range: [{dw_off.float().min():.6f}, {dw_off.float().max():.6f}]")
+    print(f"  dw_tl  range: [{dw_tl.float().min():.6f}, {dw_tl.float().max():.6f}]")
+    d_off_ref = (dw_off.float() - dw_ref.float()).abs()
+    d_tl_ref = (dw_tl.float() - dw_ref.float()).abs()
+    print(f"  |dw_off - dw_ref|: max={d_off_ref.max():.6f}, mean={d_off_ref.mean():.6f}")
+    print(f"  |dw_tl  - dw_ref|: max={d_tl_ref.max():.6f}, mean={d_tl_ref.mean():.6f}")
+    print(f"  loss_ref={loss_ref.float().item():.6f}, loss_off={loff:.6f}, loss_tl={ltl:.6f}")
+
     print(f"\n结果: {'所有测试通过!' if all_pass else '部分测试失败'}")
 else:
     print("\n结果: 无法对比")
