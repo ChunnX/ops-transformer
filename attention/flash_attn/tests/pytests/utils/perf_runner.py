@@ -208,7 +208,8 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
                 dst = case_dir / "op_summary.csv"
                 shutil.copy(csv_files[0], dst)
                 all_csvs.append(dst)
-                print(f"  [{name}] OK → op_summary.csv")
+                avg_us = _quick_avg(dst, runs)
+                print(f"  [{name}] OK  avg={avg_us:.1f}us")
             else:
                 print(f"  [{name}] NO CSV")
         else:
@@ -248,3 +249,20 @@ def _merge_csvs(csv_paths: List[Path], out_path: Path):
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def _quick_avg(csv_path: Path, runs: int, op_name: str = "FlashAttn") -> float:
+    """Quickly compute avg duration from a single op_summary.csv."""
+    from utils.perf_parser import parse_op_summary
+    entries = parse_op_summary(str(csv_path), op_name)
+    durs = [d for _, d in entries]
+    if not durs:
+        return 0.0
+    is_hot = len(durs) >= runs
+    if is_hot:
+        durs = durs[1:]  # discard 1st
+    else:
+        durs = sorted(durs)
+        if len(durs) >= 3:
+            durs = durs[1:-1]
+    return sum(durs) / len(durs) if durs else 0.0
