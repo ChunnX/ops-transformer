@@ -755,7 +755,7 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
 }
 
 // --------------------------LightningIndexerTiling类成员函数定义-----------------------
-static uint32_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
+static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
                                     int64_t liS2Size, uint32_t liAicNum)
 {
     constexpr uint32_t liMm1ResElemSize = 4;
@@ -770,7 +770,7 @@ static uint32_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
     constexpr uint32_t liS1BaseSize = 8;
     constexpr uint32_t liTopkMaxSize = 2048;
 
-    uint32_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
+    uint64_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
     if (liPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         constexpr uint32_t li3510S1Base = 4;
         constexpr uint32_t li3510S2Base = 128;
@@ -798,7 +798,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint32_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
