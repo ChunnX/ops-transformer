@@ -18,7 +18,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_MC2_ENABLE ON 
         OPTYPE quant_all_reduce quant_all_reduce ACLNNTYPE aclnn aclnn_inner)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(quant_all_reduce_depends mc2/common mc2/3rd mc2/quant_reduce_scatter mc2/quant_reduce_scatter_v2 PARENT_SCOPE)
+    set(quant_all_reduce_depends mc2/common mc2/3rd mc2/quant_reduce_scatter PARENT_SCOPE)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作 
