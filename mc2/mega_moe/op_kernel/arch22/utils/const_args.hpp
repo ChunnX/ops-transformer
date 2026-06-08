@@ -28,4 +28,5 @@ constexpr uint32_t MAX_EXPERTS_PER_RANK = 32;
 constexpr static uint16_t SYNCFLAGC2V = 9;
 constexpr static uint16_t SYNCFLAGV2C = 10;
 constexpr static uint32_t SERVER_RANK_SIZE_A2 = 8;
+constexpr static uint32_t kMaxDequantSyncGroups = 16;
 #endif
