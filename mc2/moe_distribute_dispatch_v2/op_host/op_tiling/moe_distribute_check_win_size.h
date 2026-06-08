@@ -76,7 +76,7 @@ inline ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const 
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSizeData winSizeData,
+inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName, const CheckWinSizeData winSizeData,
     const uint64_t maxWindowSizeEp, const uint64_t hcclBufferSizeEp, const uint64_t tokenNeedSizeDispatch,
     const uint64_t tokenNeedSizeCombine)
 {
@@ -103,8 +103,8 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
                 "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, 
                 actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
     } else {
-        const char* socName = "Ascend950";
-        if (std::strstr(socName, "Ascend950") != nullptr) {
+        std::string socVersion = mc2tiling::GetSocVersion(context);
+        if (socVersion == "Ascend950") {
             actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
@@ -160,7 +160,7 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     } else {
         tokenNeedSizeDispatch = ((tokenActualLen + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     }
-    OP_TILING_CHECK(CheckActualWinSize(nodeName, winSizeData, maxWindowSizeEp, hcclBufferSizeEp,
+    OP_TILING_CHECK(CheckActualWinSize(context, nodeName, winSizeData, maxWindowSizeEp, hcclBufferSizeEp,
         tokenNeedSizeDispatch, tokenNeedSizeCombine) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName,
         "Tiling check actual window size failed."), return ge::GRAPH_FAILED);
     winSizeData.totalWinSizeEp = (maxWindowSizeEp - winSizeData.epWorldSize * EP_RANK_OFFSET_STEP);
