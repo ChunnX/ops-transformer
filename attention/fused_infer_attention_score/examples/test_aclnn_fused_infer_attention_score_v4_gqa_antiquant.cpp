@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_fused_infer_attention_score.cpp
+ * \file test_aclnn_fused_infer_attention_score_v4_gqa_antiquant.cpp
  * \brief
  */
 
@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstring>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_fused_infer_attention_score_v4.h"
 #include "securec.h"
 
@@ -103,39 +104,51 @@ int main() {
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    std::vector<int64_t> queryShape = {1, 2, 1, 16}; // BNSD
-    std::vector<int64_t> keyShape = {1, 2, 2, 16};   // BNSD
-    std::vector<int64_t> valueShape = {1, 2, 2, 16}; // BNSD
-    std::vector<int64_t> attenShape = {1, 1, 1, 2};  // B 1 S1 S2
-    std::vector<int64_t> outShape = {1, 2, 1, 16};   // BNSD
+    int64_t batchSize = 1;
+    int64_t numHeads = 2;
+    int64_t numKeyValueHeads = 1;
+    int64_t sequenceLengthQ = 1;
+    int64_t sequenceLengthKV = 16;
+    int64_t headDims = 128;
+
+    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> antiquantScaleShape = {2, batchSize, sequenceLengthKV};
+    std::vector<int64_t> attentionOutShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
-    void *attenDeviceAddr = nullptr;
-    void *outDeviceAddr = nullptr;
+    void *antiquantScaleDeviceAddr = nullptr;
+    void *attentionOutDeviceAddr = nullptr;
+
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *valueTensor = nullptr;
-    aclTensor *attenTensor = nullptr;
-    aclTensor *outTensor = nullptr;
-    int64_t queryShapeSize = GetShapeSize(queryShape); // BNSD
-    int64_t keyShapeSize = GetShapeSize(keyShape);     // BNSD
-    int64_t valueShapeSize = GetShapeSize(valueShape); // BNSD
-    int64_t attenShapeSize = GetShapeSize(attenShape); // B 1 S1 S2
-    int64_t outShapeSize = GetShapeSize(outShape);     // BNSD
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
-    std::vector<float> attenHostData(attenShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
+    aclTensor *antiquantScaleTensor = nullptr;
+    aclTensor *attentionOutTensor = nullptr;
+
+    int64_t queryShapeSize = GetShapeSize(queryShape);
+    int64_t keyShapeSize = GetShapeSize(keyShape);
+    int64_t valueShapeSize = GetShapeSize(valueShape);
+    int64_t antiquantScaleShapeSize = GetShapeSize(antiquantScaleShape);
+    int64_t attentionOutShapeSize = GetShapeSize(attentionOutShape);
+
+    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
+    std::vector<int8_t> keyHostData(keyShapeSize, 1);
+    std::vector<int8_t> valueHostData(valueShapeSize, 1);
+    std::vector<float> antiquantScaleHostData(antiquantScaleShapeSize, 1);
+    std::vector<op::fp16_t> attentionOutHostData(attentionOutShapeSize, 1);
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
+
     // Create key aclTensor.
-    ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
+    ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_INT8, &keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -143,56 +156,54 @@ int main() {
     aclTensor *tensorsOfKey[kvTensorNum];
     tensorsOfKey[0] = keyTensor;
     auto tensorKeyList = aclCreateTensorList(tensorsOfKey, kvTensorNum);
+
     // Create value aclTensor.
-    ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
+    ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_INT8, &valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     aclTensor *tensorsOfValue[kvTensorNum];
     tensorsOfValue[0] = valueTensor;
     auto tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
-    // Create atten aclTensor.
-    ret = CreateAclTensor(attenHostData, attenShape, &attenDeviceAddr, aclDataType::ACL_BOOL, &attenTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-    // Create out aclTensor.
-    ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
+
+    // Create antiquantScale aclTensor.
+    ret = CreateAclTensor(antiquantScaleHostData, antiquantScaleShape, &antiquantScaleDeviceAddr, aclDataType::ACL_FLOAT, &antiquantScaleTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
-    std::vector<int64_t> actualSeqlenVector = {2};
-    auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
-    int64_t numHeads = 2; // N
-    int64_t numKeyValueHeads = numHeads;
-    double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
+    // Create attentionOut aclTensor.
+    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+
+    // Create Attrs.
+    double scaleValue = 1 / sqrt(headDims);
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
-    string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length() + 1];
-    errno_t strRet = strcpy_s(layerOut, sizeof(layerOut), sLayerOut.c_str());
-    if (strRet != EOK) {
-        LOG_PRINT("strcpy_s failed. ERROR: %d\n", strRet);
-        return strRet;
-    }
+    string sInputLayout = "BNSD";
+    char inputLayout[sInputLayout.length()+1];
+    strcpy(inputLayout, sInputLayout.c_str());
     int64_t sparseMode = 0;
-    int64_t innerPrecise = 1;
-    int blockSize = 0;
-    int antiquantMode = 0;
+    int64_t innerPrecise = 0;
+    int64_t blockSize = 0;
+    int64_t antiquantMode = 1;
     bool softmaxLseFlag = false;
     int keyAntiquantMode = 0;
-    int valueAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    int64_t queryQuantMode = 0;
+
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // Call the first interface.
     ret = aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut,
+        nullptr, nullptr, antiquantScaleTensor, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-        valueAntiquantMode, 0, outTensor, nullptr, &workspaceSize, &executor);
+        valueAntiquantMode, queryQuantMode, attentionOutTensor, nullptr, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnFusedInferAttentionScoreV4GetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -220,31 +231,30 @@ int main() {
         return ret;
     }
 
-    // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
+    // 5. Retrieve the attentionOutput value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
-    auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
+    auto size = GetShapeSize(attentionOutShape);
+    std::vector<op::fp16_t> resultData(size, 0);
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); 
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
     }
     // 6. Release resources.
     aclDestroyTensor(queryTensor);
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);
-    aclDestroyTensor(attenTensor);
-    aclDestroyTensor(outTensor);
-    aclDestroyIntArray(actualSeqLengths);
+    aclDestroyTensor(antiquantScaleTensor);
+    aclDestroyTensor(attentionOutTensor);
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(valueDeviceAddr);
-    aclrtFree(attenDeviceAddr);
-    aclrtFree(outDeviceAddr);
+    aclrtFree(antiquantScaleDeviceAddr);
+    aclrtFree(attentionOutDeviceAddr);
     if (workspaceSize > 0U) {
         aclrtFree(workspaceAddr);
     }

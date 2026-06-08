@@ -2244,43 +2244,44 @@ int main() {
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    int32_t batchSize = 1;
-    int32_t numHeads = 2;
-    int32_t sequenceLengthQ = 1;
-    int32_t headDims = 16;
-    int32_t numKeyValueHeads = 2;
-    int32_t sequenceLengthKV = 16;
-    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};           // BNSD
-    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};    // BNSD
-    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};  // BNSD
-    std::vector<int64_t> attenMaskShape = {batchSize, 1, sequenceLengthQ, sequenceLengthKV};      // B 1 S1 S2
-    std::vector<int64_t> outShape = {batchSize, numHeads, sequenceLengthQ, headDims};             // BNSD
+    int64_t batchSize = 1;
+    int64_t numHeads = 2;
+    int64_t numKeyValueHeads = 1;
+    int64_t sequenceLengthQ = 1;
+    int64_t sequenceLengthKV = 16;
+    int64_t headDims = 128;
+
+    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> attentionOutShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
-    void *attenMaskDeviceAddr = nullptr;
-    void *outDeviceAddr = nullptr;
+    void *attentionOutDeviceAddr = nullptr;
+
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *valueTensor = nullptr;
-    aclTensor *attenMaskTensor = nullptr;
-    aclTensor *outTensor = nullptr;
-    int64_t queryShapeSize = GetShapeSize(queryShape);          // BNSD
-    int64_t keyShapeSize = GetShapeSize(keyShape);              // BNSD
-    int64_t valueShapeSize = GetShapeSize(valueShape);          // BNSD
-    int64_t attenMaskShapeSize = GetShapeSize(attenMaskShape);  // B 1 S1 S2
-    int64_t outShapeSize = GetShapeSize(outShape);              // BNSD
+    aclTensor *attentionOutTensor = nullptr;
+
+    int64_t queryShapeSize = GetShapeSize(queryShape);
+    int64_t keyShapeSize = GetShapeSize(keyShape);
+    int64_t valueShapeSize = GetShapeSize(valueShape);
+    int64_t attentionOutShapeSize = GetShapeSize(attentionOutShape);
+
     std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
     std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
     std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
-    std::vector<int8_t> attenMaskHostData(attenMaskShapeSize, 1);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 1);
+    std::vector<op::fp16_t> attentionOutHostData(attentionOutShapeSize, 1);
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
+
     // Create key aclTensor.
     ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -2290,6 +2291,7 @@ int main() {
     aclTensor *tensorsOfKey[kvTensorNum];
     tensorsOfKey[0] = keyTensor;
     auto tensorKeyList = aclCreateTensorList(tensorsOfKey, kvTensorNum);
+
     // Create value aclTensor.
     ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -2298,33 +2300,29 @@ int main() {
     aclTensor *tensorsOfValue[kvTensorNum];
     tensorsOfValue[0] = valueTensor;
     auto tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
-    // Create attenMask aclTensor.
-    ret = CreateAclTensor(attenMaskHostData, attenMaskShape, &attenMaskDeviceAddr, aclDataType::ACL_BOOL, &attenMaskTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-    // Create out aclTensor.
-    ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
+
+    // Create attentionOut aclTensor.
+    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
-    std::vector<int64_t> actualSeqlenVector = {2};
-    auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
-    
-    double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
+    // Create Attrs.
+    double scaleValue = 1 / sqrt(headDims);
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
-    string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()+1];
-    strcpy(layerOut, sLayerOut.c_str());
+    string sInputLayout = "BNSD";
+    char inputLayout[sInputLayout.length()+1];
+    strcpy(inputLayout, sInputLayout.c_str());
     int64_t sparseMode = 0;
-    int64_t innerPrecise = 1;
-    int blockSize = 0;
-    int antiquantMode = 0;
+    int64_t innerPrecise = 0;
+    int64_t blockSize = 0;
+    int64_t antiquantMode = 0;
     bool softmaxLseFlag = false;
     int keyAntiquantMode = 0;
-    int valueAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    int64_t queryQuantMode = 0;
+
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
@@ -2332,9 +2330,9 @@ int main() {
     ret = aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-        valueAntiquantMode, 0, outTensor, nullptr, &workspaceSize, &executor);
+        valueAntiquantMode, queryQuantMode, attentionOutTensor, nullptr, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnFusedInferAttentionScoreV4GetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -2362,31 +2360,28 @@ int main() {
         return ret;
     }
 
-    // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
+    // 5. Retrieve the attentionOutput value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
-    auto size = GetShapeSize(outShape);
+    auto size = GetShapeSize(attentionOutShape);
     std::vector<op::fp16_t> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); 
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
+        LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
     }
     // 6. Release resources.
     aclDestroyTensor(queryTensor);
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);
-    aclDestroyTensor(attenMaskTensor);
-    aclDestroyTensor(outTensor);
-    aclDestroyIntArray(actualSeqLengths);
+    aclDestroyTensor(attentionOutTensor);
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(valueDeviceAddr);
-    aclrtFree(attenMaskDeviceAddr);
-    aclrtFree(outDeviceAddr);
+    aclrtFree(attentionOutDeviceAddr);
     if (workspaceSize > 0U) {
         aclrtFree(workspaceAddr);
     }
