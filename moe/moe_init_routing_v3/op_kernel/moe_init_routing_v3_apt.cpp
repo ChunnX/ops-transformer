@@ -21,7 +21,7 @@
 #include "arch35/moe_v3_gather_out.h"
 #include "arch35/moe_v3_gather_static_quant.h"
 #include "arch35/moe_v3_gather_dynamic_quant.h"
-#include "arch35/moe_v3_gather_int4_dynamic_quant.h"
+#include "arch35/moe_gather_out_int4_dynamic_quant.h"
 #include "arch35/moe_v3_gather_mxfp8_quant.h"
 #include "arch35/moe_v3_gather_fp8_perblock_quant.h"
 #include "arch35/moe_v3_gather_hif8_pertensor_quant.h"

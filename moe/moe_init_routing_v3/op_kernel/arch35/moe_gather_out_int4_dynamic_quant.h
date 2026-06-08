@@ -3,17 +3,17 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" moe_v3_gather_int4_dynamic_quant.hBASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
- * \file moe_v3_gather_int4_dynamic_quant.h
+ * \file moe_gather_out_int4_dynamic_quant.h
  * \brief
  */
-#ifndef MOE_V3_GATHER_INT4_DYNAMIC_QUANT_H_REGBASE
-#define MOE_V3_GATHER_INT4_DYNAMIC_QUANT_H_REGBASE
+#ifndef MOE_GATHER_OUT_INT4_DYNAMIC_QUANT_H_REGBASE
+#define MOE_GATHER_OUT_INT4_DYNAMIC_QUANT_H_REGBASE
 
 #include "moe_v3_common.h"
 #include "kernel_operator.h"
@@ -576,4 +576,4 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Process()
     }
 }
 } // namespace MoeInitRoutingV3
-#endif // MOE_V3_GATHER_INT4_DYNAMIC_QUANT_H_REGBASE
+#endif // MOE_GATHER_OUT_INT4_DYNAMIC_QUANT_H_REGBASE
