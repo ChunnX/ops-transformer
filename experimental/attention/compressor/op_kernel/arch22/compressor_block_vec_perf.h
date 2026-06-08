@@ -30,34 +30,6 @@ namespace Compressor {
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-struct LoopInfo {
-    uint32_t groupSize = 0U;
-    uint32_t groupNum = 0U;
-    uint32_t coreRowIdx = 0U;
-    uint32_t coreColIdx = 0U;
-    bool isCoreRowFirst = false;
-    bool isCoreRowLast = false;
-    bool isCoreLoopFirst = false;
-    bool isCoreLoopLast = false;
-};
-
-struct Vec1SplitInfo {
-    uint32_t dealSeqStartIdx = 0;
-    uint32_t dBaseSize = 0;
-    uint32_t vec1GroupSize = 0;
-    uint32_t vec1GroupNum = 0;
-    uint32_t dealTcSize = 0;
-    uint32_t preDealTcSize = 0;
-    uint32_t curBStart = 0;
-    uint32_t curSStart = 0;
-    uint32_t curCompressedCnt = 0;
-    uint32_t totalCompressedCnt = 0;
-    uint32_t tcSplitSize = 0;
-    uint32_t dSplitSize = 0;
-    uint32_t dLoopCount = 0;
-};
-
-
 template <typename COMP>
 class CompressorBlockVectorPerf {
 public:

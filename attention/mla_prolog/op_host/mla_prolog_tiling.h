@@ -105,6 +105,9 @@ constexpr uint32_t MLA_PROLOG_DIM_NUM_2 = 2;
 constexpr uint32_t MLA_PROLOG_DIM_NUM_3 = 3;
 constexpr uint32_t MLA_PROLOG_DIM_NUM_4 = 4;
 
+constexpr uint32_t HEAD_SIZE1 = 7168;
+constexpr uint32_t HEAD_SIZE2 = 7680;
+
 constexpr char CACHE_MODE_BSND[] {"BSND"};
 constexpr char CACHE_MODE_TND[] {"TND"};
 constexpr char CACHE_MODE_PA_BSND[] {"PA_BSND"};

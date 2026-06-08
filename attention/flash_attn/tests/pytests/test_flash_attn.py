@@ -253,6 +253,11 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             else:
                 print(f"[{test_name}] NPU 单算子模式计算...")
                 npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs)
+            if dump_tensors:
+                dump_path = os.path.join(dump_dir, test_name)
+                os.makedirs(dump_path, exist_ok=True)
+                save_tensor_to_txt(npu_out.float(), os.path.join(dump_path, "npu_out.txt"))
+                print(f"[{test_name}] 已保存 npu_out → {dump_path}/")
         elif NPU_AVAILABLE:
             print(f"[{test_name}] 跳过 NPU: N1={n1} 不满足 N1>=N2 且 N1%N2==0 (N2={n2})")
         else:

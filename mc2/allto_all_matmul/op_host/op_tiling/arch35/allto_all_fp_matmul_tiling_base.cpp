@@ -12,10 +12,11 @@
  * \file allto_all_fp_matmul_tiling_base.cpp
  * \brief
  */
-#include "common/utils/op_mc2.h"
-#include "common/utils/mc2_comm_utils.h"
-#include "mc2_log.h"
 #include "allto_all_fp_matmul_tiling_base.h"
+
+#include "common/utils/mc2_comm_utils.h"
+#include "common/utils/op_mc2.h"
+#include "mc2_log.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -71,8 +72,8 @@ ge::graphStatus AllToAllFpMatmulTilingBase::CheckOpInputInfo()
  */
 ge::graphStatus AllToAllFpMatmulTilingBase::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
@@ -144,7 +145,8 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoMMTiling()
         mmV3Args_.mValue = inferredInfo_.tailM;
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&mmV3compileInfo_),
                                                           reinterpret_cast<const void *>(&mmV3Args_));
-        MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, localTilingData_.mc2MmV3TailTilingData));
+        MC2_CHECK_LOG_RET(opName_,
+                          DoMatmulV3Tiling(tailTilingCfg, registerCfg, localTilingData_.mc2MmV3TailTilingData));
     }
 
     return ge::GRAPH_SUCCESS;
@@ -188,9 +190,13 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
-    // 根据环境变量判断使用的通信引擎的类型
-    uint8_t hcclServerEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_CCU ?
-                                Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t hcclServerEngine = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllBuilder.withCommEngine(hcclServerEngine)
@@ -220,7 +226,11 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
-    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    uint8_t hcclServerType = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
             NON_QUANT_MODE, x2TransposeFlag, biasDType, hcclServerType, tilingKey);
@@ -340,7 +350,6 @@ void AllToAllFpMatmulTilingBase::PrintMMV3TilingData(const std::string &opName, 
     OP_LOGD(opName, " MMtiling.nTailMain %d", tiling.nTailMain);
     OP_LOGD(opName, " MMtiling.aswWindowLen %d", tiling.aswWindowLen);
 }
-
 
 AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *context) : AllToAllMatmulTilingBase(context)
 {

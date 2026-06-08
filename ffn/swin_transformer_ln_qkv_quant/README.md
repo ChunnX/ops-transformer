@@ -87,8 +87,8 @@
   <tr>
     <td>quantOffset</td>
     <td>输入</td>
-    <td>表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[3 * H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
-    <td>INT32</td>
+    <td>表示目标张量转换使用的偏移矩阵，维度只支持1维且维度为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
+    <td>FLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
