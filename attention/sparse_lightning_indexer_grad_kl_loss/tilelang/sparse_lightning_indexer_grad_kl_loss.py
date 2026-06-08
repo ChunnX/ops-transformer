@@ -325,15 +325,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
 
+                one_ub = T.alloc_ub(n_block, calc_dtype)
+
                 for s1_id in T.serial(s1_start, s1_end):
                     T.barrier_all()
                     T.tile.fill(ones_ub, 1.0)
+                    T.barrier_all()
+                    T.tile.fill(one_ub, 1.0)
                     T.barrier_all()
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
                     T.barrier_all()
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
                     T.barrier_all()
-
+                    T.tile.abs(sm_sum_ub, sm_sum_ub)
+                    T.barrier_all()
                     T.tile.fill(eps_sm_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
@@ -361,10 +366,18 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.barrier_all()
                             T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
                             T.barrier_all()
+                            T.tile.relu(bmm1_ub[g_id, :], bmm1_ub[g_id, :])
+                            T.barrier_all()
+                            T.tile.min(bmm1_ub[g_id, :], bmm1_ub[g_id, :], one_ub)
+                            T.barrier_all()
                             T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
                             T.barrier_all()
 
                         T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                        T.barrier_all()
+                        T.tile.relu(p_reduced_tmp_ub, p_reduced_tmp_ub)
+                        T.barrier_all()
+                        T.tile.min(p_reduced_tmp_ub, p_reduced_tmp_ub, one_ub)
                         T.barrier_all()
 
                         T.copy(
@@ -461,7 +474,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
 
                     rsy_sum_eps_ub = T.alloc_ub(16, calc_dtype)
-
+                    T.tile.abs(rsy_sum_ub, rsy_sum_ub)
+                    T.barrier_all()
                     T.tile.fill(rsy_sum_eps_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, rsy_sum_eps_ub)
@@ -475,6 +489,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         T.barrier_all()
                         T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
+                        T.barrier_all()
+                        T.tile.relu(rsy_chunk_ub, rsy_chunk_ub)
+                        T.barrier_all()
+                        T.tile.min(rsy_chunk_ub, rsy_chunk_ub, one_ub)
                         T.barrier_all()
                         T.copy(
                             rsy_chunk_ub,
