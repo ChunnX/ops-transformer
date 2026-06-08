@@ -480,18 +480,18 @@ namespace SplitFuse {
                 }
             }
 
-            uint64_t qBOffset = prevQSeqlenSum * strideQ;
+            uint64_t qBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideQ;
             uint64_t kBOffset = 0;
             uint64_t vBOffset = 0;
             uint64_t blockBOffset = 0;
             if constexpr (!PAGED_CACHE_FLAG) {
-                kBOffset = prevKvSeqlenSum * strideK;
-                vBOffset = prevKvSeqlenSum * strideV;
+                kBOffset = static_cast<uint64_t>(prevKvSeqlenSum) * strideK;
+                vBOffset = static_cast<uint64_t>(prevKvSeqlenSum) * strideV;
             } else {
                 blockBOffset = BIdx * static_cast<uint64_t>(maxNumBlocksPerBatch);
             }
-            uint64_t oBOffset = prevQSeqlenSum * strideO;
-            uint64_t lseBOffset = prevQSeqlenSum * qHeads;
+            uint64_t oBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideO;
+            uint64_t lseBOffset = static_cast<uint64_t>(prevQSeqlenSum) * qHeads;
 
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTile);
@@ -652,8 +652,8 @@ namespace SplitFuse {
                         isLastStackTile = (kvSIdx + 1) >= kvSLoopNumTotal;
                         uint32_t curStackTileMod = stackSeqCount % (PRE_LAUNCH + 1U);
                         uint64_t gmOffsetS =
-                            static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                            curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                            static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                            static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                         LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
@@ -922,15 +922,15 @@ namespace SplitFuse {
                         }
                         uint32_t curStackTileMod = (stackSeqCount - PRE_LAUNCH) % (PRE_LAUNCH + 1U);
                         uint64_t gmOffsetOTmp =
-                            static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                            curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                            static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                            static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
                         LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP =
-                            static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                            curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
+                            static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                            static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
                             blockMmadPV(gP[gmOffsetP],
                                         gV[gmOffsetV],
@@ -970,7 +970,7 @@ namespace SplitFuse {
                         LayoutO layoutO(qSeqlen, embed * qHeads);
                         LayoutUpdate layoutUpdate(rowNum, embed, embedRound);
                         LayoutLse layoutLse(totalQTokens, qHeads);
-                        uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
+                        uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
                         Arch::CrossCoreWaitFlag(pvReady);
 
                         if constexpr (IS_FD) {

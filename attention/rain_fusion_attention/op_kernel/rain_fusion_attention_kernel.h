@@ -316,8 +316,7 @@ namespace RainFusion {
 
                 uint32_t kvHeadIdx = qNBlockIdx / qNBlockNumPerGroup;
                 uint32_t qHeadIdx = kvHeadIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
-                uint64_t curSelectIdx =
-                    static_cast<uint64_t>(preTotalQBlockNum) + static_cast<uint64_t>(qXIdx) * qHeads + qHeadIdx;
+                uint32_t curSelectIdx = preTotalQBlockNum + qXIdx * qHeads + qHeadIdx;
                 uint32_t curSelectNum = static_cast<uint32_t>(gSelectNumIdx.GetValue(curSelectIdx));
                 // In this case, the output should be zero, so we skip this task
                 if (curSelectNum == 0) {
@@ -423,7 +422,7 @@ namespace RainFusion {
                             gK[gmOffsetK],
                             gS[gmOffsetS],
                             gBlockTable[blockBOffset],
-                            gSelectIdx[curSelectIdx * static_cast<uint64_t>(maxKvBlockNum)],
+                            gSelectIdx[curSelectIdx * maxKvBlockNum],
                             layoutQTemp,
                             layoutKTemp,
                             layOutS,
@@ -485,7 +484,7 @@ namespace RainFusion {
                             gV[gmOffsetV],
                             gOTmp[gmOffsetOTmp],
                             gBlockTable[blockBOffset],
-                            gSelectIdx[curSelectIdx * static_cast<uint64_t>(maxKvBlockNum)],
+                            gSelectIdx[curSelectIdx * maxKvBlockNum],
                             layoutPTemp,
                             layoutVTemp,
                             layoutOTmp,
