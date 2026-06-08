@@ -1131,13 +1131,24 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     info.quantFlag =
         (aType == ge::DT_INT8) && (bType == ge::DT_INT8) && (cType == ge::DT_BF16 || cType == ge::DT_FLOAT16);
 
-    // 3. set tilingKey
+    // 3. 配置平台信息，GetTilingKey会用
+    info.is910C = false;
+    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+
+    std::string socVersion;
+    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    if (socVersion == "Ascend910_93") {
+        info.is910C = true;
+    }
+
+    // 4. set tilingKey
     uint64_t tilingKey = INIT_TILINGKEY;
     GetTilingKey(tilingKey, info, context);
     context->SetTilingKey(tilingKey);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tilingkey is %lu", tilingKey);
 
-    // 4. workspace
+    // 5. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(
         workSpaces == nullptr,
@@ -1152,16 +1163,6 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         if (CheckDtype_X1(context)) {
             info.dequant_type = DequantType::PER_TOKEN;
         }
-    }
-
-    info.is910C = false;
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
-
-    std::string socVersion;
-    (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
-    if (socVersion == "Ascend910_93") {
-        info.is910C = true;
     }
 
     // Tiling
@@ -1183,7 +1184,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
 
     PrintTilingDataInfo(info, tilingData->cocTiling);
 
-    // 5. communication
+    // 6. communication
     if (info.is910C) {
         uint32_t opType = OP_TYPE_REDUCE_SCATTER;
         std::string algConfig = "ReduceScatter=level0:fullmesh";
