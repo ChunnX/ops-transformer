@@ -112,30 +112,30 @@ static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
               "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 
 struct TileParam {
-    uint32_t tileId;
-    uint32_t bufferId;
-    uint32_t tokenOffset;
-    uint32_t tokenSize;
-    uint32_t qkHeadOffset;
-    uint32_t qkHeadSize;
-    uint32_t vHeadOffset;
-    uint32_t vHeadSize;
-    uint32_t rowOffset;
-    uint32_t rowSize;
-    uint32_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
-    uint32_t scaleCacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
+    uint64_t tileId;
+    uint64_t bufferId;
+    uint64_t tokenOffset;
+    uint64_t tokenSize;
+    uint64_t qkHeadOffset;
+    uint64_t qkHeadSize;
+    uint64_t vHeadOffset;
+    uint64_t vHeadSize;
+    uint64_t rowOffset;
+    uint64_t rowSize;
+    uint64_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
+    uint64_t scaleCacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
 };
 
 struct TokenRange {
-    uint32_t begin;
-    uint32_t end;
+    uint64_t begin;
+    uint64_t end;
 };
 
 struct AivSlice {
-    uint32_t tokenOffset;
-    uint32_t tokenSize;
-    uint32_t rowOffset;
-    uint32_t rowSize;
+    uint64_t tokenOffset;
+    uint64_t tokenSize;
+    uint64_t rowOffset;
+    uint64_t rowSize;
 };
 
 struct GlobalTensors {
@@ -160,12 +160,12 @@ struct GlobalTensors {
 };
 
 struct DataCopy2DParams {
-    uint32_t rowCount;
-    uint32_t colCount;
-    uint32_t srcStride;
+    uint64_t rowCount;
+    uint64_t colCount;
+    uint64_t srcStride;
 };
 
-__aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
+__aicore__ inline uint64_t CeilDiv(uint64_t value, uint64_t factor)
 {
     if (factor == 0U) {
         return 0U;
@@ -173,7 +173,7 @@ __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
     return (value + factor - 1U) / factor;
 }
 
-__aicore__ inline uint32_t AlignUp(uint32_t value, uint32_t align)
+__aicore__ inline uint64_t AlignUp(uint64_t value, uint64_t align)
 {
     if (align == 0U) {
         return value;
@@ -181,42 +181,42 @@ __aicore__ inline uint32_t AlignUp(uint32_t value, uint32_t align)
     return ((value + align - 1U) / align) * align;
 }
 
-__aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
+__aicore__ inline uint64_t MinU64(uint64_t lhs, uint64_t rhs)
 {
     return lhs < rhs ? lhs : rhs;
 }
 
-__aicore__ inline uint32_t MaxU32(uint32_t lhs, uint32_t rhs)
+__aicore__ inline uint64_t MaxU64(uint64_t lhs, uint64_t rhs)
 {
     return lhs > rhs ? lhs : rhs;
 }
 
-__aicore__ inline uint32_t NzRowAligned(uint32_t rowCount)
+__aicore__ inline uint64_t NzRowAligned(uint64_t rowCount)
 {
     return AlignUp(rowCount, QKV_RRC_NZ_C0);
 }
 
-__aicore__ inline uint32_t NzMatrixElements(uint32_t rowCount)
+__aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 {
     return (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
 }
 
-__aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
+__aicore__ inline uint32_t MakeDataBufferId(uint64_t tileBufferId)
 {
-    return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+    return static_cast<uint32_t>(tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
 }
 
-__aicore__ inline uint32_t MakeOutputBufferId(uint32_t outBufferUseId)
+__aicore__ inline uint32_t MakeOutputBufferId(uint64_t outBufferUseId)
 {
-    return outBufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+    return static_cast<uint32_t>(outBufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
 }
 
-__aicore__ inline uint32_t MakeCubeTokenSize(const TileParam &tile)
+__aicore__ inline uint64_t MakeCubeTokenSize(const TileParam &tile)
 {
     return AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
 }
 
-__aicore__ inline uint32_t MakeCubeHalfTokenSize(const TileParam &tile)
+__aicore__ inline uint64_t MakeCubeHalfTokenSize(const TileParam &tile)
 {
     return MakeCubeTokenSize(tile) / QKV_RRC_MIX_AIV_PER_AIC;
 }
@@ -230,17 +230,17 @@ __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalT
     }
 
     DataCopyExtParams params;
-    params.blockCount = params2d.rowCount;
-    params.blockLen = params2d.colCount * sizeof(T);
-    params.srcStride = (params2d.srcStride - params2d.colCount) * sizeof(T);
+    params.blockCount = static_cast<uint16_t>(params2d.rowCount);
+    params.blockLen = static_cast<uint32_t>(params2d.colCount * sizeof(T));
+    params.srcStride = static_cast<decltype(params.srcStride)>((params2d.srcStride - params2d.colCount) * sizeof(T));
     params.dstStride = 0U;
     params.rsv = 0U;
     DataCopyPadExtParams<T> padParams{false, 0U, 0U, 0U};
     const uint32_t blockElements = QKV_RRC_BLOCK_BYTES / sizeof(T);
-    const uint32_t alignedColCount = AlignUp(params2d.colCount, blockElements);
+    const uint64_t alignedColCount = AlignUp(params2d.colCount, blockElements);
     if (alignedColCount != params2d.colCount) {
         padParams.isPad = true;
-        padParams.rightPadding = alignedColCount - params2d.colCount;
+        padParams.rightPadding = static_cast<uint8_t>(alignedColCount - params2d.colCount);
     }
     DataCopyPad(dst, src, params, padParams);
 }
@@ -297,12 +297,12 @@ __aicore__ inline uint32_t GetAivCubeIndex()
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
 }
 
-__aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)
+__aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId)
 {
     AivSlice slice = {0U, 0U, 0U, 0U};
-    const uint32_t cubeHalfTokenSize = MakeCubeHalfTokenSize(tile);
-    const uint32_t tokenPrefix = aivLocalId == 0U ? 0U : cubeHalfTokenSize;
-    const uint32_t tokenSize = aivLocalId == 0U ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
+    const uint64_t cubeHalfTokenSize = MakeCubeHalfTokenSize(tile);
+    const uint64_t tokenPrefix = aivLocalId == 0U ? 0U : cubeHalfTokenSize;
+    const uint64_t tokenSize = aivLocalId == 0U ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
 
     slice.tokenOffset = tile.tokenOffset + tokenPrefix;
     slice.tokenSize = tokenSize;

@@ -21,38 +21,26 @@ namespace QkvRmsNormRopeCacheWithKScaleKernelTiling {
 
 #pragma pack(push, 8)
 struct QkvRmsNormRopeCacheWithKScaleTilingData {
-    uint32_t totalTokens = 0;
-    uint32_t batch = 0;
-    uint32_t numQHeads = 0;
-    uint32_t numKHeads = 0;
-    uint32_t numVHeads = 0;
-    uint32_t headDim = 0;
-    uint32_t maxSeqLen = 0;
-    uint32_t blockNum = 0;
-    uint32_t blockSize = 0;
-    uint32_t coreTokenTile = 0;
-    uint32_t coreGroupNum = 0;
-    uint32_t qkvStrideT = 0;
-    uint32_t qkvStrideH = 0;
-    uint32_t kCacheStrideBlock = 0;
-    uint32_t kCacheStrideHead = 0;
-    uint32_t kCacheStrideToken = 0;
-    uint32_t vCacheStrideBlock = 0;
-    uint32_t vCacheStrideHead = 0;
-    uint32_t vCacheStrideToken = 0;
-    uint32_t kScaleCacheStrideBlock = 0;
-    uint32_t kScaleCacheStrideHead = 0;
-    uint32_t kScaleCacheStrideToken = 0;
-    uint32_t tokenTile = 0;
-    uint32_t tokenTilePerAiv = 0;
-    uint32_t rowTile = 0;
-    uint32_t rowTileAligned = 0;
-    uint32_t qkHeadTile = 0;
-    uint32_t vHeadTile = 0;
-    uint32_t dimTile = 0;
-    uint32_t flags = 0;
+    uint64_t totalTokens = 0;
+    uint64_t batch = 0;
+    uint64_t numQHeads = 0;
+    uint64_t numKHeads = 0;
+    uint64_t numVHeads = 0;
+    uint64_t headDim = 0;
+    uint64_t blockSize = 0;
+    uint64_t coreTokenTile = 0;
+    uint64_t coreGroupNum = 0;
+    uint64_t kCacheStrideBlock = 0;
+    uint64_t kCacheStrideHead = 0;
+    uint64_t kCacheStrideToken = 0;
+    uint64_t vCacheStrideBlock = 0;
+    uint64_t vCacheStrideHead = 0;
+    uint64_t vCacheStrideToken = 0;
+    uint64_t kScaleCacheStrideBlock = 0;
+    uint64_t kScaleCacheStrideHead = 0;
+    uint64_t kScaleCacheStrideToken = 0;
+    uint64_t tokenTile = 0;
     float epsilon = 0.0F;
-    uint32_t reserved = 0;
 };
 #pragma pack(pop)
 

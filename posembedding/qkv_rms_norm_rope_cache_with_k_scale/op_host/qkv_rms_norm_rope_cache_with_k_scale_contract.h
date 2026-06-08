@@ -16,14 +16,14 @@
 namespace optiling {
 namespace qkv_rms_norm_rope_cache_with_k_scale {
 
-constexpr uint32_t kHeadDimFast = 128;
-constexpr uint32_t kMaxTokenTile = 16;
-constexpr uint32_t kL0aMaxRows = 128;
-constexpr uint32_t kL0cMaxRows = 256;
-constexpr uint32_t kUbInputRowsPerAiv = 160;
-constexpr uint32_t kUbOutputRowsPerAiv = 128;
-constexpr uint32_t kDimTileFast = 128;
-constexpr uint32_t kAivPerAic = 2;
+constexpr uint64_t kHeadDimFast = 128;
+constexpr uint64_t kMaxTokenTile = 16;
+constexpr uint64_t kL0aMaxRows = 128;
+constexpr uint64_t kL0cMaxRows = 256;
+constexpr uint64_t kUbInputRowsPerAiv = 160;
+constexpr uint64_t kUbOutputRowsPerAiv = 128;
+constexpr uint64_t kDimTileFast = 128;
+constexpr uint64_t kAivPerAic = 2;
 
 enum class ContractStatus : uint32_t {
     kSuccess = 0,
@@ -86,16 +86,16 @@ struct TensorContractInfo {
 };
 
 struct ContractInput {
-    uint32_t totalTokens = 0;
-    uint32_t batch = 0;
-    uint32_t numQHeads = 0;
-    uint32_t numKHeads = 0;
-    uint32_t numVHeads = 0;
-    uint32_t headDim = 0;
-    uint32_t maxSeqLen = 0;
-    uint32_t blockNum = 0;
-    uint32_t blockSize = 0;
-    uint32_t aicNum = 0;
+    uint64_t totalTokens = 0;
+    uint64_t batch = 0;
+    uint64_t numQHeads = 0;
+    uint64_t numKHeads = 0;
+    uint64_t numVHeads = 0;
+    uint64_t headDim = 0;
+    uint64_t maxSeqLen = 0;
+    uint64_t blockNum = 0;
+    uint64_t blockSize = 0;
+    uint64_t aicNum = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -112,55 +112,56 @@ struct ContractInput {
 };
 
 struct ContractTiling {
-    uint32_t coreTokenTile = 0;
-    uint32_t coreGroupNum = 0;
-    uint32_t tokenTile = 0;
-    uint32_t tokenTilePerAiv = 0;
-    uint32_t rowTile = 0;
-    uint32_t rowTileAligned = 0;
-    uint32_t qkHeadTile = 0;
-    uint32_t vHeadTile = 0;
-    uint32_t dimTile = 0;
-    uint32_t kCacheStrideBlock = 0;
-    uint32_t kCacheStrideHead = 0;
-    uint32_t kCacheStrideToken = 0;
-    uint32_t vCacheStrideBlock = 0;
-    uint32_t vCacheStrideHead = 0;
-    uint32_t vCacheStrideToken = 0;
-    uint32_t kScaleCacheStrideBlock = 0;
-    uint32_t kScaleCacheStrideHead = 0;
-    uint32_t kScaleCacheStrideToken = 0;
+    uint64_t coreTokenTile = 0;
+    uint64_t coreGroupNum = 0;
+    uint64_t tokenTile = 0;
+    uint64_t tokenTilePerAiv = 0;
+    uint64_t rowTile = 0;
+    uint64_t rowTileAligned = 0;
+    uint64_t qkHeadTile = 0;
+    uint64_t vHeadTile = 0;
+    uint64_t dimTile = 0;
+    uint64_t kCacheStrideBlock = 0;
+    uint64_t kCacheStrideHead = 0;
+    uint64_t kCacheStrideToken = 0;
+    uint64_t vCacheStrideBlock = 0;
+    uint64_t vCacheStrideHead = 0;
+    uint64_t vCacheStrideToken = 0;
+    uint64_t kScaleCacheStrideBlock = 0;
+    uint64_t kScaleCacheStrideHead = 0;
+    uint64_t kScaleCacheStrideToken = 0;
 };
 
 struct TileParam {
-    uint32_t tileId = 0;
-    uint32_t bufferId = 0;
-    uint32_t tokenOffset = 0;
-    uint32_t tokenSize = 0;
-    uint32_t qkHeadOffset = 0;
-    uint32_t qkHeadSize = 0;
-    uint32_t vHeadOffset = 0;
-    uint32_t vHeadSize = 0;
-    uint32_t rowOffset = 0;
-    uint32_t rowSize = 0;
+    uint64_t tileId = 0;
+    uint64_t bufferId = 0;
+    uint64_t tokenOffset = 0;
+    uint64_t tokenSize = 0;
+    uint64_t qkHeadOffset = 0;
+    uint64_t qkHeadSize = 0;
+    uint64_t vHeadOffset = 0;
+    uint64_t vHeadSize = 0;
+    uint64_t rowOffset = 0;
+    uint64_t rowSize = 0;
 };
 
 struct AivSlice {
-    uint32_t tokenOffset = 0;
-    uint32_t tokenSize = 0;
-    uint32_t rowOffset = 0;
-    uint32_t rowSize = 0;
+    uint64_t tokenOffset = 0;
+    uint64_t tokenSize = 0;
+    uint64_t rowOffset = 0;
+    uint64_t rowSize = 0;
 };
 
-uint32_t AlignUp(uint32_t value, uint32_t align);
-uint32_t CeilDiv(uint32_t value, uint32_t divisor);
-uint32_t CalcCubeTokenSize(uint32_t tokenSize);
-uint32_t CalcCubeHalfTokenSize(uint32_t tokenSize);
-ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling);
-uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile);
-uint32_t CalcCoreTokenTile(uint32_t totalTokens, uint32_t aicNum);
-uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum);
-AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId);
+uint64_t AlignUp(uint64_t value, uint64_t align);
+uint64_t CeilDiv(uint64_t value, uint64_t divisor);
+uint64_t CalcCubeTokenSize(uint64_t tokenSize);
+uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize);
+ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling,
+                                      const char *opName = nullptr);
+uint64_t CalcTileNum(uint64_t totalTokens, uint64_t tokenTile);
+uint64_t CalcCoreTokenTile(uint64_t totalTokens, uint64_t aicNum);
+uint64_t CalcCoreGroupNum(uint64_t totalTokens, uint64_t aicNum);
+AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId);
 const char *ContractStatusName(ContractStatus status);
 
 } // namespace qkv_rms_norm_rope_cache_with_k_scale
