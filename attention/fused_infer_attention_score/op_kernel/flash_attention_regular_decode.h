@@ -380,7 +380,7 @@ namespace SplitFuse {
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * stackSeqTilePad;
                             uint64_t gmOffsetP =
                                 static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
-                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB) +
+                                static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
                                 pWorkspaceIncreOffset;
                             LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                             blockMmadPV(
@@ -632,7 +632,7 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(kvNIncreIdx) * rowNum * stackSeqTilePad;
                                 uint64_t gmOffsetP =
                                     static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
-                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB) +
+                                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
                                     pWorkspaceIncreOffset;
                                 LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
 
