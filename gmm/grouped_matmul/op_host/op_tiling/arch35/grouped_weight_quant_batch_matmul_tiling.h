@@ -196,6 +196,9 @@ public:
     // 对应6-9位 模板自定义组合
     uint16_t templateCustom = 0;
 
+    // 模板参数，表示MxA8W4单多单场景
+    bool isSingleMultiSingle = false;
+
     // 对应10-13位 api常量化保留位
     uint16_t apiConstexpr = 0;
 
@@ -212,6 +215,7 @@ public:
            << " optionInputSituation: " << static_cast<uint32_t>(this->optionInputSituation)
            << " weightFormat: " << static_cast<uint32_t>(this->weightFormat)
            << " templateCustom: " << static_cast<uint32_t>(this->templateCustom)
+           << " isSingleMultiSingle: " << static_cast<uint32_t>(this->isSingleMultiSingle)
            << " apiConstexpr: " << static_cast<uint32_t>(this->apiConstexpr);
         OP_LOGI("GMMWeightQuantBatchMatmul", "tilingKeyConfigure: %s", ss.str().c_str());
         return;
@@ -228,6 +232,8 @@ protected:
     bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
     bool CheckEmptyTensor(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorDefault(const gert::TilingContext *context) const;
     bool CheckTensorListSize() const;
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
@@ -238,6 +244,7 @@ protected:
     bool CheckTensorDimEqualTarget(const gert::TilingContext *context, uint32_t attrIdx, size_t idx, uint32_t targetDim,
                                    const std::string &tensorType) const;
     bool CheckTensorDimSingleXSingleWeightSingleY(const gert::TilingContext *context, size_t idx) const;
+    bool CheckTensorDimSingleXMultiWeightSingleY(const gert::TilingContext *context, size_t idx) const;
     bool CheckTensorDimMultiXMultiWeightMultiY(const gert::TilingContext *context, size_t idx) const;
     bool CheckTensorDim(const gert::TilingContext *context, size_t idx) const;
     bool CheckTensorShape(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
@@ -262,6 +269,7 @@ protected:
     bool CheckGroupTypeAndSplitItem() const;
     bool CheckTransposeStatus() const;
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
+    bool SetShapeListSplitMSingleXMultiWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
