@@ -28,13 +28,16 @@ class BsaRegularKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
     
-    using ElementQ = typename BlockMmadQK::ElementA;
-    using ElementK = typename BlockMmadQK::ElementB;
+    // DN 路径下 BlockMmadQK 的 A/B 槽是 K/Q，需要按 SWAP_QK 反推回逻辑上的 Q/K/O 类型
+    using ElementQ = std::conditional_t<
+        BlockMmadQK::SWAP_QK, typename BlockMmadQK::ElementB, typename BlockMmadQK::ElementA>;
+    using ElementK = std::conditional_t<
+        BlockMmadQK::SWAP_QK, typename BlockMmadQK::ElementA, typename BlockMmadQK::ElementB>;
     using ElementS = typename EpilogueOnlineSoftmax::ElementInput;
     using ElementP = typename BlockMmadPV::ElementA;
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
-    using ElementO = typename BlockMmadQK::ElementA;
+    using ElementO = ElementQ;
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
@@ -279,7 +282,10 @@ public:
                     // QK
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
                     uint32_t ubSBufId = gatheredKvSTileIdx % UB_S_OTMP_BUF_STAGES;
-                    auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    // DN 路径 ubS 是 [S2(kvS), S1(qS)]，ND 路径是 [S1(qS), S2(kvS)]
+                    auto ubSLayoutTla = BlockMmadQK::SWAP_QK ?
+                        tla::MakeLayout<ElementS, LayoutS>(RoundUp(kvSTileSizeAct, 16), rowNumRound) :
+                        tla::MakeLayout<ElementS, LayoutS>(rowNumRound, RoundUp(kvSTileSizeAct, 16));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId],
                     ubSLayoutTla, Arch::PositionUB{});
                     uint32_t Mm1ToSmFlagId = ubSBufId;
@@ -419,8 +425,14 @@ public:
         mm2L1TileHelper_ = mm2L1TileHelper;
         mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
             mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
-        mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
-        mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+        if constexpr (BlockMmadQK::SWAP_QK) {
+            // DN：M=kvS、N=qS；A 槽按 (kvS, K) 切，B 槽按 (K, qS) 切
+            mm1L0ATotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
+            mm1L0BTotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+        } else {
+            mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
+            mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+        }
         mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
         mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
     }

@@ -154,14 +154,21 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using EpilogueMask2Idx = Epilogue::Block::BlockEpilogue<
         DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
     // 处理单个tile内Q和K的matmul
+    // DN 路径下 A/B 槽角色互换：A=K(ColumnMajor)、B=Q(RowMajor)，等效 SetTensorA(K)+SetTensorB(Q, transpose=true)
+    // 第一阶段按 dtype 临时限定 bf16 走 DN（fp16 仍走 ND），三个 Stage 全部落地后应改由 tilingKey 控制
+    constexpr bool USE_DN = std::is_same_v<InDtype, bfloat16_t>;
+    using ElementAQK = std::conditional_t<USE_DN, ElementK, ElementQ>;
+    using LayoutAQK = std::conditional_t<USE_DN, LayoutK, LayoutQ>;
+    using ElementBQK = std::conditional_t<USE_DN, ElementQ, ElementK>;
+    using LayoutBQK = std::conditional_t<USE_DN, LayoutQ, LayoutK>;
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS,
+        ArchTag, ElementAQK, LayoutAQK, ElementBQK, LayoutBQK, ElementS, LayoutS,
         void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
-        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
+        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementAQK, ElementBQK, ElementS, void, TileCopyQK>;
    // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
