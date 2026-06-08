@@ -20,9 +20,9 @@ from core.case_loader import load_case_modules, normalize_params, resolve_case_i
 from core.orchestrator import run_case
 from core.reporter import Reporter
 
-_DEFAULT_CASE_FILES = ["base", "fia_stc", "functional_stc",
-                        "functional_redline_train_tnd", "functional_redline_train",
-                        "functional_redline_infer", "performance_redline_infer"]
+_DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
+    os.path.join(os.path.dirname(__file__), "test_cases"))
+    if f.endswith(".py") and not f.startswith("_")]
 
 
 if __name__ == "__main__":
