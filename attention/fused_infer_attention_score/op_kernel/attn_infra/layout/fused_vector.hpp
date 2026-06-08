@@ -68,14 +68,14 @@ public:
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape shape() const
+    Shape &shape()
     {
         return shape_;
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape &shape()
+    Shape shape() const
     {
         return shape_;
     }
@@ -110,14 +110,14 @@ public:
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index stride(int idx) const
+    typename Stride::Index &stride(int idx)
     {
         return stride_[idx];
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index stride(int idx) const
     {
         return stride_[idx];
     }

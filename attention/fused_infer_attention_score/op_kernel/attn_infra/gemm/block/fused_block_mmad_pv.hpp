@@ -87,12 +87,12 @@ public:
     static constexpr uint32_t BLOCK_SIZE = 16;
     static constexpr uint32_t EMBED_SPLIT_SIZE = 128;
     static constexpr uint32_t UNIT_BLOCK_STACK_NUM = 4;
-    static constexpr uint32_t KV_BASE_BLOCK = 512;
-    static constexpr uint32_t KV_SPLIT_SIZE = 128;
-    static constexpr uint32_t LOAB_BLOCK = 1;
     static constexpr uint32_t COORD_DIM0 = 0;
     static constexpr uint32_t COORD_DIM1 = 1;
     static constexpr uint32_t COORD_DIM2 = 2;
+    static constexpr uint32_t KV_BASE_BLOCK = 512;
+    static constexpr uint32_t KV_SPLIT_SIZE = 128;
+    static constexpr uint32_t LOAB_BLOCK = 1;
 
     // Check LayoutC
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
@@ -311,13 +311,13 @@ protected:
     CopyL1ToL0B copyL1ToL0B;
     CopyL0CToGm copyL0CToGm;
 
-    uint32_t l1PPingPongFlag = 0;
-    uint32_t l0CPingPongFlag = 0;
-    uint32_t l0ABPingPongFlag = 0;
-
     uint32_t l1MDynamic = 0;
     uint32_t l1NDynamic = 0;
     uint32_t l1KDynamic = 0;
+
+    uint32_t l1PPingPongFlag = 0;
+    uint32_t l0CPingPongFlag = 0;
+    uint32_t l0ABPingPongFlag = 0;
 
     uint32_t blockStartOffset = 0;
     uint32_t maxKVStackLen = 0;

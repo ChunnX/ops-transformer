@@ -12,11 +12,11 @@
 #define FUSED_BLOCK_MMAD_QK_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"
 #include "../../../attn_infra/fused_coord.hpp"
 #include "../../../attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/fused_helper.hpp"
-#include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
 ////////////////////////////////////////////////////////////////////
@@ -82,11 +82,11 @@ public:
     static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = L0A_SIZE / STAGES;
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = L0B_SIZE / STAGES;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_SIZE / STAGES;
+    static constexpr uint32_t KV_BASE_BLOCK = 512;
+    static constexpr uint32_t KV_SPLIT_SIZE = 128;
     static constexpr uint32_t BLOCK_SIZE = 16;
     static constexpr uint32_t EMBED_SPLIT_SIZE = 128;
     static constexpr uint32_t UNIT_BLOCK_STACK_NUM = 4;
-    static constexpr uint32_t KV_BASE_BLOCK = 512;
-    static constexpr uint32_t KV_SPLIT_SIZE = 128;
     static constexpr uint32_t COORD_DIM0 = 0;
     static constexpr uint32_t COORD_DIM1 = 1;
     static constexpr uint32_t COORD_DIM2 = 2;
@@ -114,9 +114,6 @@ public:
     }
 
     __aicore__ inline
-    ~BlockMmad() {}
-
-    __aicore__ inline
     void loadQGM(
         AscendC::GlobalTensor<ElementA> gA,
         LayoutA layoutA,
@@ -134,6 +131,9 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
     }
+
+    __aicore__ inline
+    ~BlockMmad() {}
     
     __aicore__ inline
     void setBlockParam(uint32_t stackSeqTile, uint32_t &blockStart, uint32_t &blockEnd, uint32_t &curBlockTotalNum, uint32_t blockSize){
@@ -148,11 +148,11 @@ public:
     }
 
     __aicore__ inline
-    void getBlockShape(GemmCoord &actualShape, uint32_t nL1Idx, uint32_t nL1Loop, uint32_t stackSeqTile)
+    void getBlockShape(GemmCoord &actualShape, uint32_t nL1Index, uint32_t nL1Loop, uint32_t stackSeqTile)
     {
         uint32_t nSplitSize = l1NDynamic;
-        if (nL1Idx == nL1Loop - 1U) {
-            nSplitSize = stackSeqTile - nL1Idx * l1NDynamic;
+        if (nL1Index == nL1Loop - 1U) {
+            nSplitSize = stackSeqTile - nL1Index * l1NDynamic;
         }
         actualShape[COORD_DIM1] = nSplitSize;
     }
@@ -275,26 +275,26 @@ public:
 
                     LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL0Actual, kL0Actual);
                     MatrixCoord l1ATileCoord{mL0Idx * L0TileShape::M, kL0Idx * L0TileShape::K};
-                    auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1ATileCoord)];
+                    auto l1ATileTemp = l1ATensor[layoutAInL1.GetOffset(l1ATileCoord)];
 
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
-                    copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATile, layoutAInL0, layoutAInL1);
+                    copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATileTemp, layoutAInL0, layoutAInL1);
 
                     LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nActual);
                     MatrixCoord l1BTileCoord{kL0Idx * L0TileShape::K, 0};
-                    auto l1BTile = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
+                    auto l1BTileTemp = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
                     if ((mL0Idx == 0U) && (kL0Idx == 0U)) {
                         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KvPingPongFlag);
                     }
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
-                    copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTile, layoutBInL0, layoutBInL1);
+                    copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTileTemp, layoutBInL0, layoutBInL1);
                     if ((mL0Idx == mL0Loop - 1U) && (kL0Idx == kL0Loop - 1U)) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KvPingPongFlag);
                     }
 
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
-                    bool initMmad = (kL0Idx == 0U);
+                    bool initMmadFlag = (kL0Idx == 0U);
                     uint32_t mL0Align = (mL0Actual + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
                     tileMmad(l0CTensor[l0CPingPongFlag],
                         l0ATensor[l0ABPingPongFlag],
@@ -302,7 +302,7 @@ public:
                         mL0Align,
                         nActual,
                         kL0Actual,
-                        initMmad);
+                        initMmadFlag);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
                     l0ABPingPongFlag = 1U - l0ABPingPongFlag;
@@ -311,8 +311,8 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(EVENT_ID0);
                 MatrixCoord gmCTileCoord{mL0Idx * L0TileShape::M, nL1Idx * l1NDynamic};
                 LayoutC layoutCTile = layoutC.GetTileLayout(MakeCoord(mL0Actual, nActual));
-                auto layoutInL0C = LayoutCInL0::MakeLayoutInL0C(MakeCoord(mL0Actual, nActual));
-                copyL0CToGm(gC[layoutC.GetOffset(gmCTileCoord)], l0CTensor[l0CPingPongFlag], layoutCTile, layoutInL0C);
+                auto l0CLayout = LayoutCInL0::MakeLayoutInL0C(MakeCoord(mL0Actual, nActual));
+                copyL0CToGm(gC[layoutC.GetOffset(gmCTileCoord)], l0CTensor[l0CPingPongFlag], layoutCTile, l0CLayout);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CPingPongFlag);
                 l0CPingPongFlag = 1U - l0CPingPongFlag;
             }
