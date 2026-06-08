@@ -48,3 +48,9 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# 缓存文件
+*.cache
+*.cache/
+**/.cache/
+**/.cache/*
