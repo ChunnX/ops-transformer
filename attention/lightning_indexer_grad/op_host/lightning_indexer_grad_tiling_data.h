@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_tiling_data.h
@@ -139,5 +139,22 @@ private:
 
     LigParaInfo opParamInfo;
 };
+
+BEGIN_TILING_DATA_DEF(LightningIndexerGradArch35TilingData)
+TILING_DATA_FIELD_DEF(int64_t, batchSize)
+TILING_DATA_FIELD_DEF(int64_t, headNumQ)
+TILING_DATA_FIELD_DEF(int64_t, headDim) // inputLayout: 0 -> BSND, 1 -> TND
+TILING_DATA_FIELD_DEF(int64_t, querySeqLen)
+TILING_DATA_FIELD_DEF(int64_t, keySeqLen)
+TILING_DATA_FIELD_DEF(int64_t, tileTopK)
+TILING_DATA_FIELD_DEF(int64_t, tileSeqQ)
+TILING_DATA_FIELD_DEF(int64_t, totalQuerySeqLength)
+TILING_DATA_FIELD_DEF(int64_t, totalKeySeqLength)
+TILING_DATA_FIELD_DEF(int64_t, inputLayout)
+TILING_DATA_FIELD_DEF(int64_t, aivNum)
+TILING_DATA_FIELD_DEF(int64_t, topK)
+TILING_DATA_FIELD_DEF(int64_t, sparseMode)
+END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(LightningIndexerGrad, LightningIndexerGradArch35TilingData)
 } // namespace optiling
 #endif // LIGHTNING_INDEXER_GRAD_TILING_DATA_H_
