@@ -543,7 +543,9 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
             }
         }
-        SyncAll();
+    }
+    SyncAll();
+    if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
             ProcessFlashDecode();
         }
