@@ -27,7 +27,7 @@
   \begin{cases}
       SoftMax(x),      & normType = 0 \\
       Sigmoid(x),      & normType = 1 \\
-      Softplus(x),     & normType = 2\quad \text{(仅<term>Ascend 950PR/Ascend 950DT</term>支持)}
+      Softplus(x),     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
   \end{cases}
   $$
 
