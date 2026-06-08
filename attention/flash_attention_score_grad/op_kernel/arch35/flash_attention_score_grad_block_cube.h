@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_block_cube.h
@@ -137,6 +137,8 @@ public:
     constexpr static uint32_t DKV_L0_SPLIT_K = GET_DKV_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEN, HEAD_DIM_ALIGN>();
     constexpr static bool ENABLE_UNITFLAG =
         HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned768) && !IS_DETER_OLD(DETER_SPARSE_TYPE);
+    constexpr static bool IS_NZ_OUT =
+        GET_IS_NZ_OUT<INPUT_TYPE>(SPLIT_AXIS, HEAD_DIM_ALIGN, IS_TND, IS_ROPE, IS_DETER_OLD(DETER_SPARSE_TYPE));
     // input global mmemory
     GlobalTensor<INPUT_TYPE> queryGm, keyGm, valueGm, queryRopeGm, keyRopeGm;
     GlobalTensor<OUTDTYPE> dyGm;
@@ -500,10 +502,17 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         if constexpr (IS_L1_PRELOAD) {
             AscendC::Mutex::Lock<PIPE_MTE1>(vL1BufMutexId);
         }
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
-                    L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
-            dyL1Buffer.GetTensor<INPUT_TYPE>(), vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
-            mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+                L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
+                dyL1Buffer.GetTensor<INPUT_TYPE>(), vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
+                mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+                L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
+                dyL1Buffer.GetTensor<INPUT_TYPE>(), vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
+                mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
 
         if (!IS_L1_REUSE && !IS_L1_PRELOAD && n == nLoops - 1) {
             dyL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -645,12 +654,17 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyVQuant(LocalTenso
             true,
             UNITFLAG_ENABLE
         };
-
-        MatmulBase<OUTDTYPE, OUTDTYPE, CALC_TYPE, CUBE_BASEM, baseN,
-                    L0_SINGLE_BUFFER_SIZE / baseN / sizeof(OUTDTYPE), ABLayout::MK, ABLayout::KN>(
-            dyL1Buffer.GetTensor<OUTDTYPE>(), vL1Buffer.template GetTensor<OUTDTYPE>(), l0aBuf, l0bBuf,
-            mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
-
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<OUTDTYPE, OUTDTYPE, CALC_TYPE, CUBE_BASEM, baseN,
+                L0_SINGLE_BUFFER_SIZE / baseN / sizeof(OUTDTYPE), ABLayout::MK, ABLayout::KN>(
+                dyL1Buffer.GetTensor<OUTDTYPE>(), vL1Buffer.template GetTensor<OUTDTYPE>(), l0aBuf, l0bBuf,
+                mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulK<OUTDTYPE, OUTDTYPE, CALC_TYPE, CUBE_BASEM, baseN,
+                L0_SINGLE_BUFFER_SIZE / baseN / sizeof(OUTDTYPE), ABLayout::MK, ABLayout::KN>(
+                dyL1Buffer.GetTensor<OUTDTYPE>(), vL1Buffer.template GetTensor<OUTDTYPE>(), l0aBuf, l0bBuf,
+                mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
         if (!IS_L1_REUSE && !IS_L1_PRELOAD && n == nLoops - 1) {
             dyL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         }
@@ -865,10 +879,17 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             true,
             ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
-            qL1Buffer.GetTensor<INPUT_TYPE>(), kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
-            mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+                qL1Buffer.GetTensor<INPUT_TYPE>(), kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
+                mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
+                L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
+                qL1Buffer.GetTensor<INPUT_TYPE>(), kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf,
+                mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
     
         if  (!IS_L1_REUSE && !IS_L1_PRELOAD && n == nLoops - 1) {  // qL1不需要二次datacopy
             qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -936,51 +957,73 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE
         Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[gmNOffset], mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
     } else {
         // fixp2GM
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = realN;
-        // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-        fixpipeParams.mSize = runInfo.commonRunInfo.s1RealSize;
-        // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T)
-        // 源Nz矩阵中相邻大Z排布的起始地址偏移
-        fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
-        // mmResUb上两行之间的间隔，单位：element。
-        fixpipeParams.dstStride = SPLIT_AXIS == BN2 ? AlignTo16(constInfo.commonConstInfo.dSize) : constInfo.mm3Ka;
-        // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-        fixpipeParams.dualDstCtl = 0;
-        if constexpr (IS_FP8_INPUT) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
-            for (int i = 0; i < sizeof(FagCVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTiling = *tempTilingSSbuf;
+        if (!constInfo.isNzOut) {
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+            fixpipeParams.nSize = realN;
+            fixpipeParams.mSize = runInfo.commonRunInfo.s1RealSize;
+            fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
+            fixpipeParams.dstStride = SPLIT_AXIS == BN2 ? AlignTo16(constInfo.commonConstInfo.dSize) : constInfo.mm3Ka;
+            fixpipeParams.dualDstCtl = 0;
+            fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+            fixpipeParams.params.ndNum = 1;
+            fixpipeParams.params.srcNdStride = 0;
+            fixpipeParams.params.dstNdStride = 0;
+            constexpr static FixpipeConfig DQ_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
+            bool needAtomic = (SPLIT_AXIS != BN2) || (IS_BN2_MULTIBLK && !runInfo.isFirstS1Outer);
+            if (needAtomic) {
+                SetAtomicAdd<CALC_TYPE>();
             }
-            fixpipeParams.quantPre = QuantMode_t::QF322F32_PRE;
-            float tmp = runInfo.quantScaleInfo.deqScaleKValue / sharedParams.qScaleDs;
-            uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
-            fixpipeParams.deqScalar = ans;
-        }
-        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        constexpr static FixpipeConfig DQ_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
-        bool needAtomic = (SPLIT_AXIS != BN2) || (IS_BN2_MULTIBLK && !runInfo.isFirstS1Outer);
-        if (needAtomic) {
-            SetAtomicAdd<CALC_TYPE>();
-        }
-        if constexpr (IS_ROPE) {
-            Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[runInfo.queryOffsetWithRope],
-                                                    mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+            if constexpr (IS_ROPE) {
+                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[runInfo.queryOffsetWithRope],
+                                                        mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+            } else {
+                int64_t offset = SPLIT_AXIS == BN2 ? GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN : runInfo.commonRunInfo.queryOffset;
+                if constexpr (IS_BN2_MULTIBLK) {
+                    offset = GetBlockIdx() * (AlignTo128(constInfo.commonConstInfo.s1Size) * HEAD_DIM_ALIGN);
+                    offset += runInfo.commonRunInfo.s1oIdx * CUBE_BASEM * HEAD_DIM_ALIGN;
+                }
+                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset],
+                                                        mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+            }
+            if (needAtomic) {
+                SetAtomicNone();
+            }
         } else {
-            int64_t offset = SPLIT_AXIS == BN2 ? GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN : runInfo.commonRunInfo.queryOffset;
-            if constexpr (IS_BN2_MULTIBLK) {
-                offset = GetBlockIdx() * (AlignTo128(constInfo.commonConstInfo.s1Size) * HEAD_DIM_ALIGN);
-                offset += runInfo.commonRunInfo.s1oIdx * CUBE_BASEM * HEAD_DIM_ALIGN;
+            FixpipeParamsC310<CO2Layout::NZ> fixpipeParams;
+            fixpipeParams.nSize = constInfo.dAlign16;
+            fixpipeParams.mSize = runInfo.commonRunInfo.s1RealSize;
+            fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
+            fixpipeParams.dstStride = fixpipeParams.mSize * C0_SIZE;
+            fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+            constexpr static FixpipeConfig DQ_FIXPIPE_CONFIG = {CO2Layout::NZ, IS_WRITE_UB};
+            SetAtomicAdd<CALC_TYPE>();
+            int64_t offset = 0;
+            if constexpr (IS_TND) {
+                if (unlikely(runInfo.commonRunInfo.boIdx == 0)) {
+                    offset = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize *
+                                 runInfo.commonRunInfo.actualS1Size * constInfo.dAlign16 +
+                             runInfo.commonRunInfo.goIdx * runInfo.commonRunInfo.actualS1Size * constInfo.dAlign16 +
+                             runInfo.commonRunInfo.s1oIdx * CUBE_BASEM * constInfo.dAlign16;
+                } else {
+                    offset = ((__gm__ int64_t *)constInfo.seqS1_addr)[runInfo.commonRunInfo.boIdx - 1] *
+                                 constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.dAlign16 +
+                             runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize *
+                                 runInfo.commonRunInfo.actualS1Size * constInfo.dAlign16 +
+                             runInfo.commonRunInfo.goIdx * runInfo.commonRunInfo.actualS1Size * constInfo.dAlign16 +
+                             runInfo.commonRunInfo.s1oIdx * CUBE_BASEM * constInfo.dAlign16;
+                }
+            } else {
+                offset = runInfo.commonRunInfo.boIdx * constInfo.n2Size * constInfo.commonConstInfo.gS1 *
+                             constInfo.dAlign16 +
+                         runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gS1 * constInfo.dAlign16 +
+                         runInfo.commonRunInfo.goIdx * constInfo.commonConstInfo.s1Size * constInfo.dAlign16 +
+                         runInfo.commonRunInfo.s1oIdx * CUBE_BASEM * constInfo.dAlign16;
             }
-            Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset],
-                                                    mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-        }
-        if (needAtomic) {
+            // PRINTF("offset = %d, nOffset = %d\n", offset,
+            //       runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize *
+            //                      runInfo.commonRunInfo.actualS1Size * constInfo.dAlign16);
+            Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset], mm3L0CBuffer.GetTensor<CALC_TYPE>(),
+                                                     fixpipeParams);
             SetAtomicNone();
         }
     }
@@ -1064,12 +1107,21 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             true,
             ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
-        if constexpr (IS_FP8_INPUT) {
-            MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, DQ_L0_SPLIT_K, CUBE_BASEN, ABLayout::MK, ABLayout::KN>(
-                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf,
+                mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
+                l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
-                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
+                l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         bool isCopyRight = true;
         if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
@@ -1161,8 +1213,22 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             true,
             true
         };
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
-            dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
+                l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
+                l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf,
+                l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
         
         bool isCopyRight = true;
         if constexpr (IS_L1_REUSE || IS_L1_PRELOAD) {
@@ -1225,53 +1291,87 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
     } else {
         // fixp2gm
         if (isFixpOut) {
-            bool needAtomic = SPLIT_AXIS == BN2GS1S2 ||
-                                (!IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && runInfo.isS2IdxNoChange) ||
-                                (SPLIT_AXIS == BN2S2 && !runInfo.isFirstBlock && (runInfo.specialS2Index != -1));
-            if constexpr (IS_BN2_MULTIBLK) {
-                needAtomic = (!IS_DKV_RESIDENT_L0C && runInfo.isS2IdxNoChange);
-            }
-            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-            fixpipeParams.nSize = realN;
-            fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
-            fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
-            fixpipeParams.dstStride = SPLIT_AXIS != BN2GS1S2 ? AlignTo16(constInfo.commonConstInfo.dSize) : constInfo.mm4Kb;
-            fixpipeParams.dualDstCtl = 0;
-            if constexpr (IS_FP8_INPUT) {
-                fixpipeParams.quantPre = QuantMode_t::QF322F32_PRE;
-                float tmp = runInfo.quantScaleInfo.deqScaleQValue / sharedParams.qScaleDs;
-                uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
-                fixpipeParams.deqScalar = ans;
-            }
-            fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
-            fixpipeParams.params.ndNum = 1;
-            fixpipeParams.params.srcNdStride = 0;
-            fixpipeParams.params.dstNdStride = 0;
-            constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
-            if (needAtomic) {
-                SetAtomicAdd<CALC_TYPE>();
-            }
-            if constexpr (IS_ROPE) {
-                Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.keyOffsetWithRope],
-                                                        dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-            } else {
-                int64_t offset = 0;
-                if constexpr (SPLIT_AXIS == BN2S2) {
-                    if (runInfo.specialS2Index != -1) {
-                        offset = runInfo.specialS2Index * CUBE_BASEM * HEAD_DIM_ALIGN * NUM_TWO;
-                    } else {
-                        offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
-                    }
-                } else if constexpr (SPLIT_AXIS == BN2) {
-                    offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
+            if (!constInfo.isNzOut) {
+                bool needAtomic = SPLIT_AXIS == BN2GS1S2 ||
+                                    (!IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && runInfo.isS2IdxNoChange) ||
+                                    (SPLIT_AXIS == BN2S2 && !runInfo.isFirstBlock && (runInfo.specialS2Index != -1));
+                if constexpr (IS_BN2_MULTIBLK) {
+                    needAtomic = (!IS_DKV_RESIDENT_L0C && runInfo.isS2IdxNoChange);
+                }
+                FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+                fixpipeParams.nSize = realN;
+                fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
+                fixpipeParams.srcStride = runInfo.commonRunInfo.s2AlignedSize;
+                fixpipeParams.dstStride = SPLIT_AXIS != BN2GS1S2 ? AlignTo16(constInfo.commonConstInfo.dSize) : constInfo.mm4Kb;
+                fixpipeParams.dualDstCtl = 0;
+                if constexpr (IS_FP8_INPUT) {
+                    fixpipeParams.quantPre = QuantMode_t::QF322F32_PRE;
+                    float tmp = runInfo.quantScaleInfo.deqScaleQValue / sharedParams.qScaleDs;
+                    uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
+                    fixpipeParams.deqScalar = ans;
+                }
+                fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+                fixpipeParams.params.ndNum = 1;
+                fixpipeParams.params.srcNdStride = 0;
+                fixpipeParams.params.dstNdStride = 0;
+                constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
+                if (needAtomic) {
+                    SetAtomicAdd<CALC_TYPE>();
+                }
+                if constexpr (IS_ROPE) {
+                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.keyOffsetWithRope],
+                                                            dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
                 } else {
-                    offset = runInfo.commonRunInfo.keyOffset;
+                    int64_t offset = 0;
+                    if constexpr (SPLIT_AXIS == BN2S2) {
+                        if (runInfo.specialS2Index != -1) {
+                            offset = runInfo.specialS2Index * CUBE_BASEM * HEAD_DIM_ALIGN * NUM_TWO;
+                        } else {
+                            offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
+                        }
+                    } else if constexpr (SPLIT_AXIS == BN2) {
+                        offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
+                    } else {
+                        offset = runInfo.commonRunInfo.keyOffset;
+                    }
+
+                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset],
+                                                            dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+                }
+                if (needAtomic) {
+                    SetAtomicNone();
+                }
+            } else {
+                FixpipeParamsC310<CO2Layout::NZ> fixpipeParams;
+                fixpipeParams.nSize = constInfo.dAlign16;
+                fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
+                fixpipeParams.srcStride = runInfo.commonRunInfo.s2AlignedSize;
+                fixpipeParams.dstStride = fixpipeParams.mSize * C0_SIZE;
+                fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+                constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::NZ, false};
+                SetAtomicAdd<CALC_TYPE>();
+                int64_t offset = 0;
+                if constexpr (IS_TND) {
+                    if (unlikely(runInfo.commonRunInfo.boIdx == 0)) {
+                        offset =
+                            runInfo.commonRunInfo.n2oIdx * runInfo.commonRunInfo.actualS2Size * constInfo.dAlign16 +
+                            runInfo.s2oIdx * CUBE_BASEN * constInfo.dAlign16;
+                    } else {
+                        offset =
+                            ((__gm__ int64_t *)constInfo.seqS2_addr)[runInfo.commonRunInfo.boIdx - 1] *
+                                constInfo.n2Size * constInfo.dAlign16 +
+                            runInfo.commonRunInfo.n2oIdx * runInfo.commonRunInfo.actualS2Size * constInfo.dAlign16 +
+                            runInfo.s2oIdx * CUBE_BASEN * constInfo.dAlign16;
+                    }
+                } else {
+                    offset = runInfo.commonRunInfo.boIdx * constInfo.n2Size * constInfo.commonConstInfo.s2Size *
+                                 constInfo.dAlign16 +
+                             runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.s2Size * constInfo.dAlign16 +
+                             runInfo.s2oIdx * CUBE_BASEN * constInfo.dAlign16;
                 }
 
                 Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset],
-                                                        dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-            }
-            if (needAtomic) {
+                                                         dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
                 SetAtomicNone();
             }
         }
@@ -1371,11 +1471,17 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             !enPartialSum,
             !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
-        if constexpr (IS_FP8_INPUT) {
-            MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEN, DKV_L0_SPLIT_K, CUBE_BASEM, ABLayout::MK, ABLayout::KN>(
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
                 dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -1461,8 +1567,19 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             true,
             true
         };
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
-            dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
         
         qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
 
@@ -1492,74 +1609,107 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyFixpout(typename DqkvResPos<T, IS_WRITE
                                                 Buffer<BufferType::L0C> &dvL0CBuffer, FagConstInfo &constInfo, FagRunInfo &runInfo,
                                                 uint32_t realN, uint64_t gmNOffset, bool isFixpOut)
 {
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-    if constexpr ((SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) || IS_FP32_INPUT) {
-        fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
-        fixpipeParams.nSize = realN;
-    } else {
-        fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
-        fixpipeParams.nSize = realN;
-    }    
-    fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
-    fixpipeParams.dstStride = (SPLIT_AXIS == BN2S2 || IS_BN2_MULTIBLK) ? AlignTo16(constInfo.commonConstInfo.dSizeV) : constInfo.commonConstInfo.mm1Kb;
-    fixpipeParams.dualDstCtl = 1;
-    fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
-    constexpr static FixpipeConfig DV_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
-    if constexpr (!IS_WRITE_UB) {
-        // S1S2模板与BN2模板的dv均会输出到gm
-        if constexpr (SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) {
-            if constexpr (IsSameType<T, half>::value) {
-                fixpipeParams.quantPre = QuantMode_t::F322F16;
-            } else if constexpr (IsSameType<T, bfloat16_t>::value) {
-                fixpipeParams.quantPre = QuantMode_t::F322BF16;
-            }
-            Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[runInfo.commonRunInfo.valueOffset + gmNOffset],
-                                                    dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-        } else if constexpr (IS_BN2_MULTIBLK) {
-            if (isFixpOut) {
-                bool needAtomic = ((!IS_DKV_RESIDENT_L0C) && runInfo.isS2IdxNoChange && IS_BN2_MULTIBLK);
-                if (needAtomic) {
-                    SetAtomicAdd<CALC_TYPE>();
+    if (!constInfo.isNzOut) {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        if constexpr ((SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) || IS_FP32_INPUT) {
+            fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
+            fixpipeParams.nSize = realN;
+        } else {
+            fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
+            fixpipeParams.nSize = realN;
+        }    
+        fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
+        fixpipeParams.dstStride = (SPLIT_AXIS == BN2S2 || IS_BN2_MULTIBLK) ? AlignTo16(constInfo.commonConstInfo.dSizeV) : constInfo.commonConstInfo.mm1Kb;
+        fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+        constexpr static FixpipeConfig DV_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
+        if constexpr (!IS_WRITE_UB) {
+            // S1S2模板与BN2模板的dv均会输出到gm
+            if constexpr (SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) {
+                if constexpr (IsSameType<T, half>::value) {
+                    fixpipeParams.quantPre = QuantMode_t::F322F16;
+                } else if constexpr (IsSameType<T, bfloat16_t>::value) {
+                    fixpipeParams.quantPre = QuantMode_t::F322BF16;
                 }
-                int64_t offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
-                Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[offset],
-                                                            dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-                if (needAtomic) {
-                    SetAtomicNone();
-                }
-            }
-        } else if constexpr (SPLIT_AXIS == BN2GS1S2) {
-            if (isFixpOut) {
-                SetAtomicAdd<CALC_TYPE>();
                 Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[runInfo.commonRunInfo.valueOffset + gmNOffset],
                                                         dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-                SetAtomicNone();
-            }
-        } else { // BNS2
-            if (isFixpOut) {
-                bool needAtomic =
-                    ((!IS_DKV_RESIDENT_L0C) && runInfo.isS2IdxNoChange && !isDkvL0CResidentForD192Dv128) ||
-                    (!runInfo.isFirstBlock && (runInfo.specialS2Index != -1));
-                if (needAtomic) {
-                    SetAtomicAdd<CALC_TYPE>();
+            } else if constexpr (IS_BN2_MULTIBLK) {
+                if (isFixpOut) {
+                    bool needAtomic = ((!IS_DKV_RESIDENT_L0C) && runInfo.isS2IdxNoChange && IS_BN2_MULTIBLK);
+                    if (needAtomic) {
+                        SetAtomicAdd<CALC_TYPE>();
+                    }
+                    int64_t offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
+                    Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[offset],
+                                                                dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+                    if (needAtomic) {
+                        SetAtomicNone();
+                    }
                 }
-                int64_t offset = (runInfo.specialS2Index != -1) ? (runInfo.specialS2Index * CUBE_BASEN * HEAD_DIM_ALIGN * NUM_TWO + CUBE_BASEN * HEAD_DIM_ALIGN) :
-                    GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN;
-                Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[offset],
-                                                        dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
-                if (needAtomic) {
+            } else if constexpr (SPLIT_AXIS == BN2GS1S2) {
+                if (isFixpOut) {
+                    SetAtomicAdd<CALC_TYPE>();
+                    Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[runInfo.commonRunInfo.valueOffset + gmNOffset],
+                                                            dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
                     SetAtomicNone();
                 }
+            } else { // BNS2
+                if (isFixpOut) {
+                    bool needAtomic =
+                        ((!IS_DKV_RESIDENT_L0C) && runInfo.isS2IdxNoChange && !isDkvL0CResidentForD192Dv128) ||
+                        (!runInfo.isFirstBlock && (runInfo.specialS2Index != -1));
+                    if (needAtomic) {
+                        SetAtomicAdd<CALC_TYPE>();
+                    }
+                    int64_t offset = (runInfo.specialS2Index != -1) ? (runInfo.specialS2Index * CUBE_BASEN * HEAD_DIM_ALIGN * NUM_TWO + CUBE_BASEN * HEAD_DIM_ALIGN) :
+                        GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN;
+                    Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[offset],
+                                                            dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+                    if (needAtomic) {
+                        SetAtomicNone();
+                    }
+                }
+            }
+        } else {
+            if (isFixpOut) {
+                fixpipeParams.nSize = (realN + 7) >> 3 << 3;
+                Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[gmNOffset], dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
             }
         }
     } else {
+        FixpipeParamsC310<CO2Layout::NZ> fixpipeParams;
+        fixpipeParams.nSize = constInfo.dvAlign16;
+        fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
+        fixpipeParams.srcStride = runInfo.commonRunInfo.s2AlignedSize;
+        fixpipeParams.dstStride = fixpipeParams.mSize * C0_SIZE;
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+        constexpr static FixpipeConfig DV_FIXPIPE_CONFIG = {CO2Layout::NZ, false};
+        SetAtomicAdd<CALC_TYPE>();
         if (isFixpOut) {
-            fixpipeParams.nSize = (realN + 7) >> 3 << 3;
-            Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[gmNOffset], dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+            int64_t offset = 0;
+            if constexpr (IS_TND) {
+                if (unlikely(runInfo.commonRunInfo.boIdx == 0)) {
+                    offset = runInfo.commonRunInfo.n2oIdx * runInfo.commonRunInfo.actualS2Size * constInfo.dvAlign16 +
+                             runInfo.s2oIdx * CUBE_BASEN * constInfo.dvAlign16;
+                } else {
+                    offset = ((__gm__ int64_t *)constInfo.seqS2_addr)[runInfo.commonRunInfo.boIdx - 1] *
+                                 constInfo.n2Size * constInfo.dvAlign16 +
+                             runInfo.commonRunInfo.n2oIdx * runInfo.commonRunInfo.actualS2Size * constInfo.dvAlign16 +
+                             runInfo.s2oIdx * CUBE_BASEN * constInfo.dvAlign16;
+                }
+            } else {
+                offset = runInfo.commonRunInfo.boIdx * constInfo.n2Size * constInfo.commonConstInfo.s2Size *
+                             constInfo.dvAlign16 +
+                         runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.s2Size * constInfo.dvAlign16 +
+                         runInfo.s2oIdx * CUBE_BASEN * constInfo.dvAlign16;
+            }
+            Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[offset + gmNOffset], dvL0CBuffer.GetTensor<CALC_TYPE>(),
+                                                     fixpipeParams);
         }
+        SetAtomicNone();
     }
 }
 
@@ -1646,12 +1796,21 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             !enPartialSum,
             !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
-        if constexpr (IS_FP8_INPUT) {
-            MatmulBase<OUTDTYPE, OUTDTYPE, CALC_TYPE, CUBE_BASEN, DKV_L0_SPLIT_K, CUBE_BASEM, ABLayout::MK, ABLayout::KN>(
-                pL1Buffer.GetTensor<OUTDTYPE>(), dYL1Tensor, l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         } else {
-            MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
-                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
         }
         dYL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
 
@@ -1733,8 +1892,22 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             true,
             true
         };
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
-            pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        if constexpr (HEAD_DIM_ALIGN <= CUBE_BASEN && !IS_FP32_INPUT) {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if constexpr (IS_FP32_INPUT) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM,
+                CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
+                pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf,
+                l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
         
         dYL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
 
