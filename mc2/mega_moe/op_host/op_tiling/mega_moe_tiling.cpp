@@ -149,6 +149,26 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
     return opQuantMode;
 }
 
+static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, MegaMoeConfig &config)
+{
+    auto attrs = context->GetAttrs();
+    auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
+    int64_t combineQuantOutType = static_cast<int64_t>(*combineQuantModePtr);
+
+    int64_t combineQuantMode;
+    if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_NO_QUANT) {
+        combineQuantMode = COMBINE_QUANT_OUT_TYPE_NO_QUANT;
+    } else if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_E5M2) {
+        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E5M2;
+    } else if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_E4M3FN) {
+        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E4M3FN;
+    } else {
+        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E5M2;
+    }
+
+    return combineQuantMode;
+}
+
 static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &config,
     MegaMoeTilingData *tilingData, const char *nodeName)
 {
@@ -156,8 +176,9 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
@@ -303,9 +324,13 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
-    OP_TILING_CHECK(*combineQuantModePtr != 0,
+    OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
+                    *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
+                    *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E4M3FN,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineQuantMode",
-            std::to_string(*combineQuantModePtr).c_str(), "0"),
+            std::to_string(*combineQuantModePtr).c_str(),
+            (std::string("Invalid combineQuantMode(") + std::to_string(*combineQuantModePtr) +
+             "), only support no_quant(0), fp8_e5m2(3) and fp8_e4m3fn(4).").c_str()),
         return ge::GRAPH_FAILED);
 
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
