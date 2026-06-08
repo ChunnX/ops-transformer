@@ -34,6 +34,7 @@ public:
     static constexpr LI_LAYOUT Q_LAYOUT_T = QLIT::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
     static constexpr bool PAGE_ATTENTION = QLIT::pageAttention;
+    static constexpr bool IS_MXFP8 = QLIT::isMxFp8;
     using W_T = typename QLIT::weightType;
     using SCALE_T = typename QLIT::scaleType;
     using QK_T = typename QLIT::qkType;
@@ -147,10 +148,12 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     weightUB_ = weightBuf_.Get<W_T>();
     pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightFloatUB_ = weightFloatBuf_.Get<float>();
-    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
-    kScaleUB_ = kScaleBuf_.Get<SCALE_T>();
-    pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
-    qScaleUB_ = qScaleBuf_.Get<SCALE_T>();
+    if constexpr (!IS_MXFP8) {
+        pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
+        kScaleUB_ = kScaleBuf_.Get<SCALE_T>();
+        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
+        qScaleUB_ = qScaleBuf_.Get<SCALE_T>();
+    }
     
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
     vec1OutUB_ = outBuf_.Get<uint16_t>();
@@ -171,8 +174,10 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
-    //刷-1
-    Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_ * 16);
+    //刷-1（MXFP8 场景不需要 kScale buffer）
+    if constexpr (!IS_MXFP8) {
+        Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_ * 16);
+    }
 }
 
 template <typename QLIT>
@@ -349,29 +354,33 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         wDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - wDataCopyExtParams.blockLen) / 32;
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], wDataCopyExtParams, padWeightsParams);
-    
-        //qScaleGm  -->  qScaleUB_
-        DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-        DataCopyExtParams qDataCopyExtParams;
-        qDataCopyExtParams.blockCount = curAivS1ProcNum;
-        qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
-        qDataCopyExtParams.srcStride = 0;
-        qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
-        DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
-                    qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);
+
+        if constexpr (!IS_MXFP8) {
+            //qScaleGm  -->  qScaleUB_
+            DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
+            DataCopyExtParams qDataCopyExtParams;
+            qDataCopyExtParams.blockCount = curAivS1ProcNum;
+            qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
+            qDataCopyExtParams.srcStride = 0;
+            qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
+            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
+                        qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);
+        }
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
     }
 
-    if ((info.s2Idx - info.s2Start) % 16 == 0) {
-        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
-        uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_)
-                                           ? info.validS2Len - info.s2Idx * s2BaseSize_
-                                           : 16 * s2BaseSize_;
-        //kScaleGm  -->  kScaleUB_
-        GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, getLen);
-        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
-        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+    if constexpr (!IS_MXFP8) {
+        if ((info.s2Idx - info.s2Start) % 16 == 0) {
+            WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+            uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_)
+                                               ? info.validS2Len - info.s2Idx * s2BaseSize_
+                                               : 16 * s2BaseSize_;
+            //kScaleGm  -->  kScaleUB_
+            GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, getLen);
+            SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+            WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+        }
     }
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
@@ -382,22 +391,34 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(uint16_t))];
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
     auto weightFloatBase = weightFloatUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
-    auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
 
-    vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
-                                        qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)), 
-                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightFloatBase,
-                                        kScaleBase, (uint32_t)0,
-                                        qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
-                                        gSize_, curAivS1ProcNum);
-    if (info.isFirstS2InnerLoop) {
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+    if constexpr (IS_MXFP8) {
+        // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
+        vector1::BatchMulWeightAndReduceSum_NoScale(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
+                                                    qkBase, qkVLstride,
+                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
+                                                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
+                                                    weightFloatBase,
+                                                    gSize_, curAivS1ProcNum);
+    } else {
+        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
+        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+        vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
+                                            qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
+                                            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T), weightFloatBase,
+                                            kScaleBase, (uint32_t)0,
+                                            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
+                                            gSize_, curAivS1ProcNum);
     }
-    if ((info.s2Idx - info.s2Start) % 16 == 0) {
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+    if constexpr (!IS_MXFP8) {
+        if (info.isFirstS2InnerLoop) {
+            SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+        }
+        if ((info.s2Idx - info.s2Start) % 16 == 0) {
+            SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+        }
     }
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);

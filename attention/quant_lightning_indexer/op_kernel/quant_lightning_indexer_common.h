@@ -16,6 +16,13 @@
 #define QUANT_LIGHTNING_INDEXER_COMMON_H
 using namespace AscendC;
 
+// ===================== MXFP8 类型定义 =====================
+using FP8E4M3 = fp8_e4m3fn_t;
+using FP8E8M0 = fp8_e8m0_t;
+
+constexpr uint32_t MXFP8_BLOCK_SIZE = 32;  // 每32个D维度元素一个scale
+constexpr uint32_t FP8_TWO = 2;            // 2个fp8_e8m0打包成1个bf16
+
 // ===================== AIC:AIV核数比值宏定义 =====================
 // CUBE与VEC核数比值（AIC:AIV Ratio）
 // 默认值：2（表示1:2比值，一个AIC对应两个AIV，arch35原始配置）
@@ -43,6 +50,24 @@ struct QLIType {
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
     using weightType = W_T;
     using scaleType = SCALE_T;
+    static constexpr bool isMxFp8 = false;
+};
+
+// MXFP8 特化：Q/K为fp8_e4m3，scale为fp8_e8m0，mmad_mx输出float
+template <typename OUT_T, const bool PAGE_ATTENTION, LI_LAYOUT Q_LAYOUT_T, LI_LAYOUT K_LAYOUT_T,
+          typename W_T, typename... Args>
+struct QLIType<FP8E4M3, FP8E4M3, OUT_T, PAGE_ATTENTION, Q_LAYOUT_T, K_LAYOUT_T,
+               W_T, FP8E8M0, float, Args...> {
+    using queryType = FP8E4M3;
+    using keyType = FP8E4M3;
+    using qkType = float;
+    using outputType = OUT_T;
+    static constexpr bool pageAttention = PAGE_ATTENTION;
+    static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
+    static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
+    using weightType = W_T;
+    using scaleType = FP8E8M0;
+    static constexpr bool isMxFp8 = true;
 };
 
 struct RunInfo {
@@ -67,6 +92,7 @@ struct RunInfo {
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
     uint64_t tensorKeyScaleOffset;
+    uint64_t tensorQScaleOffset;   // MXFP8: qScale在Cube核使用的偏移
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
 
