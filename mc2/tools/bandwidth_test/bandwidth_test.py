@@ -69,7 +69,7 @@ def cal_hccl_buffsize(bs, h, ep_world_size):
     token_need_size_dispatch = ((token_actual_len + WIN_ADDR_ALIGN - 1) // WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN
     actual_size = (bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
 
-    hccl_buffsize = ceil(actual_size / 1024 / 1024) + 5 # 留出 5MB 空间余量
+    hccl_buffsize = ceil(actual_size / 1024 / 1024 /2) + 5 # 留出 5MB 空间余量
     return str(hccl_buffsize)
 
 if is_single_test:
@@ -112,10 +112,13 @@ input_dtype = torch.bfloat16 if x_dtype == "bf16" else torch.float16
 # endregion
 
 # region 算子模式配置
-mode = 0
+if is_bandwidth_test:
+    mode = 1
+else:
+    mode = 0
 # endregion
 
-comm_alg = "urma"
+comm_alg = "mte"
 
 # region 其他配置
 is_save_tensor_to_bin = False
@@ -221,16 +224,6 @@ def get_bandwidth_performance(profiling_path: str, data_size_bytes: int, world_s
         return None
 
     execution_times_us = np.array(execution_times)
-
-    if len(execution_times_us) > 100:
-        mean_val = np.mean(execution_times_us)
-        std_val = np.std(execution_times_us)
-        # 保留 mean ± 3*std 范围内的数据
-        mask = np.abs(execution_times_us - mean_val) <= 3 * std_val
-        filtered_count = np.sum(~mask)
-        if filtered_count > 0:
-            print(f"[FILTER] 过滤掉 {filtered_count} 个异常值（超过3倍标准差）")
-            execution_times_us = execution_times_us[mask]
             
     mean_time_us = np.mean(execution_times_us)
     min_time_us = np.min(execution_times_us)
@@ -306,6 +299,7 @@ def compile_model(model):
         print(f"启用aclnn静态内核（aclgraph），当前只支持全核")
         compiler_config.mode = "reduce-overhead"
         # 开启静态Kernel编译
+        compiler_config.debug.aclgraph.clone_input = False
         compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
         compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./static_kernel"
     
@@ -322,8 +316,12 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         super().__init__()
 
     def forward(self, x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+        local_loop = loop if is_bandwidth_test else 1
+        input_x = x
+        output = None
+        for _ in range(local_loop):
         output = npu_ops_transformer.ops.npu_bandwidth_test(
-            x=x,
+            x=input_x,
             dstrank_id=dstrank_id,
             group=group,
             world_size=world_size,
@@ -332,7 +330,9 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
             comm_alg=comm_alg,
             aiv_num=aiv_num
         )
-        return output
+        [y, receive_cnt] = output
+        input_x = y[:max_bs]
+    return output
 
 # endregion
 
@@ -554,10 +554,22 @@ def run_bandwidth_test_npu(queue, rank, x, dstrank_id, hcomm_info, test_max_bs=N
                             torch.exp(tensor)
                     prof.step()
     else:
+        torch._dynamo.reset()
+        tensor = torch.ones(10000, 10000).to(torch.float16).npu()
         model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
-        y, receive_cnt = model(**bandwidth_test_kwargs)
+        loop_time = 2
+        repeat_time = 1
+        warm_time = 1
+        with get_profiling(loop_time, repeat_time, warm_time, profiling_path) as prof:
+            for i in range(loop_time):
+                y, receive_cnt = model(**bandwidth_test_kwargs)
+                if i ==1:
+                    for _ in range(100):
+                        torch.exp(tensor)
+                prof.step()
     
     torch.npu.synchronize()
+    torch.npu.empty_cache()
     
     if destroy_comm:
         dist.destroy_process_group()
@@ -631,6 +643,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 
         torch.npu.synchronize()
         print(f"[DEBUG] device_{rank} 开始调用算子")
+        dist.barrier()
 
         config_profiling_path = f'{profiling_path}_config_{config_index}'
         
@@ -645,10 +658,22 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                             torch.exp(tensor)
                     prof.step()
         else:
+            torch._dynamo.reset()
+            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
-            y, receive_cnt = model(**bandwidth_test_kwargs)
-        
+            loop_time = 2
+            repeat_time = 1
+            warm_time = 1
+            with get_profiling(loop_time, repeat_time, warm_time, config_profiling_path) as prof:
+                for i in range(loop_time):
+                    y, receive_cnt = model(**bandwidth_test_kwargs)
+                    if i ==1:
+                    for _ in range(100):
+                        torch.exp(tensor)
+                    prof.step()
+        dist.barrier()
         torch.npu.synchronize()
+        torch.npu.empty_cache()
         
         if is_save_tensor_to_bin:
             save_tensor_to_bin(y.to(torch.float32), f"y_out_{rank}_config{config_index}")
@@ -820,7 +845,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     for i, cfg in enumerate(test_configs):
         test_data_size = cfg['data_size']
         test_bs = cfg['bs']
-        data_size_bytes = test_data_size * 2
+        data_size_bytes = test_data_size
         config_index = i + 1
         
         config_profiling_path = f'{profiling_path}_config_{config_index}'
