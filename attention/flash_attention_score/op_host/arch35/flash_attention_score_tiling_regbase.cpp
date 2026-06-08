@@ -594,7 +594,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndPseOptionalInput(PseShapeType &
                pseShapeDims.GetDim(DIM_NUM_3) == s2Size) {
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(context_, "get unsupported pse shape");
+        std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+        std::string reason = "The shape of pse shape must be [B, N1, S1, S2], [B, N1, 1, S2] or [B, N1, ALIBI_S, S2] in TND mode";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "pse shape", pseShapeStr.c_str(), reason);
         return false;
     }
     return true;
@@ -605,11 +607,13 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
                                                                     size_t pseDimNum, int64_t pseBSize)
 {
     if (pseDimNum != PSE_DIM_NUM) {
-        OP_LOGE(context_, "pse dim should be 4, but got %zu", pseDimNum);
+        std::string dimStr = std::to_string(pseDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "pseDimNum", dimStr.c_str(), "4");
         return false;
     }
     if (pseBSize != bSize && pseBSize != 1) {
-        OP_LOGE(context_, "pse batchsize should be 1 or %ld, but got %ld", bSize, pseBSize);
+        std::string reason = "The value of B dim of input pse must be 1 or the same as " + std::to_string(bSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "pse batch size", std::to_string(pseBSize).c_str(), reason);
         return false;
     }
 
@@ -623,19 +627,19 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
-            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld], "
-                    "expected Sq[%ld] should be greater than %ld",
-                    pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, s1Size, pseDim2Size);
+            std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+            std::string reason = "The S1 dim of input pse shape must be greater than " + std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse shape", pseShapeStr.c_str(), reason.c_str());
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(opName, "unsupported pse shape[%ld, %ld, %ld, %ld], expected [%ld, %ld, %ld, %ld] or "
-            "[%ld, %ld, 1, %ld] or [%ld, %ld, %ld, %ld]",
-            pseBSize, pseDim1Size, pseDim2Size, pseDim3Size,
-            pseBSize, n1Size, s1Size, s2Size,
-            pseBSize, n1Size, s2Size,
-            pseBSize, n1Size, static_cast<int64_t>(PSE_ALIBI_S_SIZE), s2Size);
+        std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+        std::string expected1 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", 1, " + std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE)) + ", " + std::to_string(s2Size) + "]";
+        std::string reason = "The shape of real_shift must be " + expected1 + ", " + expected2 + " or " + expected3;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "real_shift", pseShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -654,7 +658,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
             if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
-                OP_LOGE(context_, "pse inner mode, unsupported pse shape");
+                std::string dimStr = std::to_string(pseDimNum) + "D";
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "pse shape",
+                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or 1D (N2) when it is pse inner mode");
                 return false;
             }
             pseShapeType = PseShapeType::PSE_B_N2_G_SLOPE;
@@ -695,8 +701,12 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimAttenOptionalInput(AttenMaskSh
                 attenMaskDim3Size == s2Size) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(context_, "get unsupported atten_mask shape, the shape is [%ld, %ld, %ld, %ld]",
-                    attenMaskDim0Size, attenMaskDim1Size, attenMaskDim2Size, attenMaskDim3Size);
+        std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
+        std::string expected1 = "[1, 1, " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(bSize) + ", 1, " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(bSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string reason = "The shape of atten_mask must be " + expected1 + ", " + expected2 + " or " + expected3;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask", attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -713,8 +723,12 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
     } else if (attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_1_1_1_T_T;
     } else {
-        OP_LOGE(context_, "get unsupported atten_mask shape, the shape is [%ld, %ld]", attenMaskDim0Size,
-                    attenMaskDim1Size);
+        std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
+        std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
+        std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
+            attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
