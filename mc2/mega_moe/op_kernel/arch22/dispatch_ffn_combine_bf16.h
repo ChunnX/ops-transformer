@@ -37,8 +37,6 @@ using namespace AscendC;
 #include "catlass/gemm/kernel/matmul_epilogue.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
-// #include "catlass/status.hpp"
-
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
 #include "dispatch_ffn_combine_bf16_kernel_a2.hpp"
@@ -107,9 +105,6 @@ private:
 
     Mc2Tiling::MoeInitRoutingV2TilingData moeInitRoutingQuantV2TilingData;
     uint64_t initRoutingQuantTilingKey;
-
-    // Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-
 };
 
 

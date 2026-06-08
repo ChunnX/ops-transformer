@@ -62,7 +62,6 @@ public:
     using LayoutC = typename BlockMmad::LayoutC;
     using ElementAccumulator = typename BlockMmad::ElementAccumulator;
     using ElementScale = uint64_t;
-    // using ElementScale = int32_t;
     using LayoutScale = typename layout::VectorLayout;
     using ElementPerTokenScale = float;
     using LayoutPerTokenScale = typename layout::VectorLayout;
@@ -224,14 +223,12 @@ private:
 
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
 
-//        gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrA));
         gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem() + peermemInfo.offsetA));
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
 
         gmPermutedToken.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrPermutedToken));
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
 
-//        gmPerTokenScale1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale));
         gmPerTokenScale1.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(shmem() + peermemInfo.offsetPeerPerTokenScale));
         gmPerTokenScale2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale2));
 
@@ -317,7 +314,6 @@ private:
         // rows == 0：无 token 可发，不写 flag，对端 RecvTokensV3 同样 rows2==0 会提前 return
         if (rows == 0) return;
 
-//        uint32_t copyInNum = hiddenSize + ALIGN_512;
         uint32_t copyInNum = hiddenSize;
 
         // UB 布局：
@@ -332,7 +328,6 @@ private:
         AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubFlagOffset);
 
         AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
-//        AscendC::LocalTensor<float> bufScale = bufT[hiddenSize].template ReinterpretCast<float>();
 
         int32_t dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
 
@@ -346,10 +341,6 @@ private:
         // windowsOut → UB → 本地 peer mem（只写 hiddenSize 有效数据）
         // scale inline 分离写入 gmScale，无需 epoch flag
         if (static_cast<int32_t>(params.rank) == dstEpIdx) {
-//            AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
-//            gmScale.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale*>(
-//                shmem() + peermemInfo.offsetPeerPerTokenScale));
-
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             for (int32_t i = 0; i < rows; ++i) {
                 auto offset = i * copyInNum;
@@ -362,8 +353,6 @@ private:
                 // UB → 本地 peer mem（只写 hiddenSize 有效数据）
                 copyUbToGm(dst[offset], bufT,
                     layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
-                // scale 分离写入独立 gmScale 区
-//                AscendC::DataCopyPad(gmScale[rowStart + i], bufScale, {1, 4, 0, 0, 0});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             }
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -1071,25 +1060,6 @@ private:
             }
         }
 
-// **************************** 调试代码，后续删除 *******************************
-//        AscendC::SyncAll<true>();
-//        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
-//        AscendC::SyncAll<true>();
-//        if (params.epilogueGranularity < params.expertPerRank && params.epilogueGranularity > 0) {
-//            AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
-//            AscendC::SyncAll<true>();
-//        }
-//        if(coreIdx == 0) {
-//            AscendC::GlobalTensor<ElementC> outGMDump;
-//            outGMDump.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrOutput));
-////            uint32_t dumpElements = (dequantSum1 + dequantSum2) * params.problemShape.n();
-//            uint32_t dumpElements = params.maxOutputSize * params.problemShape.n();
-//            CopyGMToGM<ElementC>(outGMDump, gmC, dumpElements, params.ubMoveNum);
-//        }
-//
-//        AscendC::SyncAll<true>();
-//        return;
-
 
         uint32_t n2 = params.problemShape.k();
 
@@ -1121,7 +1091,6 @@ private:
             LayoutC layoutC{dequantSum1, params.problemShape.n()};
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-            // blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], params.epilogueCoreNum);
             blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum);
         }
         AscendC::SyncAll<true>();
@@ -1141,7 +1110,6 @@ private:
                 LayoutC layoutC{dequantLen, params.problemShape.n()};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                // blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], coreNum);
                 blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum);
             }
             AscendC::SyncAll<true>();
@@ -1334,7 +1302,6 @@ private:
             workspaceOffset += AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
-//            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             workspaceOffset +=  AlignUp(params.EP * params.expertPerRank, 128) * params.EP * sizeof(int32_t);
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
