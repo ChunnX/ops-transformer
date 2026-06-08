@@ -602,7 +602,7 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     if (tilingMode_ == TilingMode::SPLIT_BS) {
         fixedBufferSize = 80 * 1024 * doubleBufferCount + 20 * 1024 * doubleBufferCount + 40 * 1024;
     } else {
-        fixedBufferSize = 80 * 1024 * doubleBufferCount + 8 * 1024 * doubleBufferCount + 20 * 1024;
+        fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
     }
 
     dynamicBufferSize = static_cast<size_t>(matN_) * floatSize * 2;
