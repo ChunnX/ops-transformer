@@ -53,6 +53,32 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     return ge::GRAPH_SUCCESS;
 }
 
+// 判断tensor是否连续
+ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+        const gert::Stride *Strides, int32_t &index) const
+{
+    // 根据kv kvscale krope算出连续场景的strides，如果存在某一维不相等则表示不连续
+    if (Strides == nullptr || Strides->GetDimNum() == 0){
+            return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1; // 连续场景最后一维的stride默认为1
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (index == tensorDimNum - 1) {
+            if (Strides->GetStride(index) != preStride) {
+                return ge::GRAPH_FAILED;
+            } else {
+                continue;
+            }
+        }
+        uint64_t tensorStride = inputShape.GetDim(index+1) * preStride;
+        if (Strides->GetStride(index) != tensorStride) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride = tensorStride;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 template <typename T>
 ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<T> &expectValList) const
 {

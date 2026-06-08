@@ -16,6 +16,7 @@
 #include "opdev/op_log.h"
 #include "fused_infer_attention_score_inner.h"
 #include "aclnnInner_fused_infer_attention_score.h" // 该文件为自动生成，在build/autogen/inner路径下
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -48,6 +49,15 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+__attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
+    const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyRopeOptional);
+
+// 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
+bool NnopbaseSupportTensorV2() __attribute__((weak));
 
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
@@ -173,6 +183,25 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     return ret;
 }
 
+aclnnStatus CheckTensorContiguous(
+    const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyRopeOptional)
+{
+    if (!IsContiguous((*key)[0]) || !IsContiguous((*value)[0])) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    if (keyRopeOptional != nullptr && !IsContiguous(keyRopeOptional)) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    if ((keyAntiquantScaleOptional != nullptr && !IsContiguous(keyAntiquantScaleOptional)) ||
+        (valueAntiquantScaleOptional != nullptr && !IsContiguous(valueAntiquantScaleOptional))) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
     const aclTensor *pseShiftOptional,
@@ -218,6 +247,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        return ret;
+    }
+
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     if (softmaxLseFlag == false) {
@@ -229,7 +263,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     } else {
         placeHolder = softmaxLse;
     }
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
