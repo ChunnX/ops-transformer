@@ -159,7 +159,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
 
     this->formerTileLen_ = tileLen_;
-    this->tailTileLen_ = (GetBlockIdx() != coreNum - 1) ? tileLen_ : (sortLen_ - (totalTileNum_ - 1) * tileLen_);
+    this->tailTileLen_ = (GetBlockIdx() != constInfo.coreNum - 1) ? tileLen_ : (sortLen_ - (totalTileNum_ - 1) * tileLen_);
     if (tailTileLen_ == 0) {
         tailTileLen_ = tileLen_;
     }
