@@ -25,6 +25,7 @@ using namespace AscendC::MicroAPI;
 #include "flash_attention_score_grad_s1s2_bn2gs1s2_post_regbase.h"
 #include "flash_attention_score_grad_s1s2_bn2gs1s2_pre_regbase.h"
 #include "flash_attention_score_grad_presfmg_regbase.h"
+#include "flash_attention_score_grad_nz_post.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -45,11 +46,11 @@ using namespace AscendC::MicroAPI;
                                                       SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)       \
     do {                                                                                                               \
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) {                                               \
-            if constexpr ((uint32_t)dTemplateType > 128) {                                                             \
+            if constexpr ((uint32_t)dTemplateType > 64) {                                                              \
                 FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL,   \
                                                       DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE>           \
                     opPre;                                                                                             \
-                opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_kvlen, user, tilingData, &pipeIn);     \
+                opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_qlen, user, tilingData, &pipeIn);      \
                 opPre.Process();                                                                                       \
                 opPre.SyncALLCores();                                                                                  \
             }                                                                                                          \
@@ -95,11 +96,24 @@ using namespace AscendC::MicroAPI;
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
-            FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
-                                                          DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                   \
-                opPost;                                                                                                \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
-            opPost.Process();                                                                                          \
+            constexpr bool IS_NZ_OUT = GET_IS_NZ_OUT<INPUT_TYPE>(SPLIT_AXIS, (uint32_t)dTemplateType, IS_TND, IS_ROPE, \
+                                                                 IS_DETER_OLD(DETER_SPARSE_TYPE));                     \
+            if (!IS_NZ_OUT || !tilingData->s1s2BNGS1S2SplitCoreParams.isNzOut) {                                       \
+                FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,        \
+                                                              DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>               \
+                    opPost;                                                                                            \
+                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                           \
+                opPost.Process();                                                                                      \
+            } else {                                                                                                   \
+                FlashAttentionScoreGradNzPost<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, \
+                                              IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,  \
+                                              FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType,               \
+                                              s2TemplateType, dTemplateType>                                           \
+                    opPost;                                                                                            \
+                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, actual_seq_qlen, actual_seq_kvlen, user, tilingData,    \
+                            &pipePost);                                                                                \
+                opPost.Process();                                                                                      \
+            }                                                                                                          \
         } else {                                                                                                       \
             pipeBase.Destroy();                                                                                        \
         }                                                                                                              \

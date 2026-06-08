@@ -123,7 +123,7 @@ public:
     bool enablePreSfmg;
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
-
+    
     int64_t get_coreNum() const {return coreNum;}
     int64_t get_b() const {return b;}
     int64_t get_n2() const {return n2;}
@@ -213,7 +213,7 @@ public:
     uint32_t blockOuter;
     uint32_t maxValidBBLen;
     uint32_t noNeedDeter;
-    uint32_t reserved1; // tilingData需要8字节对齐
+    uint32_t isNzOut;
     int64_t bandIdx;
     int64_t deterMaxRound;
     uint64_t dqIsNeedDeter[MAX_CORE_NUM];
@@ -236,6 +236,7 @@ public:
     uint64_t get_dqIsNeedDeter(int index) const { return dqIsNeedDeter[index]; }
     const uint64_t* get_dkDvIsNeedDeter() const { return dkDvIsNeedDeter; }
     uint64_t get_dkDvIsNeedDeter(int index) const { return dkDvIsNeedDeter[index]; }
+    uint32_t get_isNzOut() const { return isNzOut; }
 
     void set_s1Outer(int64_t val) { s1Outer = val; }
     void set_s1Inner(uint32_t val) { s1Inner = val; }
@@ -262,6 +263,7 @@ public:
         }
     }
     void set_dkDvIsNeedDeter(int index, uint64_t val) { dkDvIsNeedDeter[index] = val; }
+    void set_isNzOut(bool isNzOutParam) { this->isNzOut = isNzOutParam; }
 };
 
 class BlockNumListParamsRegbase {
