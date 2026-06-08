@@ -87,7 +87,7 @@ def cal_hccl_buffsize(test_bs, h, ep_world_size):
     token_need_size_dispatch = ((token_actual_len + WIN_ADDR_ALIGN - 1) // WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN
     actual_size = (test_bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
 
-    hccl_buffsize = ceil(actual_size / 1024 / 1024 /2) + 5 # 留出 5MB 空间余量
+    hccl_buffsize = ceil(actual_size / 1024 / 1024 / 2) + 5 # 留出 5MB 空间余量
     return str(hccl_buffsize)
 
 if is_single_test:
@@ -116,7 +116,7 @@ else:
         {'bs': 256, 'data_size': 16384, 'max_bs': 256},      # 8MB
         {'bs': 512, 'data_size': 16384, 'max_bs': 512},      # 16MB
         {'bs': 1024, 'data_size': 16384, 'max_bs': 1024},    # 32MB
-	{'bs': 2048, 'data_size': 16384, 'max_bs': 2048},    # 64MB
+	    {'bs': 2048, 'data_size': 16384, 'max_bs': 2048},    # 64MB
         {'bs': 4096, 'data_size': 16384, 'max_bs': 4096},    # 128MB
         {'bs': 8192, 'data_size': 8192, 'max_bs': 8192},    # 128MB
     ]
@@ -324,7 +324,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+    def forward(self, x, dstrank_id, group, test_world_size, test_max_bs, test_mode, test_comm_alg, test_aiv_num):
         local_loop = loop if is_bandwidth_test else 1
         input_x = x
         output = None
@@ -333,11 +333,11 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 x=input_x,
                 dstrank_id=dstrank_id,
                 group=group,
-                world_size=world_size,
-                max_bs=max_bs,
-                mode=mode,
-                comm_alg=comm_alg,
-                aiv_num=aiv_num
+                world_size=test_world_size,
+                max_bs=test_max_bs,
+                mode=test_mode,
+                comm_alg=test_comm_alg,
+                aiv_num=test_aiv_num
             )
             [y, receive_cnt] = output
             input_x = y[:max_bs]
