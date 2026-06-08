@@ -936,21 +936,15 @@ public:
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
-            // Band head intra-skip: reduce V copy/BMM2 for k=0
-            uint32_t mm2IntraSkip = 0U;
-            if (k == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < realK) {
-                mm2IntraSkip = runInfo.bandHeadIntraSkip;
-                realK -= mm2IntraSkip;
-            }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
             }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK + mm2IntraSkip, realK, 0, constInfo.dSizeV, runInfo);
+            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
-            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK + mm2IntraSkip) / MXFP_DIVISOR_SIZE,
+            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
@@ -961,10 +955,9 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            uint64_t pL1Offset = k * l1BaseKOffset + static_cast<uint64_t>(mm2IntraSkip) * mBaseSize;
             MatmulFull<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[pL1Offset],
+                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
@@ -1042,15 +1035,21 @@ public:
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
+            // Band head intra-skip: reduce V copy/BMM2 for k=0
+            uint32_t mm2IntraSkip = 0U;
+            if (k == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < realK) {
+                mm2IntraSkip = runInfo.bandHeadIntraSkip;
+                realK -= mm2IntraSkip;
+            }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
             }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
+            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK + mm2IntraSkip, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
-            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
+            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK + mm2IntraSkip) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
@@ -1061,9 +1060,10 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+            uint64_t pL1Offset = k * l1BaseKOffset + static_cast<uint64_t>(mm2IntraSkip) * mBaseSize;
+            MatmulFull<INPUT_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
+                mm2A.GetTensor<INPUT_T>()[pL1Offset],
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
