@@ -1602,6 +1602,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName_,
         "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_LOGD(opName_, "GetAndConvertCommMode line 1605, will strcmp");
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, commMode will be set to AICPU.");
@@ -1615,6 +1616,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
         OP_LOGE(opName_, "The input attr comm_mode %s is invalid.", commModeStr);
         return ge::GRAPH_FAILED;
     }
+    OP_LOGD(opName_, "GetAndConvertCommMode line 1605, finish strcmp");
     return ge::GRAPH_SUCCESS;
 }
 uint8_t MatmulAllReduceTilingBase::GetCommMode() const
@@ -1624,6 +1626,7 @@ uint8_t MatmulAllReduceTilingBase::GetCommMode() const
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName_,
         "commModeStr is nullptr, commMode will be set to ccu."), return Mc2Comm::COMM_MODE_CCU);
+    OP_LOGD(opName_, "GetCommMode line 1629, will strcmp");
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, TilingKey Do AICPU");
         return Mc2Comm::COMM_MODE_AICPU;
@@ -1634,6 +1637,7 @@ uint8_t MatmulAllReduceTilingBase::GetCommMode() const
         OP_LOGI(opName_, "The input attr comm_mode is empty string, TilingKey Do CCU");
         return Mc2Comm::COMM_MODE_CCU;
     }
+    OP_LOGD(opName_, "GetCommMode line 1629, finish strcmp");
     OP_LOGI(opName_, "Default TilingKey Do CCU");
     return Mc2Comm::COMM_MODE_CCU;
 }
@@ -1645,12 +1649,14 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckCommModeA2() const
     if (commModeStr == nullptr) {
         return ge::GRAPH_SUCCESS;
     } else {
+        OP_LOGD(opName_, "CheckCommModeA2 line 1652, will strcmp");
         if (std::strcmp(commModeStr, "") == 0) {
             return ge::GRAPH_SUCCESS;
         } else {
             OP_LOGE(opName_, "The input attr comm_mode %s is invalid.", commModeStr);
             return ge::GRAPH_FAILED;
         }
+        OP_LOGD(opName_, "CheckCommModeA2 line 1652, finish strcmp");
     }
     return ge::GRAPH_SUCCESS;
 }

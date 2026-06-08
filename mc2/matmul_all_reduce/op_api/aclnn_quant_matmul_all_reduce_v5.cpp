@@ -333,6 +333,11 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+            if (commMode == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduceV5, NnopbaseGetUserHandle get commMode is nullptr.");
+                return ACLNN_ERR_INNER;
+            }
+            OP_LOGD("aclnnQuantMatmulAllReduceV5 line 340, will strcmp");
             if (strcmp(commMode, COMM_MODE_CCU) == 0) {
                 OP_LOGD("A5 aclnnQuantMatmulAllReduceV5, commMode is 'ccu', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
@@ -343,6 +348,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
                 OP_LOGD("A5 aclnnQuantMatmulAllReduceV5, commMode is '', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
+            OP_LOGD("aclnnQuantMatmulAllReduceV5 line 340, finish strcmp");
             delete[] commMode;
         } else {
             OP_LOGD("A2 aclnnQuantMatmulAllReduceV5: use AICPU mode");

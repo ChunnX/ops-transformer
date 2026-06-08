@@ -32,6 +32,7 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
                         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream"));
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+        OPS_LOG_D(context->GetNodeName(), "MatmulAllReduceCalcParamFunc line 35, will strcmp");
         if (commModeStr == nullptr) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
@@ -42,6 +43,7 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
             OPS_LOG_D(context->GetNodeName(), "CommMode is empty string. Do A5 CCU CalcParamFunc");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
+        OPS_LOG_D(context->GetNodeName(), "MatmulAllReduceCalcParamFunc line 35, finish strcmp");
     }
     OPS_LOG_D(context->GetNodeName(), "Do AICPU CalcParamFunc");
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
@@ -56,6 +58,7 @@ ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *conte
                         return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks););
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+        OPS_LOG_D(context->GetNodeName(), "MatmulAllReduceGenTaskFunc line 61, will strcmp");
         if (commModeStr == nullptr) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
@@ -66,6 +69,7 @@ ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *conte
             OPS_LOG_D(context->GetNodeName(), "CommMode is empty string. Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
         }
+        OPS_LOG_D(context->GetNodeName(), "MatmulAllReduceGenTaskFunc line 61, finish strcmp");
     }
     OPS_LOG_D(context->GetNodeName(), "Do AICPU GenTaskFunc");
     return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks);

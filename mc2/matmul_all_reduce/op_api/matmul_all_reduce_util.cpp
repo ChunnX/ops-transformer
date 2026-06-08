@@ -169,7 +169,9 @@ bool MatmulAllReduceCheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 {
+    OP_LOGD("laodaima MatmulAllReduceCheckAttr, will strcmp");
     bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
+    OP_LOGD("laodaima MatmulAllReduceCheckAttr, finish strcmp");
     if (!flag) {
         OP_LOGE_FOR_INVALID_VALUE("MatmulAllReduce", "reduceOp", reduceOp, "\"sum\"");
         return false;
@@ -572,14 +574,18 @@ bool IsCommModeValid(const char* commModePtr)
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Its new Aclnn interface for A5, commModePtr should not be nullptr!");
             return false;
         }
+        OP_LOGD("IsCommModeValid line 577, will strcmp");
         if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
         if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
         if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        OP_LOGD("IsCommModeValid line 577, finish strcmp");
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "For A5, commMode only support 'ccu', 'ai_cpu' or '', but it is '%s'.", commModePtr);
     } else {
         if (commModePtr == nullptr) return true;
+        OP_LOGD("IsCommModeValid line 586, will strcmp");
         if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        OP_LOGD("IsCommModeValid line 586, finish strcmp");
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "For A2, commMode only support nullptr or '', but it is '%s'.", commModePtr);
     }

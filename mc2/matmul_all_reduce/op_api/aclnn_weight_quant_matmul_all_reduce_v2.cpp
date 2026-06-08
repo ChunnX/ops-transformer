@@ -102,10 +102,12 @@ static bool CheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquantGroupSize, const aclTensor* x1)
 {
+    OP_LOGD("laodaima CheckAttr, will strcmp");
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
         return false;
     }
+    OP_LOGD("laodaima CheckAttr, finish strcmp");
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
         return false;
@@ -439,6 +441,13 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+            if (commMode == nullptr) {
+                OP_LOGE(
+                    ACLNN_ERR_INNER,
+                    "WeightQuantMatmulAllReduceV2, NnopbaseGetUserHandle get commMode is nullptr.");
+                return ACLNN_ERR_INNER;
+            }
+            OP_LOGD("aclnnWeightQuantMatmulAllReduceV2 line 450, will strcmp");
             if (strcmp(commMode, COMM_MODE_CCU) == 0) {
                 OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is 'ccu', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
@@ -449,6 +458,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
                 OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is '', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
+            OP_LOGD("aclnnWeightQuantMatmulAllReduceV2 line 450, finish strcmp");
             delete[] commMode;
         } else {
             OP_LOGD("A2 aclnnWeightQuantMatmulAllReduceV2: use AICPU mode");
