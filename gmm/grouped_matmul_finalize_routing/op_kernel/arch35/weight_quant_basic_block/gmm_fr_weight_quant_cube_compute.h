@@ -60,10 +60,8 @@ public:
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void WaitWeightMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
-                                                 uint64_t kbL1RealSize, uint64_t cvLoopIdx);
-    __aicore__ inline void SetWeightMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
-                                                uint64_t kbL1RealSize, uint64_t cvLoopIdx);
+    __aicore__ inline void WaitWeightMTE1ToMTE2(uint64_t cvLoopIdx);
+    __aicore__ inline void SetWeightMTE1ToMTE2(uint64_t cvLoopIdx);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
@@ -218,15 +216,13 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitWeightMTE1ToMTE2(
-    uint64_t, const BasicBlockOffsetParam &, uint64_t, uint64_t cvLoopIdx)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitWeightMTE1ToMTE2(uint64_t cvLoopIdx)
 {
     WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + (cvLoopIdx & 1));
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2(
-    uint64_t, const BasicBlockOffsetParam &, uint64_t, uint64_t cvLoopIdx)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2(uint64_t cvLoopIdx)
 {
     SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + ((cvLoopIdx + 1) & 1));
 }
