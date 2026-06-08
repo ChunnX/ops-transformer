@@ -160,6 +160,21 @@ enum class DType {
     ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
 };
 
+static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL {
+    { ACL_FORMAT_FRACTAL_NZ_C0_16, ACL_FORMAT_FRACTAL_NZ_C0_32 },
+    { ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ}
+}
+
+static bool is_input_base_format(const at::Tensor &tensor)
+{
+    if (!torch_npu::utils::is_npu(tensor)) {
+        return true;
+    }
+    auto fmt = at_npu::native::custom_ops::get_npu_format(tensor);
+    return fmt == ACL_FORMAT_ND || fmt == ACL_FORMAT_NCL || fmt == ACL_FORMAT_NCHW || fmt == ACL_FORMAT_NHWC ||
+           fmt == ACL_FORMAT_NCDHW;
+}
+
 namespace op_infer {
 const int N = 32;
 const int SIZE = 8;
@@ -421,7 +436,9 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
     aclDataType acl_data_type = ConvertToAclDataType(scalar_data_type);
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
-    c10::SmallVector<int64_t, 5> storageDims;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
     // if acl_data_type is ACL_STRING, storageDims is empty.
     auto itemsize = at_tensor.itemsize();
     if (itemsize == 0) {
@@ -434,18 +451,33 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
 
     const auto dimNum = at_tensor.sizes().size();
     aclFormat format = ACL_FORMAT_ND;
-    switch (dimNum) {
-        case 3:
-            format = ACL_FORMAT_NCL;
-            break;
-        case 4:
-            format = ACL_FORMAT_NCHW;
-            break;
-        case 5:
-            format = ACL_FORMAT_NCDHW;
-            break;
-        default:
-            format = ACL_FORMAT_ND;
+
+    if (!is_input_base_format(at_tensor)) {
+        format = static_cast<aclFormat>(at_npu::native::custom_ops::get_npu_format(at_tensor));
+        if (acl_data_type != ACL_STRING) {
+            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
+            if (Is4BitDtype(acl_data_type)) {
+                storageDims.back() *= FP4_IN_INT8;
+                CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
+                auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
+                TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "unsupported fake format: ", format);
+                format = realFormat->second;
+            }
+        }
+    } else {
+        switch (dimNum) {
+            case 3:
+                format = ACL_FORMAT_NCL;
+                break;
+            case 4:
+                format = ACL_FORMAT_NCHW;
+                break;
+            case 5:
+                format = ACL_FORMAT_NCDHW;
+                break;
+            default:
+                format = ACL_FORMAT_ND;
+        }
     }
 
     if (at_tensor.unsafeGetTensorImpl()->is_wrapped_number()) {
@@ -617,21 +649,6 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
     c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
     c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
 
-    const auto dimNum = at_tensor.sizes().size();
-    aclFormat format = ACL_FORMAT_ND;
-    switch (dimNum) {
-        case 3:
-            format = ACL_FORMAT_NCL;
-            break;
-        case 4:
-            format = ACL_FORMAT_NCHW;
-            break;
-        case 5:
-            format = ACL_FORMAT_NCDHW;
-            break;
-        default:
-            format = ACL_FORMAT_ND;
-    }
     // if acl_data_type is ACL_STRING, storageDims is empty.
     if (acl_data_type != ACL_STRING) {
         TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
@@ -640,6 +657,34 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
             CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
         } else {
             storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+        }
+    }
+
+    const auto dimNum = at_tensor.sizes().size();
+    aclFormat format = ACL_FORMAT_ND;
+    if (!is_input_base_format(at_tensor)) {
+        format = static_cast<aclFormat>(at_npu::native::custom_ops::get_npu_format(at_tensor));
+        if (acl_data_type != ACL_STRING) {
+            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
+            if (Is4BitDtype(acl_data_type)) {
+                auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
+                TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "unsupported fake format: ", format);
+                format = realFormat->second;
+            }
+        }
+    } else {
+        switch (dimNum) {
+            case 3:
+                format = ACL_FORMAT_NCL;
+                break;
+            case 4:
+                format = ACL_FORMAT_NCHW;
+                break;
+            case 5:
+                format = ACL_FORMAT_NCDHW;
+                break;
+            default:
+                format = ACL_FORMAT_ND;
         }
     }
 
