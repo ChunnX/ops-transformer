@@ -19,10 +19,19 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mc2_templates/common/a2av_common_tiling.h"
 
+struct A2avGmmWorkspaceInfo {
+    uint64_t commXOutSize = 0;
+    uint64_t permuteXOutSize = 0;
+    uint64_t commXScaleSize = 0;
+    uint64_t permuteScaleOutSize = 0;
+    uint64_t gmmComputeSize = 0;
+};
+
 #pragma pack(push, 8)
 struct QuantAlltoAllvGroupedMatmulTilingData {
     MC2KernelTemplate::HcclA2avTilingInfo hcclA2avTilingInfo;
     MC2KernelTemplate::TaskTilingInfo taskTilingInfo;
+    A2avGmmWorkspaceInfo workspaceInfo;
     bool isPermuteOut = false;
     bool isNeedMM = false;
     Mc2GroupedMatmulTilingData::GMMQuantTilingData gmmQuantTilingData;

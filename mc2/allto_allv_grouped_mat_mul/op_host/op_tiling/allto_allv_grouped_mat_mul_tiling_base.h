@@ -30,6 +30,7 @@ constexpr uint32_t NON_QUANT_MM_WEIGHT_INDEX = 5U;
 constexpr uint32_t NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX = 5;
 constexpr uint32_t NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
+constexpr uint32_t NON_QUANT_HCCL_HANDLE_MAX = 63;
 
 struct SetMMTilingParams {
     matmul_tiling::DataType matmulDtype;
@@ -62,6 +63,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetPlatformInfo() override;
+    uint64_t expertNum_ = 1;
 };
 
 class AlltoAllvGmmTilingCommon
