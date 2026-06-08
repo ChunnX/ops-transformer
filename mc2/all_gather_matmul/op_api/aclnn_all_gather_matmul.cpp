@@ -97,8 +97,18 @@ static bool IsGatherOut(const aclTensor *gatherOut) {
 
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
   bool isTransA) {
-  OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-  OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+  if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+      OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnAllGatherMatmul", "x1",
+          (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+          (std::to_string(TWO_DIMS) + "D").c_str());
+      return false;
+  }
+  if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+      OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnAllGatherMatmul", "x2",
+          (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+          (std::to_string(TWO_DIMS) + "D").c_str());
+      return false;
+  }
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
         "The value of x1 must not be transposed.");
