@@ -295,13 +295,11 @@ protected:
                     perCoreOutputNumsArr[i * divHeadNum + j] = singleSeqPerCore;
                 }
                 if (j == 0u && i < divSeqNum - 1u) {
-                    perCoreStartOutputOffset[(i + 1u) * divHeadNum] = static_cast<uint32_t>(
-                        static_cast<uint64_t>(perCoreStartOutputOffset[i * divHeadNum]) +
-                        static_cast<uint64_t>(perCoreOutputNumsArr[i * divHeadNum]) * headNumDim);
+                    perCoreStartOutputOffset[(i + 1u) * divHeadNum] =
+                        perCoreStartOutputOffset[i * divHeadNum] + perCoreOutputNumsArr[i * divHeadNum] * headNumDim;
                 } else if (j > 0u) {
-                    perCoreStartOutputOffset[i * divHeadNum + j] = static_cast<uint32_t>(
-                        static_cast<uint64_t>(perCoreStartOutputOffset[i * divHeadNum]) +
-                        static_cast<uint64_t>(PerCoreHeadIdx[i * divHeadNum + j]) * headDim);
+                    perCoreStartOutputOffset[i * divHeadNum + j] =
+                        perCoreStartOutputOffset[i * divHeadNum] + PerCoreHeadIdx[i * divHeadNum + j] * headDim;
                 }
             }
         }
@@ -326,9 +324,8 @@ protected:
             for (uint32_t j = 0; j < divHeadNum; j++) {
                 kvStartBatchPerCore[i * divHeadNum + j] = curSampleIdx;
                 kvStartTokenPerCore[i * divHeadNum + j] = overOutputTokens * compressStride + startTokens;
-                kvStartOffsetPerCore[i * divHeadNum + j] = static_cast<uint32_t>(
-                    static_cast<uint64_t>(kvStartTokenPerCore[i * divHeadNum]) * headNumDim +
-                    static_cast<uint64_t>(PerCoreHeadIdx[j]) * headDim);
+                kvStartOffsetPerCore[i * divHeadNum + j] =
+                    kvStartTokenPerCore[i * divHeadNum] * headNumDim + PerCoreHeadIdx[j] * headDim;
             }
         }
     }
