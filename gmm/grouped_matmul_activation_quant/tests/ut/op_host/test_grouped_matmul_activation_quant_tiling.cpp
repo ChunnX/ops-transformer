@@ -41,7 +41,7 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
-constexpr size_t INPUT_TENSOR_COUNT = 5U;
+constexpr size_t INPUT_TENSOR_COUNT = 6U;
 constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
 constexpr size_t SCALAR_FIELD_COUNT = 18U;
@@ -70,15 +70,15 @@ struct GroupedMatmulActivationQuantTilingCase {
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmulActivationQuant", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
+                {"activation_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activationType)},
                 {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantDtype)},
+                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tuningConfigVec)},
                 {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
                 {"round_mode", Ops::Transformer::AnyValue::CreateFrom<string>(roundMode)},
                 {"scale_alg", Ops::Transformer::AnyValue::CreateFrom<int64_t>(scaleAlg)},
                 {"dst_type_max", Ops::Transformer::AnyValue::CreateFrom<float>(dstTypeMax)},
-                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tuningConfigVec)},
-                {"activation_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activationType)},
             },
             &compileInfo, socVersion, compileInfo.aicNum, compileInfo.ubSize);
 
@@ -185,15 +185,15 @@ vector<GroupedMatmulActivationQuantTilingCase> LoadCases(const string &socVersio
             tc.aicNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
             tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
             tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.activationType = stoll(Trim(items[idx++]));
+            tc.dequantDtype = stoll(Trim(items[idx++]));
             tc.transposeWeight = ParseBool(Trim(items[idx++]));
             tc.groupListType = stoll(Trim(items[idx++]));
-            tc.dequantDtype = stoll(Trim(items[idx++]));
+            tc.tuningConfig = Trim(items[idx++]);
             tc.quantDtype = stoll(Trim(items[idx++]));
             tc.roundMode = Trim(items[idx++]);
             tc.scaleAlg = stoll(Trim(items[idx++]));
             tc.dstTypeMax = stof(Trim(items[idx++]));
-            tc.tuningConfig = Trim(items[idx++]);
-            tc.activationType = stoll(Trim(items[idx++]));
 
             for (size_t tensorIdx = 0U; tensorIdx < INPUT_TENSOR_COUNT; ++tensorIdx) {
                 tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
