@@ -317,8 +317,8 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::InitBuffers(TPipe *pipe
         DataCopy(xWKvDescaleUb, wDescale, coff_ * constInfo_.headDim);
         DataCopy(xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], coff_ * constInfo_.headDim);
         inputQue3.FreeTensor(wDescale);
-        MulsVF(xWKvDescaleUb, xWKvDescaleUb, xDescale_, coff_, constInfo_.headDim)
-        MulsVF(xWGateDescaleUb, xWGateDescaleUb, xDescale_, coff_, constInfo_.headDim)
+        MulsVF(xWKvDescaleUb, xWKvDescaleUb, xDescale_, coff_, constInfo_.headDim);
+        MulsVF(xWGateDescaleUb, xWGateDescaleUb, xDescale_, coff_, constInfo_.headDim);
     }
     PipeBarrier<PIPE_V>();
 }
