@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <cmath>
 #include "quant_block_sparse_attention_metadata_aicpu.h"
-#include "../../quant_block_sparse_attention/op_host/fa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
@@ -37,7 +36,9 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &c
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
+    context_ = &ctx;
     // input
+    sparseSeqLen_ = ctx.Input(static_cast<uint32_t>(ParamId::sparseSeqLen));
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
@@ -46,26 +47,70 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
-        GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-        GetAttrValue(ctx, "head_dim", headDim_) &&
-                GetAttrValue(ctx, "soc_version", socVersion_) &&
+        GetAttrValue(ctx, "soc_version", socVersion_) &&
         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
     }
     // attributes optional
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
+    GetAttrValueOpt(ctx, "num_heads_q", numHeadsQ_);
+    GetAttrValueOpt(ctx, "num_heads_kv", numHeadsKv_);
+    GetAttrValueOpt(ctx, "head_dim", headDim_);
+    GetAttrValueOpt(ctx, "sparse_block_size_q", sparseBlockSizeQ_);
+    GetAttrValueOpt(ctx, "sparse_block_size_kv", sparseBlockSizeKv_);
+    GetAttrValueOpt(ctx, "quant_mode", quantMode_);
+    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
-    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
-    GetAttrValueOpt(ctx, "win_left", winLeft_);
-    GetAttrValueOpt(ctx, "win_right", winRight_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
-    GetAttrValueOpt(ctx, "layout_out", layoutOut_);
-    return ParamsInit();
+    GetAttrValueOpt(ctx, "layout_sparse_indices", layoutSparseIndices_);
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
+{
+    return CheckTensorData();
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
+{
+    // REQUIRED_INPUT tensor check
+    if (sparseSeqLen_ == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
+        return false;
+    }
+    if (sparseSeqLen_->GetTensorShape()->GetDimSize() > 0 && sparseSeqLen_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
+        return false;
+    }
+    // OPTIONAL_INPUT tensor check
+    if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDimSize() > 0 &&
+        cuSeqlensQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
+        return false;
+    }
+    if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDimSize() > 0 &&
+        cuSeqlensKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
+        return false;
+    }
+    if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDimSize() > 0 && sequsedQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sequsedQ data is nullptr");
+        return false;
+    }
+    if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDimSize() > 0 && sequsedKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sequsedKv data is nullptr");
+        return false;
+    }
+    // OUTPUT tensor check
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metaData is empty");
+        return false;
+    }
+    return true;
 }
 
 std::vector<int64_t> QuantBlockSparseAttentionMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
@@ -133,6 +178,20 @@ std::vector<int64_t> QuantBlockSparseAttentionMetadataCpuKernel::GetTensorDataAs
     return result;
 }
 
+int32_t QuantBlockSparseAttentionMetadataCpuKernel::GetQueryBatchSize()
+{
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        return sequsedQ_->GetTensorShape()->GetDimSize(0);
+    }
+    if ((layoutQ_ == "TND" || layoutQ_ == "NTD") && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+        return cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
+    }
+    if (batchSize_ > 0) {
+        return batchSize_;
+    }
+    return 0;
+}
+
 bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
 {
     // Device info
@@ -142,9 +201,9 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMinNum = aivCoreNum_;
     deviceInfo.cvRadio = aivCoreNum_ / aicCoreNum_;
     // baseInfo
-    // actual seq size
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
+    batchSize_ = GetQueryBatchSize();
     if (batchSize_ > 0) {
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
@@ -207,14 +266,15 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = (maskMode_ != 0);
-    baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
-    baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
-    baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
+    baseInfo.attenMaskFlag = true;
+    baseInfo.sparseMode = maskMode_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    baseInfo.queryType = load_balance::DataType::FP16; // noquant
-    baseInfo.kvType = load_balance::DataType::FP16; // noquant
+    baseInfo.queryType = load_balance::DataType::FP16;
+    baseInfo.kvType = load_balance::DataType::FP16;
+    // TODO: map sparse_block_size_q/kv to scheduler param fields
+    // TODO: map quant_mode to scheduler param fields
+    // TODO: map layout_sparse_indices to scheduler param fields
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
@@ -222,16 +282,6 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    uint32_t qlayout = optiling::quant_block_sparse_attention::fa_tiling_util::LAYOUT_BNSD;
-    if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
-        qlayout = optiling::quant_block_sparse_attention::fa_tiling_util::LAYOUT_BSH;
-    } else if (baseInfo.layoutQuery == Layout::TND) {
-        qlayout = optiling::quant_block_sparse_attention::fa_tiling_util::LAYOUT_TND;
-    }
-    optiling::quant_block_sparse_attention::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize, baseInfo.kvSeqSize,
-                                                    baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken,
-                                                    qlayout, mBaseSize_, s2BaseSize_);
-    mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     return true;
@@ -273,17 +323,14 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetaData(SectionStreamKResul
     // FA Metadata Generate
     auto faSplitRes = splitRes.sectionFaResult;
     for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
-        // FA start
         if (i > 0) {
             faMetadata.setFaMetadata(i, optiling::FA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
             faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
             faMetadata.setFaMetadata(i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
         }
-        // FA end
         faMetadata.setFaMetadata(i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
         faMetadata.setFaMetadata(i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
         faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, faSplitRes.s2End[i]);
-        // FA idx
         faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
                                  faSplitRes.firstFdDataWorkspaceIdx[i]);
     }

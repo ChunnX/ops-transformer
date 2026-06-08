@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_FLASH_ATTN_METADATA_H
-#define ACLNN_FLASH_ATTN_METADATA_H
+#ifndef ACLNN_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#define ACLNN_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -18,17 +18,18 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-    int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
-    const char *layoutKv, const char *layoutOut, const aclTensor *metaData, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
+    int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
+    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
+    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metaData,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentionMetadata(void *workspace, uint64_t workspaceSize,
-                                                                          aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentionMetadata(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // ACLNN_FLASH_ATTN_METADATA_H
+#endif // ACLNN_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H

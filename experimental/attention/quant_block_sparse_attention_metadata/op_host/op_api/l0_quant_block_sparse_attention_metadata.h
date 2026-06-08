@@ -8,29 +8,31 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_FLASH_ATTN_METADATA_H
-#define L0_FLASH_ATTN_METADATA_H
+#ifndef L0_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#define L0_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
 const aclTensor* QuantBlockSparseAttentionMetadata(
+    const aclTensor* sparseSeqLen,
     const aclTensor* cuSeqlensQOptional,
     const aclTensor* cuSeqlensKvOptional,
     const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional,
     int64_t batchSize,
-    int64_t maxSeqlenQ,
-    int64_t maxSeqlenKv,
     int64_t numHeadsQ,
     int64_t numHeadsKv,
     int64_t headDim,
+    int64_t sparseBlockSizeQ,
+    int64_t sparseBlockSizeKv,
+    int64_t quantMode,
     int64_t maskMode,
-    int64_t winLeft,
-    int64_t winRight,
-    const char* layoutQ,
-    const char* layoutKv,
-    const char* layoutOut,
+    int64_t maxSeqlenQ,
+    int64_t maxSeqlenKv,
+    const char* layoutQOptional,
+    const char* layoutKvOptional,
+    const char* layoutSparseIndicesOptional,
     const char* socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
