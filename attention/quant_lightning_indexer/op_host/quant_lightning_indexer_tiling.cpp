@@ -861,8 +861,8 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
 
     uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint64_t qli3510S1Base = 4;
-        constexpr uint64_t qli3510S2Base = 128;
+        constexpr uint32_t qli3510S1Base = 4;
+        constexpr uint32_t qli3510S2Base = 128;
         qliWorkspaceSize +=
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
             sizeof(uint16_t) * qliAicNum;
