@@ -408,10 +408,6 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         aiCoreIdx = tmpBlockIdx;
     }
 
-    if (tmpBlockIdx >= 32) {
-        return;
-    }
-
     InitTilingData(tiling);
     InitActualSeqLen(actualSeqLengthsQ, actualSeqLengthsK);
 
@@ -601,10 +597,6 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
 template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::Process()
 {
-    if (tmpBlockIdx >= 32) {
-        return;
-    }
-
     if (usedCoreNum == 0) {
         // 没有计算任务，直接清理输出
         ProcessInvalid();

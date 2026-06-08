@@ -937,7 +937,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t aivNum = aicNum;
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv(); // aicNum; // 1:1时换aicnum
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context_->SetBlockDim(blockDim);
 
