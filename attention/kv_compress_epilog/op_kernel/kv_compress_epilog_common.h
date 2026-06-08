@@ -162,7 +162,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         LocalTensor<T0> scaleBf16Tensor = yLocal.template ReinterpretCast<T0>();
         scaleLocalBf16Addr = (__local_mem__ T0*)scaleBf16Tensor.GetPhyAddr();
     } else {
-        __local_mem__ T1* scaleLocalAddr = (__local_mem__ T1*)yLocal.GetPhyAddr();
+        scaleLocalAddr = (__local_mem__ T1*)yLocal.GetPhyAddr();
     }
     __local_mem__ T0* ropeYLocalAddr = (__local_mem__ T0*)yLocal.GetPhyAddr();
 
@@ -251,7 +251,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
                     Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
-                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + ((quantColNum + ropeNum + j + i * dstCurColNumAlign) >> 1), (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
+                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j), (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
                     DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign, (RegTensor<T1>&)scaleTmp1, preg1);
