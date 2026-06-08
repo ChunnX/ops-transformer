@@ -44,9 +44,9 @@ __aicore__ inline void ExecMoeDistributeCombineAddRmsNorm(
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
     op.Init(
-        contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
-        sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut, dynamicScaleOut,
-        XOut, workspaceGM, pipePtr, &tilingData);
+        contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales,
+        xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr,
+        YOut, dynamicScaleOut, XOut, workspaceGM, pipePtr, &tilingData);
     op.Process();
     }
 }
@@ -72,8 +72,10 @@ template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag> __
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
         GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        ExecMoeDistributeCombineAddRmsNorm<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT, true>(
-            contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales, xActiveMask,
-            sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut, dynamicScaleOut, XOut, workspaceGM, tilingGM, &pipe);
+        ExecMoeDistributeCombineAddRmsNorm<Mc2Kernel::HcclContextHolder, DTYPE_EXPAND_X, DTYPE_X, int32_t,
+                                           HasTp, QuantMode == TILINGKEY_INT8_QUANT, true>(
+            contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, residualX, gamma, scales,
+            xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, YOut,
+            dynamicScaleOut, XOut, workspaceGM, tilingGM, &pipe);
 #endif
 }

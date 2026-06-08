@@ -34,13 +34,14 @@ public:
 
     // mc2 ctx 路径无需 winsize 校验，Check 仅作为接口对齐的 no-op。
     // Mc2MoeContext 不携带 epWorldSize，由调用方从 tilingData 传入并暂存。
-    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t epWorldSize, uint64_t /*totalWinSize*/, TPipe * /*pipe*/, GM_ADDR /*exceptionAddr*/)
+    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t epWorldSize, uint64_t /* totalWinSize */,
+                                        TPipe * /* pipe */, GM_ADDR /* exceptionAddr */)
     {
         mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)ctxPtr;
         epWorldSize_ = epWorldSize;
     }
 
-    __aicore__ inline void Check(uint64_t /*totalWinSize*/, TPipe * /*pipe*/, GM_ADDR /*exceptionAddr*/)
+    __aicore__ inline void Check(uint64_t /* totalWinSize */, TPipe * /* pipe */, GM_ADDR /* exceptionAddr */)
     {
     }
 
@@ -60,13 +61,13 @@ public:
     }
 
     // 数据区基址在 epHcclBuffer 的 STATE_SIZE 之后；与 hccl helper 同语义。
-    __aicore__ inline GM_ADDR GetWindAddrByRankId(int32_t rankId, int32_t /*curRankId*/)
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(int32_t rankId, int32_t /* curRankId */)
     {
         return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + Mc2Kernel::STATE_SIZE;
     }
 
     // 状态区基址即 epHcclBuffer 起始地址。
-    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(int32_t rankId, int32_t /*curRankId*/)
+    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(int32_t rankId, int32_t /* curRankId */)
     {
         return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
     }

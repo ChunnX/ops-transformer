@@ -65,9 +65,10 @@ constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
-#define TemplateMC2TypeFullmeshClass typename ContextHolder, typename XType, typename ExpandXOutType, int32_t QuantMode, \
-                                     bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMC2TypeFullmeshFunc ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+#define TemplateMC2TypeFullmeshClass typename ContextHolder, typename XType, typename ExpandXOutType, \
+                                     int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
+#define TemplateMC2TypeFullmeshFunc \
+    ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
@@ -467,7 +468,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 #endif
     aivId_ = GetBlockIdx();
     totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSize_, tpipe_, expandXOut);
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSize_, tpipe_,
+                      expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertIds);

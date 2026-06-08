@@ -47,9 +47,10 @@
 namespace Mc2Kernel {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
-#define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
-    uint8_t QuantMode, bool HasAddRmsNorm
-#define CombineMC2TypeFunc ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
+#define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, \
+    bool IsNeedReduceScatter, uint8_t QuantMode, bool HasAddRmsNorm
+#define CombineMC2TypeFunc \
+    ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
 
 using namespace AscendC;
 template <CombineMC2TypeClass>
@@ -296,7 +297,8 @@ private:
     LocalTensor<float> sumFloatBufLocal_;
 
     uint32_t scaleNum_{0};
-    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm> quantInst_;
+    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm>
+        quantInst_;
     MoeDistributeElastic elasticInst_;
 };
 
@@ -520,9 +522,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     coreIdx_ = GetBlockIdx();
     maskCalcWorkspaceGM_ = workspaceGM + coreIdx_ * MASK_CALC_NEED_WORKSPACE;
     InitInputAndOutput(
-        residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
-        constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
-    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize, tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
+        residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX,
+        elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize,
+                      tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
     InitAttrs(mc2Context, tilingData);
 
     if constexpr (QuantMode > UNQUANT) {

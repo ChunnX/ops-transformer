@@ -44,8 +44,10 @@
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
-#define TemplateDispatchV2TypeClass typename ContextHolder, typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateDispatchV2TypeFunc ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+#define TemplateDispatchV2TypeClass typename ContextHolder, typename XType, typename ExpandXOutType, \
+    int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
+#define TemplateDispatchV2TypeFunc \
+    ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
@@ -350,7 +352,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     // 检查hcclwinsize是否越界
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
     totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
-    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSizeEp_, tpipe_, expandXOut);
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSizeEp_, tpipe_,
+                      expandXOut);
     if constexpr (IsNeedAllgather) {
         // TP 域已下线，本分支随 IsNeedAllgather 一并待删
         auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
