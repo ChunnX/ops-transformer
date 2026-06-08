@@ -301,7 +301,8 @@ private:
         }
         int32_t single_s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
         single_block_.Reset(s1Idx_, single_s1_len);
-        int32_t base_s1_idx, base_s1_len;
+        int32_t base_s1_idx;
+        int32_t base_s1_len;
         int32_t base_s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
         int32_t n2Idx = n1Idx_ / q_group_;
 
