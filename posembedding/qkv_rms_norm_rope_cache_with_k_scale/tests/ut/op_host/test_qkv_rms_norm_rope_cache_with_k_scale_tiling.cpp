@@ -292,15 +292,27 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
 
     input = BuildInput(128, 64, 2, 2);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
+    EXPECT_EQ(tiling.rowTile, 66U);
+    EXPECT_EQ(tiling.rowTileAligned, 80U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsT512Q64K8V8Aic32)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
 {
     ContractTiling tiling;
     auto input = BuildInput(512, 64, 8, 8);
     input.aicNum = 32;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
+    EXPECT_EQ(tiling.rowTile, 72U);
+    EXPECT_EQ(tiling.rowTileAligned, 80U);
+    EXPECT_EQ(tiling.qkHeadTile, 72U);
+    EXPECT_EQ(tiling.vHeadTile, 8U);
+    EXPECT_EQ(tiling.coreTokenTile, 16U);
+    EXPECT_EQ(tiling.coreGroupNum, 32U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBounded)
@@ -738,7 +750,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)
     tilingData.kCacheStrideToken = 128;
     tilingData.vCacheStrideToken = 128;
     tilingData.kScaleCacheStrideToken = 1;
-    tilingData.tokenTile = 6;
+    tilingData.tokenTile = 14;
     EXPECT_EQ(tilingData.totalTokens, 128U);
     EXPECT_EQ(tilingData.numQHeads, 16U);
     EXPECT_EQ(tilingData.coreTokenTile, 4U);
@@ -746,5 +758,5 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)
     EXPECT_EQ(tilingData.kCacheStrideToken, 128U);
     EXPECT_EQ(tilingData.vCacheStrideToken, 128U);
     EXPECT_EQ(tilingData.kScaleCacheStrideToken, 1U);
-    EXPECT_EQ(tilingData.tokenTile, 6U);
+    EXPECT_EQ(tilingData.tokenTile, 14U);
 }

@@ -88,7 +88,7 @@ void LogContractInputSummary(const char *opName, const ContractInput &input, uin
 }
 
 void LogTokenTileCandidate(const char *opName, uint64_t tokenTilePerAiv, uint64_t tokenTile, uint64_t rowTile,
-                           uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsL0a, bool fitsL0c,
+                           uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb, bool fitsL0a, bool fitsL0c,
                            bool accepted)
 {
     if (!ShouldLog(opName)) {
@@ -96,9 +96,9 @@ void LogTokenTileCandidate(const char *opName, uint64_t tokenTilePerAiv, uint64_
     }
     OP_LOGD(opName,
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
-            "rowTileAligned=%lu qkAlignedRows=%lu fitsL0a=%u fitsL0c=%u accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsL0a ? 1U : 0U,
-            fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
+            "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsL0a=%u fitsL0c=%u accepted=%u.",
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U,
+            fitsL0a ? 1U : 0U, fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
 }
 
 } // namespace
@@ -363,30 +363,47 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         return ContractStatus::kInvalidScaleStride;
     }
 
-    uint64_t tokenTilePerAiv = std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
+    const uint64_t initialTokenTilePerAiv =
+        std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
     if (ShouldLog(opName)) {
         OP_LOGD(opName,
                 "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
                 "ubOutputLimit=%lu ubInputLimit=%lu.",
-                tokenTilePerAiv, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot);
+                initialTokenTilePerAiv, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot);
     }
-    while (tokenTilePerAiv > 0) {
-        const uint64_t tokenTile = 2 * tokenTilePerAiv;
+    uint64_t selectedTokenTile = 0;
+    uint64_t selectedTokenTilePerAiv = 0;
+    const auto trySelectTokenTile = [&](uint64_t tokenTile) {
+        const uint64_t tokenTilePerAiv = CalcCubeHalfTokenSize(tokenTile);
         const uint64_t rowTile = tokenTile * hqk;
         const uint64_t rowTileAligned = AlignUp(rowTile, 16);
         const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input.numQHeads, input.numKHeads);
+        const bool fitsUb = tokenTilePerAiv * hqk <= kUbOutputRowsPerAiv &&
+                            tokenTilePerAiv * htot <= kUbInputRowsPerAiv;
         const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
         const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
                              qkAlignedRows <= kL0cMaxRows;
-        const bool accepted = fitsL0a && fitsL0c;
-        LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsL0a,
-                              fitsL0c, accepted);
+        const bool accepted = fitsUb && fitsL0a && fitsL0c;
+        LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
+                              fitsL0a, fitsL0c, accepted);
         if (accepted) {
+            selectedTokenTile = tokenTile;
+            selectedTokenTilePerAiv = tokenTilePerAiv;
+            return true;
+        }
+        return false;
+    };
+    uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
+    while (searchTokenTilePerAiv > 0) {
+        if (trySelectTokenTile(2 * searchTokenTilePerAiv)) {
             break;
         }
-        --tokenTilePerAiv;
+        --searchTokenTilePerAiv;
     }
-    if (tokenTilePerAiv == 0) {
+    if (selectedTokenTile == 0) {
+        (void)trySelectTokenTile(1);
+    }
+    if (selectedTokenTile == 0) {
         if (ShouldLog(opName)) {
             OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: no token tile candidate fits.");
         }
@@ -395,8 +412,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
 
     tiling.coreTokenTile = CeilDiv(input.totalTokens, input.aicNum);
     tiling.coreGroupNum = CeilDiv(input.totalTokens, tiling.coreTokenTile);
-    tiling.tokenTilePerAiv = tokenTilePerAiv;
-    tiling.tokenTile = 2 * tokenTilePerAiv;
+    tiling.tokenTilePerAiv = selectedTokenTilePerAiv;
+    tiling.tokenTile = selectedTokenTile;
     tiling.qkHeadTile = hqk;
     tiling.vHeadTile = input.numVHeads;
     tiling.dimTile = kDimTileFast;
