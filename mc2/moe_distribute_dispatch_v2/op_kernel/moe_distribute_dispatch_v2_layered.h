@@ -1249,13 +1249,17 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         dataSpaceSize_ + serverId_ * STATE_OFFSET); // 那1M 分了serverNum个512B
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(sendStatusGMTensor_);
-    // Local windowOut scratch for RDMA Read. It is reset before every use and does not need CleanUp.
+    // Local windowOut scratch for RDMA Read. Keep ack source separate because repeated RDMA Reads may
+    // complete after readFlagValue becomes END_OF_WRITE_FLAG_VALUE and overwrite the read scratch.
     uint64_t readFlagRdmaAddr = srcFlagRdmaAddr + STATE_OFFSET + dstServerId * FLAG_SIZE;
+    uint64_t ackFlagRdmaAddr = srcFlagRdmaAddr + 2 * STATE_OFFSET + dstServerId * FLAG_SIZE;
     GlobalTensor<uint64_t> readFlagValueGt;
     readFlagValueGt.SetGlobalBuffer((__gm__ uint64_t*)((GM_ADDR)readFlagRdmaAddr));
     readFlagValueGt.SetValue(0, 0);
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
+    GlobalTensor<uint64_t> ackFlagValueGt;
+    ackFlagValueGt.SetGlobalBuffer((__gm__ uint64_t*)((GM_ADDR)ackFlagRdmaAddr));
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 2);
     PipeBarrier<PIPE_ALL>();
 
@@ -1309,15 +1313,15 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
     }
 
-    readFlagValueGt.SetValue(0, 8888);
+    ackFlagValueGt.SetValue(0, 8888);
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
+        AscendC::DcciDst::CACHELINE_OUT>(ackFlagValueGt);
     uint64_t dstAckFlagRdmaAddr = (uint64_t)(GetWindowInAddrByRankId(dstRankId) + halfWinSize_ * bufferId_ +
         dataSpaceSize_ + (serverNum_ + serverId_) * STATE_OFFSET);
     selfDataStatusGMAiv.SetValue(0, 17); // 初始化为0，表示数据未准备好
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
     AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
-    AIVRDMAPostSend((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstAckFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
+    AIVRDMAPostSend((GM_ADDR)ackFlagRdmaAddr, (GM_ADDR)dstAckFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
     PipeBarrier<PIPE_ALL>();
 
     dumpLt.SetValue(0, readFlagValue);
