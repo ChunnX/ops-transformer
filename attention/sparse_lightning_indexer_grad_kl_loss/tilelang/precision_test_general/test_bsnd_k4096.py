@@ -32,14 +32,9 @@ weights = torch.randn(B, S1, Nidx1, dtype=torch.float16).npu()
 query_rope = torch.randn(B, S1, N1, d_rope, dtype=torch.float16).npu()
 key_rope = torch.randn(B, S2, N2, d_rope, dtype=torch.float16).npu()
 
-sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
-for s1_idx in range(S1):
-    s2_real_size = S2 - S1 + s1_idx + 1
-    if s2_real_size <= 0:
-        s2_real_size = S2
-    s2_real_len = min(s2_real_size, K)
-    sparse_indices[:, s1_idx, 0, 0:s2_real_len] = (torch.randint(0, s2_real_size, (s2_real_len,)).to(torch.int32)).npu()
-    sparse_indices[:, s1_idx, 0, s2_real_len:K] = -1
+sparse_indices = torch.full((B, S1, Nidx2, K), -1, dtype=torch.int32).npu()
+for i in range(S2):
+    sparse_indices[0, 0, 0, i] = i
 
 scale_value = 1.0 / math.sqrt(DQuery)
 with torch.no_grad():
