@@ -169,7 +169,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = ( faInfo_->maskMode == 3 || faInfo_->maskMode == 4) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -253,7 +253,7 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = faInfo_->maskMode == 3 ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = ( faInfo_->maskMode == 3 || faInfo_->maskMode == 4) ? 1 : 0;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
@@ -309,6 +309,14 @@ void FlashAttnTilingImpl::SetFATilingData()
         faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
         tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+    }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        if (faInfo_->winLeft == -1) {
+            tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+        }
+        if (faInfo_->winRight == -1) {
+            tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+        }
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
