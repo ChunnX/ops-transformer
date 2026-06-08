@@ -599,9 +599,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
-    uint32_t s2SplitStagingPerSplit = M_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE
-        + M_BASE_SIZE * FLOAT_ELEM_SIZE + M_BASE_SIZE * FLOAT_ELEM_SIZE;
-    workspaceSize += s2SplitStagingPerSplit * MAX_S2_SPLIT_NUM * aicNum;
+    uint32_t s2SplitStagingPerCore = M_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * MAX_S2_SPLIT_NUM
+        + M_BASE_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
+    workspaceSize += s2SplitStagingPerCore * aicNum;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

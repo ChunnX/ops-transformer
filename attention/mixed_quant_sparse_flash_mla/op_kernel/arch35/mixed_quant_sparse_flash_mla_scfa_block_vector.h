@@ -17,6 +17,11 @@
 
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#else
+#include "../common/arch35/vf/vf_flash_decode.h"
+#endif
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
 #include "../../common/op_kernel/buffers_policy.h"
@@ -116,6 +121,9 @@ public:
         __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
+    using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+        mm2ResPos &tempBuf);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -200,6 +208,8 @@ private:
     TBuf<> dequantScaleBuff;
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
+    TBuf<> fdPartialBuf;
+    TBuf<> fdLseExpBuf;
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -917,9 +927,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     sumUb.GetData()[i] = 1.0f;
                 }
             }
-            constexpr uint32_t BYTES_PER_SPLIT = regbaseutil::S2_SPLIT_STAGING_BYTES_PER_SPLIT;
-            constexpr uint32_t OUTPUT_BYTES = 64 * 512 * 2;
-            __gm__ uint8_t *splitPtr = s2SplitStagingBase + runInfo.s2SplitIdx * BYTES_PER_SPLIT;
+            constexpr uint32_t OUTPUT_BYTES = regbaseutil::S2_SPLIT_STAGING_OUTPUT_BYTES;
+            constexpr uint32_t FLOAT_BYTES = regbaseutil::S2_SPLIT_STAGING_FLOAT_BYTES;
+            constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+            __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
             LocalTensor<OUTPUT_T> attenOut;
             attenOut.SetAddr(vec2ResUb.address_);
@@ -928,7 +939,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
             GlobalTensor<OUTPUT_T> stagingOut;
-            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)splitPtr);
+            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)(basePtr + runInfo.s2SplitIdx * OUTPUT_BYTES));
             DataCopyExtParams outParams;
             outParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
             outParams.srcStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
@@ -936,13 +947,18 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             outParams.blockCount = runInfo.vec2MRealSize;
             DataCopyPad(stagingOut[0], attenOut, outParams);
 
-            GlobalTensor<float> stagingFloat;
-            stagingFloat.SetGlobalBuffer((__gm__ float *)(splitPtr + OUTPUT_BYTES));
+            __gm__ uint8_t *maxRegion = basePtr + MAX_S2_SPLIT_NUM * OUTPUT_BYTES;
+            __gm__ uint8_t *sumRegion = maxRegion + MAX_S2_SPLIT_NUM * FLOAT_BYTES;
+            GlobalTensor<float> maxGm;
+            maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
+            GlobalTensor<float> sumGm;
+            sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
+
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            DataCopy(stagingFloat[0], sumUb, runInfo.vec2MRealSize);
+            DataCopy(sumGm[runInfo.s2SplitIdx * runInfo.vec2MRealSize], sumUb, runInfo.vec2MRealSize);
 
             LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            DataCopy(stagingFloat[runInfo.vec2MRealSize], maxUb, runInfo.vec2MRealSize);
+            DataCopy(maxGm[runInfo.s2SplitIdx * runInfo.vec2MRealSize], maxUb, runInfo.vec2MRealSize);
         } else {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -953,6 +969,95 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
+    FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+    mm2ResPos &tempBuf)
+{
+    uint32_t numSplits = static_cast<uint32_t>(fdRunInfo.workspaceNum);
+    uint32_t baseIdx = static_cast<uint32_t>(fdRunInfo.workspaceIdx);
+    uint32_t mSize = static_cast<uint32_t>(runInfo.halfMRealSize);
+    int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+    constexpr uint32_t DEAL_ROW_COUNT = 8;
+
+    LocalTensor<T> accumulatedO = this->stage2OutBuf.template Get<T>();
+    LocalTensor<float> allMaxUb = this->commonTBuf.template Get<float>();
+    LocalTensor<float> allSumUb = allMaxUb[numSplits * mSize];
+    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
+    LocalTensor<float> globalMaxReduceUb = this->softmaxMaxBuf[0].template Get<float>();
+    LocalTensor<float> globalSumUb = this->softmaxSumBuf[0].template Get<float>();
+    LocalTensor<T> dummySinkUb = this->sinksBuf.template Get<T>();
+
+    constexpr uint32_t OUTPUT_BYTES = regbaseutil::S2_SPLIT_STAGING_OUTPUT_BYTES;
+    constexpr uint32_t FLOAT_BYTES = regbaseutil::S2_SPLIT_STAGING_FLOAT_BYTES;
+    constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+    __gm__ uint8_t *basePtr = s2SplitStagingBase;
+    __gm__ uint8_t *maxRegion = basePtr + MAX_S2_SPLIT_NUM * OUTPUT_BYTES;
+    __gm__ uint8_t *sumRegion = maxRegion + MAX_S2_SPLIT_NUM * FLOAT_BYTES;
+
+    GlobalTensor<float> maxGm;
+    maxGm.SetGlobalBuffer((__gm__ float *)(maxRegion + baseIdx * FLOAT_BYTES));
+    GlobalTensor<float> sumGm;
+    sumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + baseIdx * FLOAT_BYTES));
+    DataCopy(allMaxUb, maxGm[0], numSplits * mSize);
+    DataCopy(allSumUb, sumGm[0], numSplits * mSize);
+
+    Duplicate(accumulatedO, (T)0.0, vec2CalcSize);
+
+    uint32_t mChunks = (mSize + DEAL_ROW_COUNT - 1) / DEAL_ROW_COUNT;
+    for (uint32_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
+        uint32_t startRow = chunkIdx * DEAL_ROW_COUNT;
+        uint32_t dealRowCount = DEAL_ROW_COUNT;
+        if (startRow + dealRowCount > mSize) {
+            dealRowCount = mSize - startRow;
+        }
+
+        LocalTensor<float> chunkMaxUb = allMaxUb[startRow];
+        LocalTensor<float> chunkSumUb = allSumUb[startRow];
+        LocalTensor<float> chunkLseExpUb = lseExpUb[startRow * numSplits];
+        LocalTensor<float> chunkGlobalMaxUb = globalMaxReduceUb[startRow];
+
+        FaVectorApi::ComputeScaleValue_8_FD<T, T>(
+            dummySinkUb, chunkMaxUb, chunkSumUb,
+            chunkLseExpUb, chunkGlobalMaxUb, chunkGlobalMaxUb,
+            dealRowCount, numSplits, false, false);
+
+        DataCopy(globalSumUb[startRow], chunkSumUb, dealRowCount);
+
+        for (uint32_t splitIdx = 0; splitIdx < numSplits; splitIdx++) {
+            GlobalTensor<OUTPUT_T> stagingOut;
+            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)(basePtr + (baseIdx + splitIdx) * OUTPUT_BYTES));
+
+            LocalTensor<OUTPUT_T> partialOOut = this->stage1OutQue[0].template AllocTensor<OUTPUT_T>();
+            DataCopyExtParams inParams;
+            inParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            inParams.srcStride = 0;
+            inParams.dstStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
+            inParams.blockCount = dealRowCount;
+            DataCopyPad(partialOOut[startRow * dTemplateAlign64], stagingOut[startRow * dTemplateAlign64], inParams);
+            this->stage1OutQue[0].template EnQue(partialOOut);
+            this->stage1OutQue[0].template DeQue<OUTPUT_T>();
+
+            LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
+            LocalTensor<OUTPUT_T> partialOOutCast = this->stage1OutQue[0].template GetTensor<OUTPUT_T>();
+            Cast(partialOFp32, partialOOutCast[startRow * dTemplateAlign64],
+                 RoundMode::CAST_ROUND, dealRowCount * dTemplateAlign64);
+            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+            WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+
+            LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
+            FaVectorApi::ReduceFinalRes_VF<T>(chunkAccumO, chunkLseExpUb, partialOFp32,
+                dealRowCount, static_cast<uint64_t>(dTemplateAlign64), splitIdx);
+        }
+    }
+
+    LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
+        accumulatedO, accumulatedO, globalSumUb,
+        static_cast<uint16_t>(mSize), dTemplateAlign64, 1.0);
+
+    this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1086,7 +1191,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 
     SoftmaxInitBuffer();
 
-    tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
+    tPipe->InitBuffer(commonTBuf, 1024); // commonTBuf内存申请1024B (FD需要存allMax+allSum)
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
 
     tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
@@ -1098,6 +1203,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(fdPartialBuf, 8 * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(fdLseExpBuf, 512); // FD LSE exp: mSize * numSplits * sizeof(float)
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
@@ -1149,6 +1256,8 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+        mm2ResPos &tempBuf) {}
 };
 }
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H

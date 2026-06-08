@@ -24,7 +24,8 @@ using AscendC::QuePosition;
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
-constexpr uint32_t S2_SPLIT_STAGING_BYTES_PER_SPLIT = 64 * 512 * 2 + 64 * 4 + 64 * 4;
+constexpr uint32_t S2_SPLIT_STAGING_OUTPUT_BYTES = 64 * 512 * 2;
+constexpr uint32_t S2_SPLIT_STAGING_FLOAT_BYTES = 64 * 4;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
