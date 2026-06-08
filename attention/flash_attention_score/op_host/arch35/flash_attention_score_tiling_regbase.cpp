@@ -371,7 +371,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
                     std::to_string(n1Size).c_str(),
-                    "The value of attr head_num must be equal the 1st dim of input query in TND layout"),
+                    "The value of attr head_num must be equal to the 1st dim of input query in TND layout"),
                 return false);
     n2Size = keyShape.GetDim(1);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
@@ -489,7 +489,7 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
                             std::to_string(n1Size).c_str(),
-                            "The value of attr head_num must be equal to the 1st dim of input query in BNSD layout"),
+                            "The value of attr head_num must be equal to the 1st dim of input query when the layout is BNSD"),
                         return false);
             gSize = queryShape.GetDim(1) / n2Size;
             s1Size = queryShape.GetDim(2); // 2: S idx
@@ -653,17 +653,12 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
             }
         } else if (inputParamsRegbase_->get_layoutType() == static_cast<uint8_t>(LayoutType::LAYOUT_TND)) {
             OP_CHECK_IF(!AnalyzeTndPseOptionalInput(pseShapeType, pseShapeDims, pseDimNum, pseBSize),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse",
-                            "unknown",
-                            "The value of shape of input pse is invalid in TND layout mode"
-                        ),
-                        return false);
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze tnd mode pse shape fail."),
+                       return false);
         } else {
             OP_CHECK_IF(!AnalyzeGeneralPseOptionalInput(pseShapeType, pseShapeDims, pseDimNum, pseBSize),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse",
-                            "unknown",
-                            "The shape of input pse is invalid in general layout mode"),
-                        return false);
+                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze general pse shape fail."),
+                       return false);
         }
         inputParamsRegbase_->set_pseBSize(static_cast<uint32_t>(pseBSize));
     }
@@ -731,7 +726,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
          (attenMaskStorageShape.GetDim(attenMaskDimNum - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
          OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
              Ops::Base::ToString(attenMaskStorageShape).c_str(),
-             "The shape of input atten_mask should be [2048,2048] when the type is compression mode");
+             "The shape of input atten_mask should be [2048,2048] when the atten_mask mode is compression mode");
          return false;
     }
     if (attenMaskCompressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE) &&
@@ -740,7 +735,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
          (attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
          OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
              Ops::Base::ToString(attenMaskStorageShape).c_str(),
-             "The shape of input atten_mask should be [3072,2048]  when the type is compression mode");
+             "The shape of input atten_mask should be [3072,2048]  when the atten_mask mode is compression mode");
          return false;
     }
     return true;
