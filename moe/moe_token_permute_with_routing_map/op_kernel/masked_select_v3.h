@@ -212,6 +212,7 @@ public:
         PipeBarrier<PIPE_ALL>();
 
         actualOutTokens = 0;
+        LocalTensor<int32_t> sumInt32 = sumBuf.Get<int32_t>();
 
         if (needCoreNum > 0 && needCoreNum <= MASK_LEN) {
             MoeTokenPermute::SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);

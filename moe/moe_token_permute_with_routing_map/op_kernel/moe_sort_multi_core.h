@@ -380,7 +380,6 @@ __aicore__ inline void MoeSortMultiCore<T>::SortOutProcess()
 
         MoeMrgsortOut<int32_t, int32_t> sorter;
         InitMoeMrgSortOut(&sorter, listNum, GetSortLen<float>(perListElements));
-        printf("mrgsortParam.needPad: %d\n", mrgsortParam.needPad);
         sorter.Init(&mrgsortParam, pipe);
         sorter.Process();
     }
