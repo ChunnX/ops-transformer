@@ -56,7 +56,6 @@ using namespace AscendC;
 #include "utils/mc2_context.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 #include "dispatch_ffn_combine_kernel.hpp"
-#include "dispatch_ffn_combine_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 using namespace Catlass;
@@ -313,13 +312,8 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     // platform: A2 (910B) uses DispatchFFNCombineKernelA2 with push-based
     // SendTokensV3/RecvTokensV3; A3 (910_93) uses DispatchFFNCombineKernel
     // with pull-based direct peer-memory access.
-    using MatmulKernel = std::conditional_t<
-        IS_A2_,
-        Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
-                                                  BlockEpilogue1, BlockEpilogue3>,
-        Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList,
-                                                BlockEpilogue1, BlockEpilogue2, BlockEpilogue3>
-    >;
+    using MatmulKernel = Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList,
+                                                BlockEpilogue1, BlockEpilogue2, BlockEpilogue3>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};

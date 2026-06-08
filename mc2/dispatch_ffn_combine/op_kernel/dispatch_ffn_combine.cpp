@@ -19,10 +19,12 @@
 #include "lib/matmul_intf.h"
 #include "dispatch_ffn_combine_tiling.h"
 #include "dispatch_ffn_combine_tiling_key.h"
+#include "dispatch_ffn_combine_a2.h"
 #include "dispatch_ffn_combine.h"
 
 using namespace AscendC;
 using namespace DispatchFFNCombineImpl;
+using namespace DispatchFFNCombineA2Impl;
 
 template <bool TPL_IS_TRANSPOSE_W1, bool TPL_IS_TRANSPOSE_W2,
           int TPL_QUANT_MODE, int TPL_QUANT_OUT_TYPE, int TPL_ARCH>
@@ -40,12 +42,13 @@ __global__ __aicore__ void dispatch_ffn_combine(
     REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
     REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR)", DispatchFFNCombineTilingDataQuant);
     if constexpr (isA2) {
+#if (ORIG_DTYPE_WEIGHT1 != DT_INT4)
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
-            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
-                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
-                               isNz, true> op;
+            DispatchFFNCombineA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                                 TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                                 isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2,
                     weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
@@ -53,14 +56,15 @@ __global__ __aicore__ void dispatch_ffn_combine(
         } else if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT){
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
 
-            DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
-                               TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
-                               isNz, true> op;
+            DispatchFFNCombineA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
+                                 TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
+                                 isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2,
                     weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
+#endif
     } else {
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
