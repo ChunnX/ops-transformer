@@ -572,30 +572,16 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         // auto kvCacheStrides = attrs->GetListInt(INPUT_KV_CACHE_STRIDES_INDEX);
         bool isViewKCache = context_->InputIsView(DIM_1);
         bool isViewVCache = context_->InputIsView(DIM_4);
-        OP_LOGD(context_, "isViewKCache: %d", isViewKCache );
-        OP_LOGD(context_, "isViewVCache: %d", isViewVCache );
         if (isViewKCache) {
-            OP_LOGD(context_, "kCacheStride enter1 ");
-            auto kCacheStride = context_->GetInputStride(DIM_1);
+            auto *kCacheStride = context_->GetInputStride(DIM_1);
             if (kCacheStride != nullptr) {
-                OP_LOGD(context_, "kCacheStride enter2 ");
-
-
                 params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
-                for (int i =0;i<4;i++) {
-                    OP_LOGD(context_, "kCacheStride: %d ",kCacheStride->GetStride(i));
-                }
             }
         }
         if (isViewVCache) {
-            OP_LOGD(context_, "VCacheStride enter1 ");
-            auto VCacheStride = context_->GetInputStride(DIM_4);
+            auto *VCacheStride = context_->GetInputStride(DIM_4);
             if (VCacheStride != nullptr) {
-                OP_LOGD(context_, "VCacheStride enter2 ");
                 params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
-                for (int i =0;i<4;i++) {
-                    OP_LOGD(context_, "kCacheStride: %d ",VCacheStride->GetStride(i));
-                }
             }
         }
     }

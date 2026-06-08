@@ -329,9 +329,6 @@ static aclnnStatus ProcessNonContiguous(
                                                    keyCacheRef->GetViewStrides(),
                                                    keyCacheRef->GetViewOffset());
     CHECK_RET(keyCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    for (int64_t stride : keyCacheRef->GetViewStrides()){
-        std::cout<< "kCache stride is :"<< stride << std::endl;
-    }
 
     auto slotMappingContiguous = l0op::Contiguous(slotMapping, uniqueExecutor.get());
     CHECK_RET(slotMappingContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -358,9 +355,7 @@ static aclnnStatus ProcessNonContiguous(
                                                     valueCacheRef->GetViewOffset());
         CHECK_RET(valueCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    for (int64_t stride : valueCacheView->GetViewStrides()){
-        std::cout<< "vCache stride is :"<< stride << std::endl;
-    }
+
     auto compressLensContiguous = compressLensOptional;
     if (compressLensOptional != nullptr) {
         compressLensContiguous = l0op::Contiguous(compressLensOptional, uniqueExecutor.get());
@@ -528,7 +523,7 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
     bool isScatterModeEmpty = (scatterModeOptional == nullptr ||
                                strlen(scatterModeOptional) == 0 ||
                                strcmp(scatterModeOptional, "None") == 0);
-    bool isScatterModeNct = (isArchA2 && strcmp(scatterModeOptional, "Nct") == 0);
+    bool isScatterModeNct = (isArchA2  && isKey3Dim && strcmp(scatterModeOptional, "Nct") == 0);
     if ((isArch35 && isKey3Dim && isScatterModeEmpty) || isScatterModeNct) {
         bool isCacheNonContiguous = IsSupportNonContiguousCache(key, keyCacheRef, value, valueCacheRef);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(key, keyCacheRef, value, valueCacheRef);
