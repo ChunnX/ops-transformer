@@ -322,6 +322,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 mask_ub = T.alloc_ub(n_block, calc_dtype)
                 ones_ub = T.alloc_ub(n_block, calc_dtype)
 
+                eps_sm_ub = T.alloc_ub(G, calc_dtype)
+
                 for s1_id in T.serial(s1_start, s1_end):
                     T.barrier_all()
                     T.tile.fill(ones_ub, 1.0)
@@ -329,6 +331,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
                     T.barrier_all()
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
+                    T.barrier_all()
+                    T.tile.fill(eps_sm_ub, 1e-8)
+                    T.barrier_all()
+                    T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
 
                     # --- Pass 1: compute P_reduced and reduceSumY per K chunk ---
@@ -452,6 +458,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
                         T.barrier_all()
 
+                    rsy_sum_eps_ub = T.alloc_ub(1, calc_dtype)
+                    T.tile.fill(rsy_sum_eps_ub, 1e-8)
+                    T.barrier_all()
+                    T.tile.max(rsy_sum_ub, rsy_sum_ub, rsy_sum_eps_ub)
+                    T.barrier_all()
+
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
                         T.copy(
@@ -508,19 +520,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                 g_row = g_id * vector_baseg + i
                                 T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
                                 T.barrier_all()
-                                # reluGrad = weight * diff * I(reluRes > 0)
-                                # I(reluRes > 0) ≈ 1 - exp(-reluRes * 100)
-                                T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
-                                T.barrier_all()
-                                T.tile.mul(mask_ub, mask_ub, -1.0)
-                                T.barrier_all()
-                                T.tile.exp(mask_ub, mask_ub)
-                                T.barrier_all()
-                                T.tile.sub(mask_ub, ones_ub, mask_ub)
+                                T.tile.compare(mask_ub, bmm2_ub[g_row, :], 0.0, "GT")
                                 T.barrier_all()
                                 T.tile.mul(rg_ub[i, :], diff_ub, weight_ub[i])
                                 T.barrier_all()
-                                T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub)
+                                T.tile.select(rg_ub[i, :], mask_ub, rg_ub[i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
                                 T.barrier_all()
 
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
@@ -570,7 +574,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             loss_chunk_ub,
                         )
                         T.barrier_all()
-                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_p_ub, loss_chunk_ub)
                         T.barrier_all()
@@ -580,7 +584,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             loss_chunk_ub,
                         )
                         T.barrier_all()
-                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_si_ub, loss_chunk_ub)
                         T.barrier_all()
