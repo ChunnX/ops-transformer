@@ -551,11 +551,11 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isQcQrScaleEnable = 0U;
         baseParams_->isKcScaleEnable = 0U;
     }
-    (void)FillTilingCoreParams(); // 分核相关baseParams
+    FillTilingCoreParams(); // 分核相关baseParams
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MlaPrologTiling::FillTilingCoreParams()
+void MlaPrologTiling::FillTilingCoreParams()
 {
     baseParams_->batchSize = baseShapeInfo_.bSize;
     baseParams_->stepBatchSize = stepBatchSize_;
