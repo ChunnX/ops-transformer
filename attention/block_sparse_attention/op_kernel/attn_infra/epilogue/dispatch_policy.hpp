@@ -44,6 +44,11 @@ struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
 };
 
+// DN 列归约（Stage 2）专用派发策略：沿 S2 in-lane Max/Sum，S 存 BF16、计算中升 FP32
+struct EpilogueOnlineSoftmaxBsaDn {
+    using ArchTag = Arch::AtlasA5;
+};
+
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
 };

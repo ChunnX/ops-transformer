@@ -164,13 +164,18 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
+    // DN 下 fixpipe 沿 N(=S1) 把 [S2, S1] 切给两个 AIV，各得紧凑 [S2, S1/2]（Stage 2 列归约「2 行=1 寄存器」前提）；
+    // ND 仍用 NO_SPLIT，由 vec 自己在 UB 上切 qS
+    constexpr Gemm::Tile::CopyL0CToUBMode COPY_MODE_QK =
+        USE_DN ? Gemm::Tile::CopyL0CToUBMode::SPLIT_N : Gemm::Tile::CopyL0CToUBMode::NO_SPLIT;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
         ArchTag, ElementAQK, LayoutAQK, ElementBQK, LayoutBQK, ElementS, LayoutS,
-        void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
+        void, COPY_MODE_QK>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
         DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementAQK, ElementBQK, ElementS, void, TileCopyQK>;
-   // online softmax
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
+   // online softmax：DN 走列归约 epilogue（沿 S2 in-lane Max/Sum，S 存 BF16、计算中升 FP32），ND 走原行归约
+    using DispatchPolicyOnlineSoftmax = std::conditional_t<USE_DN,
+        Epilogue::EpilogueOnlineSoftmaxBsaDn, Epilogue::EpilogueOnlineSoftmaxBsa>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
