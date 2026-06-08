@@ -407,7 +407,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
         tilingData->common = infoCommon;
 
         MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
-        int64_t quantModeRouting = 0;
+        int64_t quantModeRouting = 1;
         moeInitRoutingV2TilingBase.DoTiling(infoCommon.M, infoCommon.K, infoCommon.topK, expertCapacity, expertNum, activeNum,
             dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
             inuptXDtypeSize, quantModeRouting, scaleDim0, aivNumInitRouting, ubSize);
