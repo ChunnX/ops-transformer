@@ -593,10 +593,15 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;           // 每核最多S2切分次数
+    constexpr uint32_t FLOAT_ELEM_SIZE = 4;            // sizeof(float)
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
+    uint32_t s2SplitStagingPerSplit = M_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE
+        + M_BASE_SIZE * FLOAT_ELEM_SIZE + M_BASE_SIZE * FLOAT_ELEM_SIZE;
+    workspaceSize += s2SplitStagingPerSplit * MAX_S2_SPLIT_NUM * aicNum;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

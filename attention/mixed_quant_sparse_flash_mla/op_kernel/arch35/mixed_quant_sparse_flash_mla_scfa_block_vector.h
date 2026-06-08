@@ -115,6 +115,7 @@ public:
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks, __gm__ uint8_t *sequsedOriKv,
         __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
+    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -208,6 +209,7 @@ private:
     int64_t sparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
+    __gm__ uint8_t *s2SplitStagingBase = nullptr;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -908,13 +910,47 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        if (unlikely(runInfo.s2LoopCount == 0)) {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
-        }
+        if (runInfo.isS2Split) {
+            if (unlikely(runInfo.s2LoopCount == 0)) {
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                for (int64_t i = 0; i < runInfo.vec2MRealSize; ++i) {
+                    sumUb.GetData()[i] = 1.0f;
+                }
+            }
+            constexpr uint32_t BYTES_PER_SPLIT = regbaseutil::S2_SPLIT_STAGING_BYTES_PER_SPLIT;
+            constexpr uint32_t OUTPUT_BYTES = 64 * 512 * 2;
+            __gm__ uint8_t *splitPtr = s2SplitStagingBase + runInfo.s2SplitIdx * BYTES_PER_SPLIT;
 
-        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+            LocalTensor<OUTPUT_T> attenOut;
+            attenOut.SetAddr(vec2ResUb.address_);
+            Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
+
+            GlobalTensor<OUTPUT_T> stagingOut;
+            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)splitPtr);
+            DataCopyExtParams outParams;
+            outParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            outParams.srcStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
+            outParams.dstStride = 0;
+            outParams.blockCount = runInfo.vec2MRealSize;
+            DataCopyPad(stagingOut[0], attenOut, outParams);
+
+            GlobalTensor<float> stagingFloat;
+            stagingFloat.SetGlobalBuffer((__gm__ float *)(splitPtr + OUTPUT_BYTES));
+            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+            DataCopy(stagingFloat[0], sumUb, runInfo.vec2MRealSize);
+
+            LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+            DataCopy(stagingFloat[runInfo.vec2MRealSize], maxUb, runInfo.vec2MRealSize);
+        } else {
+            if (unlikely(runInfo.s2LoopCount == 0)) {
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
+                    vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
+            }
+            this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
 }
@@ -1112,6 +1148,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
+    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
 };
 }
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H

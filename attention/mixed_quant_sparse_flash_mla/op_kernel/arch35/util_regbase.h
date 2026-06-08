@@ -23,6 +23,8 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
+constexpr uint32_t S2_SPLIT_STAGING_BYTES_PER_SPLIT = 64 * 512 * 2 + 64 * 4 + 64 * 4;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -72,6 +74,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t cmpKvLoopEndIdx;
     int64_t firstFdDataWorkspaceIdx = 0;
     bool isS2Split = false;
+    int64_t s2SplitIdx = 0;
 };
 
 #define COMMON_RUN_INFO \
@@ -114,6 +117,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t mOuterOffset; \
     bool    isCmp; \
     bool    isS2Split = false; \
+    int64_t s2SplitIdx = 0; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
