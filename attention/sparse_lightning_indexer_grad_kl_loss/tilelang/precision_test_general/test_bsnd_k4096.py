@@ -26,23 +26,45 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
         q_rope, k_rope = None, None
     weights = torch.randn(B, S1, Nidx1, dtype=output_dtype, device=torch.device('npu'))
     a, b, kk = -0.05, 0.05, 3.0
-    scale_w = (b - a) / (2 * kk); shift_w = (a + b) / 2
+    scale_w = (b - a) / (2 * kk)
+    shift_w = (a + b) / 2
     weights = weights * scale_w + shift_w
     sparse_indices = torch.zeros(B, S1, N2, topk).to(torch.int32).npu()
     for s1Idx in range(S1):
         s2RealSize = (int)(S2 - S1 + s1Idx + 1)
-        if s2RealSize <= 0: s2RealSize = S2
-        s2RealLen = min(s2RealSize, topk)
+        if s2RealSize <= 0:
+            s2RealSize = S2
+        if s2RealSize > topk:
+            s2RealLen = topk
+        else:
+            s2RealLen = s2RealSize
         sparse_indices[:, s1Idx, 0, 0:s2RealLen] = (torch.randint(0, s2RealSize, (s2RealLen,)).to(torch.int32)).npu()
         sparse_indices[:, s1Idx, 0, s2RealLen:topk] = -1
-    softmax_max = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
-    softmax_sum = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
+    sc = 1.0 / math.sqrt(D)
+    q_f = q.float().reshape(B, S1, N2, G, D)
+    k_f = k.float()
+    scores = torch.einsum('bsngd,bkmd->bngsk', q_f, k_f) * sc
+    sm_max_val = scores.max(dim=-1).values
+    exp_s = torch.exp(scores - sm_max_val.unsqueeze(-1))
+    sm_sum_val = exp_s.sum(dim=-1)
+    softmax_max = sm_max_val.permute(0, 1, 3, 2).to(device=torch.device('npu'))
+    softmax_sum = sm_sum_val.permute(0, 1, 3, 2).to(device=torch.device('npu'))
     if is_tnd:
-        return (q.squeeze(0), k.squeeze(0), q_index.squeeze(0), k_index.squeeze(0),
-                q_rope.squeeze(0) if q_rope is not None else None,
-                k_rope.squeeze(0) if k_rope is not None else None,
-                weights.squeeze(0), sparse_indices.squeeze(0), softmax_max.squeeze(0), softmax_sum.squeeze(0))
-    return (q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum)
+        q_tnd = q.squeeze(dim=0)
+        k_tnd = k.squeeze(dim=0)
+        q_index_tnd = q_index.squeeze(dim=0)
+        k_index_tnd = k_index.squeeze(dim=0)
+        q_rope_tnd = q_rope.squeeze(dim=0) if q_rope is not None else None
+        k_rope_tnd = k_rope.squeeze(dim=0) if k_rope is not None else None
+        weights_tnd = weights.squeeze(dim=0)
+        sparse_indices_tnd = sparse_indices.squeeze(dim=0)
+        softmax_max_tnd = softmax_max.squeeze(dim=0)
+        softmax_sum_tnd = softmax_sum.squeeze(dim=0)
+        return (q_tnd, k_tnd, q_index_tnd, k_index_tnd, q_rope_tnd, k_rope_tnd,
+                weights_tnd, sparse_indices_tnd, softmax_max_tnd, softmax_sum_tnd)
+    else:
+        return (q, k, q_index, k_index, q_rope, k_rope,
+                weights, sparse_indices, softmax_max, softmax_sum)
 
 
 B, S1, S2 = 1, 1, 4096

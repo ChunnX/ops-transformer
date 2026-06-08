@@ -40,8 +40,15 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
             s2RealLen = s2RealSize
         sparse_indices[:, s1Idx, 0, 0:s2RealLen] = (torch.randint(0, s2RealSize, (s2RealLen,)).to(torch.int32)).npu()
         sparse_indices[:, s1Idx, 0, s2RealLen:topk] = -1
-    softmax_max = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
-    softmax_sum = torch.randn(B, N2, S1, G, dtype=torch.float, device=torch.device('npu'))
+    sc = 1.0 / math.sqrt(D)
+    q_f = q.float().reshape(B, S1, N2, G, D)
+    k_f = k.float()
+    scores = torch.einsum('bsngd,bkmd->bngsk', q_f, k_f) * sc
+    sm_max_val = scores.max(dim=-1).values
+    exp_s = torch.exp(scores - sm_max_val.unsqueeze(-1))
+    sm_sum_val = exp_s.sum(dim=-1)
+    softmax_max = sm_max_val.permute(0, 1, 3, 2).to(device=torch.device('npu'))
+    softmax_sum = sm_sum_val.permute(0, 1, 3, 2).to(device=torch.device('npu'))
     if is_tnd:
         q_tnd = q.squeeze(dim=0)
         k_tnd = k.squeeze(dim=0)
