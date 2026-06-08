@@ -221,8 +221,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P>::Init(InitParams initParams)
 template <class T, class P>
 __aicore__ inline void MhcPreKernelSplitND<T, P>::InitLocalBuffers()
 {
-    pipe_->InitBuffer(xInQueue_, kSingleBufferCount, kXInQueueBufferBytes);
-    pipe_->InitBuffer(outQueue_, kSingleBufferCount, kOutQueueBufferBytes);
+    pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
+    pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
     pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, Ceil(curSingleM_, kDoubleBufferCount) * sizeof(P));
 
     if (hasGamma_) {

@@ -155,8 +155,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::InitUbBuffers()
     static constexpr uint32_t kOutQueueBufferBytes = 20 * 1024;
     static constexpr uint32_t kTmpBufferBytes = 40 * 1024;
 
-    pipe_->InitBuffer(xInQueue_, kSingleBufferCount, kXInQueueBufferBytes);
-    pipe_->InitBuffer(outQueue_, kSingleBufferCount, kOutQueueBufferBytes);
+    pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
+    pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
     pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, (curSingleT_ / kHalfSplitDivisor) * sizeof(P));
 
     if (hasGamma_) {
