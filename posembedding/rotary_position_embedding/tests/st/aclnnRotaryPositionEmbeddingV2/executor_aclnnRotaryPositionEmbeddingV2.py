@@ -84,7 +84,7 @@ class FunctionApi(BaseApi):
         return AclFormat.ACL_FORMAT_ND
 
 @register("aclnn_rotary_position_embedding_api")
-class AclnnScaledMaskedSoftmax(AclnnBaseApi):
+class AclnnRotaryPositionEmbedding(AclnnBaseApi):
 
     def init_by_input_data(self, input_data: InputDataset):
         input_args, output_packages = super().init_by_input_data(input_data)
