@@ -14,17 +14,17 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
-class MoeDistributeCombineV3OpBuilder(OpBuilder):
+class MoeDistributeCombineOpBuilder(OpBuilder):
     def __init__(self):
-        super(MoeDistributeCombineV3OpBuilder, self).__init__("npu_moe_distribute_combine_v3")
+        super(MoeDistributeCombineOpBuilder, self).__init__("npu_moe_distribute_combine")
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/moe_distribute_combine_v3.cpp']
+        return ['ops/csrc/moe_distribute_combine.cpp']
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_moe_distribute_combine_v3(Tensor context, Tensor expand_x, Tensor expert_ids, " \
+        return "npu_moe_distribute_combine(Tensor context, Tensor expand_x, Tensor expert_ids, " \
             "Tensor assist_info_for_combine, Tensor ep_send_counts, Tensor expert_scales, " \
             "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, " \
             "*, Tensor? tp_send_counts=None, Tensor? x_active_mask=None, " \
@@ -41,7 +41,7 @@ class MoeDistributeCombineV3OpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_distribute_combine_v3_meta(context, expand_x, expert_ids, assist_info_for_combine, 
+        def npu_moe_distribute_combine_meta(context, expand_x, expert_ids, assist_info_for_combine, 
                                                ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
                                                moe_expert_num, ccl_buffer_size, tp_send_counts=None, 
                                                x_active_mask=None, expand_scales=None, 
@@ -56,12 +56,12 @@ class MoeDistributeCombineV3OpBuilder(OpBuilder):
 
 
 # Instantiate the builder
-moe_distribute_combine_v3_op_builder = MoeDistributeCombineV3OpBuilder()
-op_module = moe_distribute_combine_v3_op_builder.load()  # Compiles/loads the .so file
+moe_distribute_combine_op_builder = MoeDistributeCombineOpBuilder()
+op_module = moe_distribute_combine_op_builder.load()  # Compiles/loads the .so file
 
 
-@impl(AS_LIBRARY, moe_distribute_combine_v3_op_builder.name, "PrivateUse1")
-def npu_moe_distribute_combine_v3(context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts, 
+@impl(AS_LIBRARY, moe_distribute_combine_op_builder.name, "PrivateUse1")
+def npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts, 
                                   expert_scales, ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size,
                                   tp_send_counts=None, x_active_mask=None, expand_scales=None, 
                                   shared_expert_x=None, elastic_info=None, ori_x=None, 
@@ -74,7 +74,7 @@ def npu_moe_distribute_combine_v3(context, expand_x, expert_ids, assist_info_for
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_moe_distribute_combine_v3(context, expand_x, expert_ids, assist_info_for_combine,
+    return op_module.npu_moe_distribute_combine(context, expand_x, expert_ids, assist_info_for_combine,
                                                   ep_send_counts, expert_scales, ep_world_size, ep_rank_id,
                                                   moe_expert_num, ccl_buffer_size,
                                                   tp_send_counts, x_active_mask, expand_scales, 
