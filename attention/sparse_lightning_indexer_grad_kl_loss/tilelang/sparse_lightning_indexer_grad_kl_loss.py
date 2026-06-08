@@ -333,8 +333,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.barrier_all()
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
                     T.barrier_all()
-                    T.tile.abs(sm_sum_ub, sm_sum_ub)
-                    T.barrier_all()
+
                     T.tile.fill(eps_sm_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
@@ -462,8 +461,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
 
                     rsy_sum_eps_ub = T.alloc_ub(16, calc_dtype)
-                    T.tile.abs(rsy_sum_ub, rsy_sum_ub)
-                    T.barrier_all()
+
                     T.tile.fill(rsy_sum_eps_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, rsy_sum_eps_ub)
