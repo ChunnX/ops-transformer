@@ -144,8 +144,7 @@ enum class MmAllReduceAttrIdx : size_t
     K_ANTIQUANT_GROUP_SIZE,
     K_GROUP_SIZE,
     K_DTYPE_Y,
-    K_COMM_QUANT_MODE,
-    K_COMM_MODE
+    K_COMM_QUANT_MODE
 };
 
 enum class MmAllReduceAddRmsNormAttrIdx : size_t

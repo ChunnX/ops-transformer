@@ -35,7 +35,6 @@ ge::graphStatus MatmulAllReduceTiling910::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckA16W16());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
-    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (!isKZero_) {
