@@ -468,6 +468,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
 
+    // === DUMP 450: Cast chain results (first round, first tile) ===
+    if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+        AscendC::printf("[DUMP450] After Cast chain:\n");
+        AscendC::DumpTensor(xLocalFp32, 450, 32);
+        AscendC::DumpTensor(xLocalInt32, 451, 32);
+    }
+
     LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
     LocalTensor<uint8_t> cmpMaskTensor = outIndexBuf_.Get<uint8_t>();
     LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
@@ -818,6 +825,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
         }
         globalHist.SetValue(binMask, sum);
     }
+
+    // === DUMP 520: Reduced globalHist (core 0 only) ===
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[DUMP520] ReduceGlobalHist: coresInBlock=%d remain=%d aivNum=%u\n",
+            coresInBlock, remain, constInfo.aivNum);
+        AscendC::printf("[DUMP520] globalHist[0]=%d [1]=%d [2]=%d [3]=%d sum=%d\n",
+            globalHist.GetValue(0), globalHist.GetValue(1),
+            globalHist.GetValue(2), globalHist.GetValue(3),
+            globalHist.GetValue(0) + globalHist.GetValue(1) +
+            globalHist.GetValue(2) + globalHist.GetValue(3));
+    }
 }
 
 template <typename BSAT>
@@ -840,12 +858,31 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FindBoundaryBin(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTensor<int32_t>& globalHist)
 {
+    // === DUMP 510: AddTileHistToTileTopK decision ===
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[DUMP510] AddTileHistToTileTopK: boundaryBin=%d boundaryBinPrev=%d globalHist[boundaryBin]=%d globalHist[boundaryBinPrev]=%d remainK_=%lu\n",
+            boundaryBin, boundaryBinPrev,
+            globalHist.GetValue(boundaryBin),
+            (boundaryBinPrev < static_cast<int32_t>(numValue_)) ? globalHist.GetValue(boundaryBinPrev) : -1,
+            remainK_);
+    }
+
     if (globalHist.GetValue(boundaryBin) == static_cast<int32_t>(remainK_)) {
         AddTileHist2TileTopKInWs(boundaryBin * tileNum_);
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBin);
+        if (GetBlockIdx() == 0) {
+            AscendC::printf("[DUMP511] Branch 1: added boundaryBin, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
+        }
     } else if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
         AddTileHist2TileTopKInWs(boundaryBinPrev * tileNum_);
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBinPrev);
+        if (GetBlockIdx() == 0) {
+            AscendC::printf("[DUMP511] Branch 2: added boundaryBinPrev, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
+        }
+    } else {
+        if (GetBlockIdx() == 0) {
+            AscendC::printf("[DUMP511] Branch 3: nothing added\n");
+        }
     }
 }
 
@@ -934,6 +971,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     ComputeCumSumPrev(resTensor, cumSumValuePrev);
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
+    // === DUMP 550: HandleLastRoundBoundary key values ===
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[DUMP550] HandleLastRoundBoundary: reduceSumValue=%u cumSumValuePrev=%d remainCoreBoundaryNum=%d remainK_=%lu\n",
+            reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_);
+    }
+
     if (remainCoreBoundaryNum > 0) {
         LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
         LocalTensor<int32_t> tileHistBoundary = tileTopK[MAX_TILE_NUM_IN_UB_BY3];
@@ -960,6 +1003,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                     curTileBoundaryNum -=
                         tileHistBoundaryPrev.GetValue(tileId - static_cast<int32_t>(startTileId));
                 }
+
+                // === DUMP 560: Per-tile boundary allocation (core 0, first tile only) ===
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    AscendC::printf("[DUMP560] tileId=%d curTileBoundaryNum=%d remainCoreBoundaryNum=%d tileTopK_before=%d\n",
+                        tileId, curTileBoundaryNum, remainCoreBoundaryNum,
+                        tileTopK.GetValue(tileId - static_cast<int32_t>(startTileId)));
+                }
+
                 if (curTileBoundaryNum < remainCoreBoundaryNum) {
                     remainCoreBoundaryNum -= curTileBoundaryNum;
                     tileTopK.SetValue(tileId - static_cast<int32_t>(startTileId),
@@ -995,6 +1046,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
         VToSSync();
         totalTileTopKInCore += static_cast<int32_t>(tileHistFp32.GetValue(0));
     }
+
+    // === DUMP 570: WriteCoreTopKFromWs totalTileTopKInCore ===
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[DUMP570] WriteCoreTopKFromWs: totalTileTopKInCore=%d\n", totalTileTopKInCore);
+    }
+
     CopyOutCoreTopK(resTensor, totalTileTopKInCore);
 }
 
@@ -1187,6 +1244,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
         CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
         MTE2ToVSync();
+
+        // === DUMP 610: tileTopK array (core 0, first batch only) ===
+        if (GetBlockIdx() == 0 && repeatId == 0) {
+            AscendC::printf("[DUMP610] tileTopK array (dataNum=%u):\n", dataNum);
+            AscendC::DumpTensor(tileTopK, 610, 32);
+        }
 
         // Prefetch first tile
         uint32_t firstTileId = startTileId;
