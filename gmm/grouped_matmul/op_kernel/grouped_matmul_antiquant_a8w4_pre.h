@@ -46,6 +46,9 @@ private:
     uint32_t startNum;
     uint32_t groupNum;
     bool isPerchannel = false;
+    int64_t isSingleTensor = 0;
+    GM_ADDR weightTensorPtr;
+    GM_ADDR scaleTensorPtr;
 
     const int TWO = 2;
     const int EIGHT = 8;
@@ -57,6 +60,9 @@ private:
 template <CubeFormat wFormat>
 __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Init(GM_ADDR weight, GM_ADDR y, GM_ADDR scale, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
     this->tiling = &tilingData;
+    isSingleTensor = tilingData.isSingleTensor;
+    weightTensorPtr = weight;
+    scaleTensorPtr = scale;
     weightGm.SetGlobalBuffer(GetTensorAddr<int4b_t>(0, weight));
     yGm.SetGlobalBuffer((__gm__ int8_t *)workspace);
     if (tiling->quantGroupNum == 1) {   //per channel
@@ -101,6 +107,13 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
 
     for(uint32_t eStart = 0; eStart < tiling->groupNum; eStart++) {
         const size_t eStartAddrGm = eStart * tiling->n * tiling->k;
+        size_t weightBaseOffset;
+        if (isSingleTensor == 0) {
+            weightGm.SetGlobalBuffer(GetTensorAddr<int4b_t>(eStart, weightTensorPtr));
+            weightBaseOffset = 0;
+        } else {
+            weightBaseOffset = eStartAddrGm;
+        }
         for(uint32_t nStart = startNum; nStart < totalGroup; nStart += blockDim) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -122,7 +135,7 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 #endif
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                DataCopy(ALocalI4, weightGm[eStartAddrGm + startAddrGm], handleBytePerBuffer);
+                DataCopy(ALocalI4, weightGm[weightBaseOffset + startAddrGm], handleBytePerBuffer);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -151,7 +164,7 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 #endif
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-                DataCopy(BLocalI4, weightGm[eStartAddrGm + startAddrGm + handleBytePerBuffer], handleBytePerBuffer);
+                DataCopy(BLocalI4, weightGm[weightBaseOffset + startAddrGm + handleBytePerBuffer], handleBytePerBuffer);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
 
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
@@ -206,45 +219,92 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
     AscendC::LocalTensor<bfloat16_t> scaleBF16(AscendC::TPosition::VECIN, 0, SCALE_SIZE);
 #endif
     const uint64_t scale_n = tiling->n * 2;
-    const uint64_t each_core_u64 = (tiling->groupNum * tiling->n / blockDim) / 16 * 16;    // align to 8
-    const uint64_t this_core_u64 = startNum == blockDim - 1 ? tiling->groupNum * tiling->n - each_core_u64 * (blockDim - 1) : each_core_u64;
-    const uint64_t start_element_u64 = each_core_u64 * startNum;
     int loop_size_u64 = 0;
-    PipeBarrier<PIPE_ALL>();
-    for (int start_loc = 0; start_loc < this_core_u64; start_loc += SCALE_SIZE) {
-        loop_size_u64 = SCALE_SIZE;
-        if(start_loc + SCALE_SIZE > this_core_u64) loop_size_u64 = this_core_u64 - start_loc;
-        int loop_size_f32 = loop_size_u64 * 2;
-        DataCopy(scaleU64, scaleGm[start_element_u64 + start_loc], loop_size_u64);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        const size_t PR_SIZE = 64 * 255; //maximum element number in one instruction
-        int pr_last = 0;
-        for(int pr_start = 0; pr_start < loop_size_f32 ; pr_start += PR_SIZE) {
-            size_t pr_this_time = PR_SIZE;
-            if (pr_start + PR_SIZE > loop_size_f32) {
-                pr_this_time = loop_size_f32 - pr_start;
-                pr_last = pr_this_time - pr_this_time / 64 * 64;
+    if (isSingleTensor == 0) {
+        for (uint32_t gIdx = startNum; gIdx < tiling->groupNum; gIdx += blockDim) {
+            scaleGm.SetGlobalBuffer(GetTensorAddr<int64_t>(gIdx, scaleTensorPtr));
+            const uint64_t this_core_u64 = tiling->n;
+            const uint64_t outOffset = gIdx * tiling->n;
+            for (int start_loc = 0; start_loc < this_core_u64; start_loc += SCALE_SIZE) {
+                loop_size_u64 = SCALE_SIZE;
+                if (start_loc + SCALE_SIZE > this_core_u64) { loop_size_u64 = this_core_u64 - start_loc; }
+                int loop_size_f32 = loop_size_u64 * 2;
+                DataCopy(scaleU64, scaleGm[start_loc], loop_size_u64);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                const size_t PR_SIZE = 64 * 255;
+                int pr_last = 0;
+                for (int pr_start = 0; pr_start < loop_size_f32 ; pr_start += PR_SIZE) {
+                    size_t pr_this_time = PR_SIZE;
+                    if (pr_start + PR_SIZE > loop_size_f32) {
+                        pr_this_time = loop_size_f32 - pr_start;
+                        pr_last = pr_this_time - pr_this_time / 64 * 64;
+                    }
+                    int repeatCast = pr_this_time / 64;
+                    AscendC::PairReduceSum<float>(scaleF32[pr_start / 2], scaleF32[pr_start], repeatCast, 64, 1, 1, 8);
+                    PipeBarrier<PIPE_V>();
+                }
+                if (pr_last > 0) {
+                    AscendC::PairReduceSum<float>(scaleF32[(loop_size_f32 - pr_last)/ 2],
+                        scaleF32[loop_size_f32 - pr_last], 1, pr_last, 1, 1, 8);
+                }
+                if constexpr (sizeof(DTYPE_SCALE_OUT) == 2) {
+                    PipeBarrier<PIPE_V>();
+                    Cast(scaleBF16, scaleF32, AscendC::RoundMode::CAST_FLOOR, loop_size_u64);
+                }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+#if ORIG_DTYPE_Y == DT_FLOAT16
+    DataCopy(scaleOutGm[outOffset + start_loc], scaleF32, loop_size_u64);
+#else
+    DataCopy(scaleOutGm[outOffset + start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
+#endif
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
             }
-            int repeatCast = pr_this_time / 64;
-            AscendC::PairReduceSum<float>(scaleF32[pr_start / 2], scaleF32[pr_start], repeatCast, 64, 1, 1, 8);
-            PipeBarrier<PIPE_V>();
         }
-        if (pr_last > 0) {
-            AscendC::PairReduceSum<float>(scaleF32[(loop_size_f32 - pr_last)/ 2], scaleF32[loop_size_f32 - pr_last], 1, pr_last, 1, 1, 8);
+    } else {
+        const uint64_t each_core_u64 = (tiling->groupNum * tiling->n / blockDim) / 16 * 16;    // align to 8
+        const uint64_t this_core_u64 = startNum == blockDim - 1 ?
+            tiling->groupNum * tiling->n - each_core_u64 * (blockDim - 1) : each_core_u64;
+        const uint64_t start_element_u64 = each_core_u64 * startNum;
+        for (int start_loc = 0; start_loc < this_core_u64; start_loc += SCALE_SIZE) {
+            loop_size_u64 = SCALE_SIZE;
+            if (start_loc + SCALE_SIZE > this_core_u64) { loop_size_u64 = this_core_u64 - start_loc; }
+            int loop_size_f32 = loop_size_u64 * 2;
+            DataCopy(scaleU64, scaleGm[start_element_u64 + start_loc], loop_size_u64);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            const size_t PR_SIZE = 64 * 255; // maximum element number in one instruction
+            int pr_last = 0;
+            for (int pr_start = 0; pr_start < loop_size_f32 ; pr_start += PR_SIZE) {
+                size_t pr_this_time = PR_SIZE;
+                if (pr_start + PR_SIZE > loop_size_f32) {
+                    pr_this_time = loop_size_f32 - pr_start;
+                    pr_last = pr_this_time - pr_this_time / 64 * 64;
+                }
+                int repeatCast = pr_this_time / 64;
+                AscendC::PairReduceSum<float>(scaleF32[pr_start / 2], scaleF32[pr_start], repeatCast, 64, 1, 1, 8);
+                PipeBarrier<PIPE_V>();
+            }
+            if (pr_last > 0) {
+                AscendC::PairReduceSum<float>(scaleF32[(loop_size_f32 - pr_last)/ 2],
+                    scaleF32[loop_size_f32 - pr_last], 1, pr_last, 1, 1, 8);
+            }
+            if constexpr (sizeof(DTYPE_SCALE_OUT) == 2) { // to bf16
+                PipeBarrier<PIPE_V>();
+                Cast(scaleBF16, scaleF32, AscendC::RoundMode::CAST_FLOOR, loop_size_u64);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+#if ORIG_DTYPE_Y == DT_FLOAT16
+    DataCopy(scaleOutGm[start_element_u64 + start_loc], scaleF32, loop_size_u64);
+#else
+    DataCopy(scaleOutGm[start_element_u64 + start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
+#endif
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
         }
-        if constexpr (sizeof(DTYPE_SCALE_OUT) == 2) { // to bf16
-            PipeBarrier<PIPE_V>();
-            Cast(scaleBF16, scaleF32, AscendC::RoundMode::CAST_FLOOR, loop_size_u64);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        #if ORIG_DTYPE_Y == DT_FLOAT16
-            DataCopy(scaleOutGm[start_element_u64+start_loc],scaleF32 , loop_size_u64);
-        #else
-            DataCopy(scaleOutGm[start_element_u64+start_loc], scaleBF16, (loop_size_u64 + 16 - 1) / 16 * 16);
-        #endif
-        PipeBarrier<PIPE_ALL>();
     }
 }
 

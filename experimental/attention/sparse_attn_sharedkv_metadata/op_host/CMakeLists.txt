@@ -9,4 +9,4 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-add_modules_sources(OPTYPE sparse_attn_sharedkv ACLNNTYPE aclnn)
+add_modules_sources(OPTYPE sparse_attn_sharedkv_metadata ACLNNTYPE aclnn)

@@ -453,6 +453,34 @@ attention:
     options:
       - kv_quant_sparse_flash_attention
 
+  recurrent_gated_delta_rule:
+    module: True
+    src:
+      - attention/recurrent_gated_delta_rule
+    exclude:
+      - attention/recurrent_gated_delta_rule/docs
+      - attention/recurrent_gated_delta_rule/README.md
+    ut_cov_exclude:
+      - attention/recurrent_gated_delta_rule
+    test:
+      examples: True
+      ut: True
+    options:
+      - recurrent_gated_delta_rule
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
@@ -494,7 +522,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant_v2
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_add:
     module: True
@@ -659,6 +687,23 @@ moe:
       - moe/moe_gating_top_k
     options:
       - moe_gating_top_k
+
+  moe_gating_top_k_backward:
+    module: True
+    src:
+      - moe/moe_gating_top_k_backward
+    exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/README.md
+    ut_cov_exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/examples
+      - moe/moe_gating_top_k_backward/tests
+    test:
+      examples: True
+      ut: True
+    options:
+      - moe_gating_top_k_backward
 
   moe_gating_top_k_softmax:
     module: True
@@ -949,10 +994,6 @@ posembedding:
     exclude:
       - posembedding/apply_rotary_pos_emb/docs
       - posembedding/apply_rotary_pos_emb/README.md
-    ut_cov_exclude:
-      - posembedding/apply_rotary_pos_emb
-    test:
-        examples: False
     options:
       - apply_rotary_pos_emb
 
@@ -1072,7 +1113,8 @@ mc2:
         - mc2/all_gather_matmul/docs
         - mc2/all_gather_matmul/README.md
       ut_cov_exclude:
-        - mc2/all_gather_matmul
+        - mc2/all_gather_matmul/op_graph
+        - mc2/all_gather_matmul/op_kernel
       test:
         examples: False
       options:
@@ -1264,7 +1306,6 @@ mc2:
         - mc2/matmul_all_reduce/op_graph
         - mc2/matmul_all_reduce/op_kernel
       test:
-        ut: False
         examples: False
       options:
         - matmul_all_reduce
@@ -1315,7 +1356,8 @@ mc2:
         - mc2/matmul_allto_all/docs
         - mc2/matmul_allto_all/README.md
       ut_cov_exclude:
-        - mc2/matmul_allto_all
+        - mc2/matmul_allto_all/op_graph
+        - mc2/matmul_allto_all/op_kernel
       test:
         examples: False
       options:
@@ -1387,6 +1429,25 @@ mc2:
         examples: False
       options:
         - quant_reduce_scatter
+        - quant_reduce_scatter_v2
+
+    quant_reduce_scatter_v2:
+      module: True
+      src:
+        - mc2/quant_reduce_scatter
+        - mc2/quant_reduce_scatter_v2
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/quant_reduce_scatter_v2/docs
+        - mc2/quant_reduce_scatter_v2/README.md
+      ut_cov_exclude:
+        - mc2/quant_reduce_scatter_v2/op_graph
+        - mc2/quant_reduce_scatter_v2/op_kernel
+      test:
+        examples: False
+      options:
+        - quant_reduce_scatter_v2
 
   moe_distribute:
     distribute_barrier:
@@ -1516,7 +1577,6 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/docs
         - mc2/moe_distribute_combine_add_rms_norm/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_add_rms_norm/op_api
         - mc2/moe_distribute_combine_add_rms_norm/op_graph
         - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
@@ -1538,7 +1598,6 @@ mc2:
         - mc2/moe_distribute_combine_setup/docs
         - mc2/moe_distribute_combine_setup/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_setup/op_api
         - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
@@ -1556,7 +1615,6 @@ mc2:
         - mc2/moe_distribute_combine_teardown/docs
         - mc2/moe_distribute_combine_teardown/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_teardown/op_api
         - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:

@@ -205,6 +205,22 @@ private:
                 (uint64_t)tailInfo_.mmTiling->matmulTiling.M * (uint64_t)tailInfo_.mmTiling->matmulTiling.N;
             tailInfo_.cAddrOffset = tailInfo_.cOffset * sizeof(CType);
         }
+        // 当N=0时，matmulTiling参数为0，重新计算通信参数
+        if (paramInTiling_->rankN == 0) {
+            uint32_t nTilingKa = paramInTiling_->rankK;
+            uint32_t nTailM = paramInTiling_->tailM;
+            uint32_t nTileM = (paramInTiling_->rankM - nTailM * tailCnt) / paramInTiling_->tileCnt;
+            tileInfo_.aOffset = (uint64_t)nTileM * (uint64_t)nTilingKa;
+            tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(AType);
+            tailInfo_.aOffset = (uint64_t)nTailM * (uint64_t)nTilingKa;
+            tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(AType);
+            // 重新计算scale1通信相关参数
+            nBlockSizeCnt_ = (nTilingKa + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
+            oneCommBlockSizeOffset_ = static_cast<uint64_t>(nTileM / PERBLOCK_BLOCK_SIZE) *
+                                      nBlockSizeCnt_ * sizeof(float);
+            oneRankBlockSizeCnt_ = static_cast<uint64_t>(paramInTiling_->rankM / PERBLOCK_BLOCK_SIZE) * nBlockSizeCnt_;
+            oneRankBlockSizeOffset_ = oneRankBlockSizeCnt_ * sizeof(float);
+        }
     }
 
     __aicore__ inline void UpdateBatchWeight()

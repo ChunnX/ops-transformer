@@ -145,7 +145,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
             <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>key</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
             N2：1；T2：B × S2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>value</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -184,7 +184,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N2,K)、(T1,N2,K)<br>
             K：1024、2048、3072、4096、5120、6144、7168、8192
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>dOut</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>out</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             G：N1/N2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
   <tr>
             <td>actualSeqLengthsQueryOptional</td>
@@ -243,14 +243,14 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T1保持一致。</li>
+                <li>累加和与T1保持一致(EOD场景下累加和可以小于T1)。</li>
                 <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>actualSeqLengthskvOptional</td>
@@ -260,13 +260,13 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T2保持一致。</li>
+                <li>累加和与T2保持一致(EOD场景下累加和可以小于T2)。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryRopeOptional</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N1,Dr)、(T1,N1,Dr)<br>
             Dr：64
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyRopeOptional</td>
@@ -293,7 +293,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,Dr)、(T2,N2,Dr)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>scaleValue</td>

@@ -25,6 +25,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
 #include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
@@ -58,7 +59,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
         int64_t kValue = x1->GetViewShape().GetDim(x1->GetViewShape().GetDimNum() - 1);
         OP_LOGD("MatmulAllReduceAddRmsNorm, kValue: %ld.", kValue);
         if (kValue == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MatmulAllReduceAddRmsNorm does not support k = 0.");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 根据实际支持情况补充
@@ -97,7 +98,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNorm(workspace, workspaceSize, executor, stream);
     OP_LOGD("MatmulAllReduceAddRmsNorm, aclnnMatmulAllReduceAddRmsNorm ret %d", ret);
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceAddRmsNorm, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulAllReduceAddRmsNorm", "This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

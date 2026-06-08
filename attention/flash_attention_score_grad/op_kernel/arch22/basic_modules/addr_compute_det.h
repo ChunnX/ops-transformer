@@ -16,7 +16,7 @@
 #ifndef __ADDR_COMPUTE_DET_H__
 #define __ADDR_COMPUTE_DET_H__
 
-#include "common_header.h"
+#include "flash_attention_score_grad_common_header.h"
 using namespace AscendC;
 
 

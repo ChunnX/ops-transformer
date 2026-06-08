@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public:
         this->Input("blockShapeOptional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND}); 
+            .FormatList({ge::FORMAT_ND});
         this->Input("actualSeqLengthsOptional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64})
@@ -72,7 +72,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        
+
         this->Attr("qInputLayout").AttrType(OPTIONAL);
         this->Attr("kvInputLayout").AttrType(OPTIONAL);
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);
@@ -83,6 +83,7 @@ public:
 
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend950");
     }
 };
 

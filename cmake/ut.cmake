@@ -486,7 +486,15 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
           ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj OBJECT
           $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
           )
+      else()
+        target_sources(
+          ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE
+          $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
+          )
       endif()
+      add_dependencies(
+        ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj ${opName}_${socVersion}_cases_obj
+        )
       target_link_libraries(
         ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
                                                                     $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>

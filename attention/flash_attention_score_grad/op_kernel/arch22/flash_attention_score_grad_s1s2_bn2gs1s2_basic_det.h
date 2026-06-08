@@ -17,7 +17,7 @@
 #define _FLASH_ATTENTION_SCORE_GRAD_S1S2_BASIC_DET_H_
 
 #include "kernel_operator.h"
-#include "./basic_modules/common_header.h"
+#include "./basic_modules/flash_attention_score_grad_common_header.h"
 #include "./basic_modules/vec_modules/vec_post_det.h"
 #include "./basic_modules/vec_modules/vec_pre_det.h"
 #include "./basic_modules/vec_modules/vec_sfmg_det.h"
