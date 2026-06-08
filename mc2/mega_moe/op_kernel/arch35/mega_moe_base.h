@@ -74,6 +74,17 @@ struct Params {
     MegaMoeTilingData *tilingData;
 };
 
+enum class OffsetUpdateMode : int32_t {
+    kGmm,
+    kDispatch
+};
+
+enum class AddrUpdateMode : int32_t {
+    kGmm1,
+    kGmm2,
+    kDispatch
+};
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
