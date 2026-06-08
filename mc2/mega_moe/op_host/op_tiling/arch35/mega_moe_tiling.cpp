@@ -27,10 +27,10 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
-#include "mega_moe.h"
-#include "../../op_kernel/arch35/mega_moe_tiling.h"
-#include "../../op_kernel/arch35/mega_moe_tiling_key.h"
-#include "../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "../mega_moe.h"
+#include "../../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
