@@ -122,11 +122,11 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::CopyOut(
         for (int32_t topKId = 0; topKId < topK; topKId++) {
             auto indicesValue = indicesLocal.GetValue(offset);
 #ifndef __CCE_KT_TEST__
-            if (indicesValue == -1) {
-                offset++;
-                continue;
-            }
             if constexpr (ifNumOutTokens == true) {
+                if (indicesValue == -1) {
+                    offset++;
+                    continue;
+                }
                 if (indicesValue < numOutTokens) {
                     DataCopyPadCustom(dstGm[indicesValue * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
                 }

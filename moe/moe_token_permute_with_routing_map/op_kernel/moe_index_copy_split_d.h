@@ -102,10 +102,10 @@ __aicore__ inline void MoeindexCopySplitDOp<T, ifNumOutTokens>::CopyInAndOut(int
         int64_t indicesOffset = progress * topK;
         for (int64_t topKId = 0; topKId < topK; topKId++) {
             auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
-            if (indicesValue == -1) {
-                continue;
-            }
             if constexpr (ifNumOutTokens == true) {
+                if (indicesValue == -1) {
+                    continue;
+                }
                 if (indicesValue < numOutTokens) {
                     DataCopyPadCustom(dstGm[indicesValue * cols + inner * oneTokenOnceMove], inLocal, tokenCopyParams);
                 }
@@ -124,10 +124,10 @@ __aicore__ inline void MoeindexCopySplitDOp<T, ifNumOutTokens>::CopyInAndOut(int
     for (int64_t topKId = 0; topKId < topK; topKId++) {
 #ifndef __CCE_KT_TEST__
         auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
-        if (indicesValue == -1) {
-            continue;
-        }
         if constexpr (ifNumOutTokens == true) {
+            if (indicesValue == -1) {
+                continue;
+            }
             if (indicesValue < numOutTokens) {
                 DataCopyPadCustom(
                     dstGm[indicesValue * cols + (oneTokenMoveTimes - 1) * oneTokenOnceMove], inLocal,

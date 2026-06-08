@@ -19,13 +19,6 @@
 
 namespace MoeTokenPermute {
 using namespace AscendC;
-template <HardEvent event>
-__aicore__ inline void SetWaitFlag(HardEvent evt)
-{
-    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
-    SetFlag<event>(eventId);
-    WaitFlag<event>(eventId);
-}
 
 template <typename T, typename T2>
 class MoeMrgsortOut
