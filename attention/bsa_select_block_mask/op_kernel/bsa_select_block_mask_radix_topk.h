@@ -328,32 +328,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 // Wait current tile ready
                 WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
-                // === DUMP 100: Input data after CopyIn (first round, first tile) ===
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<half> xDump = curBuf.template Get<half>()[tileLen_];
-                    AscendC::DumpTensor(xDump, 100, 32);
-                }
-
                 // Core processing
                 NegateDataForLargest(curBuf, curTileLen);
                 TwiddleInB16(curBuf, curTileLen);
-
-                // === DUMP 200: After TwiddleInB16 (first round, first tile) ===
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<IN_T> xDumpB16 = curBuf.Get<IN_T>();
-                    LocalTensor<int16_t> xDumpInt16 = xDumpB16[tileLen_].template ReinterpretCast<int16_t>();
-                    AscendC::DumpTensor(xDumpInt16, 200, 32);
-                }
-
                 DoAndMask(curBuf, curTileLen);
-
-                // === DUMP 300: After DoAndMask (first round, first tile) ===
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<IN_T> xDumpB16 = curBuf.Get<IN_T>();
-                    LocalTensor<int16_t> xDumpInt16 = xDumpB16[tileLen_].template ReinterpretCast<int16_t>();
-                    AscendC::DumpTensor(xDumpInt16, 300, 32);
-                }
-
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
 
                 // === DUMP 400: tileHist after CalcCumsumHistogram (first round, first tile) ===
@@ -479,10 +457,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
 
-    // === DUMP 450: Cast chain results (first round, first tile) ===
+    // === DUMP 451: Cast chain results (first round, first tile) ===
     if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-        AscendC::printf("[DUMP450] After Cast chain:\n");
-        AscendC::DumpTensor(xLocalFp32, 450, 32);
+        AscendC::printf("[DUMP451] After Cast chain (xLocalInt32):\n");
         AscendC::DumpTensor(xLocalInt32, 451, 32);
     }
 
@@ -509,10 +486,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
             AscendC::printf("[DUMP465] xLocalInt32 before Compares (first 32):\n");
             AscendC::DumpTensor(xLocalInt32, 465, 32);
-            AscendC::printf("[DUMP466] xLocalInt32 before Compares (middle 32, offset 500):\n");
-            AscendC::DumpTensor(xLocalInt32[500], 466, 32);
-            AscendC::printf("[DUMP467] xLocalInt32 before Compares (last 32, offset 992):\n");
-            AscendC::DumpTensor(xLocalInt32[992], 467, 32);
         }
 
         uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
@@ -1129,11 +1102,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::GT, alignLen);
     PipeBarrier<PIPE_V>();
 
-    // === DUMP 710: cmpMask after Compares (bitmask) ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::DumpTensor(cmpMask, 710, 32);
-    }
-
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
 
@@ -1163,11 +1131,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     LocalTensor<uint8_t> maskU8 = maskInt16.ReinterpretCast<uint8_t>();
     Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
-
-    // === DUMP 720: maskU8 after Cast chain ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::DumpTensor(maskU8, 720, 32);
-    }
 
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
@@ -1199,11 +1162,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
     PipeBarrier<PIPE_V>();
 
-    // === DUMP 810: cmpMask after Compares EQ (bitmask) ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::DumpTensor(cmpMask, 810, 32);
-    }
-
     LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
     for (uint64_t i = 0; i < curTileLen; i++) {
         vecIndex.SetValue(i, static_cast<int32_t>(i));
@@ -1216,19 +1174,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
                true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
     VToSSync();
 
-    // === DUMP 820: matchIndices after GatherMask ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::printf("[DUMP820] EQ eqRsvdCnt=%lu\n", eqRsvdCnt);
-        AscendC::DumpTensor(matchIndices, 820, 32);
-    }
-
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
-
-    // === DUMP 830: writeCnt ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::printf("[DUMP830] EQ writeCnt=%u (curTileK=%d eqRsvdCnt=%lu)\n",
-            writeCnt, curTileK, eqRsvdCnt);
-    }
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     DataCopyPad(maskLocal, maskTmpGmLocal[tileGmOffset],
@@ -1241,11 +1187,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     for (uint32_t i = 0; i < writeCnt; i++) {
         int32_t idx = matchIndices.GetValue(i);
         maskLocal.SetValue(idx, writeValue);
-    }
-
-    // === DUMP 840: Final maskLocal after SetValue ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
-        AscendC::DumpTensor(maskLocal, 840, 32);
     }
 
     SToMTE3Sync();
@@ -1282,12 +1223,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
         CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
         MTE2ToVSync();
-
-        // === DUMP 610: tileTopK array (core 0, first batch only) ===
-        if (GetBlockIdx() == 0 && repeatId == 0) {
-            AscendC::printf("[DUMP610] tileTopK array (dataNum=%u):\n", dataNum);
-            AscendC::DumpTensor(tileTopK, 610, 32);
-        }
 
         // Prefetch first tile
         uint32_t firstTileId = startTileId;
@@ -1387,13 +1322,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
                     DataCopyPadExtParams<uint8_t>(false, 0,
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         MTE2ToMTE3Sync();
-
-        // === DUMP 900: Final mask output (first tile) ===
-        if (GetBlockIdx() == 0 && tileIdx == 0) {
-            AscendC::printf("[DUMP900] CopyMaskToOutput: tileIdx=%lu curTileLen=%lu tileGmOffset=%lu outputOffset=%lu\n",
-                tileIdx, curTileLen, tileGmOffset, outputOffset);
-            AscendC::DumpTensor(maskLocal8, 900, 32);
-        }
 
         // Write to maskOutGm
         // Note: uint8_t and int8_t have identical memory layout (1 byte each)
