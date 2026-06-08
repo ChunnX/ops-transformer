@@ -17,7 +17,7 @@
 #include "lib/matmul_intf.h"
 #include "quant_lightning_indexer_template_tiling_key.h"
 
-#if (__CCE_AICORE__ == 310)
+#if (true)
     #include "arch35/quant_lightning_indexer_kernel.h"
 
 #else
@@ -47,7 +47,7 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);  // 修改为1:1比值，适配新芯片架构
 
-#if (__CCE_AICORE__ == 310)
+#if (true)
     if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
         if (ORIG_DTYPE_WEIGHTS == DT_FLOAT16) {
             INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,

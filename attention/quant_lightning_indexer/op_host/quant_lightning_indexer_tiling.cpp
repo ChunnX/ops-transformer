@@ -102,7 +102,7 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     uint32_t aivNum = aicNum;
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    npuArch_ = NpuArch::DAV_3510;
     if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
