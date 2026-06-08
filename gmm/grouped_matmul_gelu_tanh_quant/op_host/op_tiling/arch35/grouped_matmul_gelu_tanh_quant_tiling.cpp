@@ -61,7 +61,7 @@ void GroupedMatmulGeluTanhQuantTiling950::Reset()
 ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    return GroupedQmmTiling::GetShapeAttrsInfo();
+    return GroupedQmmBasicApiTiling::GetShapeAttrsInfo();
 }
 
 bool GroupedMatmulGeluTanhQuantTiling950::IsFp8(ge::DataType dtype) const
@@ -238,50 +238,29 @@ ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedMatmulGeluTanhQuantTiling950::FillMmTilingData()
-{
-    tilingData_.mmTilingData.set_M(inputParams_.mSize);
-    tilingData_.mmTilingData.set_N(inputParams_.nSize);
-    tilingData_.mmTilingData.set_Ka(inputParams_.kSize);
-    tilingData_.mmTilingData.set_Kb(inputParams_.kSize);
-    tilingData_.mmTilingData.set_usedCoreNum(aicoreParams_.aicNum);
-    tilingData_.mmTilingData.set_baseM(basicTiling_.baseM);
-    tilingData_.mmTilingData.set_baseN(basicTiling_.baseN);
-    tilingData_.mmTilingData.set_baseK(basicTiling_.baseK);
-    tilingData_.mmTilingData.set_singleCoreM(basicTiling_.baseM);
-    tilingData_.mmTilingData.set_singleCoreN(basicTiling_.singleCoreN);
-    tilingData_.mmTilingData.set_singleCoreK(basicTiling_.singleCoreK);
-    tilingData_.mmTilingData.set_depthA1(basicTiling_.depthA1);
-    tilingData_.mmTilingData.set_depthB1(basicTiling_.depthB1);
-    tilingData_.mmTilingData.set_stepM(basicTiling_.stepM);
-    tilingData_.mmTilingData.set_stepN(basicTiling_.stepN);
-    tilingData_.mmTilingData.set_stepKa(basicTiling_.stepKa);
-    tilingData_.mmTilingData.set_stepKb(basicTiling_.stepKb);
-    tilingData_.mmTilingData.set_isBias(0);
-    tilingData_.mmTilingData.set_iterateOrder(basicTiling_.iterateOrder);
-    tilingData_.mmTilingData.set_dbL0A(2);
-    tilingData_.mmTilingData.set_dbL0B(2);
-    tilingData_.mmTilingData.set_dbL0C(basicTiling_.dbL0c);
-    if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
-        basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
-        tilingData_.mmTilingData.set_mxTypePara(
-            (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
-            (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
-    } else {
-        tilingData_.mmTilingData.set_mxTypePara(
-            (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
-            (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT);
-    }
-}
-
 ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoLibApiTiling()
 {
-    CalBasicBlock();
+    GroupedQmmTiling::CalBasicBlock();
     auto baseMModified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseMModified, GmmConstant::CUBE_BLOCK);
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."),
-                return ge::GRAPH_FAILED);
-    FillMmTilingData();
+    OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    tilingData_.mmTilingData.m = inputParams_.mSize;
+    tilingData_.mmTilingData.n = inputParams_.nSize;
+    tilingData_.mmTilingData.k = inputParams_.kSize;
+    tilingData_.mmTilingData.baseM = basicTiling_.baseM;
+    tilingData_.mmTilingData.baseN = basicTiling_.baseN;
+    tilingData_.mmTilingData.baseK = basicTiling_.baseK;
+    tilingData_.mmTilingData.kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    tilingData_.mmTilingData.scaleKAL1 = std::min(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
+                 basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+            basicTiling_.baseK,
+        inputParams_.kSize);
+    tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
+    tilingData_.mmTilingData.isBias = 0;
+    tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
 }
 

@@ -13,11 +13,13 @@
 
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
-#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
+#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
+#include "../../../../grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {
+using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
 
 BEGIN_TILING_DATA_DEF(GMMGeluTanhQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
@@ -34,15 +36,15 @@ REGISTER_TILING_DATA_CLASS(GMMGeluTanhQuantParamsOp, GMMGeluTanhQuantParams)
 
 BEGIN_TILING_DATA_DEF(GMMGeluTanhQuantTilingDataParams)
 TILING_DATA_FIELD_DEF_STRUCT(GMMGeluTanhQuantParams, gmmGeluTanhQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(QuantBasicApiMMTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulGeluTanhQuant_0, GMMGeluTanhQuantTilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulGeluTanhQuant_1, GMMGeluTanhQuantTilingDataParams)
 
-class GroupedMatmulGeluTanhQuantTiling950 : public GroupedQmmTiling {
+class GroupedMatmulGeluTanhQuantTiling950 : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedMatmulGeluTanhQuantTiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
+    explicit GroupedMatmulGeluTanhQuantTiling950(gert::TilingContext *context) : GroupedQmmBasicApiTiling(context)
     {
         Reset();
     }
@@ -50,7 +52,7 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQmmTiling::Reset(context);
+        GroupedQmmBasicApiTiling::Reset(context);
         Reset();
     }
 
@@ -72,7 +74,6 @@ private:
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
     bool IsFp8(ge::DataType dtype) const;
-    void FillMmTilingData();
 
     GMMGeluTanhQuantTilingDataParams tilingData_;
     uint8_t roundMode_ = 4;
