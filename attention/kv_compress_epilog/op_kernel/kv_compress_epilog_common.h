@@ -29,11 +29,11 @@ constexpr int32_t VL_FP32 = 64;
 constexpr int32_t PER_BLOCK_FP16 = 128;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3FN_MAX_VALUE = 448.0f;
+constexpr float FP8_E5M2_MIN_VALUE = -57344.0f;
+constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
 constexpr int64_t QUANT_MDOE_GROUP_QUANT_BF16 = 1;
 constexpr int64_t QUANT_MDOE_GROUP_QUANT_E8M0 = 2;
 constexpr int64_t QUANT_MDOE_HIFLOAT = 3;
-constexpr float FP8_E5M2_MIN_VALUE = -57344.0f;
-constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
 constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
 constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
 constexpr uint32_t FAST_LOG_AND_VALUE2 = (((uint32_t)1 << (uint32_t)23) - (uint32_t)1);
@@ -199,7 +199,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         RegTensor<T0> ropeReg;
         RegTensor<uint32_t> scaleTmp0;
         RegTensor<uint8_t> scaleTmp1;
-        RegTensor<bfloat16_t> scaleTmp1Bf16;
+        RegTensor<uint16_t> scaleTmp1Bf16;
         UnalignRegForStore ureg0;
         UnalignRegForLoad ureg1;
         UnalignRegForStore ureg2;
@@ -229,8 +229,8 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 Maxs(max2, max0, static_cast<float>(1e-4), pregMerge);
                 Muls(max2, max2, coeff, pregMerge);
                 if constexpr (roundScale) {
-                    ShiftRights(vreg0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
-                    And(vreg2, vreg1, tmp1, pregMerge);
+                    ShiftRights(vreg1, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
+                    And(vreg2, (RegTensor<uint32_t> &)max2, tmp1, pregMerge);
                     Compare<uint32_t, AscendC::CMPMODE::NE>(cmpMask, vreg2, zero, pregMerge);
                     Select(vreg4, one, zero, cmpMask);
                     Add(vreg1, vreg1, vreg4, pregMerge);
@@ -240,13 +240,18 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 Div(x0, x0, dupScale, pregLoop);
                 Maxs(x0, x0, fp8Min, pregLoop);
                 Mins(x0, x0, fp8Max, pregLoop);
-                StoreOutputData<T1>(yLocalAddr, x0, pregLoop, j * VL_FP32 + i * dstCurColNumAlign + ropeNum);
-                
+                {
+                    RegTensor<fp8_e4m3fn_t> fp8Out;
+                    Cast<fp8_e4m3fn_t, float, castTraitF32toFp8Even>(fp8Out, x0, pregLoop);
+                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                        yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
+                }
+
                 // cat scale
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
-                    Cast<bfloat16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
-                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + ((quantColNum + ropeNum + j + i * dstCurColNumAlign) >> 1), scaleTmp1Bf16, preg1);
+                    Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
+                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + ((quantColNum + ropeNum + j + i * dstCurColNumAlign) >> 1), (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
                     DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign, (RegTensor<T1>&)scaleTmp1, preg1);
