@@ -51,15 +51,8 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 
     __VEC_SCOPE__
     {
-        RegTensor<T> vreg1;
-        RegTensor<T> vreg2;
-        RegTensor<T> vreg3;
-        RegTensor<T> maxReg;
-        RegTensor<float> scaleReg;
-        RegTensor<float> fp8MaxReg;
-        RegTensor<T> yReg1;
-        RegTensor<float> yReg2;
-        RegTensor<float> yReg3;
+        RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
+        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
         RegTensor<U> outReg;
 
         MaskReg preg0;
@@ -89,7 +82,6 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
             DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + i * vfNum);
             Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
             Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
-
             Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + i * vfNum, outReg, yMaskReg);
         }
