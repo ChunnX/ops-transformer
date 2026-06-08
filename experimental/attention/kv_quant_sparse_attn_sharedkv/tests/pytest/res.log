@@ -1,0 +1,170 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0 -- /root/miniconda3/envs/cyp/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00957671/code_cann/0603/cube_v0peload/ops-transformer_2/experimental/attention/kv_quant_sparse_attn_sharedkv/tests/pytest
+configfile: pytest.ini
+collecting ... [{'Testcase_Name': None, 'layout_q': 'TND', 'layout_kv': 'PA_ND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.float8_e4m3fn, 'cmp_kv_type': torch.float8_e4m3fn, 'B': 5, 'S1': 199, 'S2': 12, 'N1': 64, 'N2': 1, 'D': 512, 'K': 512, 'block_num1': None, 'block_num2': None, 'block_size1': 128, 'block_size2': 128, 'cu_seqlens_q': [0, 30, 33, 51, 99, 99], 'seqused_kv': [12, 12, 12, 12, 12], 'softmax_scale': 0.04419417, 'cmp_ratio': 4, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'kv_quant_mode': 1, 'tile_size': 64, 'rope_head_dim': 64, 'template_run_mode': 'CFA', 'actlen_mode': 'full', 'S1EQS2': False}, {'Testcase_Name': None, 'layout_q': 'TND', 'layout_kv': 'PA_ND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.float8_e4m3fn, 'cmp_kv_type': torch.float8_e4m3fn, 'B': 5, 'S1': 199, 'S2': 12, 'N1': 128, 'N2': 1, 'D': 512, 'K': 512, 'block_num1': None, 'block_num2': None, 'block_size1': 128, 'block_size2': 128, 'cu_seqlens_q': [0, 30, 33, 51, 99, 99], 'seqused_kv': [12, 12, 12, 12, 12], 'softmax_scale': 0.04419417, 'cmp_ratio': 4, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'kv_quant_mode': 1, 'tile_size': 64, 'rope_head_dim': 64, 'template_run_mode': 'CFA', 'actlen_mode': 'full', 'S1EQS2': False}]
+collected 2 items
+
+test_kv_quant_sparse_attn_sharedkv_single.py::test_sparse_attn_sharedkv[param_combinations0] d_aligned_128=640, nope_head_dim=448, rope_head_dim=64, quant_scale_head_dim=7
+cpu执行中...
+template_run_mode = CFA
+i_B = 0/5
+    i_N2 = 0/1
+      进度：10.0% | 步数：                            3/30
+      进度：20.0% | 步数：                            6/30
+      进度：30.0% | 步数：                            9/30
+      进度：40.0% | 步数：                           12/30
+      进度：50.0% | 步数：                           15/30
+      进度：60.0% | 步数：                           18/30
+      进度：70.0% | 步数：                           21/30
+      进度：80.0% | 步数：                           24/30
+      进度：90.0% | 步数：                           27/30
+i_B = 1/5
+    i_N2 = 0/1
+      进度：0.0% | 步数：                           0/3
+      进度：33.3% | 步数：                           1/3
+      进度：66.7% | 步数：                           2/3
+i_B = 2/5
+    i_N2 = 0/1
+      进度：5.6% | 步数：                            1/18
+      进度：16.7% | 步数：                            3/18
+      进度：27.8% | 步数：                            5/18
+      进度：38.9% | 步数：                            7/18
+      进度：50.0% | 步数：                            9/18
+      进度：55.6% | 步数：                           10/18
+      进度：66.7% | 步数：                           12/18
+      进度：77.8% | 步数：                           14/18
+      进度：88.9% | 步数：                           16/18
+i_B = 3/5
+    i_N2 = 0/1
+      进度：8.3% | 步数：                            4/48
+      进度：18.8% | 步数：                            9/48
+      进度：29.2% | 步数：                           14/48
+      进度：39.6% | 步数：                           19/48
+      进度：50.0% | 步数：                           24/48
+      进度：58.3% | 步数：                           28/48
+      进度：68.8% | 步数：                           33/48
+      进度：79.2% | 步数：                           38/48
+      进度：89.6% | 步数：                           43/48
+i_B = 4/5
+    i_N2 = 0/1
+mode:%s
+ CFA
+test_data: ('kvquantSparseAttenShardkv_CFA_prefill_TND_BF16_PA_ND_FP8_E4M3FN_5_64_1_199_12_512_512_64_000000', 'TND', 'PA_ND', torch.bfloat16, torch.float8_e4m3fn, torch.float8_e4m3fn, 5, 199, 99, 64, 1, 512, 512, 5, 5, 128, 128, [0, 30, 33, 51, 99, 99], [12, 12, 12, 12, 12], 0.04419417, 4, 4, 3, 127, 0, 1, 64, 64, 'CFA')
+npu_kv_quant_sparse_attn_sharedkv_metadata...
+npu_kv_quant_sparse_attn_sharedkv...
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0154 - split_count:3244032.0; max_diff_hd:10;
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0054 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0060 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0061 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000001 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000002 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000003 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000004 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000005 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000006 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000007 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000008 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000009 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 00000010 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0070 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244023 	 -0.0864258 	 -0.0864258 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244024 	 -0.4199219 	 -0.4199219 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244025 	 -0.8007812 	 -0.8007812 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244026 	 -0.4472656 	 -0.4472656 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244027 	 0.0339355 	 0.0339355 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244028 	 0.8203125 	 0.8203125 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244029 	 0.2558594 	 0.2558594 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244030 	 0.7109375 	 0.7109375 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244031 	 -0.4804688 	 -0.4804688 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0051 - 03244032 	 1.2031250 	 1.2031250 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0221 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0223 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0224 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:58] [INFO]-result_compare_method.py:0226 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_kv_quant_sparse_attn_sharedkv_single.py::test_sparse_attn_sharedkv[param_combinations1] d_aligned_128=640, nope_head_dim=448, rope_head_dim=64, quant_scale_head_dim=7
+cpu执行中...
+template_run_mode = CFA
+i_B = 0/5
+    i_N2 = 0/1
+      进度：10.0% | 步数：                            3/30
+      进度：20.0% | 步数：                            6/30
+      进度：30.0% | 步数：                            9/30
+      进度：40.0% | 步数：                           12/30
+      进度：50.0% | 步数：                           15/30
+      进度：60.0% | 步数：                           18/30
+      进度：70.0% | 步数：                           21/30
+      进度：80.0% | 步数：                           24/30
+      进度：90.0% | 步数：                           27/30
+i_B = 1/5
+    i_N2 = 0/1
+      进度：0.0% | 步数：                           0/3
+      进度：33.3% | 步数：                           1/3
+      进度：66.7% | 步数：                           2/3
+i_B = 2/5
+    i_N2 = 0/1
+      进度：5.6% | 步数：                            1/18
+      进度：16.7% | 步数：                            3/18
+      进度：27.8% | 步数：                            5/18
+      进度：38.9% | 步数：                            7/18
+      进度：50.0% | 步数：                            9/18
+      进度：55.6% | 步数：                           10/18
+      进度：66.7% | 步数：                           12/18
+      进度：77.8% | 步数：                           14/18
+      进度：88.9% | 步数：                           16/18
+i_B = 3/5
+    i_N2 = 0/1
+      进度：8.3% | 步数：                            4/48
+      进度：18.8% | 步数：                            9/48
+      进度：29.2% | 步数：                           14/48
+      进度：39.6% | 步数：                           19/48
+      进度：50.0% | 步数：                           24/48
+      进度：58.3% | 步数：                           28/48
+      进度：68.8% | 步数：                           33/48
+      进度：79.2% | 步数：                           38/48
+      进度：89.6% | 步数：                           43/48
+i_B = 4/5
+    i_N2 = 0/1
+mode:%s
+ CFA
+test_data: ('kvquantSparseAttenShardkv_CFA_prefill_TND_BF16_PA_ND_FP8_E4M3FN_5_128_1_199_12_512_512_64_000001', 'TND', 'PA_ND', torch.bfloat16, torch.float8_e4m3fn, torch.float8_e4m3fn, 5, 199, 99, 128, 1, 512, 512, 5, 5, 128, 128, [0, 30, 33, 51, 99, 99], [12, 12, 12, 12, 12], 0.04419417, 4, 4, 3, 127, 0, 1, 64, 64, 'CFA')
+npu_kv_quant_sparse_attn_sharedkv_metadata...
+npu_kv_quant_sparse_attn_sharedkv...
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0154 - split_count:6488064.0; max_diff_hd:10;
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0054 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0060 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0061 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000001 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000002 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000003 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000004 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000005 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000006 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000007 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000008 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000009 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 00000010 	 0.0000000 	 0.0000000 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0070 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488055 	 0.6132812 	 0.6132812 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488056 	 -0.1347656 	 -0.1347656 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488057 	 -0.6523438 	 -0.6523438 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488058 	 -0.1396484 	 -0.1396484 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488059 	 -1.1328125 	 -1.1328125 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488060 	 -0.6679688 	 -0.6679688 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488061 	 1.3281250 	 1.3281250 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488062 	 0.2597656 	 0.2597656 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488063 	 0.0937500 	 0.0937500 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0051 - 06488064 	 0.0786133 	 0.0786133 	 0.0000000 	 0.0000000
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0221 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0223 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0224 - ---------------------------------------------------------------------------------------
+[2026/06/08 14:27:59] [INFO]-result_compare_method.py:0226 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_kv_quant_sparse_attn_sharedkv_single.py::test_sparse_attn_sharedkv[param_combinations0]
+PASSED test_kv_quant_sparse_attn_sharedkv_single.py::test_sparse_attn_sharedkv[param_combinations1]
+============================== 2 passed in 9.39s ===============================

@@ -67,7 +67,7 @@ private:
 
     const KvQuantSparseAttnSharedkvTilingData *__restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint32_t PRELOAD_NUM = 3;
+    static constexpr uint32_t PRELOAD_NUM = 2;
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
 
@@ -88,6 +88,12 @@ private:
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
+    uint32_t bN2StartIdx;
+    uint32_t gS1StartIdx;
+    uint32_t s2StartIdx;
+    uint32_t bN2EndIdx;
+    uint32_t nextGs1Idx;
+    uint32_t s2EndIdx;
 
     /* 初始化后不变的信息 */
     ConstInfo constInfo;
@@ -122,19 +128,35 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     }
     this->metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
 
+    // 从meta data解析分核信息
+    bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
+    gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
+    s2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_START_INDEX, false));
+    bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
+    nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
+    s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
+    if (nextGs1Idx != 0) {
+        bN2EndIdx++;
+    }
+
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
     this->ParseTilingData(cuSeqlensQ, sequsedKv);
+    this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, sequsedQ, sequsedKv, sinks,
+        workspace, tiling, tPipe); // gm设置
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, sequsedKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
+    if ASCEND_IS_AIV {
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+            this->vecBlock.GetKVPhyAddr(bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, actualSeqQlenAddr, cuSeqlensQAddr, actualSeqKvlenAddr, workspace, constInfo);
+        }
+    }
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, sequsedQ, sequsedKv, sinks,
-        workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
 
@@ -323,24 +345,11 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         }
         return;
     }
-
-    // 从meta data解析分核信息
-    uint32_t bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
-    uint32_t gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
-    uint32_t s2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_START_INDEX, false));
-    uint32_t bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
-    uint32_t nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
-    uint32_t s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
     uint32_t s2LoopLimit = 0;
-
-    if (nextGs1Idx != 0) {
-        bN2EndIdx++;
-    }
 
     int64_t taskId = 0;
     bool notLast = true;
-    bool loadQkOff = false;
-    RunInfo runInfo[4];
+    RunInfo runInfo[3];
     RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
     bool isFirstLoop = true;
@@ -362,13 +371,8 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                         notLastTwoLoop = false;
                         break;
                     case 1:
-                        notLastTwoLoop = false;
-                        loadQkOff = true;
-                        break;
-                    case 2:
                         notLast = false;
                         notLastTwoLoop = false;
-                        loadQkOff = true;
                         break;
                     default:
                         break;
@@ -393,15 +397,18 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastTwoLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId % 4];
+                    RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                }
-                if ASCEND_IS_AIV {
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 4];
-                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3), \
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
+                    if ASCEND_IS_AIC {
+                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
+                        isFirstLoop = false;
                     } else {
+                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3), \
+                            v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                    }
+                } else {
+                    if ASCEND_IS_AIV {
                         if constexpr (IS_SPLIT_G) {
                             if (maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
@@ -410,32 +417,25 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                             }
                         }
                     }
-                    if (taskId > 1 && notLast) {
-                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
+                }
+                if (taskId > 0 && notLast) {
+                    auto &runInfo2 = runInfo[(taskId + 2) % 3];
+                    if ASCEND_IS_AIV {
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
                             this->constInfo);
-                    }
-                    if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
-                    }
-                } else {
-                    if (taskId > 0 && !loadQkOff) {
-                        RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
-                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
-                        isFirstLoop = false;
-                    }
-                    if (taskId > 1 && notLast) {
-                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
-                        RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
+                    } else {
+                        RunInfo &runInfoNext = runInfo[taskId % 3];
                         this->cubeBlock.IterateBmm1(
                             this->bmm1Buffers.Get(), this->l1RightBuffers.Get(runInfo2.taskIdMod3),
-                                v0ResGmBuffers.Get(runInfo2.taskIdMod3),
+                            v0ResGmBuffers.Get(runInfo2.taskIdMod3),
                             notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                     }
-                    if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                }
+                if (taskId > 1) {
+                    RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
+                    if ASCEND_IS_AIV {
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                    } else {
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                             this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
                     }
