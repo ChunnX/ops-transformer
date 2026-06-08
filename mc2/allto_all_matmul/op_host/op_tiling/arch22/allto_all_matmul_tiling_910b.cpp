@@ -1138,10 +1138,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
             uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
             uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
             OP_TILING_CHECK((x1ScaleDim0 != tokenSize),
-                            OP_LOGE(opName_,
-                                    "The x1Scale dim0 should be %u (x1's second dim multiplied by world_size), "
-                                    "but actual value is %lu.",
-                                    tokenSize, x1ScaleDim0),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
+                                Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                                "The dim0 of x1Scale should be " + std::to_string(tokenSize)),
                             return ge::GRAPH_FAILED);
         }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
