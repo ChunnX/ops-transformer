@@ -1329,9 +1329,9 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         inputQue1.EnQue(scoreUb);
         inputQue1.DeQue<T>();
         Dequant<false>(scoreUb, scoreUb, xWGateDescaleUb[baseOffset], curLoopBatchNum * constInfo_.sSize,
-                       splitInfo.dBaseSize, curLoopBatchNum * constInfo_.sSize * splitInfo.dBaseSize);
+                       splitInfo.dBaseSize, splitInfo.dBaseSize);
         Dequant<false>(kvUb, kvUb, xWKvDescaleUb[baseOffset], curLoopBatchNum * constInfo_.sSize,
-                       splitInfo.dBaseSize, curLoopBatchNum * constInfo_.sSize * splitInfo.dBaseSize);
+                       splitInfo.dBaseSize, splitInfo.dBaseSize);
         PipeBarrier<PIPE_V>();
         splitInfo.dealTcNum = 0;
         uint32_t curLoopCompressedCnt = 0;
