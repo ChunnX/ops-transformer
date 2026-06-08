@@ -538,6 +538,10 @@ public:
                                        uint32_t subLoop)
     {
         uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
+        // Band head intra-skip: shift CopyKey offset for subLoop 0
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U) {
+            s2Offset += runInfo.bandHeadIntraSkip;
+        }
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
     }
 
@@ -568,6 +572,10 @@ public:
                                             uint32_t s2RealSize, uint32_t subLoop)
     {
         uint32_t s2Offset = subLoop % 2 == 0 ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
+        // Band head intra-skip: shift CopyKeyScale offset for subLoop 0
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U) {
+            s2Offset += runInfo.bandHeadIntraSkip;
+        }
         CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
     }
 
@@ -797,6 +805,12 @@ public:
             } else {
                 s2CalcSize = runInfo.actSingleLoopS2Size - s2SplitSize;
             }
+        }
+        // Band head intra-skip: reduce CopyKey/BMM1 for subLoop 0
+        uint32_t s2IntraSkip = 0U;
+        if (subLoop == 0 && runInfo.bandHeadIntraSkip > 0U && runInfo.bandHeadIntraSkip < s2CalcSize) {
+            s2IntraSkip = runInfo.bandHeadIntraSkip;
+            s2CalcSize -= s2IntraSkip;
         }
         Buffer<BufferType::L1> mm1B;
         uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
