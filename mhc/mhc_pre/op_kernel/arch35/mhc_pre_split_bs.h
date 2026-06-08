@@ -315,6 +315,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0Prologue(uint32_t curNdLen, 
 template <class T, class P>
 __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
 {
+    if (vectorOffset_.singleCoreM == 0) {
+        return;
+    }
+
     this->VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM, scaleMean_,
                         matrixInfo_.normEps);
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
