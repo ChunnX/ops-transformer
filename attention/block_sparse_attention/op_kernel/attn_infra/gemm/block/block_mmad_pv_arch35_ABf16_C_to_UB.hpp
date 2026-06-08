@@ -83,6 +83,9 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
+    // DN 路径：P 在 L1 是解折叠后的 P'[S2,S1] 自然 NZ（LayoutTagL1A=nZ），需转置 load 成 P[S1,S2]；
+    // ND 路径 P 是 [S1,S2] zN，不转置。用 LayoutTagL1A 是否为 nZ 推断（与 BMM1 的 SWAP_QK 同思路）
+    static constexpr bool TRANSPOSE_A = std::is_same_v<typename TileCopy_::LayoutTagL1A, layout::nZ>;
     using DispatchPolicy = MmadAtlasA5BsaPV;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
@@ -263,7 +266,11 @@ public:
 
         auto l1BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL1B>(curBaseTileSize, embed);
         auto l1BTensorTla = tla::MakeTensor(l1BTensor[l1BBufId], l1BLayoutTla, Arch::PositionL1{});
-        auto l1ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL1A>(rowNum, curBaseTileSize);
+        // DN：L1 上 P 物理是 P'[S2, S1] 自然 NZ，S2 维按物理 round（l1ATileK=kvBaseTile=256）描述，
+        //     转置 load 时 src=[K=S2, M=S1]；ND：P 是 [S1, S2] zN，src=[M=S1, K=S2]
+        auto l1ALayoutTla = TRANSPOSE_A ?
+            tla::MakeLayout<ElementA, LayoutTagL1A>(l1ATileK, rowNum) :
+            tla::MakeLayout<ElementA, LayoutTagL1A>(rowNum, curBaseTileSize);
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId], l1ALayoutTla, Arch::PositionL1{});
         // load V full base tile to L1 before crossCoreSync
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
@@ -324,8 +331,13 @@ public:
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
                     }
 
-                    auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                    // DN 转置 load：src 取 [K=S2 chunk, M=S1 chunk]（nZ），dst L0A 仍是 [M, K] zN，
+                    //   copyL1ToL0A 自动走 ifTranspose=true 的 nZ→zN 特化；ND 取 [M, K] zN 不转置
+                    auto l1ATensorTlaTile = TRANSPOSE_A ?
+                        GetTile(l1ATensorTla, tla::MakeCoord(kL0Itr * L0_TILE_K, mL0Itr * L0_TILE_M),
+                            tla::MakeShape(l0TileKAct, l0TileMAct)) :
+                        GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K),
+                            tla::MakeShape(l0TileMAct, l0TileKAct));
                     auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 

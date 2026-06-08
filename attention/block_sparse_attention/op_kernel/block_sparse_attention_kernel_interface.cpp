@@ -183,8 +183,11 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV;
+    // DN 下 P 在 L1 上是解折叠后的 P'[S2,S1] 自然 NZ，把 LayoutTag 由 zN 改成 nZ；
+    // 这样 CopyL1ToL0A 自动选中 nZ→zN 的 ifTranspose=true 特化，一条 load 完成 P'[S2,S1]→P[S1,S2]
+    using LayoutPVPDummy = std::conditional_t<USE_DN, layout::nZ, LayoutPDummy>;
     using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
+        ArchTag, ElementP, LayoutPVPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
         void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<
         DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;

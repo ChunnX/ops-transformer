@@ -99,23 +99,34 @@ public:
     {
     }
 
-    template <class TensorDst, class TensorSrc>
+    // Stage 3 解折叠：把 UB 的 [128,128] 伪宽行 NZ（左半=S2 上半、右半=S2 下半）拆回 L1 的 P'[S2,S1] 自然 NZ。
+    // 两次 DataCopy 的几何（S2=256，单位均为 32B DataBlock=16 个 bf16，对齐 PFA prompt_flash_attention_mm2.h L126-151）：
+    //   ① 左半 = UB CG0..CG_{cg-1}（S2 上半 [0,128)）→ 每个 L1 CG' 的上 8 个分形行
+    //   ② 右半 = UB CG_{cg}..（S2 下半 [128,256)）→ 同 CG' 的下 8 个分形行（dst 下移 LOWER_DST）
+    // 只搬位置、块内不动、不转置；转置交给 Cube 的 isTransposeA load。dirty S2 行已在 Stage 2 填 0，可统一走全块参数。
     __aicore__ inline
-    void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
+    void UnfoldPUbToPL1(AscendC::LocalTensor<ElementOutput> l1PBase,
+        AscendC::LocalTensor<ElementOutput> ubPBase, uint32_t mRound, uint32_t mCopyOffset, uint32_t blockStride)
     {
-        const uint32_t blockCount = tla::get<1, 1>(srcTensor.shape());
-        const uint32_t blockLen = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
+        const uint32_t cgNum = mRound / C0_NUM_PER_FRACTAL;                 // 本 AIV 的列组（CG）数 = S1/16
+        const uint32_t halfDb = SM_COL_MAX_ELEM_NUM >> 1;                   // S2/2，上/下半各 8 个分形行的 DataBlock 数
+        // 右半（S2 下半）在 UB 中的起始：cgNum 个 CG，每个 CG 占 blockStride*16 个 bf16（含 1 行 padding）
+        const uint32_t rightSrcOffset = cgNum * blockStride * ELE_NUM_PER_C0;
+        // L1 每个 CG' 内下半分形行起点：8 个分形行 × (16×16) = SM_COL_MAX_ELEM_NUM*8 个 bf16
+        const uint32_t lowerDstOffset = SM_COL_MAX_ELEM_NUM * 8;
+        // 两个 AIV 各占 P'[S2,S1] 的一半列：AIV1 起点在 AIV0 的 mCopyOffset 列之后
+        const uint32_t aivBaseOffset = subBlockIdx_ * (2u * mCopyOffset) * halfDb;
 
-        AscendC::DataCopyParams repeatParams;
-        repeatParams.blockCount = blockCount;
-        repeatParams.blockLen = m;
-        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / ELE_NUM_PER_C0 - m;
-        repeatParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / ELE_NUM_PER_C0 - m;
+        AscendC::DataCopyParams params;
+        params.blockCount = static_cast<uint16_t>(cgNum);
+        params.blockLen = static_cast<uint16_t>(halfDb);                   // 每 CG 搬上(或下)半 = 8 分形行
+        params.srcStride = 1;                                              // 跳过 UB CG 的 1 行 padding（blockStride=halfDb+1）
+        params.dstStride = static_cast<uint16_t>(halfDb);                  // 跳到下一个 L1 CG'（CG'=2*halfDb 个 DataBlock）
 
-        auto dstOffset = dstTensor.layout()(dstTensor.coord());
-        auto srcOffset = srcTensor.layout()(srcTensor.coord());
-
-        AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], repeatParams);
+        // ① 左半（S2 上半）→ L1 CG' 上 8 分形行
+        AscendC::DataCopy(l1PBase[aivBaseOffset], ubPBase, params);
+        // ② 右半（S2 下半）→ L1 CG' 下 8 分形行
+        AscendC::DataCopy(l1PBase[aivBaseOffset + lowerDstOffset], ubPBase[rightSrcOffset], params);
     }
 
     template <uint32_t MODE, pipe_t PIPE>
@@ -190,16 +201,11 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        // 注：Stage 2 仍沿用 ND 的 UB→L1 搬运占位；Stage 3 会把它替换成两次 DataCopy 解折叠 + Cube 转置 load
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, RoundUp(n, ELE_NUM_PER_C0));
-        auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
-            ubPLayoutTla, Arch::PositionUB{});
-        auto ubPTensorTlaTile = GetTile(ubPTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(m, n));
-        auto l1PTensorTlaTile = GetTile(l1PTensorTla,
-                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
+        // Stage 3：UB→L1 两次 DataCopy 解折叠——把 §2.4 的 [128,128] 伪宽行 NZ 还原成 P'[S2,S1] 自然 NZ
+        // （右半=S2 下半 → 落到左半正下方）；不做转置，转置由 Cube 的 isTransposeA load 完成
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-        CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
+        UnfoldPUbToPL1(l1PTensorTla.data(), lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
+            static_cast<uint32_t>(mRound), mCopyOffset, blockStride);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
