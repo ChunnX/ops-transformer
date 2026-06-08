@@ -43,20 +43,20 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape) {
 
 int Init(int32_t deviceId, aclrtStream *stream) {
     // Fixed writing method, AscendCL initialization.
-    auto ret = aclInit(nullptr);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
-        return ret;
+    auto fia_ret = aclInit(nullptr);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclInit failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
-    ret = aclrtSetDevice(deviceId);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
-        return ret;
+    fia_ret = aclrtSetDevice(deviceId);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
-    ret = aclrtCreateStream(stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
-        return ret;
+    fia_ret = aclrtCreateStream(stream);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
     return 0;
 }
@@ -66,16 +66,16 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
                     aclDataType dataType, aclTensor **tensor) {
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
-        return ret;
+    auto fia_ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) { 
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", rfia_retet); 
+        return fia_ret;
     }
     // Call aclrtMemcpy to copy host side data to device side memory.
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
-        return ret;
+    fia_ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
 
     // Calculate the strides of continuous tensors.
@@ -97,10 +97,10 @@ int main() {
     // Fill in the deviceId based on your actual device.
     int32_t deviceId = 0;
     aclrtStream stream;
-    auto ret = Init(deviceId, &stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
-        return ret;
+    auto fia_ret = Init(deviceId, &stream);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("Init acl failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
@@ -137,15 +137,15 @@ int main() {
     std::vector<op::fp16_t> attentionOutHostData(attentionOutShapeSize, 1);
 
     // Create query aclTensor.
-    ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
+    fia_ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        return fia_ret;
     }
 
     // Create key aclTensor.
-    ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
+    fia_ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        return fia_ret;
     }
     int kvTensorNum = 1;
     aclTensor *tensorsOfKey[kvTensorNum];
@@ -153,9 +153,9 @@ int main() {
     auto tensorKeyList = aclCreateTensorList(tensorsOfKey, kvTensorNum);
 
     // Create value aclTensor.
-    ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
+    fia_ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        return fia_ret;
     }
     aclTensor *tensorsOfValue[kvTensorNum];
     tensorsOfValue[0] = valueTensor;
@@ -187,7 +187,7 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // Call the first interface.
-    ret = aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
+    fia_ret = aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
@@ -200,24 +200,24 @@ int main() {
     // Apply for device memory based on the workspaceSize calculated from the first interface paragraph.
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0U) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        if (!CHECK_RET(ret == ACL_SUCCESS)) {
-            LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); 
-            return ret;
+        fia_ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+            LOG_PRINT("allocate workspace failed. ERROR: %d\n", fia_ret); 
+            return fia_ret;
         }
     }
     // Call the second interface.
-    ret = aclnnFusedInferAttentionScoreV4(workspaceAddr, workspaceSize, executor, stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnFusedInferAttentionScoreV4 failed. ERROR: %d\n", ret); 
-        return ret;
+    fia_ret = aclnnFusedInferAttentionScoreV4(workspaceAddr, workspaceSize, executor, stream);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnFusedInferAttentionScoreV4 failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
 
     // 4. (Fixed writing method) Synchronize and wait for task execution to end.
-    ret = aclrtSynchronizeStream(stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); 
-        return ret;
+    fia_ret = aclrtSynchronizeStream(stream);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
 
     // 5. Retrieve the attentionOutput value, copy the result from the device side memory to the host side, and modify it
@@ -226,9 +226,9 @@ int main() {
     std::vector<op::fp16_t> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); 
-        return ret;
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) { 
+        LOG_PRINT("copy result from device to host failed. ERROR: %d\n", fia_ret); 
+        return fia_ret;
     }
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
