@@ -42,6 +42,17 @@ constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 4;
 constexpr uint32_t ATTR_INDEX_TRANS_W = 5;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 6;
 constexpr uint32_t WEIGHT_NZ_DIM_NUM = 5;
+constexpr uint32_t X_SCALE_M_DIM_INDEX = 0;
+constexpr uint32_t X_SCALE_K_BLOCK_DIM_INDEX = 1;
+constexpr uint32_t X_SCALE_PAIR_DIM_INDEX = 2;
+constexpr uint32_t WEIGHT_SCALE_GROUP_DIM_INDEX = 0;
+constexpr uint32_t WEIGHT_SCALE_K_BLOCK_DIM_INDEX = 1;
+constexpr uint32_t WEIGHT_SCALE_N_DIM_INDEX = 2;
+constexpr uint32_t WEIGHT_SCALE_PAIR_DIM_INDEX = 3;
+constexpr uint32_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
+constexpr uint32_t WEIGHT_SCALE_TRANS_K_BLOCK_DIM_INDEX = 2;
+constexpr uint32_t WEIGHT_NZ_C0_DIM_INDEX = 3;
+constexpr uint32_t WEIGHT_NZ_LAST_DIM_INDEX = 4;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
@@ -49,6 +60,7 @@ constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
+constexpr uint64_t MAX_BASE_M = 128UL;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 constexpr float FLOAT_EPS = 1e-6f;
 } // namespace
@@ -160,15 +172,19 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckMxScaleShape(const gert::Shape &x
                 OP_LOGE(context_->GetNodeName(), "x_scale must be 3D and weight_scale must be 4D."),
                 return false);
     auto expectedKBlocks = static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR));
-    auto wScaleN = inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2);
-    auto wScaleK = inputParams_.transB ? wScaleShape.GetDim(2) : wScaleShape.GetDim(1);
-    OP_CHECK_IF(xScaleShape.GetDim(0) != static_cast<int64_t>(inputParams_.mSize) ||
-                    xScaleShape.GetDim(1) != expectedKBlocks ||
-                    xScaleShape.GetDim(2) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
+    auto wScaleN =
+        inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                              wScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
+    auto wScaleK =
+        inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_K_BLOCK_DIM_INDEX) :
+                              wScaleShape.GetDim(WEIGHT_SCALE_K_BLOCK_DIM_INDEX);
+    OP_CHECK_IF(xScaleShape.GetDim(X_SCALE_M_DIM_INDEX) != static_cast<int64_t>(inputParams_.mSize) ||
+                    xScaleShape.GetDim(X_SCALE_K_BLOCK_DIM_INDEX) != expectedKBlocks ||
+                    xScaleShape.GetDim(X_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
                 OP_LOGE(context_->GetNodeName(), "x_scale shape must be (M, ceil(K/64), 2)."), return false);
-    OP_CHECK_IF(wScaleShape.GetDim(0) != static_cast<int64_t>(inputParams_.groupNum) ||
+    OP_CHECK_IF(wScaleShape.GetDim(WEIGHT_SCALE_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
                     wScaleN != static_cast<int64_t>(inputParams_.nSize) || wScaleK != expectedKBlocks ||
-                    wScaleShape.GetDim(3) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
+                    wScaleShape.GetDim(WEIGHT_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
                 OP_LOGE(context_->GetNodeName(),
                         "weight_scale shape must be (E, ceil(K/64), N, 2) or (E, N, ceil(K/64), 2)."),
                 return false);
@@ -181,7 +197,8 @@ bool GroupedMatmulGeluTanhQuantTiling950::CheckWeightNzShape(const gert::Shape &
                 OP_LOGE(context_->GetNodeName(), "weight must use FRACTAL_NZ format."), return false);
     OP_CHECK_IF(wStorageShape.GetDimNum() != WEIGHT_NZ_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5D."), return false);
-    OP_CHECK_IF(wStorageShape.GetDim(3) != WEIGHT_NZ_C0_DIM || wStorageShape.GetDim(4) != WEIGHT_NZ_LAST_DIM_FP8,
+    OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_C0_DIM_INDEX) != WEIGHT_NZ_C0_DIM ||
+                    wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != WEIGHT_NZ_LAST_DIM_FP8,
                 OP_LOGE(context_->GetNodeName(), "FP8 NZ weight storage tail dims must be 16 and 32."),
                 return false);
     return true;
@@ -241,7 +258,7 @@ ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulGeluTanhQuantTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    auto baseMModified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+    auto baseMModified = std::min(basicTiling_.baseM, MAX_BASE_M);
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseMModified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);

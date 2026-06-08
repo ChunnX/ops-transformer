@@ -19,7 +19,9 @@
 #include "grouped_matmul_gelu_tanh_quant_mxquant.h"
 #include "grouped_matmul_gelu_tanh_quant_tiling_key.h"
 
-#define FLOAT_OVERFLOW_MODE_CTRL 60
+namespace {
+constexpr uint32_t FLOAT_OVERFLOW_MODE_CTRL = 60U;
+} // namespace
 
 using namespace AscendC;
 using namespace matmul;

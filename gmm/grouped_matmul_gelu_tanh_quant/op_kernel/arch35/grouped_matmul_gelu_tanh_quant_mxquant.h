@@ -24,6 +24,10 @@
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
 
+namespace {
+constexpr int64_t DEFAULT_PROBLEM_SHAPE_VALUE = 1;
+} // namespace
+
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmGeluTanhMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
                                           GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
@@ -71,7 +75,8 @@ __aicore__ inline void GmmGeluTanhMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR wei
                         static_cast<int8_t>(GroupedMatmul::GMM_SPLIT_M),
                         gmmGeluTanhQuantParams_.groupListType};
     Params params = {
-        {1, 1, 1, 1},
+        {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
+         DEFAULT_PROBLEM_SHAPE_VALUE},
         {x, weight, weightScale, xScale, y, nullptr, groupList},
         {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
          static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmGeluTanhQuantParams_.roundMode),

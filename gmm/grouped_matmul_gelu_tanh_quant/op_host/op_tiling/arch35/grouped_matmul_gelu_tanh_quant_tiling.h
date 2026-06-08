@@ -66,6 +66,10 @@ protected:
     void Reset() override;
 
 private:
+    static constexpr uint8_t DEFAULT_ROUND_MODE_RINT = 4;
+    static constexpr uint8_t DEFAULT_SCALE_ALG_OCP = 0;
+    static constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
+
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
@@ -76,9 +80,9 @@ private:
     bool IsFp8(ge::DataType dtype) const;
 
     GMMGeluTanhQuantTilingDataParams tilingData_;
-    uint8_t roundMode_ = 4;
-    uint8_t scaleAlg_ = 0;
-    float dstTypeMax_ = 0.0f;
+    uint8_t roundMode_ = DEFAULT_ROUND_MODE_RINT;
+    uint8_t scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
+    float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     ge::DataType quantDtype_ = ge::DT_FLOAT8_E4M3FN;
 };
 } // namespace optiling

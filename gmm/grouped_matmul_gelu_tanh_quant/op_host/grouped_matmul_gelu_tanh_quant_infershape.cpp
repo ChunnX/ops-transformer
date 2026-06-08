@@ -18,6 +18,15 @@ namespace {
 constexpr int64_t X_INDEX = 0;
 constexpr int64_t WEIGHT_SCALE_INDEX = 4;
 constexpr int64_t M_DIM_INDEX = 0;
+constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
+constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2;
+constexpr int64_t OUT_Y_INDEX = 0;
+constexpr int64_t OUT_Y_SCALE_INDEX = 1;
+constexpr int64_t OUT_M_DIM_INDEX = 0;
+constexpr int64_t OUT_N_DIM_INDEX = 1;
+constexpr int64_t OUT_SCALE_M_DIM_INDEX = 0;
+constexpr int64_t OUT_SCALE_N_BLOCK_DIM_INDEX = 1;
+constexpr int64_t OUT_SCALE_PAIR_DIM_INDEX = 2;
 constexpr int64_t OUT_DIM_NUM = 2;
 constexpr int64_t OUT_SCALE_DIM_NUM = 3;
 constexpr int64_t MX_GROUP_SIZE = 64;
@@ -39,24 +48,26 @@ static ge::graphStatus InferShape4GroupedMatmulGeluTanhQuant(gert::InferShapeCon
     bool transposeWeight = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
 
     int64_t m = xShape->GetDim(M_DIM_INDEX);
-    int64_t n = transposeWeight ? weightScaleShape->GetDim(1) : weightScaleShape->GetDim(2);
+    int64_t n =
+        transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                          weightScaleShape->GetDim(WEIGHT_SCALE_N_DIM_INDEX);
 
-    auto outShape = context->GetOutputShape(0);
+    auto outShape = context->GetOutputShape(OUT_Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
     outShape->SetDimNum(OUT_DIM_NUM);
-    outShape->SetDim(0, m);
-    outShape->SetDim(1, n);
+    outShape->SetDim(OUT_M_DIM_INDEX, m);
+    outShape->SetDim(OUT_N_DIM_INDEX, n);
 
-    auto outScaleShape = context->GetOutputShape(1);
+    auto outScaleShape = context->GetOutputShape(OUT_Y_SCALE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
     outScaleShape->SetDimNum(OUT_SCALE_DIM_NUM);
-    outScaleShape->SetDim(0, m);
+    outScaleShape->SetDim(OUT_SCALE_M_DIM_INDEX, m);
     if (n == DYNAMIC_DIM) {
-        outScaleShape->SetDim(1, DYNAMIC_DIM);
+        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, DYNAMIC_DIM);
     } else {
-        outScaleShape->SetDim(1, static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE)));
+        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE)));
     }
-    outScaleShape->SetDim(2, MX_SCALE_PAIR);
+    outScaleShape->SetDim(OUT_SCALE_PAIR_DIM_INDEX, MX_SCALE_PAIR);
     return GRAPH_SUCCESS;
 }
 
@@ -67,8 +78,8 @@ static graphStatus InferDataType4GroupedMatmulGeluTanhQuant(gert::InferDataTypeC
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *quantDtype = attrs->GetInt(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, quantDtype);
-    context->SetOutputDataType(0, static_cast<ge::DataType>(*quantDtype));
-    context->SetOutputDataType(1, ge::DT_FLOAT8_E8M0);
+    context->SetOutputDataType(OUT_Y_INDEX, static_cast<ge::DataType>(*quantDtype));
+    context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
     return GRAPH_SUCCESS;
 }
 

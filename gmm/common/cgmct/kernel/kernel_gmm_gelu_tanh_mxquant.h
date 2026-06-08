@@ -57,6 +57,7 @@ constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t FLAG_ID_MAX = 16;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+constexpr uint64_t SCALE_L1_BUFFER_NUM = 2UL;
 } // namespace
 
 template <class ProblemShape_, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, typename Enable_ = void>
@@ -362,7 +363,7 @@ public:
                             static_cast<int64_t>(params.gmmParams.baseK)};
             L1Params l1Params{static_cast<uint64_t>(params.gmmParams.kAL1),
                               static_cast<uint64_t>(params.gmmParams.kBL1),
-                              static_cast<uint64_t>(params.gmmParams.scaleKAL1), 2UL};
+                              static_cast<uint64_t>(params.gmmParams.scaleKAL1), SCALE_L1_BUFFER_NUM};
             mmadOp_.Init(mmProblemShape, l0Shape, l1Params, false, params.gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
         }
         epilogueOp_.Init(params.epilogueParams);
