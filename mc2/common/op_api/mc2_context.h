@@ -61,6 +61,9 @@ private:
     aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, Mc2MoeContext *mc2ContextStruct,
                                    const CommProtocol &protocol, const CommEngine &engine,
                                    std::vector<ChannelHandle> &channels);
+    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+                                    const CommProtocol &protocol, const CommEngine &engine,
+                                    std::vector<ChannelHandle> &channels)
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,

@@ -24,6 +24,7 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
+constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
 } // namespace
 
 namespace Mc2Aclnn {
@@ -275,6 +276,41 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+                                           const CommProtocol &protocol, const CommEngine &engine,
+                                           std::vector<ChannelHandle> &channels)
+{
+    OP_LOGD("Start to get HCCL communication channel");
+    uint32_t channelNum = rankDim - 1;
+    std::vector<HcclChannelDesc> channelDesc(channelNum);
+    channels.resize(channelNum);
+
+    uint32_t *netLayerList = nullptr;
+    uint32_t netLayerNum = 0;
+    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER]; // 获取本server卡数
+    ret = GetRankSizePerServer(hcclHandle, netLayers);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Acquire HCCL channel failed");
+        return ACLNN_ERR_INNER;
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
                                             const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct)
 {
@@ -440,7 +476,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
-            if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
+            if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
                 OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support protocol %u srcRankID %u, dstRankID %u layer is %u",
                         protocol, srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
