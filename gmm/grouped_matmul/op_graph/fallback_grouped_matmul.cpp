@@ -259,8 +259,8 @@ static bool IsPerTileQuantMode(const OpExecuteContext* host_api_ctx, bool transp
   if ((perTokenScaleDimNum < 2 || perTokenScaleDimNum != xDimNum) || xDimNum < PENULTIMATE_DIM) {
     return false;
   }
-  auto perTokenMDim = transposeX ?
-    perTokenScaleOriginShape.GetDim(xDimNum - 1) : perTokenScaleOriginShape.GetDim(xDimNum - PENULTIMATE_DIM);
+    auto perTokenMDim = transposeX ?
+        perTokenScaleOriginShape.GetDim(xDimNum - 1) : perTokenScaleOriginShape.GetDim(xDimNum - PENULTIMATE_DIM);
   auto xMDim = transposeX ? xOriginShape.GetDim(xDimNum - 1) : xOriginShape.GetDim(xDimNum - PENULTIMATE_DIM);
   if (perTokenMDim != xMDim) {
     return false;
@@ -273,15 +273,15 @@ static bool IsPerTileQuantMode(const OpExecuteContext* host_api_ctx, bool transp
   if (scaleDimNum < 2 || scaleDimNum != weightDimNum || weightDimNum < PENULTIMATE_DIM) {
     return false;
   }
-  auto scaleKDim = transposeWeight ?
-    scaleShape.GetDim(scaleDimNum - 1) : scaleShape.GetDim(scaleDimNum - PENULTIMATE_DIM);
-  auto scaleNDim = transposeWeight ?
-    scaleShape.GetDim(scaleDimNum - PENULTIMATE_DIM) : scaleShape.GetDim(scaleDimNum - 1);
-  auto weightKDim = transposeWeight ?
-    weightShape.GetDim(weightDimNum - 1) : weightShape.GetDim(weightDimNum - PENULTIMATE_DIM);
-  auto weightNDim = transposeWeight ?
-    weightShape.GetDim(weightDimNum - PENULTIMATE_DIM) : weightShape.GetDim(weightDimNum - 1);
-  auto groupListDimNum = groupListTensor->GetOriginShape().GetDimNum();
+    auto scaleKDim = transposeWeight ?
+        scaleShape.GetDim(scaleDimNum - 1) : scaleShape.GetDim(scaleDimNum - PENULTIMATE_DIM);
+    auto scaleNDim = transposeWeight ?
+        scaleShape.GetDim(scaleDimNum - PENULTIMATE_DIM) : scaleShape.GetDim(scaleDimNum - 1);
+    auto weightKDim = transposeWeight ?
+        weightShape.GetDim(weightDimNum - 1) : weightShape.GetDim(weightDimNum - PENULTIMATE_DIM);
+    auto weightNDim = transposeWeight ?
+        weightShape.GetDim(weightDimNum - PENULTIMATE_DIM) : weightShape.GetDim(weightDimNum - 1);
+    auto groupListDimNum = groupListTensor->GetOriginShape().GetDimNum();
   if (groupListDimNum == 0) {
     return false;
   }
@@ -321,19 +321,19 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
   std::vector<const aclTensor*> aclTensorVectorX;
   OP_CHECK_IF(PrepareAclTensorVector(host_api_ctx, aclTensorVectorX, INDEX_GMM_INPUT_X, *isXTransposed, false) !=
               GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "PrepareAclTensorVector x failed"), return GRAPH_FAILED);
-  auto aclTensorListX = aclCreateTensorList(aclTensorVectorX.data(), aclTensorVectorX.size());
+    auto aclTensorListX = aclCreateTensorList(aclTensorVectorX.data(), aclTensorVectorX.size());
   OP_CHECK_IF(aclTensorListX == nullptr, OP_LOGE("aclnnfallback", "aclTensorListX is null"), return GRAPH_FAILED);
 
   std::vector<const aclTensor*> aclTensorVectorWeight;
   OP_CHECK_IF(PrepareAclTensorVector(host_api_ctx, aclTensorVectorWeight, INDEX_GMM_INPUT_WEIGHT,
               *isWeightTransposedPtr, true) != GRAPH_SUCCESS,
               OP_LOGE("aclnnfallback", "PrepareAclTensorVector weight failed"), return GRAPH_FAILED);
-  size_t numGeWeight = aclTensorVectorWeight.size();
+    size_t numGeWeight = aclTensorVectorWeight.size();
   auto aclTensorListWeight = aclCreateTensorList(aclTensorVectorWeight.data(), aclTensorVectorWeight.size());
   OP_CHECK_IF(aclTensorListWeight == nullptr, OP_LOGE("aclnnfallback", "aclTensorListWeight is null"),
               return GRAPH_FAILED);
 
-  std::vector<const gert::Tensor*> geTensorVectorBias;
+    std::vector<const gert::Tensor*> geTensorVectorBias;
   PrepareGeTensorVector(host_api_ctx, geTensorVectorBias, INDEX_GMM_INPUT_BIAS);
   bool isScaleTransposed = false;
   const bool* isScaleTransposedPtr = &isScaleTransposed;
@@ -346,11 +346,11 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
   OP_CHECK_IF(PrepareAclTensorVector(host_api_ctx, aclTensorVectorScale, INDEX_GMM_INPUT_SCALE,
               *isScaleTransposedPtr, false) != GRAPH_SUCCESS,
               OP_LOGE("aclnnfallback", "PrepareAclTensorVector scale failed"), return GRAPH_FAILED);
-  auto aclTensorListScale = aclCreateTensorList(aclTensorVectorScale.data(), aclTensorVectorScale.size());
+    auto aclTensorListScale = aclCreateTensorList(aclTensorVectorScale.data(), aclTensorVectorScale.size());
   OP_CHECK_IF(aclTensorListScale == nullptr, OP_LOGE("aclnnfallback", "aclTensorListScale is null"),
               return GRAPH_FAILED);
 
-  std::vector<const gert::Tensor*> geTensorVectorOffset;
+    std::vector<const gert::Tensor*> geTensorVectorOffset;
   PrepareGeTensorVector(host_api_ctx, geTensorVectorOffset, INDEX_GMM_INPUT_OFFSET);
 
   std::vector<const gert::Tensor*> geTensorVectorAntiquantScale;
@@ -390,7 +390,7 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
               *splitItemGe) != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "PrepareOutputTensorVector failed"),
               return GRAPH_FAILED);
 
-  aclTensorList* activationInputOptional = nullptr;
+    aclTensorList* activationInputOptional = nullptr;
   aclTensorList* activationQuantScaleOptional = nullptr;
   aclTensorList* activationQuantOffsetOptional = nullptr;
   aclTensorList* actFeatureOutOptional = nullptr;

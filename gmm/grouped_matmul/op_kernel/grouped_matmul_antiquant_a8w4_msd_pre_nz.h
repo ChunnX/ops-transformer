@@ -217,7 +217,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
     if (coreBlockDim == 0) {
         return;
     }
-    for(uint32_t taskIdx = startNum; taskIdx < totalTaskNum; taskIdx += coreBlockDim) {
+    for (uint32_t taskIdx = startNum; taskIdx < totalTaskNum; taskIdx += coreBlockDim) {
         uint32_t curVecBaseM = A8W4PRE_VECTOR_BASE_M;
         uint32_t curVecBaseK = A8W4PRE_VECTOR_BASE_K;
         mIdx = taskIdx / kDim;

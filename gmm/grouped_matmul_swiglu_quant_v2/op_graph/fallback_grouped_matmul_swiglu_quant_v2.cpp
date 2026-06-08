@@ -240,8 +240,9 @@ static graphStatus GroupedMatmulSwigluQuantV2ExecuteFunc(OpExecuteContext* host_
                 return GRAPH_FAILED);
 
     std::vector<const aclTensor*> aclTensorVectorWeight;
-    OP_CHECK_IF(PrepareAclTensorVector(host_api_ctx, aclTensorVectorWeight, INDEX_INPUT_WEIGHT, *transWeightGe, false) !=
-                GRAPH_SUCCESS, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "Prepare weight list failed"),
+    OP_CHECK_IF(PrepareAclTensorVector(host_api_ctx, aclTensorVectorWeight, INDEX_INPUT_WEIGHT, *transWeightGe,
+                false) != GRAPH_SUCCESS,
+                OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "Prepare weight list failed"),
                 return GRAPH_FAILED);
     auto aclTensorListWeight = aclCreateTensorList(aclTensorVectorWeight.data(), aclTensorVectorWeight.size());
     OP_CHECK_IF(aclTensorListWeight == nullptr,

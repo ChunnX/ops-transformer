@@ -2483,7 +2483,8 @@ static aclnnStatus SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulPara
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            CHECK_RET(gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr),
+            CHECK_RET(gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList,
+                                                                     executorPtr),
                       ACLNN_ERR_INNER_NULLPTR);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
             CHECK_RET(params.scaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -2503,7 +2504,7 @@ static aclnnStatus SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulPara
         std::vector<aclTensor *> antiSTensorList;
         if ((*params.antiquantScaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) { // Mx场景处理
             CHECK_RET(gmm::CreateContiguousTensorListForMXTypeMScale(params.antiquantScaleOptional, antiSTensorList,
-                      executorPtr), ACLNN_ERR_INNER_NULLPTR);
+                                                                     executorPtr), ACLNN_ERR_INNER_NULLPTR);
         } else {
             CHECK_RET(gmm::CreateContiguousTensorList(params.antiquantScaleOptional, antiSTensorList, executorPtr),
                       ACLNN_ERR_INNER_NULLPTR);
@@ -2531,7 +2532,7 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
                   ACLNN_ERR_INNER_NULLPTR);
       } else {
         CHECK_RET(gmm::CreateContiguousTensorListForPertoken(params.perTokenScaleOptional, perTokenScaleTensorList,
-                  executorPtr), ACLNN_ERR_INNER_NULLPTR);
+                                                             executorPtr), ACLNN_ERR_INNER_NULLPTR);
       }
       params.perTokenScaleOptional = executorPtr->AllocTensorList(perTokenScaleTensorList.data(), perTokenScaleTensorList.size());
       CHECK_RET(params.perTokenScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -2552,10 +2553,11 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
     CHECK_RET(SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
   }
-  return ACLNN_SUCCESS;
+    return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr) {
+static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr)
+{
   CHECK_COND(DataContiguous(params.x, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "Contiguous x failed.");  // make x contiguous
   DataType xDtype = (*params.x)[0]->GetDataType();

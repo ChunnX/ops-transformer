@@ -150,7 +150,7 @@ __aicore__ inline void GMMA8W4PreProcess::Process()
     if (coreBlockDim == 0) {
         return;
     }
-    for(uint32_t xloop = startNum; xloop < totalGroup; xloop += coreBlockDim){
+    for (uint32_t xloop = startNum; xloop < totalGroup; xloop += coreBlockDim) {
         uint64_t startAddr = xloop * vK;
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         DataCopy(xTensor, xGm[startAddr], vK);

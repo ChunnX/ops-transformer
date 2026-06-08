@@ -227,7 +227,8 @@ public:
     }
 
     __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, int endGroupMOffset,
-        uint64_t& globalMOffset, bool &isSyncAll) {
+        uint64_t& globalMOffset, bool &isSyncAll)
+    {
         uint64_t currentGroupMOffset = 0;
         for (int gId = 0; gId < startGroupId; gId++) {
             currentGroupMOffset += groupListGm_.GetValue(gId);
@@ -347,7 +348,8 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessDSQ(int groupId, uint64_t globalOffset, uint64_t calcCount, bool &isSyncAll) {
+    __aicore__ inline void ProcessDSQ(int groupId, uint64_t globalOffset, uint64_t calcCount, bool &isSyncAll)
+    {
         if (tilingData_->vectorBlockDim == 0 || calcCount == 0) {
             return;
         }

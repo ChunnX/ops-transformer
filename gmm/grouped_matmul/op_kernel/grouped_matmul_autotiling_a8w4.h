@@ -2438,7 +2438,7 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     op.pattern = pattern;
     op.output_type = tiling_data->output_type;
 
-    uint32_t blockIndex = GetBlockIdx();//当前核ID
+    uint32_t blockIndex = GetBlockIdx(); // 当前核ID
     uint32_t blockId = 0;
 
     if (g_coreType == AscendC::AIC) {

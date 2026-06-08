@@ -205,7 +205,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     k_ = xShape->GetStorageShape().GetDim(1);
     auto wScaleDimNum = wScaleShape->GetStorageShape().GetDimNum();
     isWeightTrans_ = false;
-    if (wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+    if (wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
+        wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
         isNz_ = true;
     }
     const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);

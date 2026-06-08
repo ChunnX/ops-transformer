@@ -117,7 +117,7 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
         if (coreBlockDim == 0) {
             return;
         }
-        for(uint32_t nStart = startNum; nStart < totalGroup; nStart += coreBlockDim) {
+        for (uint32_t nStart = startNum; nStart < totalGroup; nStart += coreBlockDim) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 
