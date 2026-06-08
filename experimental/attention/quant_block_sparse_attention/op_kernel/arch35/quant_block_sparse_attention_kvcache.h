@@ -172,7 +172,6 @@ if constexpr (layout == BSALayout::TND) {
     }
 }
 
-
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, 
     const ConstInfo &constInfo, const AttenMaskInfo &attenMaskInfo, int32_t bIdx,
@@ -415,6 +414,14 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 }
 
 TEMPLATE_INTF
+__aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
+{
+    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
+    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
+    return sInnerToken;
+}
+
+TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
     uint32_t sOuterLoopIdx, __gm__ int64_t *actualSeqQlenAddr)
 {
@@ -429,14 +436,6 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
     return false;
-}
-
-TEMPLATE_INTF
-__aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
-{
-    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
-    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
-    return sInnerToken;
 }
 
 TEMPLATE_INTF

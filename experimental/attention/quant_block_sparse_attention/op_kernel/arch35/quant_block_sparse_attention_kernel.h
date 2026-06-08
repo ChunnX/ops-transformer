@@ -67,7 +67,6 @@ public:
                             __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                             __gm__ uint8_t *workspace, const QuantBlockSparseAttentionTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
-    __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
