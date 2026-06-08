@@ -64,7 +64,7 @@ public:
     uint32_t yBlocks;
     float scaleValue;
     float sparsity;
-    uint32_t topKValue;
+    uint64_t topKValue;
     uint8_t sparsityMode;
     uint8_t queryLayout;
     uint8_t kvLayout;
@@ -96,8 +96,8 @@ public:
     void set_scaleValue(float v) { this->scaleValue = v; }
     float get_sparsity() const { return sparsity; }
     void set_sparsity(float v) { this->sparsity = v; }
-    uint32_t get_topKValue() const { return topKValue; }
-    void set_topKValue(uint32_t v) { this->topKValue = v; }
+    uint64_t get_topKValue() const { return topKValue; }
+    void set_topKValue(uint64_t v) { this->topKValue = v; }
     uint8_t get_sparsityMode() const { return sparsityMode; }
     void set_sparsityMode(uint8_t v) { this->sparsityMode = v; }
     uint8_t get_queryLayout() const { return queryLayout; }

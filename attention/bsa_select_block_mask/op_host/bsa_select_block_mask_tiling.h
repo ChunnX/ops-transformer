@@ -50,7 +50,7 @@ protected:
         yBlocks = 0;
         scaleValue = 0.08838834764831845f;
         sparsity = 0.5f;
-        topKValue = 0;
+        topKValue = 0ULL;
         sparsityMode = 0;
         queryLayout = nullptr;
         kvLayout = nullptr;
@@ -91,7 +91,7 @@ protected:
     uint32_t yBlocks;
     float scaleValue;
     float sparsity;
-    uint32_t topKValue;
+    uint64_t topKValue;
     uint8_t sparsityMode;
     uint8_t useActualBlockLenQ;
     uint8_t useActualBlockLenK;

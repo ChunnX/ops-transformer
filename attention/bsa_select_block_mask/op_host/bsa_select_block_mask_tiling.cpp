@@ -157,16 +157,16 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
     xBlocks = BSACeilDivision(maxQSeqlen, static_cast<uint32_t>(blockShapeX));
     yBlocks = BSACeilDivision(maxKvSeqlen, static_cast<uint32_t>(blockShapeY));
 
-    uint32_t totalXY = xBlocks * yBlocks;
+    uint64_t totalXY = static_cast<uint64_t>(xBlocks) * yBlocks;
     if (sparsityMode == static_cast<uint8_t>(SparsityMode::TOP_K)) {
-        topKValue = static_cast<uint32_t>(std::round(sparsity * totalXY));
+        topKValue = static_cast<uint64_t>(std::round(sparsity * totalXY));
     } else {
-        topKValue = static_cast<uint32_t>(std::round((1.0f - sparsity) * totalXY));
+        topKValue = static_cast<uint64_t>(std::round((1.0f - sparsity) * totalXY));
     }
-    topKValue = BSAMax(topKValue, 1U);
+    topKValue = BSAMax(topKValue, 1ULL);
 
     OP_LOGD(opName, "layout: batchSize[%u] numHeads[%u] maxQSeqlen[%u] maxKvSeqlen[%u] "
-            "xBlocks[%u] yBlocks[%u] topKValue[%u].",
+            "xBlocks[%u] yBlocks[%u] topKValue[%lu].",
             batchSize, numHeads, maxQSeqlen, maxKvSeqlen, xBlocks, yBlocks, topKValue);
     return true;
 }
@@ -278,7 +278,7 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetShapeAttrsInfo()
     baseParams_->set_kChunkSize(K_CHUNK_SIZE);
 
     OP_LOGD(opName, "INPUTPARAM batchSize:[%u], numHeads:[%u], maxQSeqlen:[%u], maxKvSeqlen:[%u], "
-            "xBlocks:[%u], yBlocks:[%u], topKValue:[%u], sparsity:[%f].",
+            "xBlocks:[%u], yBlocks:[%u], topKValue:[%lu], sparsity:[%f].",
             batchSize, numHeads, maxQSeqlen, maxKvSeqlen, xBlocks, yBlocks, topKValue, sparsity);
     return ge::GRAPH_SUCCESS;
 }

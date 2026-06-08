@@ -178,7 +178,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             if (constInfo.yBlocks != expYBlocks) errCount++;
             AscendC::printf("scaleValue=%f\n", constInfo.scaleValue);
             AscendC::printf("sparsity=%f\n", constInfo.sparsity);
-            AscendC::printf("topKValue=%u (nonzero=%s)\n", constInfo.topKValue,
+            AscendC::printf("topKValue=%lu (nonzero=%s)\n", constInfo.topKValue,
                             (constInfo.topKValue > 0) ? "OK" : "ERR");
             if (constInfo.topKValue == 0) errCount++;
             AscendC::printf("sparsityMode=%u (exp=0) %s\n",

@@ -91,7 +91,7 @@ struct BSAConstInfo {
     uint32_t yBlocks;
     float scaleValue;
     float sparsity;
-    uint32_t topKValue;
+    uint64_t topKValue;
     BSASparseMode sparsityMode;
 
     uint32_t coreNum;
