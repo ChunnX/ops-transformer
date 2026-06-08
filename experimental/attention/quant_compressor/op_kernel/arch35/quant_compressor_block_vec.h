@@ -680,17 +680,18 @@ QuantCompressorBlockVector<COMP>::OverLap(const LocalTensor<T> &dstLocal, const 
 
 template <typename COMP>
 template <bool IS_SINGLE>
-__aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::Dequant(const LocalTensor<T> &dstLocal,
+__aicore__ inline void QuantCompressorBlockVector<COMP>::Dequant(const LocalTensor<T> &dstLocal,
                                                                          const LocalTensor<T> &srcLocal, float xDescale,
                                                                          const LocalTensor<float> &wDescale,
                                                                          uint32_t row, uint32_t col, uint32_t actualCol)
 {
     if constexpr (COMP::quantMode == QUANT_MODE::HIFP8) {
         if constexpr (IS_SINGLE) {
-            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCole);
+            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCol);
         } else {
             DequantVF<COMP::coff>(dstLocal, dstLocal, xDescale, wDescale, row, col, constInfo_.headDim, actualCol);
         }
+        PipeBarrier<PIPE_V>();
     }
 }
 
@@ -1029,7 +1030,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
 
     GlobalTensor<T> scoreDBMm1ResGm = scoreMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> scoreUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb<true>(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
     Dequant<false>(scoreUb, scoreUb, xDescale_, wGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
@@ -1055,7 +1056,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
 
     GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb<false>(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
     Dequant<false>(kvUb, kvUb, xDescale_, wKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
