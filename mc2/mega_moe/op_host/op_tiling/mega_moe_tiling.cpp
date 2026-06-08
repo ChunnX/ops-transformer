@@ -47,14 +47,16 @@ namespace {
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t MAX_BS = 512LL;
+    const static int64_t MAX_BS = 512000LL;
+    const static int64_t MIN_TOPK = 1LL;
+    const static int64_t MAX_TOPK = 32LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -859,9 +861,10 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(topkIdsDim1 != 6LL && topkIdsDim1 != 8LL,
+    OP_TILING_CHECK(topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(),
-            "only support 6/8"),
+            (std::string("should in [") + std::to_string(MIN_TOPK) + ", " +
+             std::to_string(MAX_TOPK) + "]").c_str()),
         return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
