@@ -571,7 +571,6 @@ void MlaPrologTiling::FillTilingCoreParams()
     baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
     baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
     baseParams_->vectorBlockNum = vectorBlockNum_;
-
 }
 
 ge::graphStatus MlaPrologTiling::CalcWorkSpace()
