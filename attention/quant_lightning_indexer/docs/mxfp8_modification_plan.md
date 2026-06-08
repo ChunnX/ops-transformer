@@ -1,8 +1,8 @@
 # QLI 算子 MXFP8 适配修改方案
 
-> 版本: v1.0 (待审核)
+> 版本: v1.1 (审核中)
 > 日期: 2026-06-08
-> 状态: **待审核** - 审核通过后开始实施
+> 状态: **审核中** - v1.1 补充 def.cpp 修改（ascend950 注册 MXFP8 类型），Phase 0 已实施
 
 ---
 
@@ -62,6 +62,7 @@ TopK: score → indices
 | 5 | `op_kernel/arch35/quant_lightning_indexer_kernel.h` | 调整 Init 中 qScale/kScale 的 GM 设置 | 低 |
 | 6 | `op_host/quant_lightning_indexer_tiling.cpp` | 调整 scale 偏移计算 (D/32) | 中 |
 | 7 | `op_host/quant_lightning_indexer_tiling.h` | 添加 MXFP8 相关 tiling 参数 | 低 |
+| 8 | `op_host/quant_lightning_indexer_def.cpp` | ascend950 配置添加第 5 个类型位置 (MXFP8: fp8_e8m0 scale) | 低 |
 
 ### 3.2 不需要修改的文件
 
@@ -70,11 +71,43 @@ TopK: score → indices
 | `vf/vf_topk.h` | TopK 逻辑不变 |
 | `vf/quant_lightning_indexer_topk.h` | TopK 调度逻辑不变 |
 | `op_host/quant_lightning_indexer_infershape.cpp` | 输入输出形状不变 |
-| `op_host/quant_lightning_indexer_def.cpp` | 算子定义不变 |
 
 ---
 
 ## 四、详细修改方案
+
+### 阶段 0: 算子原型注册 (Phase 0)
+
+#### 4.0 `quant_lightning_indexer_def.cpp`
+
+**目标**: 在 ascend950 配置中注册 MXFP8 类型组合，使 CANN 框架在算子原型校验阶段接受 `DT_FLOAT8_E8M0` 类型的 scale 输入。
+
+**背景**: def.cpp 的 ascend950 配置中，每个 Input/Output 的 DataType 列表有 4 个位置，分别对应 4 种已有的类型组合。MXFP8 引入了第 5 种组合（fp8_e4m3 数据 + fp8_e8m0 scale），需要在每个 Input/Output 的 DataType 和 Format 列表中添加第 5 个元素。如果不添加，CANN 框架会在原型校验阶段（早于 tiling 和 kernel 执行）拒绝 MXFP8 scale 输入。
+
+**MXFP8 类型组合（第 5 个位置）**:
+
+| 输入/输出 | 数据类型 |
+|-----------|---------|
+| query | `DT_FLOAT8_E4M3FN` |
+| key | `DT_FLOAT8_E4M3FN` |
+| weights | `DT_BF16` |
+| query_dequant_scale | `DT_FLOAT8_E8M0` ← **关键新增** |
+| key_dequant_scale | `DT_FLOAT8_E8M0` ← **关键新增** |
+| actual_seq_lengths_query | `DT_INT32` |
+| actual_seq_lengths_key | `DT_INT32` |
+| block_table | `DT_INT32` |
+| sparse_indices (output) | `DT_INT32` |
+
+**修改点**:
+- [x] ascend950 配置所有 Input/Output 的 DataType 列表添加第 5 个元素
+- [x] ascend950 配置所有 Input/Output 的 Format 列表添加第 5 个 `FORMAT_ND`
+- [x] 添加类型位置说明注释
+
+**不需要修改的方面**:
+- Shape 定义：def.cpp 使用 `FORMAT_ND` + `DynamicShapeSupportFlag(true)` + `DynamicRankSupportFlag(true)`，shape 完全动态，从 `[G]` 到 `[G, D/32]` 的维度变化无需在 def.cpp 中修改
+- ascend910b/ascend910_93 配置：MXFP8 仅在 ascend950 (DAV_3510) 上使用
+
+---
 
 ### 阶段 1: 类型定义与基础设施 (Phase 1)
 
@@ -429,6 +462,7 @@ if (isMxFp8) {
 
 ```mermaid
 flowchart TD
+    P0["Phase 0: 算子原型注册<br/>def.cpp"] --> P6
     P1["Phase 1: 类型定义<br/>common.h"] --> P2["Phase 2: Cube核改造<br/>service_cube.h"]
     P1 --> P3["Phase 3: Vector核简化<br/>service_vector.h"]
     P1 --> P4["Phase 4: VF指令层<br/>vector1.h"]
@@ -464,13 +498,14 @@ flowchart TD
 
 ## 八、审核清单
 
-- [ ] 新老流程对比图是否准确？
-- [ ] 修改范围是否完整？
+- [x] 新老流程对比图是否准确？
+- [x] 修改范围是否完整？ → v1.1 补充: def.cpp 需修改（ascend950 缺少 DT_FLOAT8_E8M0 类型注册）
 - [ ] 修改顺序是否合理？
 - [ ] 风险评估是否充分？
-- [ ] 是否有遗漏的文件需要修改？
+- [x] 是否有遗漏的文件需要修改？ → v1.1 已补充 def.cpp
 - [ ] L1 空间布局是否可行？
 - [ ] Event 同步方案是否完备？
+- [x] 上一笔修改是否影响 arch22？ → 已确认不影响（arch22 为死代码 + 共享文件向后兼容）
 
 ---
 
