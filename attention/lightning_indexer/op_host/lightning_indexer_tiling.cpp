@@ -755,30 +755,30 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
 }
 
 // --------------------------LightningIndexerTiling类成员函数定义-----------------------
-static uint32_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
+static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
                                     int64_t liS2Size, uint32_t liAicNum)
 {
-    constexpr uint32_t liMm1ResElemSize = 4;
-    constexpr uint32_t liDoubleBuffer = 2;
-    constexpr uint32_t liMBaseSize = 512;
-    constexpr uint32_t liS2BaseSize = 512;
-    constexpr uint32_t liV1ResElemSize = 4;
-    constexpr uint32_t liV1ResElemType = 2;
-    constexpr uint32_t liV1DecodeParamElemSize = 8;
-    constexpr uint32_t liV1DecodeParamNum = 16;
-    constexpr uint32_t liV1DecodeDataNum = 2;
-    constexpr uint32_t liS1BaseSize = 8;
-    constexpr uint32_t liTopkMaxSize = 2048;
+    constexpr uint64_t liMm1ResElemSize = 4;
+    constexpr uint64_t liDoubleBuffer = 2;
+    constexpr uint64_t liMBaseSize = 512;
+    constexpr uint64_t liS2BaseSize = 512;
+    constexpr uint64_t liV1ResElemSize = 4;
+    constexpr uint64_t liV1ResElemType = 2;
+    constexpr uint64_t liV1DecodeParamElemSize = 8;
+    constexpr uint64_t liV1DecodeParamNum = 16;
+    constexpr uint64_t liV1DecodeDataNum = 2;
+    constexpr uint64_t liS1BaseSize = 8;
+    constexpr uint64_t liTopkMaxSize = 2048;
 
-    uint32_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
+    uint64_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
     if (liPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t li3510S1Base = 4;
-        constexpr uint32_t li3510S2Base = 128;
+        constexpr uint64_t li3510S1Base = 4;
+        constexpr uint64_t li3510S2Base = 128;
         liWorkspaceSize +=
             li3510S1Base * ((liS2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
             sizeof(uint16_t) * liAicNum;
     } else {
-        constexpr uint32_t liMm1ResSize = liMBaseSize * liS2BaseSize;
+        constexpr uint64_t liMm1ResSize = liMBaseSize * liS2BaseSize;
         liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liAicNum;
         liWorkspaceSize +=
             liV1DecodeDataNum * liS1BaseSize * liV1ResElemType * liTopkMaxSize * liV1ResElemSize * liAicNum;
@@ -798,7 +798,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint32_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
