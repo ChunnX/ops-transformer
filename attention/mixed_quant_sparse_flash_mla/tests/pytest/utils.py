@@ -468,6 +468,7 @@ def save_result(params, result, fulfill_percent, result_path):
         "ori_mask_mode": params.get('ori_mask_mode'),
         "cmp_mask_mode": params.get('cmp_mask_mode'),
         "ori_win_left": params.get('ori_win_left'),
+        "tc_preifx": params.get('tc_preifx', ' '),
         "ori_win_right": params.get('ori_win_right'),
         "kv_quant_mode": params.get('kv_quant_mode'),
         "tile_size": params.get('tile_size'),
