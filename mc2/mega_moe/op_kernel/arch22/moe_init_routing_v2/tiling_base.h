@@ -30,7 +30,6 @@ public:
         bool ret = GetShapeAttrsInfo(m, cols, topK, expertCapacity, expertNum, activeNum, dropPadMode,
                                      expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag, inuptXDtypeSize,
                                      quantMode, scaleDim0);
-
         if (!ret) {
             return ret;
         }

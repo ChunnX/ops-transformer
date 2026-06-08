@@ -989,7 +989,7 @@ static ge::graphStatus MegaMoeA2A3CommAlg(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(K_INNER_DEBUG, "attrs is null."), return ge::GRAPH_FAILED);
     auto commAlg = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
-    OP_TILING_CHECK(commAlg == nullptr, 
+    OP_TILING_CHECK(commAlg == nullptr,
         OP_LOGE(K_INNER_DEBUG, "commAlg is null."), return ge::GRAPH_FAILED);
     
     if (strlen(commAlg) > 0) {
@@ -1040,7 +1040,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
 {
     // ==================== 1. y 输出校验 ====================
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK(yStorageShape == nullptr, 
+    OP_TILING_CHECK(yStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "y shape is null."), return GRAPH_FAILED);
     
     // 维度数校验：必须为 2 维
@@ -1061,7 +1061,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     
     // 数据类型校验
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK(yDesc == nullptr, 
+    OP_TILING_CHECK(yDesc == nullptr,
         OP_LOGE(K_INNER_DEBUG, "y desc is null."), return GRAPH_FAILED);
     ge::DataType yDataType = yDesc->GetDataType();
     OP_TILING_CHECK(yDataType != ge::DT_FLOAT16 && yDataType != ge::DT_BF16,
@@ -1074,7 +1074,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     
     // ==================== 2. expert_token_nums 输出校验 ====================
     const gert::StorageShape *expertTokenNumsStorageShape = context->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
-    OP_TILING_CHECK(expertTokenNumsStorageShape == nullptr, 
+    OP_TILING_CHECK(expertTokenNumsStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums shape is null."), return GRAPH_FAILED);
     
     // 维度数校验：必须为 1 维
@@ -1093,7 +1093,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     
     // 数据类型校验
     auto expertTokenNumsDesc = context->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
-    OP_TILING_CHECK(expertTokenNumsDesc == nullptr, 
+    OP_TILING_CHECK(expertTokenNumsDesc == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums desc is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(expertTokenNumsDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums dataType is invalid, should be INT32, but got %d.",
@@ -1107,9 +1107,9 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
 
 static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
 {
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动 
-    uint32_t batch_mode = 1U; 
-    auto ret = context->SetScheduleMode(batch_mode); 
+    // 涉及SyncAll，设置batch mode模式，所有核同时启动
+    uint32_t batch_mode = 1U;
+    auto ret = context->SetScheduleMode(batch_mode);
 
     // 1. tilingData
     MegaMoeA2A3TilingData *tilingData = context->GetTilingData<MegaMoeA2A3TilingData>();

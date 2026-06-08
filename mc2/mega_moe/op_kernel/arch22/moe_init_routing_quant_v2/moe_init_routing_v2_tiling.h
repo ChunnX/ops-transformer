@@ -74,7 +74,6 @@ struct InnerMoeInitRoutingV2TilingData {
     InnerMoeV2GatherOutComputeTilingData gatherOutComputeParamsOp;
 };
 
-
 class InnerMoeInitRoutingV2TilingBase : public TilingBaseClass {
 protected:
     inline bool GetPlatformInfo(int64_t aivCoreNum, int64_t ubSizePlatForm) override;
@@ -86,7 +85,6 @@ protected:
     inline bool DoOpTiling() override;
     inline uint64_t GetTilingKey() const override;
     inline bool GetWorkspaceSize() override;
-
 
 protected:
     bool CheckTokenCount(int64_t num, const char *tag);
@@ -117,7 +115,6 @@ protected:
 
     InnerMoeInitRoutingV2TilingData moeInitRoutingTilingData;
 };
-
 
 inline bool InnerMoeInitRoutingV2TilingBase::DoOpTiling()
 {
@@ -192,7 +189,6 @@ inline bool InnerMoeInitRoutingV2TilingBase::GetPlatformInfo(int64_t aivCoreNum,
     return true;
 }
 
-
 inline bool InnerMoeInitRoutingV2TilingBase::GetWorkspaceSize()
 {
     size_t sortWorkspaceSize = totalLength * sizeof(float) * NUM_TWO * NUM_THREE;
@@ -254,7 +250,6 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoe
     }
 }
 
-
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4VBSCompute()
 {
     auto tilingData = &moeInitRoutingTilingData.vbsComputeParamsOp;
@@ -283,7 +278,6 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SortOutCompute()
     auto tilingData = &moeInitRoutingTilingData.sortOutComputeParamsOp;
     tilingData->oneLoopMaxElements = mrgSortListMaxElement;
 }
-
 
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCompute()
 {
@@ -320,7 +314,6 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCompute()
     }
 }
 
-
 inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
 {
     auto tilingData = &moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp;
@@ -337,7 +330,6 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
     tilingData->perCoreRows = perCoreRows;
     int64_t lastCoreRows = totalLength - perCoreRows * (needCoreNum - 1);
     tilingData->lastCoreRows = lastCoreRows;
-
 
     int64_t rowSize =
         (perCoreRows * sizeof(int32_t) * 2 + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
@@ -378,6 +370,5 @@ inline void InnerMoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
         tilingData->lastCoreLoops = ((lastCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
     }
 }
-
 } // namespace optiling
 #endif

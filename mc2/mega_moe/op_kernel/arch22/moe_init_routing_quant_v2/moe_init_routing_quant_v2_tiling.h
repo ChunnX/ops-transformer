@@ -67,16 +67,6 @@ struct MoeInitRoutingQuantV2TilingData {
 
 class MoeInitRoutingQuantV2TilingBase : public InnerMoeInitRoutingV2TilingBase {
 public:
-protected:
-    inline bool GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity, int64_t expertNum,
-                                  int64_t activeNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
-                                  bool expertTokensBeforeCapacityFlag, int64_t inuptXDtypeSize, int64_t quantMode,
-                                  int64_t scaleDim0) override;
-    inline uint64_t GetTilingKey() const override;
-    inline bool GetWorkspaceSize() override;
-    inline bool PostTiling() override;
-
-public:
     // bool CheckOutShape() override;
     inline bool IsFullLoadQuant(int64_t space);
     inline bool IsFullLoadDynamicQuant(int64_t space);
@@ -94,6 +84,15 @@ public:
     inline void CopyGatherOutTiling(InnerMoeV2GatherOutComputeTilingData &dst,
                                     InnerMoeV2GatherOutComputeTilingData &src);
     inline void CopyTilingData();
+
+protected:
+    inline bool GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity, int64_t expertNum,
+                                  int64_t activeNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
+                                  bool expertTokensBeforeCapacityFlag, int64_t inuptXDtypeSize, int64_t quantMode,
+                                  int64_t scaleDim0) override;
+    inline uint64_t GetTilingKey() const override;
+    inline bool GetWorkspaceSize() override;
+    inline bool PostTiling() override;
 
     int64_t quantMode;
     MoeInitRoutingQuantV2TilingData quantTilingData;
