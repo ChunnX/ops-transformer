@@ -33,6 +33,10 @@ extern "C" {
 // 将int4打包为int32输入的Tensor还原回int4
 aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor* executor)
 {
+    if (input == nullptr || executor == nullptr) {
+        OP_LOGE("ConvertTensorListToInt4: input or executor is null");
+        return nullptr;
+    }
     constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 每个int32包含8个int4
     std::vector<aclTensor *> tensors;
     for (int i = 0; i < input->Size(); i++) {
@@ -40,10 +44,18 @@ aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor
         auto viewShape = tensor->GetViewShape();
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
         auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
+        if (inputTemp == nullptr) {
+            OP_LOGE("ConvertTensorListToInt4: CreateView failed at index %d", i);
+            return nullptr;
+        }
         inputTemp->SetDataType(DataType::DT_INT4);
         tensors.push_back(inputTemp);
     }
     aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
+    if (newInput == nullptr) {
+        OP_LOGE("ConvertTensorListToInt4: AllocTensorList failed");
+        return nullptr;
+    }
     OP_LOGD("The conversion from int32 to int4 is completed.");
     return newInput;
 }
@@ -79,6 +91,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(weight2, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
+
+    OP_CHECK(moeExpertNum > 0, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK(epWorldSize > 0, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK(maxRecvTokenNum > 0, return ACLNN_ERR_PARAM_INVALID);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
