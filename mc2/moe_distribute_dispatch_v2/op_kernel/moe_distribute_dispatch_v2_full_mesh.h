@@ -38,22 +38,14 @@
 #include "hccl_context_holder.h"
 #include "mc2_moe_context_holder.h"
 #define FLOAT_OVERFLOW_MODE_CTRL 60
-namespace MoeDistributeDispatchV2FullMeshImpl {
-constexpr uint8_t BUFFER_NUM = 2;        // 多buf
-constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
-constexpr uint32_t BITS_PER_BYTE = 8U;
-constexpr uint8_t COMM_NUM = 2;  // 通信域大小
-constexpr uint8_t COMM_EP_IDX = 0;
-constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL; // 64 + 320
+namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL; // 768 + 100
 constexpr uint64_t CUMSUM_FLAG_OFFSET = 876UL * 1024UL; // 868 + 8
-constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL;  // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U; // 核间软同步偏移地址
-constexpr uint32_t EXPAND_IDX_INFO = 3U;  // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
-constexpr int32_t  MAX_UB_SIZE = 190 * 1024;
+constexpr int32_t  FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256 / sizeof(int32_t);
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_DATA_COUNT = 120U; // 120 = SPLIT_BLOCK_DATA_SIZE / sizeof(float)
@@ -65,19 +57,12 @@ constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
-constexpr uint32_t RANK_LIST_NUM = 2U;
-constexpr uint32_t ELASTIC_INFO_OFFSET = 4U;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
-constexpr uint8_t EP_WORLD_SIZE_IDX = 1;
-constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
-constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
-constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
-constexpr uint32_t FLAG_OFFSET = STATE_OFFSET / sizeof(float);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
 #define TemplateMC2TypeFullmeshClass typename ContextHolder, typename XType, typename ExpandXOutType, int32_t QuantMode, \
@@ -85,7 +70,6 @@ constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 #define TemplateMC2TypeFullmeshFunc ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
 
 using namespace AscendC;
-using namespace Mc2Kernel;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
 template <TemplateMC2TypeFullmeshClass>
@@ -1682,7 +1666,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
     tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);  // max CompareScalar
     tpipe_->InitBuffer(cleanUpBuf, blockCntPerToken_ * UB_ALIGN);
-    tBufRealSize_ = MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
+    tBufRealSize_ = FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
         (expInfoSize * 3) - BUFFER_NUM * UB_ALIGN - blockCntPerToken_ * UB_ALIGN; // 3为expInfoSize大小buffer申请个数
     tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
     expertMapTensor_ = expertMapBuf.Get<uint32_t>();
@@ -1949,5 +1933,5 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     }
 }
 
-} // MoeDistributeDispatchV2FullMeshImpl
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_H
