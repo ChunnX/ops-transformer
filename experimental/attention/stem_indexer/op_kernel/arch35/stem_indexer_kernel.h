@@ -582,12 +582,14 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         // B,S1,N1(N2,G)/T,N1(N2,G)
         weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
-        // B,S1,N2,k/T,N2,k
+        // B,N2,G,S1,S2 布局
         indiceOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
-        // B,S1,N2/T,N2
+            (actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx)
+            * constInfo.gSize * tempLoopInfo.actS2SizeOrig;
+        // B,N2,G,S1 布局
         indiceLenCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx;
+            (actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx)
+            * constInfo.gSize;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
@@ -664,7 +666,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
         }
         
         // 保存原始值（ProcessDirectOutput 需要）
-        uint32_t originalActS2Size = tempLoopInfo.actS2Size;
+        tempLoopInfo.actS2SizeOrig = tempLoopInfo.actS2Size;
         const uint32_t INIT_BLOCKS = 4;
         const uint32_t WINDOW_BLOCKS = 4;
         
@@ -677,13 +679,28 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
         }
 
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
+            CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             // 短路分支：validS2Len <= INIT_BLOCKS + WINDOW_BLOCKS 时直接输出连续索引
-            if (originalActS2Size <= INIT_BLOCKS + WINDOW_BLOCKS) {
+            if (tempLoopInfo.actS2SizeOrig <= INIT_BLOCKS + WINDOW_BLOCKS) {
+                // 填充 runInfo（ProcessDirectOutput 需要，CalcRunInfo 未执行）
+                runInfo.gS1Idx = tempLoopInfo.gS1Idx;
+                runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
+                runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+                runInfo.actS1Size = tempLoopInfo.actS1Size;
+                runInfo.bIdx = tempLoopInfo.bIdx;
+                runInfo.n2Idx = tempLoopInfo.n2Idx;
+                
+                // B,N2,G,S1,S2 布局
+                uint64_t actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
+                runInfo.indiceOutOffset = (actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx)
+                    * constInfo.gSize * tempLoopInfo.actS2SizeOrig;
+                runInfo.indiceLenOffset = (actualSeqQPrefixSum * constInfo.kHeadNum + runInfo.n2Idx)
+                    * constInfo.gSize;
+                
                 // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
-                vectorService.ProcessDirectOutput(runInfo, originalActS2Size);
+                vectorService.ProcessDirectOutput(runInfo);
             } else {
                 // 正常流程：actS2Size 已经减过 WINDOW_BLOCKS
-                CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
                 runInfo.s2Start = splitCoreInfo.s2Start;
                 runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
                 for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {

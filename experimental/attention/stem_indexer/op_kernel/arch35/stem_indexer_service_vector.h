@@ -42,7 +42,7 @@ public:
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const QLICommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const QLICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
-    __aicore__ inline void ProcessDirectOutput(const QLICommon::RunInfo &info, uint32_t origActS2Size);
+    __aicore__ inline void ProcessDirectOutput(const QLICommon::RunInfo &info);
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct QLICommon::ConstInfo &constInfo,
@@ -492,7 +492,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
     uint32_t pingpong = info.loop % 2;
-    uint32_t origActS2Size = info.actS2Size + WINDOW_BLOCKS;
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
     copyInParams.srcStride = 0;
@@ -509,15 +508,12 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     if (constInfo_.attenMaskFlag) {
         // causal 场景：当前AIV核处理的第一个S1位置对应的s2合法长度
         // 算causal每行的s2实际长度actS2Size需要加上WINDOW_BLOCKS，最后又需要减去WINDOW_BLOCKS，可以抵消
-        firstS2Len = origActS2Size - info.actS1Size + curAivGS1Idx / gSize_ + 1 - WINDOW_BLOCKS;
+        firstS2Len = info.actS2SizeOrig - info.actS1Size + curAivGS1Idx / gSize_ + 1 - WINDOW_BLOCKS;
     } 
     
     // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
-    int32_t kb_offset = (int32_t)origActS2Size - (int32_t)info.actS1Size;
-    int32_t num_prompt_k = (int32_t)origActS2Size;  // 穿刺测试：假设 num_prompt_k = s2Size
-    
-    // 累计输出偏移（用于计算每行的 GM 输出地址，仅最后一个基本块使用）
-    int64_t cumulativeOutputOffset = 0;
+    int32_t kb_offset = (int32_t)info.actS2SizeOrig - (int32_t)info.actS1Size;
+    int32_t num_prompt_k = (int32_t)info.actS2SizeOrig;  // 穿刺测试：假设 num_prompt_k = s2Size
     
     // 常量定义：用于填充零值和无效索引
     uint16_t zero = 0;
@@ -535,6 +531,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         if (constInfo_.attenMaskFlag) {
             curS1RealS2Len = s1Pos + firstS2Len;
         }
+
+        // todo:需要确认是否合理，B,N2,G,S1,S2 布局下当前行的 GM 偏移
+        uint32_t globalS1Pos = info.gS1Idx * s1BaseSize_ + s1Pos;
+
         // 短路1：如果causal 场景的s2有效长度小于init_block + windows_block的长度，直接输出连续索引，跳过 TopK
         if (constInfo_.attenMaskFlag && (curS1RealS2Len <= INIT_BLOCKS)) {
             if (!isFirstS2InnerLoop) continue;  // 非首块跳过，避免重复写入GM
@@ -548,14 +548,14 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             PipeBarrier<PIPE_V>();
             // 循环内只做 DataCopyPad
             for (uint32_t j = 0; j < groupSize; j++) {
-                indiceLenLocal_.SetValue(s1Pos * gSize_ + j, curS1TotalS2Len);
+                indiceLenLocal_.SetValue(j * s1BaseSize_ + s1Pos, curS1TotalS2Len);
+                int64_t rowOffset = ((int64_t)j * info.actS1Size + globalS1Pos) * info.actS2SizeOrig;
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 copyOutParams.blockLen = (uint16_t)(curS1TotalS2Len * sizeof(int32_t));
-                AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + cumulativeOutputOffset],
+                AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + rowOffset],
                                         indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                cumulativeOutputOffset += curS1TotalS2Len;
             }
             continue;
         }
@@ -575,9 +575,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             if (!isFirstS2InnerLoop) continue;  // 非首块跳过，避免重复写入GM
             uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivGS1ProcNum - groupStartRowIdx);
             for (uint32_t j = 0; j < groupSize; j++) {
-                indiceLenLocal_.SetValue(s1Pos * gSize_ + j, totalOutput);
+                indiceLenLocal_.SetValue(j * s1BaseSize_ + s1Pos, totalOutput);
 
-                int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
+                int64_t rowOffset = ((int64_t)j * info.actS1Size + globalS1Pos) * info.actS2SizeOrig;
+                int64_t gmBase = info.indiceOutOffset + rowOffset;
                 // init 段：[0, actualInit-1]
                 if (actualInit > 0) {
                     AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 0, (uint32_t)actualInit);
@@ -623,7 +624,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                                          indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 }
-                cumulativeOutputOffset += totalOutput;
             }
             continue;
         }
@@ -641,7 +641,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
         // 内层循环：遍历同一 S1 位置下的 G 个行
         for (uint32_t j = 0; j < groupSize; j++) {
-            indiceLenLocal_.SetValue(s1Pos * gSize_ + j, totalOutput);
+            indiceLenLocal_.SetValue(j * s1BaseSize_ + s1Pos, totalOutput);
 
             uint32_t rowIdx = blockId_ % 2 * CeilDiv(curGS1ProcNum, 2) + groupStartRowIdx + j;
 
@@ -711,7 +711,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
             // ========== 索引重组和GM搬出（仅最后一个基本块）==========
             if (isLastS2InnerLoop) {
-                int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
+                int64_t rowOffset = ((int64_t)j * info.actS1Size + globalS1Pos) * info.actS2SizeOrig;
+                int64_t gmBase = info.indiceOutOffset + rowOffset;
 
                 AscendC::DataCopy(mrgValueLocal_.ReinterpretCast<int32_t>(),
                                   indicesOutLocal_.ReinterpretCast<int32_t>(),
@@ -757,8 +758,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
                     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 }
-
-                cumulativeOutputOffset += totalOutput;
             }
         }
     }
@@ -774,7 +773,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const QLICommon::RunInfo &info, uint32_t origActS2Size)
+__aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const QLICommon::RunInfo &info)
 {
     // 当前处理的gS1行起始索引（全局位置）
     int64_t curGS1Idx = info.gS1Idx * mBaseSize_;
@@ -791,18 +790,19 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const QLICommon::RunIn
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
     
-    // 累计输出偏移（causal 场景下每行长度可能不同）
-    int64_t cumulativeOutputOffset = 0;
-    uint32_t curS1RealS2Len = origActS2Size;
+    uint32_t curS1RealS2Len = info.actS2SizeOrig;
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 curS1TotalS2Len）
     uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_);
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
         uint32_t groupStartRowIdx = s1Pos * gSize_;
         uint32_t groupSize = Min((uint32_t)gSize_, (uint32_t)curAivGS1ProcNum - groupStartRowIdx);
         
+        // B,N2,G,S1,S2 布局下当前行的 GM 偏移
+        uint32_t globalS1Pos = info.gS1Idx * s1BaseSize_ + s1Pos;
+        
         // 计算当前 S1 位置的输出长度（同一 S1 位置下共享）
         if (constInfo_.attenMaskFlag) {
-            curS1RealS2Len = origActS2Size - info.actS1Size + (int32_t)(curAivGS1Idx / gSize_) + s1Pos + 1;
+            curS1RealS2Len = info.actS2SizeOrig - info.actS1Size + (int32_t)(curAivGS1Idx / gSize_) + s1Pos + 1;
         }
         
         // 循环外一次性生成索引
@@ -810,20 +810,20 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const QLICommon::RunIn
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 0, curS1RealS2Len);
             PipeBarrier<PIPE_V>();
             for (uint32_t j = 0; j < groupSize; j++) {
-                indiceLenLocal_.SetValue(s1Pos * gSize_ + j, (int32_t)curS1RealS2Len);
+                indiceLenLocal_.SetValue(j * s1BaseSize_ + s1Pos, (int32_t)curS1RealS2Len);
             }
         }
         
         // 内层循环：按 G 行 DataCopyPad
         for (uint32_t j = 0; j < groupSize; j++) {
             if (curS1RealS2Len > 0) {
-                int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
+                int64_t rowOffset = ((int64_t)j * info.actS1Size + globalS1Pos) * info.actS2SizeOrig;
+                int64_t gmBase = info.indiceOutOffset + rowOffset;
                 copyOutParams.blockLen = (uint16_t)(curS1RealS2Len * sizeof(int32_t));
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 AscendC::DataCopyPad(indiceOutGm[gmBase], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                cumulativeOutputOffset += curS1RealS2Len;
             }
         }
     }
