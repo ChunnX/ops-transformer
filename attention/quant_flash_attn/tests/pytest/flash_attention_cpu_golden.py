@@ -353,7 +353,7 @@ def _blockwise_snap_local_quantize_p_eff(
     ### local_group_max
     local_group_max = K_block.T
     local_group_max.numpy().tofile('dump_data/local_group_max.bin')
-    print(f'local_group_max.shape={local_group_max.shape} K_block.dtype={local_group_max.dtype}')
+    # print(f'local_group_max.shape={local_group_max.shape} K_block.dtype={local_group_max.dtype}')
 
     m_block_snap = K_block * LN2                                # [..., n_blk], on log2 grid
 
@@ -398,17 +398,17 @@ def _blockwise_snap_local_quantize_p_eff(
     K_new_s = m_new.to(src_dtype)
     ### global_max
     K_new_s.numpy().tofile('dump_data/global_max.bin')
-    print(f'K_new_s.shape={K_new_s.shape} K_new_s.dtype={K_new_s.dtype}')
+    # print(f'K_new_s.shape={K_new_s.shape} K_new_s.dtype={K_new_s.dtype}')
 
     K_diff = K_block - K_new_s.unsqueeze(-1)                    # ≤ 0, s_dtype 整数
     corr = torch.exp2(K_diff - 2.0)                              # 2^(K_diff - 2), 精确
     ### p_scale_e8m0
     p_scale_e8m0 = _to_e8m0_uint8(K_diff.to(torch.int32) - 2).T.contiguous()
     p_scale_e8m0.numpy().tofile('dump_data/p_scale_e8m0.bin')
-    print(f'p_scale_e8m0.shape={p_scale_e8m0.shape} p_scale_e8m0.dtype={p_scale_e8m0.dtype}')
+    # print(f'p_scale_e8m0.shape={p_scale_e8m0.shape} p_scale_e8m0.dtype={p_scale_e8m0.dtype}')
     p_scale_e8m0_nz = p_scale_e8m0.view(p_scale_e8m0.shape[0], p_scale_e8m0.shape[1] // 16, 16).transpose(1, 0)
     p_scale_e8m0_nz = p_scale_e8m0_nz.view(p_scale_e8m0.shape[1] // 16, p_scale_e8m0.shape[0] // 2, 2, 16).transpose(3, 2)
-    print(f'p_scale_e8m0_nz.shape={p_scale_e8m0_nz.shape} p_scale_e8m0_nz.dtype={p_scale_e8m0_nz.dtype}')
+    # print(f'p_scale_e8m0_nz.shape={p_scale_e8m0_nz.shape} p_scale_e8m0_nz.dtype={p_scale_e8m0_nz.dtype}')
     p_scale_e8m0_nz.numpy().tofile('dump_data/p_scale_e8m0_nz.bin')
     torch.save(p_scale_e8m0_nz, 'p_scale_e8m0_nz.pt')
 
@@ -603,7 +603,7 @@ def _flash_attn_single_batch_kernel(
                 S_ij = S_ij.to(s_torch_dtype)
 
                 S_ij.numpy().tofile('dump_data/mm1Res.bin')
-                print(f'mm1Res.shape={S_ij.shape} mm1Res.dtype={S_ij.dtype}')
+                # print(f'mm1Res.shape={S_ij.shape} mm1Res.dtype={S_ij.dtype}')
 
                 S_ij = S_ij * softmax_scale
 
@@ -675,14 +675,14 @@ def _flash_attn_single_batch_kernel(
                 # ★ FP32 累加: sum, PV matmul, O 更新
                 mm2ReduceSum = P_fp32.sum(dim=seqk_dim)
                 mm2ReduceSum.numpy().tofile('dump_data/mm2ReduceSum.bin')
-                print(f'mm2ReduceSum.shape={mm2ReduceSum.shape} mm2ReduceSum.dtype={mm2ReduceSum.dtype}')
+                # print(f'mm2ReduceSum.shape={mm2ReduceSum.shape} mm2ReduceSum.dtype={mm2ReduceSum.dtype}')
                 l_i = alpha * l_i + P_fp32.sum(dim=seqk_dim)
                 if s_layout == "ND":
                     O_i = alpha.unsqueeze(-1) * O_i + P_fp32 @ V_j
                 else:
                     PV_i = V_j.t() @ P_fp32
                     PV_i.numpy().tofile('dump_data/mm2Res_1.bin')
-                    print(f'mm2Res.shape={PV_i.shape} mm2Res.dtype={PV_i.dtype}')
+                    # print(f'mm2Res.shape={PV_i.shape} mm2Res.dtype={PV_i.dtype}')
                     O_i = alpha.unsqueeze(-1) * O_i + P_fp32.t() @ V_j
 
                 # m_i 跨 tile 存 FP32 (running state, 来自 helper / global 路径均为 FP32)
