@@ -572,9 +572,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::BufferI
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
 
+    uint64_t recvWinBlockNumSpace = epWorldSize_ * sizeof(float);
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(gatherMaskOutBuf_, recStatusNumPerCoreSpace);
-    totalUsedUB_ += recStatusNumPerCoreSpace;
+    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
+    totalUsedUB_ += gatherMaskOutSize;
 
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);
     totalUsedUB_ += UB_ALIGN * 2;
