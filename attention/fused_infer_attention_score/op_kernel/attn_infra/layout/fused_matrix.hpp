@@ -76,14 +76,14 @@ public:
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape shape() const
+    Shape &shape()
     {
         return shape_;
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape &shape()
+    Shape shape() const
     {
         return shape_;
     }
@@ -194,20 +194,6 @@ public:
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape shape() const
-    {
-        return shape_;
-    }
-
-    /// Returns the shape of the layout
-    HOST_DEVICE
-    Shape &shape()
-    {
-        return shape_;
-    }
-
-    /// Returns the shape of the layout
-    HOST_DEVICE
     typename Shape::Index shape(int idx) const
     {
         return shape_[idx];
@@ -218,6 +204,20 @@ public:
     typename Shape::Index &shape(int idx)
     {
         return shape_[idx];
+    }
+
+    /// Returns the shape of the layout
+    HOST_DEVICE
+    Shape shape() const
+    {
+        return shape_;
+    }
+
+    /// Returns the shape of the layout
+    HOST_DEVICE
+    Shape &shape()
+    {
+        return shape_;
     }
 
     /// Returns the stride of the layout
@@ -236,16 +236,16 @@ public:
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index stride(int idx) const
+    typename Stride::Index stride(int index) const
     {
-        return stride_[idx];
+        return stride_[index];
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index &stride(int index)
     {
-        return stride_[idx];
+        return stride_[index];
     }
 
 private:
@@ -348,20 +348,6 @@ public:
         return nZ(tileOriShape, tileShape, stride());
     }
 
-    /// Returns the origin shape of the layout
-    HOST_DEVICE
-    typename OrgShape::Index orgShape(int idx) const
-    {
-        return orgShape_[idx];
-    }
-
-    /// Returns the origin shape of the layout
-    HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
-    {
-        return orgShape_[idx];
-    }
-
     /// Returns the shape of the layout
     HOST_DEVICE
     Shape shape() const
@@ -374,6 +360,20 @@ public:
     Shape &shape()
     {
         return shape_;
+    }
+
+    /// Returns the origin shape of the layout
+    HOST_DEVICE
+    typename OrgShape::Index orgShape(int idx) const
+    {
+        return orgShape_[idx];
+    }
+
+    /// Returns the origin shape of the layout
+    HOST_DEVICE
+    typename OrgShape::Index &orgShape(int idx)
+    {
+        return orgShape_[idx];
     }
 
     /// Returns the shape of the layout
@@ -435,14 +435,14 @@ public:
     /// Logical rank of tensor
     static constexpr int RANK = 4;
 
+    /// Logical rank of orgshape
+    static constexpr int ORG_SHAPE_RANK = 2;
+
     /// Index type used for coordinates
     using Index = uint32_t;
 
     /// Long index type used for offsets
     using LongIndex = int64_t;
-
-    /// Logical rank of orgshape
-    static constexpr int ORG_SHAPE_RANK = 2;
 
     /// Logical coordinate
     using OrgShape = Coord<ORG_SHAPE_RANK, Index>;
@@ -532,6 +532,34 @@ public:
         return zN(tileOriShape, tileShape, stride());
     }
 
+    /// Returns the stride of the layout
+    HOST_DEVICE
+    Stride stride() const
+    {
+        return stride_;
+    }
+
+    /// Returns the stride of the layout
+    HOST_DEVICE
+    Stride &stride()
+    {
+        return stride_;
+    }
+
+    /// Returns the stride of the layout
+    HOST_DEVICE
+    typename Stride::Index stride(int idx) const
+    {
+        return stride_[idx];
+    }
+
+    /// Returns the stride of the layout
+    HOST_DEVICE
+    typename Stride::Index &stride(int idx)
+    {
+        return stride_[idx];
+    }
+
     /// Returns the origin shape of the layout
     HOST_DEVICE
     typename OrgShape::Index orgShape(int idx) const
@@ -574,40 +602,12 @@ public:
         return shape_[idx];
     }
 
-    /// Returns the stride of the layout
-    HOST_DEVICE
-    Stride stride() const
-    {
-        return stride_;
-    }
-
-    /// Returns the stride of the layout
-    HOST_DEVICE
-    Stride &stride()
-    {
-        return stride_;
-    }
-
-    /// Returns the stride of the layout
-    HOST_DEVICE
-    typename Stride::Index stride(int idx) const
-    {
-        return stride_[idx];
-    }
-
-    /// Returns the stride of the layout
-    HOST_DEVICE
-    typename Stride::Index &stride(int idx)
-    {
-        return stride_[idx];
-    }
-
 private:
-    /// Origin Shape data member
-    OrgShape orgShape_;
-
     /// Shape data member
     Shape shape_;
+
+    /// Origin Shape data member
+    OrgShape orgShape_;
 
     /// Stride data member
     Stride stride_;
@@ -616,6 +616,15 @@ private:
 /// Mapping function for zN matrices which is row-major inside fractal and row-major between fractal
 struct zZ {
 public:
+    /// Logical coordinate
+    using OrgShape = Coord<ORG_SHAPE_RANK, Index>;
+
+    /// Logical coordinate
+    using Shape = Coord<RANK, Index>;
+
+    /// Stride vector
+    using Stride = Coord<RANK, LongIndex>;
+
     /// Logical rank of tensor
     static constexpr int RANK = 4;
 
@@ -627,15 +636,6 @@ public:
 
     /// Logical rank of orgshape
     static constexpr int ORG_SHAPE_RANK = 2;
-
-    /// Logical coordinate
-    using OrgShape = Coord<ORG_SHAPE_RANK, Index>;
-
-    /// Logical coordinate
-    using Shape = Coord<RANK, Index>;
-
-    /// Stride vector
-    using Stride = Coord<RANK, LongIndex>;
 
 public:
     // Methods
@@ -733,14 +733,14 @@ public:
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    Stride stride() const
+    Stride &stride()
     {
         return stride_;
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    Stride &stride()
+    Stride stride() const
     {
         return stride_;
     }
@@ -754,9 +754,9 @@ public:
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index &stride(int index)
     {
-        return stride_[idx];
+        return stride_[index];
     }
 
 private:
@@ -775,12 +775,6 @@ private:
 /// This layout is row-major within blocks and also row-major between blocks.
 struct PaddingRowMajor {
 public:
-    /// Logical rank of tensor
-    static constexpr int RANK = 4;
-
-    /// Logical rank of orgshape
-    static constexpr int ORG_SHAPE_RANK = 2;
-
     /// Index type used for coordinates
     using Index = uint32_t;
 
@@ -795,6 +789,12 @@ public:
 
     /// Stride vector
     using Stride = Coord<RANK, LongIndex>;
+
+    /// Logical rank of tensor
+    static constexpr int RANK = 4;
+
+    /// Logical rank of orgshape
+    static constexpr int ORG_SHAPE_RANK = 2;
 
 public:
     /// Constructor
@@ -854,20 +854,6 @@ public:
         return shape_;
     }
 
-    /// Returns the shape of the layout
-    HOST_DEVICE
-    typename Shape::Index shape(int idx) const
-    {
-        return shape_[idx];
-    }
-
-    /// Returns the shape of the layout
-    HOST_DEVICE
-    typename Shape::Index &shape(int idx)
-    {
-        return shape_[idx];
-    }
-
     /// Returns the stride of the layout
     HOST_DEVICE
     Stride stride() const
@@ -896,19 +882,32 @@ public:
         return stride_[idx];
     }
 
+    /// Returns the shape of the layout
+    HOST_DEVICE
+    typename Shape::Index shape(int idx) const
+    {
+        return shape_[idx];
+    }
+
+    /// Returns the shape of the layout
+    HOST_DEVICE
+    typename Shape::Index &shape(int idx)
+    {
+        return shape_[idx];
+    }
+
 private:
     //
     // Data members
     //
-
-    /// Origin Shape data member
-    OrgShape orgShape_;
-
     /// Shape data member
     Shape shape_;
 
     /// Stride data member
     Stride stride_;
+
+    /// Origin Shape data member
+    OrgShape orgShape_;
 };
 
 /// Mapping function for padding columnmajor matrices
@@ -1045,11 +1044,11 @@ private:
     /// Origin Shape data member
     OrgShape orgShape_;
 
-    /// Shape data member
-    Shape shape_;
-
     /// Stride data member
     Stride stride_;
+
+    /// Shape data member
+    Shape shape_;
 };
 
 ///////////////////////
