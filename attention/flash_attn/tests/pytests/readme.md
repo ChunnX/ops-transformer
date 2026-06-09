@@ -448,7 +448,9 @@ python test_flash_attn.py --case_id TND_05 --meta_only  # 先检查 metadata
 
 ### Q4: PA case `block_size` 报错
 
-GPU 端 `flash_attn` 要求 `block_size` 是 256 的倍数。NPU 端无此限制。
+不同后端对 `block_size` 有不同约束，请查阅对应后端的官方文档确认具体限制：
+- GPU 端参考 `flash_attn` 库文档
+- NPU 端参考 `npu_flash_attn` 算子文档
 
 ### Q5: 如何查看某个 case 的实际参数
 
