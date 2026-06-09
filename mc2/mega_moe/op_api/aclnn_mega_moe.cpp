@@ -64,16 +64,21 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
     return newInput;
 }
 
-static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList,
-                              aclTensorList *&outList, aclOpExecutor *executor)
+static aclTensorList *CreateEmptyTensorList(aclDataType dataType, aclOpExecutor *executor)
 {
-    if (ioList == nullptr) {
-        std::vector<aclTensor*> emptyTensors;
-        aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
-        emptyTensors.emplace_back(emptyTensor);
-        outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
-        ioList = outList;
+    std::vector<aclTensor *> emptyTensors;
+    aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
+    if (emptyTensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Alloc memory for empty tensor failed.");
+        return nullptr;
     }
+    emptyTensors.push_back(emptyTensor);
+    aclTensorList *emptyList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+    if (emptyList == nullptr) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Alloc memory for empty tensor list failed.");
+        return nullptr;
+    }
+    return emptyList;
 }
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
