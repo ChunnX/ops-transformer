@@ -436,9 +436,18 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     PRINTF("CommProcess aivId_ = %d\n", aivId_);
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
-    SplitToCore(epWorldSize_, aivNumUsedComm_, startExpert, endExpert, processExpertNum);
+    processExpertNum = epWorldSize_  / aivNumUsedComm_;
+    uint32_t remainderRankNum = epWorldSize_ % aivNumUsedComm_;
+    if ((aivId_ - aivNumUsedCompute_) < remainderRankNum) {
+        processExpertNum += 1;
+        startExpert = processExpertNum * (aivId_ - aivNumUsedCompute_);
+    } else {
+        startExpert += remainderRankNum;
+    }
+    endExpert = startExpert + processExpertNum;
+   
     PRINTF("CommProcess startExpert = %d, endExpert = %d, processExpertNum = %d\n", startExpert, endExpert, processExpertNum);
-    if (startExpert >= epWorldSize_ || processExpertNum == 0) { 
+    if (startExpert >= endExpert || processExpertNum == 0) { 
         return; 
     }
     PRINTF("CommProcess startExpert = %d, endExpert = %d\n", startExpert, endExpert);
