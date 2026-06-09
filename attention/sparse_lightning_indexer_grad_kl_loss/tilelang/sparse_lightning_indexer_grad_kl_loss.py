@@ -907,7 +907,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
-            B, S1, S2_pad, Nidx1, Nidx2, K, DQueryIndex,
+            B, S1, S2, Nidx1, Nidx2, K, DQueryIndex,
             query.device, input_dtype,
         )
 

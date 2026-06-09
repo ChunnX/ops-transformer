@@ -4,15 +4,16 @@
 共6个测试用例，覆盖关键维度：
 - Case 0: 现有配置 S1=1, S2=2048, K=2048 (BSND)
 - Case 1: 官方风格 S1=128, S2=128, K=2048 (TND, 动态填充)
-- Case 2: 短序列 S1=64, S2=512, K=1024
+- Case 2: 短序列 S1=64, S2=512, K=2048
 - Case 3: 中序列 S1=512, S2=2048, K=2048
-- Case 4: 长序列 S1=2048, S2=8192, K=4096 (动态填充)
-- Case 5: 大TopK S1=512, S2=2048, K=8192
+- Case 4: 长序列 S1=2048, S2=8192, K=2048 (动态填充)
+- Case 5: 大Batch B=2, S1=128, S2=2048, K=2048
 
 关键改进：
-- weights固定范围[-0.05, 0.05]
+- weights缩放到[-0.05, 0.05]（匹配官方示例）
 - sparse_indices使用randperm（不重复索引）
 - softmax_max/sum从实际QK计算（修正官方错误）
+- softmax_max/sum使用FP16（匹配官方接口要求）
 """
 
 import torch
@@ -93,8 +94,8 @@ TEST_CASES = [
         "S1": 2048,
         "S2": 8192,
         "N1": 128,
-        "N2": 1,
         "Nidx1": 64,
+        "N2": 1,
         "Nidx2": 1,
         "DQuery": 512,
         "DQueryIndex": 128,
@@ -190,8 +191,10 @@ def gen_inputs_corrected(case_config, seed=42):
             bmm1_scaled = bmm1_full.float() * scale_value
             sm_max_val = bmm1_scaled.max(dim=-1).values
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-            softmax_max = sm_max_val.reshape(S1, N2, G).permute(1, 0, 2).contiguous().float()
-            softmax_sum = sm_sum_val.reshape(S1, N2, G).permute(1, 0, 2).contiguous().float()
+            softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
+            softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
+            softmax_max = softmax_max.squeeze(0)
+            softmax_sum = softmax_sum.squeeze(0)
         else:
             k_mqa = key.squeeze(2)
             k_rope_mqa = key_rope.squeeze(2)
@@ -202,9 +205,8 @@ def gen_inputs_corrected(case_config, seed=42):
             bmm1_scaled = bmm1_full.float() * scale_value
             sm_max_val = bmm1_scaled.max(dim=-1).values
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-            softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
-            softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
-        torch.npu.synchronize()
+            softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
+            softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
 
     return {
         "query": query,
@@ -381,6 +383,10 @@ def run_all_tests():
     failed_count = 0
 
     for i in range(len(TEST_CASES)):
+        try:
+            torch.npu.synchronize()
+        except Exception:
+            pass
         results = run_single_test(i)
         all_results[TEST_CASES[i]["name"]] = results
 
