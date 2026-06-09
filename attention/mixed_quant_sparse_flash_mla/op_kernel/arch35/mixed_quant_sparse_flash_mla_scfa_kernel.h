@@ -565,10 +565,11 @@ __aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     int64_t cmpLen = cmpEnd - cmpStart;
     int64_t totalLen = oriLen + cmpLen;
 
+    int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
     int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
     rangeStart = rangeStart < 0 ? 0 : rangeStart;
     rangeStart = rangeStart < totalLen ? rangeStart : totalLen;
-    int64_t rangeEnd = isLastS2RangeTask ? s2EndPoint : totalLen;
+    int64_t rangeEnd = isLastS2RangeTask ? effectiveS2EndPoint : totalLen;
     rangeEnd = rangeEnd < 0 ? 0 : rangeEnd;
     rangeEnd = rangeEnd < totalLen ? rangeEnd : totalLen;
     if (rangeEnd <= rangeStart) {
@@ -580,7 +581,7 @@ __aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     }
 
     bool hasPrevCore = isFirstS2RangeTask ? (s2StartPoint > 0) : true;
-    bool hasNextCore = isLastS2RangeTask ? (s2EndPoint < totalLen) : true;
+    bool hasNextCore = isLastS2RangeTask ? (effectiveS2EndPoint < totalLen) : true;
     runParam.isS2Split = hasPrevCore || hasNextCore;
 
     int64_t oriRangeStart = rangeStart < oriLen ? rangeStart : oriLen;
