@@ -181,25 +181,63 @@ ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::strin
         info.shape.present = false;
         info.stride.present = false;
         FillInputDtype(context, index, info);
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu has no storage shape: "
+                "shapePresent=0 stridePresent=0.",
+                index);
         return ge::GRAPH_SUCCESS;
     }
 
-    if (context->InputIsView(index)) {
+    const TensorShapeInfo storageShapeInfo = ToShapeInfo(storageShape->GetStorageShape());
+    const TensorShapeInfo logicalShapeInfo = ToShapeInfo(storageShape->GetShape());
+    const bool inputIsView = context->InputIsView(index);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu InputIsView=%u storageRank=%u "
+            "storageShape={%lu,%lu,%lu,%lu} logicalRank=%u logicalShape={%lu,%lu,%lu,%lu}.",
+            index, inputIsView ? 1U : 0U, storageShapeInfo.rank, storageShapeInfo.dim0, storageShapeInfo.dim1,
+            storageShapeInfo.dim2, storageShapeInfo.dim3, logicalShapeInfo.rank, logicalShapeInfo.dim0,
+            logicalShapeInfo.dim1, logicalShapeInfo.dim2, logicalShapeInfo.dim3);
+
+    if (inputIsView) {
         const auto inputStride = context->GetInputStride(index);
+        const uint32_t inputStrideRank = inputStride == nullptr ? 0U : static_cast<uint32_t>(inputStride->GetDimNum());
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu view stride query: stridePresent=%u "
+                "strideRank=%u.",
+                index, inputStride == nullptr ? 0U : 1U, inputStrideRank);
         if (inputStride != nullptr && inputStride->GetDimNum() != 0) {
-            info.shape = ToShapeInfo(storageShape->GetShape());
+            info.shape = logicalShapeInfo;
             info.stride = ToStrideInfo(*inputStride);
             FillInputDtype(context, index, info);
+            OP_LOGD(opName.c_str(),
+                    "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses view shape/stride: "
+                    "shapeRank=%u shape={%lu,%lu,%lu,%lu} strideRank=%u stride={%lu,%lu,%lu,%lu}.",
+                    index, info.shape.rank, info.shape.dim0, info.shape.dim1, info.shape.dim2, info.shape.dim3,
+                    info.stride.rank, info.stride.stride0, info.stride.stride1, info.stride.stride2,
+                    info.stride.stride3);
             return ge::GRAPH_SUCCESS;
         }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is view but stride is missing or empty; "
+                "fall back to contiguous storage stride.",
+                index);
+    } else {
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is not a view; use contiguous storage stride.",
+                index);
     }
 
     const gert::Shape &shape = storageShape->GetStorageShape();
-    info.shape = ToShapeInfo(shape);
+    info.shape = storageShapeInfo;
     OP_CHECK_IF(MakeContiguousStrideInfo(shape, opName, info.stride) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "make contiguous cache stride failed, input index=%zu.", index),
                 return ge::GRAPH_FAILED);
     FillInputDtype(context, index, info);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses contiguous storage shape/stride: "
+            "shapeRank=%u shape={%lu,%lu,%lu,%lu} strideRank=%u stride={%lu,%lu,%lu,%lu}.",
+            index, info.shape.rank, info.shape.dim0, info.shape.dim1, info.shape.dim2, info.shape.dim3,
+            info.stride.rank, info.stride.stride0, info.stride.stride1, info.stride.stride2, info.stride.stride3);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -410,6 +448,8 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
 
     ContractTiling contractTiling;
     const ContractStatus status = ValidateAndBuildTiling(input, contractTiling, opName);
+    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation result: status=%s(%u).",
+            ContractStatusName(status), static_cast<uint32_t>(status));
     OP_CHECK_IF(status != ContractStatus::kSuccess,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract failed: %s",
                         ContractStatusName(status)),

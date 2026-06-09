@@ -140,8 +140,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -149,8 +147,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -158,8 +154,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -167,8 +161,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -184,8 +176,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -193,8 +183,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -202,8 +190,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -211,8 +197,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -220,8 +204,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -229,8 +211,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -238,8 +218,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
@@ -247,8 +225,6 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#else
-        (void)bufferId;
 #endif
     }
 
