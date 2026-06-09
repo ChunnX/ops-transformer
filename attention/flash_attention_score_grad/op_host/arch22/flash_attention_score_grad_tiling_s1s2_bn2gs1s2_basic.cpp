@@ -166,7 +166,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
         // base shape
         fBaseParams.b = seqQShapeSize - tailZeroCount;
         fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
-        fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
+        fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
     } else {
         fBaseParams.b = 1;
         fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
