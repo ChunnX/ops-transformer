@@ -151,10 +151,10 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    int64_t E = 8;
-    int64_t M = 2048;
-    int64_t N = 4096;
-    int64_t K = 7168;
+    int64_t E = 1;
+    int64_t M = 16;
+    int64_t N = 128;
+    int64_t K = 64;
 
     std::vector<int64_t> xShape = {M, K};
     std::vector<int64_t> weightShape = {E, K, N};
@@ -206,7 +206,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
 
     // 创建x aclTensor
     std::vector<unsigned char> xHostDataUnsigned(xHostData.begin(), xHostData.end());
-    ret = CreateAclTensor<uint8_t>(xHostDataUnsigned, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, aclFormat::ACL_FORMAT_ND, &x);
+    ret = CreateAclTensor<uint8_t>(xHostDataUnsigned, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, aclFormat::ACL_FORMAT_ND, &x);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> xTensorPtr(x, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void*)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -214,7 +214,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     // 创建weight aclTensorList
     std::vector<std::vector<int8_t>> weightHostDataList = {weightHostData};
     std::vector<std::vector<int64_t>> weightShapeList = {weightShape};
-    ret = CreateAclTensorList<int8_t>(weightHostDataList, weightShapeList, &weightDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, &weight);
+    ret = CreateAclTensorList<int8_t>(weightHostDataList, weightShapeList, &weightDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &weight);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> weightTensorListPtr(weight, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void*)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -240,7 +240,7 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream& stream)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 创建y aclTensor
-    ret = CreateAclTensor<int8_t>(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_FLOAT8_E4M3, aclFormat::ACL_FORMAT_ND, &output);
+    ret = CreateAclTensor<int8_t>(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, aclFormat::ACL_FORMAT_ND, &output);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outputTensorPtr(output, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void*)> outputDeviceAddrPtr(outputDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
