@@ -983,45 +983,6 @@ public:
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void InitValueL1BufferNoTrans(const LocalTensor<KV_T> &valueL1,
-        const uint32_t realK, const uint32_t curN)
-    {
-        InitConstValueParams<half> initConstValueParams;
-        uint64_t offset = 0;
-        uint32_t curPadK = (realK + 63) >> 6 << 6;
-        // nd2nz pading to k 64 align, (k,n)->(n1,k1,k0,n0)
-        uint32_t movK = realK;
-        if (curPadK == movK) {
-            return;
-        }
-        offset = movK * 16U;
-        initConstValueParams.repeatTimes = Align(curN, 16U) / 32U;
-        initConstValueParams.blockNum = curPadK - movK;
-        initConstValueParams.dstGap = movK;
-        initConstValueParams.initValue = 0;
-        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
-    }
-
-    __aicore__ inline void InitValueL1BufferTrans(const LocalTensor<KV_T> &valueL1,
-        const uint32_t realK, const uint32_t curN)
-    {
-        InitConstValueParams<half> initConstValueParams;
-        uint64_t offset = 0;
-        uint32_t curPadK = ((realK) + 63) >> 6 << 6;
-        // nd2nz pading to 64 align, (n,k)->(k1,n1,n0,k0)
-        if (curPadK - realK < 32U) {
-            return;
-        }
-        // pad n1, n0, 16 for half
-        initConstValueParams.repeatTimes = 1;
-        initConstValueParams.blockNum = Align(curN, 16U);
-        initConstValueParams.dstGap = 0;
-        initConstValueParams.initValue = 0;
-        uint64_t kAlign = Align(realK, 16U) / 32U * 16U;
-        offset = curN * kAlign;
-        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
-    }
-
     __aicore__ inline void IterateBmm2Dn(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
