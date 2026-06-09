@@ -202,7 +202,7 @@ static inline bool CheckReduceOutShape(const char *opName, const aclTensor *infe
     if (!(xShape.GetShapeSize() == 1 && yShape.GetShapeSize() == 1)) {
       OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "out",
           op::ToString(out->GetViewShape()).GetString(),
-          ("The shape of out must be the same as shape " +
+          (std::string("The shape of out must be the same as shape ") +
           op::ToString(inferOut->GetViewShape()).GetString() + " of inferOut.").c_str());
       return false;
     }
@@ -228,7 +228,7 @@ static inline bool CheckNCDimValid(const char *opName, const aclTensor *self, co
     outDimC = out->GetViewShape().GetDim(NHWC_C_DIM);
   } else {
     OP_LOGE_FOR_INVALID_FORMAT(opName, "self",
-        op::ToString(format).GetString(), "NCHW, NHWC");
+        Ops::Base::ToString(format).c_str(), "NCHW, NHWC");
     return false;
   }
   if ((selfDimN != outDimN) || (selfDimC != outDimC)) {

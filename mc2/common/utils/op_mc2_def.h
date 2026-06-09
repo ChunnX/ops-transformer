@@ -18,6 +18,7 @@
 #include "acl/acl.h"
 #include "runtime/kernel.h"
 #include "hccl/hccl_types.h"
+#include "mc2_common_log.h"
 #include "opdev/common_types.h"
 
 namespace op {
