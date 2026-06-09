@@ -184,10 +184,11 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
     OP_TILING_CHECK(fetchedDesc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "fetched"), return ge::GRAPH_FAILED);
     ge::DataType fetchedDtype = fetchedDesc->GetDataType();
+    uint32_t hiddenDim = tilingData.engramFetchInfo.hiddenDim;
     if (fetchedDtype == ge::DT_BF16 || fetchedDtype == ge::DT_FLOAT16) {
-        tilingData.engramFetchInfo.hiddenBytes = BF16_BYTES;
+        tilingData.engramFetchInfo.hiddenBytes = hiddenDim * BF16_BYTES;
     } else {
-        tilingData.engramFetchInfo.hiddenBytes = FP32_BYTES;
+        tilingData.engramFetchInfo.hiddenBytes = hiddenDim * FP32_BYTES;
     }
 
     auto platformInfo = context->GetPlatformInfo();
@@ -195,14 +196,16 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+    uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     context->SetScheduleMode(1);
+    tilingData.engramFetchInfo.aivNum = aivNum;
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
-    OP_LOGD(nodeName, "SetTilingData: numTokens=%u, hiddenDim=%u, numEntriesPerRank=%u, hiddenBytes=%u",
+    OP_LOGD(nodeName, "SetTilingData: numTokens=%u, hiddenDim=%u, numEntriesPerRank=%u, hiddenBytes=%u, aivNum=%u",
             tilingData.engramFetchInfo.numTokens, tilingData.engramFetchInfo.hiddenDim,
-            tilingData.engramFetchInfo.numEntriesPerRank, tilingData.engramFetchInfo.hiddenBytes);
+            tilingData.engramFetchInfo.numEntriesPerRank, tilingData.engramFetchInfo.hiddenBytes,
+            tilingData.engramFetchInfo.aivNum);
     return ge::GRAPH_SUCCESS;
 }
 
