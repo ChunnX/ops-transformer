@@ -42,7 +42,7 @@ public:
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;
 
-    __aicore__ inline QLIV2Vector(){};
+    __aicore__ inline QLIV2Vector() {};
     __aicore__ inline void ProcessVec0(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -116,7 +116,8 @@ private:
 };
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo, const LocalTensor<half> &resUb,
+__aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
+    const LocalTensor<half> &resUb,
                                                     int64_t batchId, int64_t startS2, int64_t getLen)
 {
     // startS2一定能整除kCacheBlockSize_
@@ -216,7 +217,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<half> weightsGm, GlobalTensor<half> qScaleGm,
+__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<half> weightsGm,
+    GlobalTensor<half> qScaleGm,
                                                            GlobalTensor<half> kScaleGm,
                                                            GlobalTensor<int32_t> indiceOutGm,
                                                            GlobalTensor<int32_t> blockTableGm)
@@ -356,7 +358,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         cuRealAcSeq = info.actS2SizeOrig - info.actS1Size + cuS1BeginIdxPerAiv;
     }
     int32_t cuRealAcSeqIni = cuRealAcSeq;
-
 
     // LD输出S1方向偏移，保证2个Vector输出的内容连续
     uint32_t ldS1Offset = (blockId_ % 2 == 0) ? s1BaseSize_ / 2 - cuS1ProcNumPerAiv : 0;
@@ -525,7 +526,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     uint32_t ldProcessLen = 4;     // 4: 4块归约任务做一次Merge
     uint32_t ldProcessNum = (ldProWorkspaceNum - 1) / (ldProcessLen - 1);
     uint32_t ldTailLen = ldProWorkspaceNum - (ldProcessNum * (ldProcessLen - 1) + 1);   // 尾块长度
-    
+
     for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
         // 拷贝第一块归约任务
@@ -544,7 +545,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                                 static_cast<uint64_t>(i * (ldProcessLen - 1) + 1) *
                                 s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE;
             indexValueParams.blockCount = ldProcessLen - 1;    // 拷贝4块进行merge
-            
+
             SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
             AscendC::DataCopyPad(curValueIdxUb[valueOffset], vec1ResGm[wsOffset],
                                  indexValueParams, indexValuePadParams);
