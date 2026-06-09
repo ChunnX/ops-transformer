@@ -363,6 +363,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Se
             auto tailAGM = aGM_ + tileM * tileK * sizeof(AType) * (uint64_t)(cfg.tileCnt);
             MatmulKernelComputeGather(tailAGM, tilingData_->quantBmmv3TailTiling, cfg.tailCnt, true, true);
         } else {
+            perCoreNum_ = 0;
             MatmulKernelComputeGather(gatherOut_, tilingData_->quantBmmv3TailTiling, cfg.tailCnt, true, true);
         }
     }
