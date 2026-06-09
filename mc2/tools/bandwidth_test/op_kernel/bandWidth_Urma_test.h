@@ -493,6 +493,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                     sendFlagHandleGMTensor_.SetValue(index, 0);
                     sendSumTensor_(i - startExpert) += 1;
                     if (sendSumTensor_(i - startExpert) == curSendCnt) {
+                        // 发送完成
+                        printf("ok the expert %d\n", i);
                         processCnt += 1;
                     }
                 }
