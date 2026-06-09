@@ -21,7 +21,6 @@
 
 #include "mc2_common_log.h"
 
-#include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
