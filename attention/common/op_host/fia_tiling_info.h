@@ -170,7 +170,7 @@ enum class FiaTemplateId : uint32_t {
     HIGH_PERFORMANCE_MLA = 5
 };
 
-enum class FiaFullQuantMode : uint32_t{
+enum class FiaFullQuantMode : uint32_t {
     NO_FULL_QUANT = 0,
     QKV_PER_TENSOR_FULL_QUANT = 1,
     QKV_PER_BLOCK_FULL_QUANT = 2,
@@ -312,8 +312,8 @@ public:
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
-    uint32_t actualLenDims = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    uint32_t actualLenKvDims = 0;
+    std::vector<int64_t> kvListSeqLens{};
     bool isAccumKVSeq = false;
 
     // PSE
@@ -374,5 +374,5 @@ public:
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
 };
-} // optiling
+} // namespace optiling
 #endif // FIA_TILING_INFO_H

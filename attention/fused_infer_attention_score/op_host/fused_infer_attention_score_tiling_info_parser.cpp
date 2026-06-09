@@ -1405,7 +1405,7 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     }
 
     fiaInfo.actualLenQDims = actualLenQDims_;
-    fiaInfo.actualLenDims = actualLenDims_;
+    fiaInfo.actualLenKvDims = actualLenDims_;
     fiaInfo.maxActualseq = maxActualseq_;
     fiaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
     fiaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;

@@ -1018,9 +1018,9 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
             actualSeqLengthsKV -= fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
         }
     } else {
-        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenDims > 0 &&
+        if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&
             fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
-            actualSeqLengthsKV = fiaInfo.actualLenDims == NUM1 ?
+            actualSeqLengthsKV = fiaInfo.actualLenKvDims == NUM1 ?
                                     fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :
                                     fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
         } else {
@@ -1892,7 +1892,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_deqScaleFlag(0);   // per-tensor全量化场景才会用到
     inputParams.set_deqScale2Flag(0);  // per-tensor全量化场景才会用到
     inputParams.set_actualSeqLengthsSize(fiaInfo.actualLenQDims);
-    inputParams.set_actualSeqLengthsKVSize(fiaInfo.actualLenDims);
+    inputParams.set_actualSeqLengthsKVSize(fiaInfo.actualLenKvDims);
     inputParams.set_isKvContinuous(fiaInfo.kvStorageMode != KvStorageMode::TENSOR_LIST);
     inputParams.set_fromFused(!fromPFA_);
     inputParams.set_isBSNDOut(fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.outLayout == FiaLayout::BSND);
