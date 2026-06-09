@@ -15,7 +15,7 @@
 #ifndef QUANT_LIGHTNING_INDEXER_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_COMMON_H
 
-namespace QLICommon {
+namespace QLIV2Common {
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
@@ -24,9 +24,9 @@ enum class LI_LAYOUT : uint32_t {
     PA_BBND = 2
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
+template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T, const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND, typename... Args>
-struct QLIType {
+struct QLIV2Type {
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
@@ -157,6 +157,6 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace QLICommon
+}  // namespace QLIV2Common
 
 #endif  // QUANT_LIGHTNING_INDEXER_COMMON_H

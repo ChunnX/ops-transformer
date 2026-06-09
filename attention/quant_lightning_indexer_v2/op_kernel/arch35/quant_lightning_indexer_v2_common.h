@@ -15,7 +15,7 @@
 #ifndef quant_lightning_indexer_COMMON_H
 #define quant_lightning_indexer_COMMON_H
 using namespace AscendC;
-namespace QLICommon {
+namespace QLIV2Common {
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
@@ -26,7 +26,7 @@ enum class LI_LAYOUT : uint32_t {
 
 template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T, const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND, typename... Args>
-struct QLIType {
+struct QLIV2Type {
     static_assert(
         (std::is_same_v<QK_T, float> &&
          (std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>)) ||
@@ -78,7 +78,7 @@ struct RunInfo {
 
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
-    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
+    static constexpr uint32_t QLIV2_SYNC_MODE4 = 4;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
@@ -179,7 +179,7 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace QLICommon
+}  // namespace QLIV2Common
 
 // bank冲突优化
 // david 256KB bank layout

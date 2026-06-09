@@ -186,9 +186,9 @@
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
 
-    class QLINetwork(nn.Module):
+    class QLIV2Network(nn.Module):
         def __init__(self):
-            super(QLINetwork, self).__init__()
+            super(QLIV2Network, self).__init__()
 
         def forward(self, query, key, weights, q_scale, k_scale, query_quant_mode, key_quant_mode,
                     batch_size, num_heads_q, num_heads_k, head_dim,
@@ -235,7 +235,7 @@
     config.mode = "reduce-overhead"
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
-    npu_mode = torch.compile(QLINetwork().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
+    npu_mode = torch.compile(QLIV2Network().npu(), fullgraph=True, backend=npu_backend, dynamic=False)
     sparse_indices = npu_mode( query, key, weights, query_dequant_scale, key_dequant_scale,
                         query_quant_mode, key_quant_mode, b, n1, n2, d,
                         actual_seq_lengths_query=actual_seq_lengths_query,

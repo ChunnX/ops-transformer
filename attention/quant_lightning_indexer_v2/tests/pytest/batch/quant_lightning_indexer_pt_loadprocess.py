@@ -22,7 +22,7 @@ import ast
 import custom_ops as ops
 
 
-def test_qli_process(filepath, device_id=0):
+def test_qliv2_process(filepath, device_id=0):
     # 加载测试数据
     test_data = torch.load(filepath, map_location="cpu")
 

@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 inline constexpr uint32_t AIC_CORE_NUM = 36;
 inline constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QLI_META_SIZE = 1024;
-using QLI_METADATA_T = int32_t;
+constexpr uint32_t QLIV2_META_SIZE = 1024;
+using QLIV2_METADATA_T = int32_t;
 
 inline constexpr uint32_t LI_METADATA_SIZE = 8;
 inline constexpr uint32_t LD_METADATA_SIZE = 8;
@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct QliMetadata {
+    struct Qliv2Metadata {
         uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
         uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
     };
 };
 
-static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetadata));
+static_assert(QLIV2_META_SIZE * sizeof(QLIV2_METADATA_T) >= sizeof(detail::Qliv2Metadata));
 };
 
 #endif

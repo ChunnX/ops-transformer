@@ -72,7 +72,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     @pytest.mark.ci
     @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-    def test_qli(param_combinations):   # 初始化参数和tensor
+    def test_qliv2(param_combinations):   # 初始化参数和tensor
         batch_size = param_combinations['batch_size']
         q_seq = param_combinations['q_seq']
         k_seq = param_combinations['k_seq']
@@ -112,7 +112,7 @@ for _, params in enumerate(ENABLED_PARAMS):
                     k_scale_datarange, cmp_ratio, return_value
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qli_output_single(test_data)
+        cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qliv2_output_single(test_data)
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比

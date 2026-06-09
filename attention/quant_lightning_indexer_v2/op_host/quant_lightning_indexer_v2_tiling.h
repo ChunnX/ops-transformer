@@ -87,7 +87,7 @@ constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
-BEGIN_TILING_DATA_DEF(QLITilingData)
+BEGIN_TILING_DATA_DEF(QLIV2TilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
 TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
@@ -100,17 +100,17 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
-TILING_DATA_FIELD_DEF(uint32_t, returnValues)
+TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
+REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
 
 // -----------算子CompileInfo定义-------------------
-struct QLICompileInfo {};
+struct QLIV2CompileInfo {};
 
 // -----------算子Tiling入参结构体定义---------------
-struct QLIParaInfo {
+struct QLIV2ParaInfo {
     TilingRequiredParaInfo query = {nullptr, nullptr};
     TilingRequiredParaInfo key = {nullptr, nullptr};
     TilingRequiredParaInfo weights = {nullptr, nullptr};
@@ -118,32 +118,36 @@ struct QLIParaInfo {
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
+    TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
+    TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
 
-    const int64_t *queryQuantMode = nullptr;
-    const int64_t *keyQuantMode = nullptr;
+    const int32_t *quantMode = nullptr;
     const char *layOutQuery = nullptr;
     const char *layOutKey = nullptr;
-    const int64_t *blockSize = nullptr;
-    const int64_t *sparseMode = nullptr;
-    const int64_t *sparseCount = nullptr;
+    const int32_t *blockSize = nullptr;
+    const int32_t *sparseMode = nullptr;
+    const int32_t *sparseCount = nullptr;
+    const int32_t *cmpRatio = nullptr;
+    const int32_t *returnValue = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
-    const int64_t *cmpRatio = nullptr;
-    const int32_t *batchSupperFlag = nullptr;
-    const bool *returnValues = nullptr;
-    const int64_t *keyStride0 = nullptr;
-    const int64_t *keyDequantScaleStride0 = nullptr;
+    int64_t keyStride0 = 0;
+    int64_t keyDequantScaleStride0 = 0;
 };
 
 // -----------算子Tiling入参信息类---------------
-class QLITilingInfo {
+class QLIV2TilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    QLIParaInfo opParamInfo;
+    QLIV2ParaInfo opParamInfo;
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
@@ -165,7 +169,7 @@ public:
     int64_t nextTokens = 0;
     uint32_t cmpRatio = 1;
     bool batchSupperFlag = false;
-    bool returnValues = false;
+    bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
     // DType
@@ -178,10 +182,10 @@ public:
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
-class QLIInfoParser {
+class QLIV2InfoParser {
 public:
-    explicit QLIInfoParser(gert::TilingContext *context) : context_(context) {}
-    ~QLIInfoParser() = default;
+    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context) {}
+    ~QLIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
@@ -214,14 +218,14 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
-    void GenerateInfo(QLITilingInfo &QLIInfo);
-    ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
+    void GenerateInfo(QLIV2TilingInfo &QLIV2Info);
+    ge::graphStatus ParseAndCheck(QLIV2TilingInfo &QLIV2Info);
 
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    QLIParaInfo opParamInfo_;
+    QLIV2ParaInfo opParamInfo_;
 
     // BaseParams
     uint32_t bSize_ = 0;
@@ -253,11 +257,11 @@ public:
 class QuantLightningIndexerTiling {
 public:
     explicit QuantLightningIndexerTiling(gert::TilingContext *context) : context_(context) {};
-    ge::graphStatus DoTiling(QLITilingInfo *tilingInfo);
+    ge::graphStatus DoTiling(QLIV2TilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
-    QLITilingData tilingData_;
+    QLIV2TilingData tilingData_;
 };
 
 }  // namespace optiling

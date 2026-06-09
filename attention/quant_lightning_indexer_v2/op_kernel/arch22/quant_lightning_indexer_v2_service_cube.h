@@ -20,10 +20,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "quant_lightning_indexer_common.h"
+#include "quant_lightning_indexer_v2_common.h"
 
-namespace QLIKernel {
-using namespace QLICommon;
+namespace QLIV2Kernel {
+using namespace QLIV2Common;
 struct MmInfo {
     int64_t s2L0LoopId;
     int64_t s1gL0LoopId;
@@ -31,13 +31,13 @@ struct MmInfo {
     int64_t s2GmOffset;
 };
 
-template <typename QLIT>
-class QLIMatmul {
+template <typename QLIV2T>
+class QLIV2Matmul {
 public:
-    using Q_T = typename QLIT::queryType;
-    using K_T = typename QLIT::keyType;
+    using Q_T = typename QLIV2T::queryType;
+    using K_T = typename QLIV2T::keyType;
 
-    __aicore__ inline QLIMatmul(){};
+    __aicore__ inline QLIV2Matmul(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
                                                const GlobalTensor<Q_T> &queryGm, const GlobalTensor<float> &mm1ResGm,
@@ -45,7 +45,7 @@ public:
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const QLICommon::RunInfo &runInfo);
+    __aicore__ inline void ComputeMm1(const QLIV2Common::RunInfo &runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};  // isSetFMatrix isSetPadding;
     static constexpr uint64_t DOUBLE_BUF_NUM = 2;
@@ -78,28 +78,28 @@ public:
     static constexpr uint64_t L0C_BUFFER_OFFSET = 64 * 256;
 
 private:
-    __aicore__ inline void WeightDmaCopy(uint64_t s1gL1RealSize, const QLICommon::RunInfo &runInfo);
+    __aicore__ inline void WeightDmaCopy(uint64_t s1gL1RealSize, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0RealSize);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize, uint64_t s1gL0RealSize);
-    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, const QLICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, const MmInfo &mmInfo, const QLICommon::RunInfo &runInfo);
+    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, const QLIV2Common::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void FixpSToL1(uint64_t s1gL0RealSize, uint64_t s2L0RealSize);
     __aicore__ inline void LoadSToL0b(uint64_t s1gL1RealSize, uint64_t s2L0RealSize, uint64_t sL1BufIdx,
                                       int64_t mStartPt);
     __aicore__ inline void LoadWeightToL0a(uint64_t s1gL1Offset);
     __aicore__ inline void ComputeWs(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, int64_t s1gOffset);
     __aicore__ inline void FixpResToGm(uint64_t s1L0RealCount, uint64_t s2L0RealSize, uint64_t s1GmOffset,
-                                       uint64_t s2GmOffset, const QLICommon::RunInfo &runInfo);
+                                       uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void ComputeQk(uint64_t s1gL0RealSize, uint64_t s2L0RealSize);
     __aicore__ inline void ProcessWs(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t sL1BufIdx,
-                                     const MmInfo &mmInfo, const QLICommon::RunInfo &runInfo);
+                                     const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void ProcessQk(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t s1L0LoopCnt,
-                                     const MmInfo &mmInfo, const QLICommon::RunInfo &runInfo);
+                                     const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void CalcMmInfo(MmInfo &mmInfo, uint64_t loopIdx, uint64_t s1L0LoopCnt, const MmInfo &lastMmInfo,
-                                      const QLICommon::RunInfo &runInfo);
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIT::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
+                                      const QLIV2Common::RunInfo &runInfo);
+    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
+    static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -132,14 +132,14 @@ private:
     ConstInfo constInfo_;
 };
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::InitParams(const ConstInfo &constInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufQL1_, DOUBLE_BUF_NUM * S1G_BASIC_BLOCK_L1 * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -160,8 +160,8 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
     cL0_ = bufL0C_.Get<int32_t>();
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
                                                             const GlobalTensor<K_T> &keyGm,
                                                             const GlobalTensor<Q_T> &queryGm,
                                                             const GlobalTensor<float> &mm1ResGm,
@@ -174,9 +174,9 @@ __aicore__ inline void QLIMatmul<QLIT>::InitMm1GlobalTensor(const GlobalTensor<i
     weightGm_ = weightWorkspaceGm;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::ProcessWs(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t sL1BufIdx,
-                                                  const MmInfo &mmInfo, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::ProcessWs(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t sL1BufIdx,
+                                                  const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo)
 {
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % DOUBLE_BUF_NUM);
     for (int64_t s1gOffset = 0; s1gOffset < s1gL0RealSize; s1gOffset += constInfo_.gSize) {
@@ -196,9 +196,9 @@ __aicore__ inline void QLIMatmul<QLIT>::ProcessWs(uint64_t s1gL0RealSize, uint64
     l0cBufIdx_++;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::ProcessQk(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t s1L0LoopCnt,
-                                                  const MmInfo &mmInfo, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::ProcessQk(uint64_t s1gL0RealSize, uint64_t s1gL1Offset, uint64_t s1L0LoopCnt,
+                                                  const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo)
 {
     if (mmInfo.s1gL0LoopId == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % DOUBLE_BUF_NUM);
@@ -231,9 +231,9 @@ __aicore__ inline void QLIMatmul<QLIT>::ProcessQk(uint64_t s1gL0RealSize, uint64
     l0cBufIdx_++;
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::CalcMmInfo(MmInfo &mmInfo, uint64_t loopIdx, uint64_t s1L0LoopCnt,
-                                                   const MmInfo &lastMmInfo, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::CalcMmInfo(MmInfo &mmInfo, uint64_t loopIdx, uint64_t s1L0LoopCnt,
+                                                   const MmInfo &lastMmInfo, const QLIV2Common::RunInfo &runInfo)
 {
     mmInfo.s2L0LoopId = loopIdx / s1L0LoopCnt;
     mmInfo.s1gL0LoopId = loopIdx % s1L0LoopCnt;
@@ -248,8 +248,8 @@ __aicore__ inline void QLIMatmul<QLIT>::CalcMmInfo(MmInfo &mmInfo, uint64_t loop
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInfo &runInfo)
 {
     if (runInfo.isFirstS2InnerLoop) {
         WaitFlag<HardEvent::MTE1_MTE2>(QW_MTE1_MTE2_EVENT + qwL1Mte2BufIdx_ % DOUBLE_BUF_NUM);
@@ -304,9 +304,9 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
 }
 
 // blkNum, blkSize, N2, D
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                      const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+                                                      const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
@@ -334,9 +334,9 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::KeyNd2Nz(uint64_t s2L1RealSize, const MmInfo &mmInfo,
-                                                 const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2Nz(uint64_t s2L1RealSize, const MmInfo &mmInfo,
+                                                 const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t dStride = constInfo_.headDim;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::BSND || K_LAYOUT_T == LI_LAYOUT::TND) {
@@ -357,8 +357,8 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2Nz(uint64_t s2L1RealSize, const Mm
 }
 
 // batch, s1, g, 1
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::WeightDmaCopy(uint64_t s1gL1RealSize, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::WeightDmaCopy(uint64_t s1gL1RealSize, const QLIV2Common::RunInfo &runInfo)
 {
     DataCopyParams copyInParams;
     copyInParams.blockCount = 1;
@@ -370,8 +370,8 @@ __aicore__ inline void QLIMatmul<QLIT>::WeightDmaCopy(uint64_t s1gL1RealSize, co
 }
 
 // batch, s1, n2, g, d
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::QueryNd2Nz(uint64_t s1gL1RealSize, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, const QLIV2Common::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -388,8 +388,8 @@ __aicore__ inline void QLIMatmul<QLIT>::QueryNd2Nz(uint64_t s1gL1RealSize, const
 }
 
 // s1g, d
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
                                                        uint64_t s1gL0RealSize)
 {
     LoadData3DParamsV2<Q_T> loadData3DParams;
@@ -425,8 +425,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uin
 }
 
 // s1, g, s2  -->  2 * 64* 128
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::LoadSToL0b(uint64_t s1gL1RealSize, uint64_t s2L0RealSize, uint64_t sL1BufIdx,
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::LoadSToL0b(uint64_t s1gL1RealSize, uint64_t s2L0RealSize, uint64_t sL1BufIdx,
                                                    int64_t mStartPt)
 {
     LoadData3DParamsV2<half> loadData3DParams;
@@ -462,8 +462,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadSToL0b(uint64_t s1gL1RealSize, uint6
 }
 
 // s1,g,1(16), 2,64,16
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::LoadWeightToL0a(uint64_t s1gL1Offset)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::LoadWeightToL0a(uint64_t s1gL1Offset)
 {
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
@@ -477,8 +477,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadWeightToL0a(uint64_t s1gL1Offset)
 }
 
 // s2, d -> 128,128
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L0RealSize)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::LoadKeyToL0b(uint64_t s2L0RealSize)
 {
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
@@ -491,8 +491,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L0RealSize)
 }
 
 // A: s1,g,1(16) B: s1,g,s2  C: s1, 1(16), s2
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::ComputeWs(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, int64_t s1gOffset)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeWs(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, int64_t s1gOffset)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -509,8 +509,8 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeWs(uint64_t s1gL0RealSize, uint64
             mmadParams);
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::ComputeQk(uint64_t s1gL0RealSize, uint64_t s2L0RealSize)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeQk(uint64_t s1gL0RealSize, uint64_t s2L0RealSize)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -529,8 +529,8 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeQk(uint64_t s1gL0RealSize, uint64
     }
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::FixpSToL1(uint64_t s1gL0RealSize, uint64_t s2L0RealSize)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::FixpSToL1(uint64_t s1gL0RealSize, uint64_t s2L0RealSize)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT);
@@ -548,9 +548,9 @@ __aicore__ inline void QLIMatmul<QLIT>::FixpSToL1(uint64_t s1gL0RealSize, uint64
              cL0_[(l0cBufIdx_ % DOUBLE_BUF_NUM) * L0C_BUFFER_OFFSET], params);
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::FixpResToGm(uint64_t s1L0RealCount, uint64_t s2L0RealSize, uint64_t s1GmOffset,
-                                                    uint64_t s2GmOffset, const QLICommon::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::FixpResToGm(uint64_t s1L0RealCount, uint64_t s2L0RealSize, uint64_t s1GmOffset,
+                                                    uint64_t s2GmOffset, const QLIV2Common::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT);
@@ -572,8 +572,8 @@ __aicore__ inline void QLIMatmul<QLIT>::FixpResToGm(uint64_t s1L0RealCount, uint
                       intriParams);
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::AllocEventID()
 {
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
@@ -591,8 +591,8 @@ __aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
 }
 
-template <typename QLIT>
-__aicore__ inline void QLIMatmul<QLIT>::FreeEventID()
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
 {
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
@@ -609,5 +609,5 @@ __aicore__ inline void QLIMatmul<QLIT>::FreeEventID()
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
 }
-}  // namespace QLIKernel
+}  // namespace QLIV2Kernel
 #endif  // QUANT_LIGHTNING_INDEXER_SERVICE_CUBE_H

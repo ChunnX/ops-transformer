@@ -83,7 +83,7 @@ SSR_DML_SHIFT = 10             # SSR舍入移位值
 SSR_RESERVED_BITS = 14         # SSR舍入保留位数
 HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
 
-class GeneralizedQLI:
+class GeneralizedQLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
                  act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
@@ -691,7 +691,7 @@ def trans_prefix_actseq(self,list):
                 raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
         return list_new
 
-def qli_output_single(params):
+def qliv2_output_single(params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
     act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
@@ -705,7 +705,7 @@ def qli_output_single(params):
     else:
         hifp8mode = 0
 
-    test_qli = GeneralizedQLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
+    test_qliv2 = GeneralizedQLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
                     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
                     act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
@@ -763,7 +763,7 @@ def qli_output_single(params):
             key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
             key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_seq, k_head_num))).to(dequant_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
     elif layout_key == "TND":
         if hifp8mode ==1:
@@ -775,7 +775,7 @@ def qli_output_single(params):
             key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
             key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (k_t_size, k_head_num))).to(dequant_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
     elif layout_key == "PA_BSND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
@@ -836,7 +836,7 @@ def qli_output_single(params):
                     for i_n in range(k_head_num):
                         key_dequant_scale[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         key_dequant_scale = key_dequant_scale.npu()
-        cpu_result, topk_value = test_qli.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
