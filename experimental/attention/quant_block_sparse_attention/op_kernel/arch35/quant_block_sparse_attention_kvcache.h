@@ -171,24 +171,9 @@ __aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
 {
-    constexpr int32_t s2BaseSize = static_cast<int32_t>(s2TemplateType);
-
+    
     // sInnerFirstToken在nomask和maskmode=3场景下均为0
-    int64_t sInnerFirstToken = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
-        0, runParam.actualS2Size);
-    runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
-        runParam.s1RealSize, 0, runParam.actualS2Size);
-        
-    runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize - sInnerFirstToken / s2BaseSize;
-    if (runParam.s2LoopEndIdx <= 0) {
-        return true;
-    }
-    if constexpr (hasAtten) {
-        runParam.s2LineStartIdx = sInnerFirstToken / s2BaseSize * s2BaseSize;
-    } else {
-        runParam.s2LineStartIdx = sInnerFirstToken;
-    }
-    return false;
+    runParam.s2LineStartIdx = 0;
 }
 
 TEMPLATE_INTF
