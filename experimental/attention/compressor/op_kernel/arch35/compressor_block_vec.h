@@ -1278,17 +1278,19 @@ __aicore__ inline void CompressorBlockVector<COMP>::DealVec2BaseBlock(const Vec2
     inputQue1.DeQue<T>();
 
     // RmsNorm
-    LocalTensor<T> normResUb = tmpBuff1.Get<T>();
-    LocalTensor<T> tempLocal = tmpBuff2.Get<T>();
-    PipeBarrier<PIPE_V>();
-    MultRowRmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, needDealScSize);
-    inputQue1.FreeTensor(vec1ResUb);
+    // LocalTensor<T> normResUb = tmpBuff1.Get<T>();
+    // LocalTensor<T> tempLocal = tmpBuff2.Get<T>();
+    // PipeBarrier<PIPE_V>();
+    // MultRowRmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, needDealScSize);
+    // inputQue1.FreeTensor(vec1ResUb);
 
     // rope: 只对后RD进行rope
     LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
     PipeBarrier<PIPE_V>();
-    CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
+    // CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
+    Cast(outputUb, vec1ResUb, RoundMode::CAST_RINT, computeSize);
     PipeBarrier<PIPE_V>();
+    inputQue1.FreeTensor(vec1ResUb);
 
     // CopyOut
     outputQue1.EnQue(outputUb);
