@@ -1168,9 +1168,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     }
     SToVSync();
 
-    LocalTensor<int32_t> matchIndices = vecIndex[alignLen];
     uint64_t eqRsvdCnt = 0;
-    GatherMask(matchIndices, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
+    GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
                true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
     VToSSync();
 
@@ -1185,7 +1184,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
     for (uint32_t i = 0; i < writeCnt; i++) {
-        int32_t idx = matchIndices.GetValue(i);
+        int32_t idx = vecIndex.GetValue(i);
         maskLocal.SetValue(idx, writeValue);
     }
 
