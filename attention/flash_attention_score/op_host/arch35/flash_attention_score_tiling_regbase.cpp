@@ -112,11 +112,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDtype()
             calcTypeSize = ge::GetSizeByDataType(ge::DT_FLOAT);
             isHighPercision = false;
             break;
-default:
-             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query, key and value",
-                 Ops::Base::ToString(inputDtype).c_str(),
-                 "The dtype of input query, key and value is not supported for now");
-             return false;
+        default:
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query, key and value",
+                Ops::Base::ToString(inputDtype).c_str(),
+                "The dtype of input query, key and value is not supported for now");
+            return false;
     }
 
     bmm2OutDtype = bmm1OutDtype;
@@ -218,8 +218,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
     if (attrs->GetAttrNum() > idx) {
         auto outDtypePtr = attrs->GetAttrPointer<int64_t>(idx++);
         outDtype = *outDtypePtr;
-OP_CHECK_IF(outDtype < 0 || outDtype >= 2,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "out_dtype", std::to_string(outDtype).c_str(), "The value of attr out_dtype must be in the range of [0, 1]"), return false);
+    OP_CHECK_IF(outDtype < 0 || outDtype >= 2,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "out_dtype", std::to_string(outDtype).c_str(),
+                "The value of attr out_dtype must be in the range of [0, 1]"), return false);
         outDtype = outDtype + 1; // 外部合法是0或1, 内部对应使用1和2,如果没有量化参数, 后面会刷成0, 1表示fp16, 2表示bf16
     }
     if (attrs->GetAttrNum() > idx) {
@@ -244,7 +245,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     auto keyRope = context_->GetOptionalInputShape(KEY_ROPE_INDEX);
     bool hasKeyRope = keyRope != nullptr && keyRope->GetStorageShape().GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
-        OP_LOGE_WITH_INVALID_INPUT(opName, "queryRope and keyRope", 
+        OP_LOGE_WITH_INVALID_INPUT(opName, "queryRope and keyRope",
             "The value of queryRope and keyRope must be present or absent at the same time");
         return false;
     }
@@ -257,13 +258,15 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
                valueShape.GetDimNum() != layoutLen,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
-                   "The value of layout string length must be equal to dims of input query, key and value"), return false);
+                   "The value of layout string length must be equal to “
+                   ”dims of input query, key and value"), return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
                !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
                    "The value of input layout must be in BSH, SBH, BSND, BNSD or TND"), return false);
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " + std::to_string(s2Size), 
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " +
+            std::to_string(s2Size),
             "The value of s1Size and s2Size cannot be greater than max int value");
         return false;
     }
@@ -356,7 +359,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "The Value of q must be equal to kv with VarLen scene."), return false);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+            "The Value of q must be equal to kv with VarLen scene."), return false);
     bSize = actualSeqQLen;
     accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
     accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
@@ -532,7 +536,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
                             std::to_string(n1Size).c_str(),
-                            "The value of attr head_num must be equal to the 1st dim of input query when the layout is BNSD"),
+                            "The value of attr head_num must be equal to the 1st dim “
+                            ”of input query when the layout is BNSD"),
                         return false);
             gSize = queryShape.GetDim(1) / n2Size;
             s1Size = queryShape.GetDim(2); // 2: S idx
@@ -586,7 +591,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
             std::string nValueMsg = std::to_string(n1Size) + " and " + std::to_string(n2Size);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
                 nValueMsg.c_str(),
-                "The shape of input query should be the same as the shape of input key at the N dim when input dtype is HIFLOAT8");
+                "The shape of input query should be the same as the shape of input key “
+                ”at the N dim when input dtype is HIFLOAT8");
             return ge::GRAPH_FAILED;
         }
         if (dSize != 128) {
@@ -603,7 +609,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
         }
         if (!((s1Size == 57600 && s2Size == 57600 && n1Size == 5) ||
               (s1Size == 7200 && s2Size == 512 && n1Size == 40))) {
-            std::string sValueMsg = std::to_string(s1Size) + ", " + std::to_string(s2Size) + " and " + std::to_string(n1Size);
+            std::string sValueMsg = std::to_string(s1Size) + ", " + std::to_string(s2Size) + " and " +
+                std::to_string(n1Size);
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "query, key and value",
                 sValueMsg.c_str(),
                 "The shape of input query, key and value should be "
@@ -660,8 +667,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndPseOptionalInput(PseShapeType &
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
         std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
-        std::string reason = "The shape of pse shape must be [B, N1, S1, S2], [B, N1, 1, S2] or [B, N1, ALIBI_S, S2] in TND mode";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "pse shape", pseShapeStr.c_str(), reason);
+        std::string reason = "The shape of pse shape must be [B, N1, S1, S2], "
+            "[B, N1, 1, S2] or [B, N1, ALIBI_S, S2] in TND mode";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+            "pse shape", pseShapeStr.c_str(), reason);
         return false;
     }
     return true;
@@ -678,7 +687,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     }
     if (pseBSize != bSize && pseBSize != 1) {
         std::string reason = "The value of B dim of input pse must be 1 or the same as " + std::to_string(bSize);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "pse batch size", std::to_string(pseBSize).c_str(), reason);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "pse batch size", std::to_string(pseBSize).c_str(), reason);
         return false;
     }
 
@@ -693,16 +703,20 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
             std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
-            std::string reason = "The S1 dim of input pse shape must be greater than " + std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE));
+            std::string reason = "The S1 dim of input pse shape must be greater than " +
+                std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE));
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse shape", pseShapeStr.c_str(), reason.c_str());
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
         std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
-        std::string expected1 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected2 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", 1, " + std::to_string(s2Size) + "]";
-        std::string expected3 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE)) + ", " + std::to_string(s2Size) + "]";
+        std::string expected1 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " +
+            std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", 1, " +
+            std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " +
+            std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE)) + ", " + std::to_string(s2Size) + "]";
         std::string reason = "The shape of real_shift must be " + expected1 + ", " + expected2 + " or " + expected3;
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "real_shift", pseShapeStr.c_str(), reason.c_str());
         return false;
@@ -725,7 +739,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
             if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
                 std::string dimStr = std::to_string(pseDimNum) + "D";
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "pse shape",
-                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or 1D (N2) when it is pse inner mode");
+                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or “
+                    ”1D (N2) when it is pse inner mode");
                 return false;
             }
             pseShapeType = PseShapeType::PSE_B_N2_G_SLOPE;
@@ -767,11 +782,16 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimAttenOptionalInput(AttenMaskSh
         attenMaskShapeType = AttenMaskShapeType::ATTEN_B_N2_G_S1_S2;
     } else {
         std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
-        std::string expected1 = "[1, 1, " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected2 = "[" + std::to_string(bSize) + ", 1, " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected3 = "[" + std::to_string(bSize) + ", " + std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string reason = "The shape of atten_mask must be " + expected1 + ", " + expected2 + " or " + expected3;
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask", attenMaskShapeStr.c_str(), reason.c_str());
+        std::string expected1 = "[1, 1, " + std::to_string(s1Size) + ", " +
+            std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(bSize) + ", 1, " +
+            std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(bSize) + ", " +
+            std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string reason = "The shape of atten_mask must be " +
+            expected1 + ", " + expected2 + " or " + expected3;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+            "atten_mask", attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;

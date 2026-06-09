@@ -136,14 +136,16 @@ protected:
                 if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL)) {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
                         std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
-                        "The value of sparse_type must be CAUSAL when pse alibi is used with s1Size > 1024 and s1Size == s2Size");
+                        "The value of sparse_type must be CAUSAL when pse alibi is used with "
+                        "s1Size > 1024 and s1Size == s2Size");
                     return false;
                 }
                 pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             } else {
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size and s2Size",
-                        (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
-                        "The values of s1Size and s2Size must be the same when pse alibi is used with s1Size > 1024");
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+                        "s1Size and s2Size", (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
+                        "The values of s1Size and s2Size must be the same “
+                        ”when pse alibi is used with s1Size > 1024");
                     return false;
             }
         }

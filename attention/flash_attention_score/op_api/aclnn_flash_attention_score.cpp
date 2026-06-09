@@ -250,7 +250,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
     }
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
         std::string dMsg = std::to_string(shapeInfo.axes.d) + " and " + std::to_string(shapeInfo.axes.dv);
-        std::string reason = "The value of D dim of input key must be greater than or equal to the value of D dim of input value";
+        std::string reason = "The value of D dim of input key must be greater than or equal to "
+                             "the value of D dim of input value";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "key and value", dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -1051,7 +1052,8 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     Shape kRopeShape = keyRope->GetViewShape();
     if (qRopeShape[DIM_NUM_2] > faShape.axes.d || kRopeShape[DIM_NUM_2] > faShape.axes.d) {
         std::string dMsg = std::to_string(qRopeShape[DIM_NUM_2]) + " and " + std::to_string(kRopeShape[DIM_NUM_2]);
-        std::string reason = "The value of D dim of input query_rope and key_rope must be greater than the value of D dim of input query";
+        std::string reason = "The value of D dim of input query_rope and key_rope must be greater than "
+                             "the value of D dim of input query";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query_rope and key_rope",
             dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
@@ -1069,7 +1071,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseMode == 6) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "sparseMode", "6", 
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "sparseMode", "6",
             "The value of sparseMode cannot be 6 when queryRope and keyRope are provided");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -1088,7 +1090,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (keepProb < 1) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "keepProb", std::to_string(keepProb), 
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "keepProb", std::to_string(keepProb),
                 "The value of keepProb must be 1 when queryRope and keyRope are provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -1100,8 +1102,8 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
         }
 
         if (faShape.needPad || faShape.needTranspose || faShape.needReshape || faShape.needPadValue) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "shape",
-                "unaligned shape", "The value of the shape must be aligned with 128 when query_rope and key_rope are provided as input");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "shape", "unaligned shape",
+                "The value of the shape must be aligned with 128 when query_rope and key_rope are provided as input");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
