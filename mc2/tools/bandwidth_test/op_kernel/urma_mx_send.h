@@ -438,6 +438,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     processExpertNum = epWorldSize_  / aivNumUsedComm_;
     uint32_t remainderRankNum = epWorldSize_ % aivNumUsedComm_;
+    startExpert = processExpertNum * (aivId_ - aivNumUsedCompute_);
     if ((aivId_ - aivNumUsedCompute_) < remainderRankNum) {
         processExpertNum += 1;
         startExpert = processExpertNum * (aivId_ - aivNumUsedCompute_);
