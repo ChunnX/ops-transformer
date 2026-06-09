@@ -45,8 +45,8 @@ constexpr MicroAPI::CastTrait QKV_RRC_CAST_F32_TO_FP8_E4M3FN = {
 __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
                                                      __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
                                                      __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
-                                                     uint32_t qkHeadBase, uint32_t headSize, uint32_t qkvStrideT,
-                                                     float reciprocal, float epsilon)
+                                                     uint32_t qkHeadBase, uint32_t headSize, uint32_t qkvUbStrideN,
+                                                     uint32_t qkvUbStrideT, float reciprocal, float epsilon)
 {
     MicroAPI::RegTensor<float> gammaLow;
     MicroAPI::RegTensor<float> gammaHigh;
@@ -65,7 +65,7 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputB
     MicroAPI::LoadAlign<uint16_t>(highIndex, nzScatterIndex + QKV_RRC_D128_HALF_SIZE);
 
     for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        const uint32_t tokenInputOffset = static_cast<uint32_t>(tokenIdx) * qkvStrideT;
+        const uint32_t tokenInputOffset = static_cast<uint32_t>(tokenIdx) * qkvUbStrideT;
         const uint32_t tokenCosSinOffset = static_cast<uint32_t>(tokenIdx) * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
         const uint32_t tokenOutOffset = static_cast<uint32_t>(tokenIdx) * headSize * QKV_RRC_NZ_C0;
         MicroAPI::RegTensor<float> cosValue;
@@ -76,7 +76,7 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputB
 
         for (uint16_t headIdx = 0U; headIdx < headSize; ++headIdx) {
             const uint32_t qkHead = qkHeadBase + static_cast<uint32_t>(headIdx);
-            const uint32_t inputOffset = tokenInputOffset + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            const uint32_t inputOffset = qkHead * qkvUbStrideN + tokenInputOffset;
             const uint32_t rowOutOffset = tokenOutOffset + static_cast<uint32_t>(headIdx) * QKV_RRC_NZ_C0;
             MicroAPI::RegTensor<bfloat16_t> xLowBf16;
             MicroAPI::RegTensor<bfloat16_t> xHighBf16;
@@ -171,13 +171,14 @@ __simd_callee__ inline void VScaleFp8D128RowVf(__ubuf__ bfloat16_t *vBf16, __ubu
 
 __simd_vf__ inline void VScaleFp8D128Vf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
                                         __ubuf__ fp8_e4m3fn_t *vOutFp8, uint32_t tokenSize, uint32_t vHeadOffset,
-                                        uint32_t vHeadSize, uint32_t qkvStrideT, uint32_t vInputHeadBase)
+                                        uint32_t vHeadSize, uint32_t qkvUbStrideN, uint32_t qkvUbStrideT,
+                                        uint32_t vInputHeadBase)
 {
     for (uint32_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
         for (uint32_t headIdx = 0U; headIdx < vHeadSize; ++headIdx) {
             const uint32_t vHead = vHeadOffset + headIdx;
             const uint32_t srcOffset =
-                tokenIdx * qkvStrideT + (vInputHeadBase + vHead) * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+                (vInputHeadBase + vHead) * qkvUbStrideN + tokenIdx * qkvUbStrideT;
             const uint32_t dstOffset = (tokenIdx * vHeadSize + headIdx) * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
             VScaleFp8D128RowVf(inputBf16 + srcOffset, vScale + vHead, vOutFp8 + dstOffset);
         }

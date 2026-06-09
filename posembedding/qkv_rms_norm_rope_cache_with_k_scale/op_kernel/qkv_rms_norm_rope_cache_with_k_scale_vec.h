@@ -136,11 +136,6 @@ private:
         return tilingData_->numQHeads + tilingData_->numKHeads;
     }
 
-    __aicore__ inline uint64_t QkvStrideT() const
-    {
-        return (QkHeadTile() + tilingData_->numVHeads) * tilingData_->headDim;
-    }
-
     __aicore__ inline void WaitVToMte2InputBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
@@ -300,9 +295,9 @@ private:
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[activeDataBufferId_ * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<int32_t> slotMapping =
             slotMappingDbPoolUb_[activeDataBufferId_ * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
-        const uint64_t qkvStrideT = QkvStrideT();
-        DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * qkvStrideT],
-                         {slice.tokenSize, qkvStrideT, qkvStrideT});
+        DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * tilingData_->headDim],
+                         {QkHeadTile() + tilingData_->numVHeads, slice.tokenSize * tilingData_->headDim,
+                          tilingData_->totalTokens * tilingData_->headDim});
         if (slice.tokenSize > 0U) {
             DataCopyGmToUb2D(slotMapping, slotMappingGm_[slice.tokenOffset], {1U, slice.tokenSize, slice.tokenSize});
             CopyCosSinTile(slice);
@@ -366,19 +361,21 @@ private:
             outputDbPoolUb_[activeOutputBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]
                 .template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
-        const uint64_t qkvStrideT = QkvStrideT();
+        const uint64_t qkvUbStrideN = slice.tokenSize * tilingData_->headDim;
+        const uint64_t qkvUbStrideT = tilingData_->headDim;
         AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVf>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
             (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
             (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize), 0U,
-            static_cast<uint32_t>(tilingData_->numQHeads), static_cast<uint32_t>(qkvStrideT),
-            QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+            static_cast<uint32_t>(tilingData_->numQHeads), static_cast<uint32_t>(qkvUbStrideN),
+            static_cast<uint32_t>(qkvUbStrideT), QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
         AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVf>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()),
             (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
             (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
             static_cast<uint32_t>(tilingData_->numQHeads), static_cast<uint32_t>(tilingData_->numKHeads),
-            static_cast<uint32_t>(qkvStrideT), QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+            static_cast<uint32_t>(qkvUbStrideN), static_cast<uint32_t>(qkvUbStrideT), QKV_RRC_HEAD_DIM_D128_RECIP,
+            tilingData_->epsilon);
     }
 
     __aicore__ inline void BuildRopeNzScatterIndex(const LocalTensor<uint16_t> &nzScatterIndex)
@@ -450,12 +447,14 @@ private:
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[activeDataBufferId_ * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> vScale = vScaleUb_;
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[activeDataBufferId_ * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
-        const uint64_t qkvStrideT = QkvStrideT();
+        const uint64_t qkvUbStrideN = slice.tokenSize * tilingData_->headDim;
+        const uint64_t qkvUbStrideT = tilingData_->headDim;
         AscendC::VF_CALL<VScaleFp8D128Vf>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
             (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
             static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
-            static_cast<uint32_t>(qkvStrideT), static_cast<uint32_t>(QkHeadTile()));
+            static_cast<uint32_t>(qkvUbStrideN), static_cast<uint32_t>(qkvUbStrideT),
+            static_cast<uint32_t>(QkHeadTile()));
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, const AivSlice &slice)
