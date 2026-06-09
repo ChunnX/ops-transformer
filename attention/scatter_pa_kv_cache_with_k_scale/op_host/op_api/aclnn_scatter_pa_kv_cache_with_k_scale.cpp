@@ -329,9 +329,11 @@ aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key
         DFX_IN(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef, cacheLayoutOptional),
         DFX_OUT(keyCacheRef, valueCacheRef, keyScaleCacheRef));
 
-    CHECK_RET(CheckNullptr(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale, keyScaleCacheRef,
-                           workspaceSize, executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    aclnnStatus nullPtrRet = CheckNullptr(key, value, keyCacheRef, valueCacheRef, slotMapping, keyScale,
+                                          keyScaleCacheRef, workspaceSize, executor);
+    if (nullPtrRet != ACLNN_SUCCESS) {
+        return nullPtrRet;
+    }
 
     bool keyEmpty = key->GetViewShape().GetShapeSize() == 0 || keyCacheRef->GetViewShape().GetShapeSize() == 0;
     bool valueEmpty = value->GetViewShape().GetShapeSize() == 0 || valueCacheRef->GetViewShape().GetShapeSize() == 0;
