@@ -1488,6 +1488,9 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v3"* ]]; then
         ascend_op_name="${ascend_op_name};moe_distribute_combine_v3"
     fi
+    if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v4"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_combine_v4"
+    fi
     if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
         ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
     fi
