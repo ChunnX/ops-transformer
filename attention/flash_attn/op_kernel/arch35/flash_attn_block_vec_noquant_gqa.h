@@ -15,7 +15,7 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 
-// PERF TEST: vec runtime keeps only cross-core sync; intra-core sync/compute paths commented out.
+// PERF TEST: vec runtime keeps init only; all sync/compute paths commented out.
 
 #include "kernel_operator.h"
 
@@ -260,16 +260,16 @@ public:
                                        RunInfoX runInfo)
     {
 #ifdef SKIP_V1
-        bmm1ResBuf.WaitCrossCore();
-        bmm1ResBuf.SetCrossCore();
-        outputBuf.SetCrossCore();
+        // bmm1ResBuf.WaitCrossCore();
+        // bmm1ResBuf.SetCrossCore();
+        // outputBuf.SetCrossCore();
         return;
 #endif
 
-        bmm1ResBuf.WaitCrossCore();
+        // bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
+            // bmm1ResBuf.SetCrossCore();
+            // outputBuf.SetCrossCore();
             return;
         }
 
@@ -289,7 +289,7 @@ public:
                 InitLseOutputSingleCore();
             }
             // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
+            // SyncAll();
         }
     }
 
@@ -363,13 +363,13 @@ public:
         // } else {
         //     fa_static::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(...);
         // }
-        bmm1ResBuf.SetCrossCore();
+        // bmm1ResBuf.SetCrossCore();
 
         // SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         // LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         // DataCopy(...);
-        outputBuf.SetCrossCore();
+        // outputBuf.SetCrossCore();
         // if (unlikely(runInfo.isLastS2Loop)) {
         //     SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         // }
@@ -525,7 +525,7 @@ public:
         //     }
         // }
         int64_t stage1Offset = runInfo.loop & (DB - 1);
-        bmm1ResBuf.SetCrossCore();
+        // bmm1ResBuf.SetCrossCore();
 
         // ===================DataCopy to L1 ====================
         // SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
@@ -541,7 +541,7 @@ public:
         //               (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         // }
 
-        outputBuf.SetCrossCore();
+        // outputBuf.SetCrossCore();
         // ======================================================
         // if (!runInfo.isFirstS2Loop) {
         //     UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
@@ -582,7 +582,7 @@ public:
         //             1.0);
         //     }
         // }
-        bmm2ResBuf.SetCrossCore();
+        // bmm2ResBuf.SetCrossCore();
         // if (runInfo.isLastS2Loop) {
         //     if (unlikely(runInfo.isFirstS2Loop)) {
         //         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -719,14 +719,14 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
     {
 #ifdef SKIP_V2
-        bmm2ResBuf.WaitCrossCore();
+        // bmm2ResBuf.WaitCrossCore();
         if constexpr (bmm2Write2Ub) {
-            bmm2ResBuf.SetCrossCore();
+            // bmm2ResBuf.SetCrossCore();
         }
         return;
 #endif
 
-        bmm2ResBuf.WaitCrossCore();
+        // bmm2ResBuf.WaitCrossCore();
 
         if constexpr (bmm2Write2Ub) {
             ProcessVec2OnUb(bmm2ResBuf, runInfo);
