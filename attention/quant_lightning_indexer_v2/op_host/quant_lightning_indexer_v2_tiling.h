@@ -136,8 +136,6 @@ struct QLIV2ParaInfo {
     const int32_t *sparseCount = nullptr;
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
-    const int64_t *preTokens = nullptr;
-    const int64_t *nextTokens = nullptr;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
 };
@@ -165,8 +163,6 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
-    int64_t preTokens = 0;
-    int64_t nextTokens = 0;
     uint32_t cmpRatio = 1;
     bool batchSupperFlag = false;
     bool returnValue = false;
