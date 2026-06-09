@@ -1011,7 +1011,6 @@ ge::graphStatus CommonChecker::CheckDimNum(const FiaTilingInfo &fiaInfo)
             std::string(fiaInfo.opParamInfo.layOut) + ".";
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key",
             std::to_string(keyDim).c_str(), reason.c_str());
-            "The shape dims of input key should be 4D when the attr input_layout is " + std::string(fiaInfo.opParamInfo.layOut));
         return ge::GRAPH_FAILED;
     }
     if ((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||

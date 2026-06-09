@@ -373,8 +373,8 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
             if (actualSeqLengthsQData != actualSeqLengthsKvData) {
                 std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
                     "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
-                std::string valueStr = std::to_string(actualSeqLengthsQData).c_str() + " and " +
-                    std::to_string(actualSeqLengthsKvData).c_str()
+                std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
+                    std::to_string(actualSeqLengthsKvData);
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
                     valueStr.c_str(), (attrName + " must be the same when pseType is 2 or 3.").c_str());
                 return ge::GRAPH_FAILED;

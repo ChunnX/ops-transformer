@@ -50,7 +50,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
 
             if (learnableSinkDesc->GetDataType() != fiaInfo.inputQType) {
                 std::string reason = "The dtype of learnable_sink must be the same as the dtype of query(" +
-                    ToString(fiaInfo.inputQType) + ") when learnable sink is enabled."
+                    ToString(fiaInfo.inputQType) + ") when learnable sink is enabled.";
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
