@@ -284,7 +284,7 @@ void FaInfoParser::GetKeyTSize()
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
 }
 
-ge::graphStatus FaInfoParser::GetQkHeadDim() 
+ge::graphStatus FaInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
@@ -473,6 +473,10 @@ void FaInfoParser::SetFaShape()
 ge::graphStatus FaInfoParser::GetGSize()
 {
     // 获取G基准值
+    if (n2Size_ == 0U) {
+        OP_LOGE(opName_, "Kv Heads(%ld) should not be zero.", n2Size_);
+        return ge::GRAPH_FAILED;
+    }
     if (n1Size_ % n2Size_ != 0U) {
         OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
