@@ -835,6 +835,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
     globalHist.SetValue(0, static_cast<int32_t>(globalHistBoundaryNum_));
     ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
                       (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
+    MTE3ToMTE2Sync();
 }
 
 template <typename BSAT>
