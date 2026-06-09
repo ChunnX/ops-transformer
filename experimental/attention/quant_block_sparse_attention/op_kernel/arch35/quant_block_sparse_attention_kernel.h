@@ -124,7 +124,6 @@ public:
 
     ConstInfo constInfo;
     AttenMaskInfo attenMaskInfo;
-    uint64_t s1OuterSizeAcc;
     uint64_t s1SizeAcc;
     uint64_t s2SizeAcc;
     uint64_t s1ScaleNumAcc;
@@ -136,8 +135,7 @@ public:
     VecBlockType vecBlock;
 
 private:
-    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index,
-                                                    RunParamStr &runParam);
+    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t s1Index, RunParamStr &runParam);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -197,18 +195,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     const QuantBlockSparseAttentionTilingData *__restrict tiling, TPipe *tPipe)
 {
     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
-    if (constInfo.isQHasLeftPadding) {
-        constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
-        if (constInfo.queryRightPaddingSize < 0) {
-            constInfo.queryRightPaddingSize = 0;
-        }
-    }
-    if (constInfo.isKVHasLeftPadding) {
-        constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
-        if (constInfo.kvRightPaddingSize < 0) {
-            constInfo.kvRightPaddingSize = 0;
-        }
-    }
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }
@@ -400,7 +386,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.queryOffset = runParam.tensorQOffset;
-    runInfo.qRopeOffset = runParam.qRopeNBGOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
@@ -442,8 +427,6 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
     this->constInfo.actualSeqLenKVSize = this->sharedParams.actualSeqLengthsKVSize;
     this->constInfo.isActualLenDimsNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsNull);
     this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
-    this->constInfo.isQHasLeftPadding = static_cast<bool>(this->sharedParams.isQHasLeftPadding);
-    this->constInfo.isKVHasLeftPadding = static_cast<bool>(this->sharedParams.isKVHasLeftPadding);
     if constexpr (isPa) {
         this->constInfo.blockTableDim2 = this->sharedParams.blockTableDim2;
         this->constInfo.blockSize = this->sharedParams.blockSize;
@@ -459,7 +442,7 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
     const RunParamStr &runParam, RunInfo &runInfo)
 {
     InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS>(runParam, runInfo);
-    ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
+    runInfo.vecCoreOffset = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -479,15 +462,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
     int64_t s2LoopLimit;
     int64_t taskId = 0;
-    int64_t nextGs1Idx = this->sharedParams.multiCoreInnerLimit;
-    if (nextGs1Idx != 0) {
-        bnEndIdx++;
-    }
     bool notLast = true;
     RunInfo runInfo[4];
     RunParamStr runParam;
 
     int64_t multiCoreInnerIdx = 1;
+    uint64_t sparseBase = 0;
     for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
         bool lastBN = (bn1Idx == bn1EndIdx - 1);
         runParam.boIdx = bn1Idx / this->constInfo.n1Size;
@@ -496,47 +476,23 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         runParam.goIdx =  runParam.n1oIdx % constInfo.gSize;
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo,
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
-        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, lastBN,
-                                                                      nextGs1Idx);
-        int64_t tempGS1End = lastBN ? (runParam.s1LoopTimes + 3) : runParam.s1LoopTimes;
-        for (int64_t gS1Index = gS1StartIdx; gS1Index < tempGS1End; ++gS1Index) {
-            bool notLastThreeLoop = true;
-            bool notLastTwoLoop = true;
+        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx, bn1Idx == bn1StartIdx, lastBN);
+        int64_t temps1End = lastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
+        bool notLastThreeLoop = true;
+        bool notLastTwoLoop = true;
+        for (int64_t s1Index = runParam.s1LoopStart; s1Index < temps1End; ++s1Index) {
             if (lastBN) {
-                int32_t extraGS1 = gS1Index - runParam.s1LoopTimes;
-                switch (extraGS1) {
-                    case -1:
-                        break;
-                    case 0:
-                        notLastThreeLoop = false;
-                        break;
-                    case 1:
-                        notLastThreeLoop = false;
-                        notLastTwoLoop = false;
-                        break;
-                    case 2:
-                        notLast = false;
-                        notLastThreeLoop = false;
-                        notLastTwoLoop = false;
-                        break;
-                    default:
-                        break;
-                }
+                UpdateLoopFlagsBasedOnS1Index(s1Index - runParam.s1LoopEnd, notLast, notLastTwoLoop, notLastThreeLoop);
             }
             if (notLastThreeLoop) {
-                this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
-                bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(
-                    runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
-                bool s2NoNeedCalc =
-                    ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo);
-                if (s1NoNeedCalc || s2NoNeedCalc) {
+                this->ComputeAxisIdxByBnAndGs1(s1Index, runParam);
+                ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->actualSeqQlenAddr);
+                if (ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo)) {
                     continue;
                 }
-                s2LoopLimit = runParam.s2LoopEndIdx - 1;
-            } else {
-                s2LoopLimit = 0;
+                // sparseBase = (runParam.boIdx*constInfo.n1Size+runParam.n1oIdx)*;
             }
-
+            s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId & 3];
@@ -548,6 +504,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 if (taskId > 0 && notLastTwoLoop) {
                     if ASCEND_IS_AIV {
                         auto &runInfo3 = runInfo[(taskId + 3) & 3];
+                        // AttentionMaskFullProcessingOrRequired();
+                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                            this->constInfo);
                     }
                 }
                 if (taskId > 1 && notLast) {
@@ -566,7 +525,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                     if ASCEND_IS_AIV {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
                         if constexpr (bmm2Write2Ub) {
+                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         } else {
+                            this->vecBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo3, this->constInfo);
                         }
                     }
                 }
@@ -574,7 +535,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             }
             ++multiCoreInnerIdx;
         }
-        gS1StartIdx = 0;
     }
 }
 
@@ -589,9 +549,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
+    int64_t s1Index, RunParamStr &runParam)
 {
-    runParam.s1oIdx = gS1Index % this->constInfo.s1OuterSize;
+    runParam.s1oIdx = s1Index;
 }
 }
 #endif

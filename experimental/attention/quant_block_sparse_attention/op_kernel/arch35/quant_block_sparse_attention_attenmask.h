@@ -187,8 +187,6 @@ __aicore__ inline int64_t ComputeOffsetForNoCompress(const RunInfo &runInfo,
 
         s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
         s1Offset += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
-        s1Offset += runInfo.queryLeftPaddingSize;
-        s2Offset += runInfo.kvLeftPaddingSize;
         s1Offset *= attenMaskInfo.attenMaskS2Size;
         return bOffset + n2Offset + gOffset + s1Offset + s2Offset;
     }
