@@ -470,17 +470,31 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (epRankId_ >= startExpert && epRankId_ < endExpert) {
         processCnt += 1; // 包含epRankId_
     }
+    for(uint32_t i = startExpert; i < endExpert; ++i) {
+        if (i == (uint32_t)epRankId_) { // 本卡不处理
+            continue;
+        }
+        if (sendCntTensor_(i - startExpert) == 0) { // 无需发送的expert直接标记完成
+            processCnt += 1;
+        }
+    }
     uint32_t cnt=0;
     while(true) {
+        if (processCnt == processExpertNum) {
+            break;
+        }
         cnt += 1;
         if (cnt > 100000000) {
             break;
         }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
-            if (i == epRankId_) { // 本卡不处理
+            if (i == (uint32_t)epRankId_) { // 本卡不处理
                 continue;
             }
             uint32_t curSendCnt = sendCntTensor_(i - startExpert);
+            if (curSendCnt == 0) {
+                continue;
+            }
             for (uint32_t j = 0; j < curSendCnt; ++j) {
                 uint32_t index = (i - startExpert) * axisBS_ + j;
                 if (sendFlagHandleGMTensor_.GetValue(index) == 1) {
