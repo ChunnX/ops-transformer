@@ -610,7 +610,8 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 <a id="非量化场景约束"></a>
 
-##### 非量化场景约束
+<details>
+<summary>非量化场景约束</summary>
 
 **数据类型要求：**
 
@@ -623,9 +624,12 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 **约束**：
 - 支持 groupType=-1、0、2，actType=0，groupListType=0/1。
 
+</details>
+
 <a id="a8w8场景约束"></a>
 
-##### A8W8 场景约束
+<details>
+<summary>A8W8 场景约束</summary>
 
 **数据类型要求：**
 
@@ -647,9 +651,12 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
   - shape（满足其一）：`(M, 7168) × (7168, 4096)` 或 `(M, 2048) × (2048, 7168)`
   - tuningConfigOptional：[0] ∈ (128, 512)，[1]=0，[3] = -1 或 ≥ M×N×4
 
+</details>
+
 <a id="a4w4场景约束"></a>
 
-##### A4W4 场景约束
+<details>
+<summary>A4W4 场景约束</summary>
 
 **数据类型要求：**
 
@@ -666,9 +673,12 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 - perchannel：scale shape `(E, N)`；pergroup：scale shape `(E, G, N)`，G 能整除 K 且 K/G 为偶数。
 - 开启右矩阵 NZ 转置后：K/G 对齐 64，K 对齐 64，N 对齐 16。
 
+</details>
+
 <a id="a8w4场景约束"></a>
 
-##### A8W4 场景约束
+<details>
+<summary>A8W4 场景约束</summary>
 
 **数据类型要求：**
 
@@ -696,9 +706,12 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 - offset 为离线辅助结果（$antiquantOffset \times scale$），shape `(E, 1, N)`，dtype=FLOAT32。
 - tuningConfigOptional[1]可置1，以开启 weight 亲核格式（需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
 
+</details>
+
 <a id="a16w8场景约束"></a>
 
-##### A16W8 场景约束
+<details>
+<summary>A16W8 场景约束</summary>
 
 **数据类型要求：**
 
@@ -718,9 +731,12 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | weight 单，perchannel | `(E, N)` |
 | weight 多，perchannel | `(N_i)` |
 
+</details>
+
 <a id="a16w4场景约束"></a>
 
-##### A16W4 场景约束
+<details>
+<summary>A16W4 场景约束</summary>
 
 **数据类型要求：**
 
@@ -742,6 +758,8 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | weight 单，pergroup | `(E, G, N)` |
 | weight 多，perchannel | `(N_i)` |
 | weight 多，pergroup | `(G_i, N_i)` |
+
+</details>
 
 #### 7.3.2 groupType 支持场景
 
