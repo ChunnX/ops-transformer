@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-Python frontend + JIT builder for `aclnnBlockSparseAttention`
+Python frontend + JIT builder for `aclnnBlockSparseAttentionV2`
 (from `attention/block_sparse_attention/`).
 
 Usage:
@@ -20,6 +20,10 @@ Usage:
         scale_value=1.0/math.sqrt(D), softmax_lse_flag=True,
     )
 
+`aclnnBlockSparseAttentionV2` adds `q/k/v_dequant_scale` over V1 — FP8-only
+(FLOAT8_E4M3FN) FP32 reverse-quant factors. They default to None and are passed
+through as nullptr on the FP16/BF16 path, so existing callers are unaffected.
+
 Prerequisite:
     The kernel + aclnn library must already be built and installed into the
     Ascend custom-transformer vendor path:
@@ -29,7 +33,7 @@ Prerequisite:
         ./build/cann-ops-transformer-custom_linux-aarch64.run
 
     `ACLNN_CMD` (in the C++ wrapper) dlopens `libcust_opapi.so` at runtime to
-    resolve `aclnnBlockSparseAttention` — no link-time dependency on the
+    resolve `aclnnBlockSparseAttentionV2` — no link-time dependency on the
     vendor library.
 """
 
@@ -65,7 +69,10 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             "int block_size, "
             "int pre_tokens, "
             "int next_tokens, "
-            "bool softmax_lse_flag"
+            "bool softmax_lse_flag, "
+            "Tensor? q_dequant_scale=None, "
+            "Tensor? k_dequant_scale=None, "
+            "Tensor? v_dequant_scale=None"
             ") -> (Tensor, Tensor)"
         )
 
@@ -76,7 +83,9 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
                   num_heads, num_key_value_heads,
                   q_input_layout, kv_input_layout,
                   mask_type, scale_value, inner_precise, block_size,
-                  pre_tokens, next_tokens, softmax_lse_flag):
+                  pre_tokens, next_tokens, softmax_lse_flag,
+                  q_dequant_scale=None, k_dequant_scale=None,
+                  v_dequant_scale=None):
             attn = torch.empty_like(query)
             if softmax_lse_flag:
                 # LSE_DIM_D=1 in the kernel's infershape → [b, n, s, 1] float32.
@@ -112,7 +121,10 @@ def block_sparse_attention(query,
                            block_size=0,
                            pre_tokens=2147483647,
                            next_tokens=2147483647,
-                           softmax_lse_flag=False):
+                           softmax_lse_flag=False,
+                           q_dequant_scale=None,
+                           k_dequant_scale=None,
+                           v_dequant_scale=None):
     """Block-sparse attention with optional softmax_lse output.
 
     Args:
@@ -125,12 +137,18 @@ def block_sparse_attention(query,
         q_input_layout, kv_input_layout: "BNSD" or "TND".
         mask_type: 0 = no mask (default).
         scale_value: softmax scale (typically 1/sqrt(D)).
-        inner_precise: 0 = fp32 softmax (high precision), 1 = fp16.
+        inner_precise: 0 = fp32 softmax (high precision), 1 = fp16, 4 = mixed.
+            NOTE: Ascend 950PR/950DT only supports 4; A2/A3 only support 0/1.
         block_size: paged-attention block size. Must be 0 — kernel does not
             yet support paged cache (see block_sparse_attention_tiling.cpp:528).
         pre_tokens, next_tokens: 2147483647 = no causal window (default).
         softmax_lse_flag: if True, return [B, N, S, 1] float32 LSE; else
             an empty {0} placeholder.
+        q_dequant_scale, k_dequant_scale, v_dequant_scale: FP8-only (FLOAT8_E4M3FN
+            inputs) FP32 4-D reverse-quant factors for aclnnBlockSparseAttentionV2.
+            Leave as None (default) for FP16/BF16 inputs — they are then passed
+            through as nullptr. Shapes (when provided): q is
+            [B, N, ceil(maxQ/128), 1]; k/v are [B, kvN, ceil(maxKV/{256|512}), 1].
 
     Returns:
         (attention_out, softmax_lse)
@@ -142,4 +160,5 @@ def block_sparse_attention(query,
         q_input_layout, kv_input_layout,
         mask_type, scale_value, inner_precise, block_size,
         pre_tokens, next_tokens, softmax_lse_flag,
+        q_dequant_scale, k_dequant_scale, v_dequant_scale,
     )

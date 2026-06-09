@@ -10,9 +10,9 @@
 
 /*!
  * \file block_sparse_attention.cpp
- * \brief Torch extension wrapper for `aclnnBlockSparseAttention` (from
+ * \brief Torch extension wrapper for `aclnnBlockSparseAttentionV2` (from
  *        `attention/block_sparse_attention/`). The kernel + aclnn library
- *        (`libcust_opapi.so` shipping the symbol `aclnnBlockSparseAttention`)
+ *        (`libcust_opapi.so` shipping the symbol `aclnnBlockSparseAttentionV2`)
  *        must be built and installed via:
  *
  *            bash build.sh --make_clean -j96 --pkg --soc=ascend910b \
@@ -32,6 +32,9 @@
  *          (per the kernel's own README). The wrapper passes nullptr.
  *        • `softmaxLseOptional` shape, when enabled, is [B, H, S, 1] float32
  *          (the kernel's infershape hardcodes LSE_DIM_D=1).
+ *        • `q/k/v_dequant_scale` are FP8-only (FLOAT8_E4M3FN inputs) FP32 4-D
+ *          reverse-quant factors. On the FP16/BF16 path they are absent and the
+ *          wrapper passes nullptr (the V2 contract). See aclnnBlockSparseAttentionV2.md.
  *        • `pre_tokens` / `next_tokens` should be 2147483647 (max int32 =
  *          "no causal window") — the kernel README says window restrictions
  *          are "当前不支持".
@@ -60,7 +63,10 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     int64_t block_size,
     int64_t pre_tokens,
     int64_t next_tokens,
-    bool softmax_lse_flag)
+    bool softmax_lse_flag,
+    const c10::optional<at::Tensor> &q_dequant_scale,
+    const c10::optional<at::Tensor> &k_dequant_scale,
+    const c10::optional<at::Tensor> &v_dequant_scale)
 {
     TORCH_CHECK(query.is_contiguous(),            "query must be contiguous");
     TORCH_CHECK(key.is_contiguous(),              "key must be contiguous");
@@ -74,6 +80,19 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
                 "q_input_layout must be 'BNSD' or 'TND'");
     TORCH_CHECK(kv_input_layout == "BNSD" || kv_input_layout == "TND",
                 "kv_input_layout must be 'BNSD' or 'TND'");
+
+    // FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
+    // FP16/BF16 path → passed through as nullptr. When present, the kernel
+    // validates the full FP8 shape rules; here we only check the basics.
+    auto check_dequant = [](const c10::optional<at::Tensor> &t, const char *name) {
+        if (t.has_value() && t->defined()) {
+            TORCH_CHECK(t->scalar_type() == at::kFloat, name, " must be float32 when provided");
+            TORCH_CHECK(t->is_contiguous(),             name, " must be contiguous when provided");
+        }
+    };
+    check_dequant(q_dequant_scale, "q_dequant_scale");
+    check_dequant(k_dequant_scale, "k_dequant_scale");
+    check_dequant(v_dequant_scale, "v_dequant_scale");
 
     // Pre-allocate outputs. Use at::empty with explicit sizes+options instead
     // of empty_like so torch_npu doesn't attempt to inherit `query`'s memory
@@ -116,9 +135,12 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 
     // Single line replaces ~180 lines of manual aclTensor / workspace / sync
     // plumbing from the standalone torch_interface.cpp. Arg order must match
-    // aclnnBlockSparseAttentionGetWorkspaceSize() in
-    // attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention.h.
-    ACLNN_CMD(aclnnBlockSparseAttention,
+    // aclnnBlockSparseAttentionV2GetWorkspaceSize() in
+    // attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v2.h.
+    // The c10::optional dequant scales bind to ConvertTypes(Ts&...) as const
+    // lvalues; ConvertType(const c10::optional<at::Tensor>&) yields nullptr
+    // when they are absent (the FP16/BF16 path).
+    ACLNN_CMD(aclnnBlockSparseAttentionV2,
               query, key, value,
               block_sparse_mask,
               null_tensor,                    // attenMaskOptional — always nullptr
@@ -126,6 +148,9 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
               actual_seq_lengths,
               actual_seq_lengths_kv,
               null_tensor,                    // blockTableOptional — always nullptr (PagedAttention unused)
+              q_dequant_scale,                // qDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              k_dequant_scale,                // kDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              v_dequant_scale,                // vDequantScaleOptional — FP8 only; nullptr for FP16/BF16
               q_layout_ptr,
               kv_layout_ptr,
               num_key_value_heads,
