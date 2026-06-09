@@ -64,15 +64,20 @@ if __name__ == "__main__":
     # ── 性能测试分支 ├─
     if args.perf_mode:
         from pathlib import Path
-        from utils.perf_runner import run_all_perf
         from utils.perf_parser import parse_op_summary, compute_stats
 
         cases_list = [normalize_params(all_cases[name]) for name in run_cases]
         out = Path(args.perf_output)
 
-        csv_path = run_all_perf(cases_list, args.perf_runs, args.perf_cold_thr,
-                                out, case_names=run_cases,
-                                one_by_one=args.one_by_one)
+        if args.one_by_one:
+            from utils.perf_runner import run_all_perf
+            csv_path = run_all_perf(cases_list, args.perf_runs, args.perf_cold_thr,
+                                    out, case_names=run_cases, one_by_one=True)
+        else:
+            from utils.perf_runner import build_batch_script, run_batch_msprof
+            script = build_batch_script(cases_list, args.perf_runs, args.perf_cold_thr,
+                                        case_names=run_cases)
+            csv_path = run_batch_msprof(script, out)
 
         if csv_path is None or not csv_path.exists():
             print("[ERROR] msprof 采集失败")
@@ -100,6 +105,23 @@ if __name__ == "__main__":
                 print(f"│  {short:<55}  {s['avg_us']:>9.2f}  {s['min_us']:>9.2f}  "
                       f"{s['max_us']:>9.2f}  {s['mode']:>6}  │")
         print(f"└{SEP}┘")
+
+        if not args.one_by_one:
+            import csv as csv_mod
+            perf_csv = out / "perf.csv"
+            with open(perf_csv, "w", newline="") as f:
+                w = csv_mod.DictWriter(f, ["#","case","dir","avg_us","mode","error"])
+                w.writeheader()
+                for idx, name in enumerate(run_cases):
+                    if idx >= len(stats):
+                        continue
+                    s = stats[idx]
+                    is_crash = s["mode"] == "CRASH"
+                    w.writerow(dict(
+                        **{"#": idx + 1}, case=name, dir=f"case_{idx:04d}",
+                        avg_us="" if is_crash else s["avg_us"],
+                        mode=s["mode"],
+                        error=s.get("error", "") if is_crash else ""))
 
         print(f"[perf] {out / 'perf.csv'}")
         if crashed:
