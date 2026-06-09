@@ -687,14 +687,14 @@ void LightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &split
     result.numOfFdHead++;
 }
 
-void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext,
+void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(const SplitContext &splitContext,
     AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = assignContext.preFdDataNum +
         assignContext.curKvSplitPart - 1U;
     assignContext.coreCache = {};
-    assignContext.coreCache.costLimit = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
+    assignContext.coreCache.costLimit = assignContext.unassignedCost / (aicCoreNum_ - assignContext.curCoreIdx);
     if (!supportFd_) {
         assignContext.coreCache.costLimit = costInfo.maxS1GCost > assignContext.coreCache.costLimit ?
             costInfo.maxS1GCost :assignContext.coreCache.costLimit;
@@ -729,11 +729,11 @@ void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, co
     }
 }
 
-void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
-    int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
+void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext,
+    SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
-    if (coreNum == 0U) {
+    if (aicCoreNum_ == 0U) {
         return;
     }
     result.maxCost = 0U;
@@ -747,7 +747,7 @@ void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
     CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
     assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    for (uint32_t i = 0; i < coreNum; ++i) {
+    for (uint32_t i = 0; i < aicCoreNum_; ++i) {
         if (result.maxCost > costLimit) {
             return;
         }
@@ -755,7 +755,7 @@ void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
             break;
         }
         assignContext.curCoreIdx = i;
-        AssignBlockToCore(coreNum, splitContext, assignContext, result);
+        AssignBlockToCore(splitContext, assignContext, result);
     }
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
@@ -806,7 +806,7 @@ bool LightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
     splitRes.maxCost = INT64_MAX;
     splitRes.usedCoreNum = 1U;
-    CalcSplitPlan(aicCoreNum_, splitRes.maxCost, splitContext, splitRes);
+    CalcSplitPlan(splitRes.maxCost, splitContext, splitRes);
     // 3、存在FD任务，对FD进行负载均衡分配
     if (supportFd_ && splitRes.numOfFdHead > 0U) {
         SplitFD(splitRes);

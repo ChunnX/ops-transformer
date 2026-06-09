@@ -251,8 +251,7 @@ private:
     void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
     void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, AssignContext &assignContext,
-        SplitResult &result);
+    void AssignBlockToCore(const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);
                                                                
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
@@ -260,7 +259,7 @@ private:
 
     // main
     void SplitFD(SplitResult &splitRes);
-    void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
+    void CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
 
 private:
     CpuKernelContext* context_ = nullptr;
