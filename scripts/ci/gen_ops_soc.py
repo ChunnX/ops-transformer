@@ -23,6 +23,7 @@ op_level_list = ['moe_token_permute_with_routing_map',
 
 op_level_list_moe_distribute = ['moe_distribute_combine_v2',
                          'moe_distribute_combine_v3',
+                         'moe_distribute_combine_v4',
                          'moe_distribute_dispatch_v2',
                          'moe_distribute_dispatch_v3']
 
