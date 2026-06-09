@@ -73,6 +73,7 @@ TILING_DATA_FIELD_DEF(uint32_t, castUsedCoreNum);
 TILING_DATA_FIELD_DEF(int64_t, dqWorkspaceLen);
 TILING_DATA_FIELD_DEF(int64_t, dkWorkspaceLen);
 TILING_DATA_FIELD_DEF(int64_t, dvWorkspaceLen);
+TILING_DATA_FIELD_DEF(int64_t, additionalWorkspaceLen);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockCount);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
@@ -87,7 +88,6 @@ TILING_DATA_FIELD_DEF_STRUCT(SparseFlashMlaGradSplitCoreParams, splitCoreParams)
 TILING_DATA_FIELD_DEF_STRUCT(SmlagPostParams, postTilingData);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxTilingData);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
-TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, cmpSoftmaxTilingData);
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGrad, SparseFlashMlaGradTilingData)

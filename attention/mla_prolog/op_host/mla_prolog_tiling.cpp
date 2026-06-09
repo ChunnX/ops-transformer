@@ -551,13 +551,11 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isQcQrScaleEnable = 0U;
         baseParams_->isKcScaleEnable = 0U;
     }
-    if (FillTilingCoreParams() != ge::GRAPH_SUCCESS) { // 分核相关baseParams
-        ge::GRAPH_FAILED;
-    }
+    FillTilingCoreParams(); // 分核相关baseParams
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MlaPrologTiling::FillTilingCoreParams()
+void MlaPrologTiling::FillTilingCoreParams()
 {
     baseParams_->batchSize = baseShapeInfo_.bSize;
     baseParams_->stepBatchSize = stepBatchSize_;
@@ -573,8 +571,6 @@ ge::graphStatus MlaPrologTiling::FillTilingCoreParams()
     baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
     baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
     baseParams_->vectorBlockNum = vectorBlockNum_;
-
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MlaPrologTiling::CalcWorkSpace()
