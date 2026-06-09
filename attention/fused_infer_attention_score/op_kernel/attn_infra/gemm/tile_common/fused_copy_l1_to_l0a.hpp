@@ -89,7 +89,8 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::nN, AscendC
         loadDataParams.dstGap = 0;
         loadDataParams.ifTranspose = true;
         loadDataParams.addrMode = 0;
-        for(uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_SIZE_PER_C0>(layoutSrc.orgShape(0)); i++){
+        for(uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<ELE_SIZE_PER_C0>(layoutSrc.orgShape(0)); i++)
+        {
             AscendC::LoadData(dstTensor[i * layoutDst.stride(1)], srcTensor[i * layoutSrc.stride(1)], loadDataParams);
         }
     }
