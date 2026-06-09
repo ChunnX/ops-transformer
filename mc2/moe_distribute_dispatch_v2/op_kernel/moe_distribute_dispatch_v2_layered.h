@@ -91,7 +91,7 @@ public:
 
 private:
     __aicore__ inline void ReorderTokens();
-    __aicore__ inline void SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv);
+    __aicore__ inline void SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId = 0);
     __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx, GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
     __aicore__ inline void CreateOuterReduceInfo();
     __aicore__ inline void Win2Ipc(GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
@@ -1212,7 +1212,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId)
 {
     uint32_t dstRankId = rankId_ % SERVER_RANK_SIZE + dstServerId * SERVER_RANK_SIZE;
     uint64_t dstServerMask = (1UL << dstServerId);
@@ -1297,7 +1297,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     constexpr int64_t THREE_SECONS_CYCLE = 150000000;
     int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
-        AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
+        AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 10);
         int64_t startCycleThree = AscendC::GetSystemCycle();
         while (true) {
             DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
@@ -1311,12 +1311,13 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         if (readFlagValue == END_OF_WRITE_FLAG_VALUE) {
             break;
         }
-        if (AscendC::GetSystemCycle() - startCycle >= WAIT_RDMA_READ_TIMEOUT_CYCLES) {
+        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_RDMA_READ_TIMEOUT_CYCLES) && dumpId == 0) {
             dumpLt.SetValue(0, static_cast<uint64_t>(readFlagValue));
             PipeBarrier<PIPE_ALL>();
             DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
             DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
             PipeBarrier<PIPE_ALL>();
+            dumpId += 1;
             // assert(false && "Dispatch DFX: RDMA Read timeout!");
         }
     }
@@ -1354,27 +1355,27 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
-
+    PipeBarrier<PIPE_ALL>();
     DataCopy(statusTensor, readStatusGMTensor_[(serverNum_ + serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t ackFlagValue = static_cast<uint64_t>(statusTensor.GetValue(0));
-
+    PipeBarrier<PIPE_ALL>();
     uint32_t TokenOffset = serverIdx * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
     DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
             FLAG_SIZE / sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t tokenFlagValue = statusTensor.GetValue(0);
-
+    PipeBarrier<PIPE_ALL>();
     uint32_t nextTokenOffset = serverIdx * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
     DataCopy(statusTensor, TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t nextTokenFlagValue = statusTensor.GetValue(0);
-
+    PipeBarrier<PIPE_ALL>();
     // 等到发送结束信号，没等到token结束信号，则返回结束等待状态
     if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE) {
         if (justExpInfo) {
