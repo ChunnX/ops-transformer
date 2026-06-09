@@ -156,7 +156,7 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
     d_num_total = d_num_query + d_num_rope
-    d_rope_last = d_rope - (d_num_rope - 1) * k_block
+
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
@@ -213,16 +213,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                 )
                             else:
                                 rope_d = d_idx - d_num_query
-                                if d_idx == d_num_total - 1:
-                                    T.copy(
-                                        QueryRope[bz, s1_row, 0:N1, rope_d * k_block:rope_d * k_block + d_rope_last],
-                                        Q_L1,
-                                    )
-                                else:
-                                    T.copy(
-                                        QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
-                                        Q_L1,
-                                    )
+                                T.copy(
+                                    QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
+                                    Q_L1,
+                                )
                             T.barrier_all()
                             if d_idx < d_num_query:
                                 T.copy(
@@ -231,16 +225,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                 )
                             else:
                                 rope_d = d_idx - d_num_query
-                                if d_idx == d_num_total - 1:
-                                    T.copy(
-                                        GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:rope_d * k_block + d_rope_last],
-                                        GK_L1,
-                                    )
-                                else:
-                                    T.copy(
-                                        GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
-                                        GK_L1,
-                                    )
+                                T.copy(
+                                    GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
+                                    GK_L1,
+                                )
                             T.barrier_all()
                             T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                             T.barrier_all()
@@ -862,12 +850,19 @@ def sparse_lightning_indexer_grad_kl_loss(
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
         # Gather rope key
-        d_rope = query_rope.shape[-1] if query_rope is not None else 0
+        d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         if query_rope is not None and key_rope is not None:
             gather_key_rope = key_rope[torch.arange(B, device=query.device).view(B, 1, 1),
                                        sparse_indices[:, :, 0, :].clamp(min=0), 0, :].contiguous()
         else:
-            gather_key_rope = torch.zeros(B, S1, K, d_rope, dtype=query.dtype, device=query.device)
+            gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
+
+        # Pad rope dims to k_block alignment to avoid partial T.copy in kernel
+        d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
+        if d_rope > d_rope_orig and d_rope_orig > 0:
+            pad_len = d_rope - d_rope_orig
+            query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
+            gather_key_rope = torch.nn.functional.pad(gather_key_rope, (0, pad_len))
 
         func = tilelang_grad_kl_loss_single_kernel(
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,

@@ -51,7 +51,7 @@ def diag_kernel(
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
     d_num_total = d_num_query + d_num_rope
-    d_rope_last = d_rope - (d_num_rope - 1) * k_block
+
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
@@ -98,19 +98,13 @@ def diag_kernel(
                                 T.copy(Query[bz, s1_row, 0:N1, d_idx*k_block:(d_idx+1)*k_block], Q_L1)
                             else:
                                 rope_d = d_idx - d_num_query
-                                if d_idx == d_num_total - 1:
-                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d*k_block:rope_d*k_block+d_rope_last], Q_L1)
-                                else:
-                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d*k_block:(rope_d+1)*k_block], Q_L1)
+                                T.copy(QueryRope[bz, s1_row, 0:N1, rope_d*k_block:(rope_d+1)*k_block], Q_L1)
                             T.barrier_all()
                             if d_idx < d_num_query:
                                 T.copy(GatherKey[bz, s1_row, n_idx*n_block:(n_idx+1)*n_block, d_idx*k_block:(d_idx+1)*k_block], GK_L1)
                             else:
                                 rope_d = d_idx - d_num_query
-                                if d_idx == d_num_total - 1:
-                                    T.copy(GatherKeyRope[bz, s1_row, n_idx*n_block:(n_idx+1)*n_block, rope_d*k_block:rope_d*k_block+d_rope_last], GK_L1)
-                                else:
-                                    T.copy(GatherKeyRope[bz, s1_row, n_idx*n_block:(n_idx+1)*n_block, rope_d*k_block:(rope_d+1)*k_block], GK_L1)
+                                T.copy(GatherKeyRope[bz, s1_row, n_idx*n_block:(n_idx+1)*n_block, rope_d*k_block:(rope_d+1)*k_block], GK_L1)
                             T.barrier_all()
                             T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                             T.barrier_all()
@@ -349,11 +343,22 @@ k_p = torch.nn.functional.pad(k, (0,0,0,0,0,S2_pad-S2,0,0)) if S2_pad > S2 else 
 ki_p = torch.nn.functional.pad(k_index, (0,0,0,0,0,S2_pad-S2,0,0)) if S2_pad > S2 else k_index
 gk, gki = _preprocess_gather(k_p, ki_p, sparse_indices, B, S1, S2_pad, N2, 1, K, D, DIndex)
 gather_key_rope = k_rope[torch.arange(B, device=device).view(B, 1, 1),
-                          sparse_indices[:, :, 0, :].clamp(min=0), 0, :].contiguous()
+                           sparse_indices[:, :, 0, :].clamp(min=0), 0, :].contiguous()
 gather_key_index_t = gki.permute(0, 1, 3, 2).contiguous()
 
-# Python reference
-bmm1_noscale = q.float() @ gk.float().transpose(-2, -1)
+# Pad rope dims to k_block alignment
+d_rope_pad = ((DR + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if DR > 0 else 0
+if d_rope_pad > DR and DR > 0:
+    q_rope_padded = torch.nn.functional.pad(q_rope, (0, d_rope_pad - DR))
+    gather_key_rope_padded = torch.nn.functional.pad(gather_key_rope, (0, d_rope_pad - DR))
+else:
+    q_rope_padded = q_rope
+    gather_key_rope_padded = gather_key_rope
+
+# Python reference (with rope)
+q_full_ref = torch.cat([q.float(), q_rope.float()], dim=-1)
+gk_full_ref = torch.cat([gk.float(), gather_key_rope.float()], dim=-1)
+bmm1_noscale = q_full_ref @ gk_full_ref.transpose(-2, -1)
 bmm2_ref = torch.relu(q_index.float() @ gki.float().transpose(-2, -1))
 bmm1_scaled_ref = bmm1_noscale * scale
 sm_max_sq = softmax_max.float().squeeze(1)
@@ -368,7 +373,7 @@ rsy_sum_ref = rsy_exp_ref.sum(dim=-1, keepdim=True)
 softmax_i_ref = rsy_exp_ref / rsy_sum_ref
 
 # Run diag kernel
-func = diag_kernel(B, S1, S2_pad, N1, N2, G, Nidx1, 1, D, DIndex, K, DR, "float16", "float", scale)
+func = diag_kernel(B, S1, S2_pad, N1, N2, G, Nidx1, 1, D, DIndex, K, d_rope_pad, "float16", "float", scale)
 
 bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=device)
 bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=device)
@@ -383,7 +388,7 @@ loss_out = torch.zeros(B, S1, 16, dtype=torch.float32, device=device)
 
 torch.npu.synchronize()
 results = func(
-    q, q_rope, gk, gather_key_rope,
+    q, q_rope_padded, gk, gather_key_rope_padded,
     q_index, gki, gather_key_index_t,
     weights, softmax_max, softmax_sum,
     bmm1_res_ws, bmm2_res_ws, dqi_ws,
@@ -392,7 +397,15 @@ results = func(
 )
 torch.npu.synchronize()
 
-print("=== TileLang kernel中间结果（从输出tensor读取）===")
+p_reduced_out = results[0]
+rsy_out = results[1]
+si_out = results[2]
+dqi_out = results[3]
+dw_out = results[4]
+rg_out = results[5]
+loss_out = results[6]
+
+print("=== TileLang kernel中间结果（从results元组读取）===")
 print(f"P_reduced: range=[{p_reduced_out.min():.8f}, {p_reduced_out.max():.8f}], sum={p_reduced_out.sum():.8f}")
 print(f"ReduceSumY: range=[{rsy_out.min():.8f}, {rsy_out.max():.8f}]")
 print(f"SoftmaxI: range=[{si_out.min():.8f}, {si_out.max():.8f}], sum={si_out.sum():.8f}")
@@ -415,9 +428,8 @@ si_diff = (si_out.cpu() - softmax_i_ref.cpu()).abs()
 print(f"|SI_tl - SI_ref|: max={si_diff.max():.8f}, mean={si_diff.mean():.8f}")
 print(f"  SI_ref max_abs={softmax_i_ref.cpu().abs().max():.8f}, rel_err={si_diff.max()/(softmax_i_ref.cpu().abs().max()+1e-8):.8f}")
 
-# Also check bmm1 and bmm2
-print(f"\n=== bmm1/bmm2对比 ===")
-bmm1_diff = (bmm1_res_ws.cpu() - bmm1_noscale.cpu()).abs()
-print(f"|bmm1_tl - bmm1_ref|: max={bmm1_diff.max():.6f}, mean={bmm1_diff.mean():.6f}")
-bmm2_diff = (bmm2_res_ws.cpu() - bmm2_ref.cpu()).abs()
-print(f"|bmm2_tl - bmm2_ref|: max={bmm2_diff.max():.6f}, mean={bmm2_diff.mean():.6f}")
+# Also check bmm1 and bmm2 (workspace tensors are not written by TileLang JIT,
+# so we compare Python reference bmm1/bmm2 against each other as sanity check)
+print(f"\n=== bmm1/bmm2 Python参考统计 ===")
+print(f"bmm1_noscale: range=[{bmm1_noscale.min():.6f}, {bmm1_noscale.max():.6f}], mean={bmm1_noscale.mean():.6f}")
+print(f"bmm2_ref: range=[{bmm2_ref.min():.6f}, {bmm2_ref.max():.6f}], mean={bmm2_ref.mean():.6f}")
