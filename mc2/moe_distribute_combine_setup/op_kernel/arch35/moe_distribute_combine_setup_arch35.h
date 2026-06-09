@@ -332,10 +332,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     LocalTensor<int32_t> assistInfoForCombineLocal = assistInfoQueue_.DeQue<int32_t>();
     AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等assistInfoQueue_的GM->Local，后续标量读
 
-    LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
-    LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
-
     for (uint32_t expertIdx = startExpertId_; expertIdx < endExpertId_; ++expertIdx) {
         // 计算当前处理的token块应发送到哪个卡的哪个专家
         uint32_t sendRankId = expertIdx % moeDistributeCombineSetupInfo_->epWorldSize;

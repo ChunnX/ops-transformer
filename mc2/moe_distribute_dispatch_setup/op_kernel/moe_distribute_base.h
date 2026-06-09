@@ -157,6 +157,7 @@ struct HcclCombinOpParam {
     HcclAiRMACQ cqs[MAX_RANK_NUM];
 };
 
+#if 0
 // URMA通信接口
 __aicore__ inline GM_ADDR GetURMASqInfoGMAddr(GM_ADDR hcclContext, uint32_t dstRankId)
 {
@@ -617,5 +618,6 @@ __aicore__ inline void UpdateIsFirstInComm(GM_ADDR hcclContext, uint32_t curRank
     AscendC::DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         piCiGlobalTensor);
 }
+#endif
 
 #endif // MOE_DISTRIBUTE_BASE_H
