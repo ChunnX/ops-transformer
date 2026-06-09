@@ -28,6 +28,8 @@ const aclTensor *KvCompressEpilog(
     int64_t quantMode,
     int64_t roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t blockStride,
     aclOpExecutor *executor);
 
 }  // namespace l0op

@@ -31,12 +31,16 @@ aclnnStatus aclnnIndexerCompressEpilogGetWorkspaceSize(
     int64_t quantMode,
     bool roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t cacheBlockStride,
+    int64_t scaleBlockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnIndexerCompressEpilog,
                    DFX_IN(indexerCompressCacheRef, indexerCompressCacheScaleRef,
-                          x, slotMapping, quantMode, roundScale, scale),
+                          x, slotMapping, quantMode, roundScale, scale,
+                          blockSize, cacheBlockStride, scaleBlockStride),
                    DFX_OUT());
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -56,6 +60,7 @@ aclnnStatus aclnnIndexerCompressEpilogGetWorkspaceSize(
         indexerCompressCacheRef, indexerCompressCacheScaleRef,
         x, slotMapping,
         quantMode, roundScale, scale,
+        blockSize, cacheBlockStride, scaleBlockStride,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

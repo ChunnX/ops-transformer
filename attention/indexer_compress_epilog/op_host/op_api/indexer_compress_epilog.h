@@ -28,6 +28,9 @@ const aclTensor *IndexerCompressEpilog(
     int64_t quantMode,
     bool roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t cacheBlockStride,
+    int64_t scaleBlockStride,
     aclOpExecutor *executor);
 
 }  // namespace l0op

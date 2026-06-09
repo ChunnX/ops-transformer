@@ -31,12 +31,14 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
     int64_t quantMode,
     int64_t roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t blockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnKvCompressEpilog,
                    DFX_IN(kvCompressCacheRef,
-                          x, slotMapping, quantGroupSize, quantMode, roundScale, scale),
+                          x, slotMapping, quantGroupSize, quantMode, roundScale, scale, blockSize, blockStride),
                    DFX_OUT());
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -54,7 +56,7 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
     auto output = l0op::KvCompressEpilog(
         kvCompressCacheRef,
         x, slotMapping,
-        quantGroupSize, quantMode, roundScale, scale,
+        quantGroupSize, quantMode, roundScale, scale, blockSize, blockStride,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

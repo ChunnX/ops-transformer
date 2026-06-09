@@ -17,11 +17,15 @@
 #include "arch35/indexer_compress_epilog_single_row.h"
 #include "arch35/indexer_compress_epilog_multi_row_mx_fp8.h"
 #include "arch35/indexer_compress_epilog_single_row_mx_fp8.h"
+#include "arch35/indexer_compress_epilog_multi_row_mx_fp4.h"
+#include "arch35/indexer_compress_epilog_single_row_mx_fp4.h"
 
 #define SINGLE_ROW_NORMAL_QUANT 10001
 #define SINGLE_ROW_MXFP8_QUANT 10000
+#define SINGLE_ROW_MXFP4_QUANT 10002
 #define MULTI_ROW_NORMAL_QUANT 10011
 #define MULTI_ROW_MXFP8_QUANT 10010
+#define MULTI_ROW_MXFP4_QUANT 10012
 
 using namespace AscendC;
 
@@ -66,6 +70,16 @@ extern "C" __global__ __aicore__ void indexer_compress_epilog(
         op.Init(x, slot_mapping, indexer_compress_cache, indexer_compress_cache_scale, userWs, &tilingData, &pipe);
         op.Process();
         return;
-    } 
+    } else if (TILING_KEY_IS(MULTI_ROW_MXFP4_QUANT)){
+        IndexerCompressEpilog::IndexerCompressEpilogMultiRowMxFp4<DTYPE_X, DTYPE_INDEXER_COMPRESS_CACHE, DTYPE_INDEXER_COMPRESS_CACHE_SCALE> op;
+        op.Init(x, slot_mapping, indexer_compress_cache, indexer_compress_cache_scale, userWs, &tilingData, &pipe);
+        op.Process();
+        return;
+    } else if (TILING_KEY_IS(SINGLE_ROW_MXFP4_QUANT)){
+        IndexerCompressEpilog::IndexerCompressEpilogSingleRowMxFp4<DTYPE_X, DTYPE_INDEXER_COMPRESS_CACHE, DTYPE_INDEXER_COMPRESS_CACHE_SCALE> op;
+        op.Init(x, slot_mapping, indexer_compress_cache, indexer_compress_cache_scale, userWs, &tilingData, &pipe);
+        op.Process();
+        return;
+    }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

@@ -45,13 +45,20 @@ constexpr int64_t INPUT_SLOT_MAPPING_IDX = 3;
 constexpr int64_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr int64_t ATTR_ROUND_SCALE_INDEX = 1;
 constexpr int64_t ATTR_SCALE_INDEX = 2;
+constexpr int64_t ATTR_BLOCK_SIZE_INDEX = 3;
+constexpr int64_t ATTR_CACHE_BLOCK_STRIDE_INDEX = 4;
+constexpr int64_t ATTR_SCALE_BLOCK_STRIDE_INDEX = 5;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 constexpr int64_t PER_BLOCK_FP16 = 128;
+// MX-FP4 (quant_mode=3) 采用标准 MX 量化块, 每32个元素一个 e8m0 scale
+constexpr int64_t PER_BLOCK_MXFP4 = 32;
+constexpr int64_t MXFP8_QUANT_MODE = 0;
 constexpr int64_t NORMAL_QUANT_MODE = 1;
 constexpr int64_t HIFLOAT_QUANT_MODE = 2;
+constexpr int64_t MXFP4_QUANT_MODE = 3;
 constexpr int64_t SINGLE_ROW = 1;
 }
 
@@ -89,6 +96,13 @@ ge::graphStatus IndexerCompressEpilogTiling::GetAttr()
     auto scaleAttr = attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX);
     scalesAttr_ = scaleAttr == nullptr ? 1.0f : *scaleAttr;
 
+    auto blockSizeAttr = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX);
+    blockSizeAttr_ = (blockSizeAttr != nullptr) ? *blockSizeAttr : 0;
+    auto cacheBlockStrideAttr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_BLOCK_STRIDE_INDEX);
+    cacheBlockStrideAttr_ = (cacheBlockStrideAttr != nullptr) ? *cacheBlockStrideAttr : 0;
+    auto scaleBlockStrideAttr = attrs->GetAttrPointer<int64_t>(ATTR_SCALE_BLOCK_STRIDE_INDEX);
+    scaleBlockStrideAttr_ = (scaleBlockStrideAttr != nullptr) ? *scaleBlockStrideAttr : 0;
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -114,10 +128,21 @@ ge::graphStatus IndexerCompressEpilogTiling::GetShapeAttrsInfoInner()
     d_ = xStorageShape.GetDim(xDims - 1);
     bs_ = bs;
 
-    scaleCol_ = CeilDiv(d_, PER_BLOCK_FP16);
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);
+    OP_CHECK_IF(quantMode_ < 0 || quantMode_ > MXFP4_QUANT_MODE,
+                  OP_LOGE(context_->GetNodeName(), "quant_mode should be in [0,3], got %ld", quantMode_),
+                  return ge::GRAPH_FAILED);
+
+    // 每行 scale 个数:
+    //   mode0 MX-FP8 / mode3 MX-FP4 : 每 32 个元素一个 scale (标准 MX 块)
+    //   mode1 Normal (整行量化) / mode2 HiFloat8 : 整行一个 scale
+    if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
+        scaleCol_ = CeilDiv(d_, PER_BLOCK_MXFP4);
+    } else {
+        scaleCol_ = 1;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -134,8 +159,8 @@ ge::graphStatus IndexerCompressEpilogTiling::CalcOpTiling()
     
     rowFactor_ = rowOnceLoop; 
     int64_t scaleByteSize = 4;
-    if (quantMode_ == 0) {
-        scaleByteSize = 1;
+    if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
+        scaleByteSize = 1;  // MX 模式 scale 为 e8m0, 占1字节
     }
     int64_t perBlockScaleElemNum = BLOCK_SIZE / scaleByteSize;
     // d全载,尝试搬入更多的bs
@@ -158,7 +183,22 @@ ge::graphStatus IndexerCompressEpilogTiling::CalcOpTiling()
     rowLoopOfFormerBlock_ = CeilDiv(rowOfFormerBlock_, rowFactor_);
     rowLoopOfTailBlock_ = CeilDiv(rowOfTailBlock_, rowFactor_);
     tailRowFactorOfFormerBlock_ = rowOfFormerBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfFormerBlock_ % rowFactor_;
-    tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;  
+    tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;
+
+    // 4D paged 输出布局推导 [blockNum, blockSize, 1, headDim], 仅 blockNum 非连续。
+    // block_size<=0 => 连续 (blockSize=1, 退化为 slot*rowStride)。MX-FP4 的 cache 末维为打包字节 (d/2)。
+    int64_t cacheCol = (quantMode_ == MXFP4_QUANT_MODE) ? (d_ + 1) / 2 : d_;
+    cacheRowStride_ = cacheCol;
+    scaleRowStride_ = scaleCol_;
+    if (blockSizeAttr_ <= 0) {
+        blockSize_ = 1;
+        cacheBlockStride_ = cacheRowStride_;
+        scaleBlockStride_ = scaleRowStride_;
+    } else {
+        blockSize_ = blockSizeAttr_;
+        cacheBlockStride_ = (cacheBlockStrideAttr_ > 0) ? cacheBlockStrideAttr_ : blockSize_ * cacheRowStride_;
+        scaleBlockStride_ = (scaleBlockStrideAttr_ > 0) ? scaleBlockStrideAttr_ : blockSize_ * scaleRowStride_;
+    }
 
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);
@@ -174,17 +214,26 @@ ge::graphStatus IndexerCompressEpilogTiling::CalcOpTiling()
     tilingData_.set_scalesAttr(scalesAttr_);
     int64_t roundScaleData = roundScale_ ? 1 : 0;
     tilingData_.set_roundScale(roundScaleData);
+    tilingData_.set_blockSize(blockSize_);
+    tilingData_.set_cacheRowStride(cacheRowStride_);
+    tilingData_.set_cacheBlockStride(cacheBlockStride_);
+    tilingData_.set_scaleRowStride(scaleRowStride_);
+    tilingData_.set_scaleBlockStride(scaleBlockStride_);
 
+    // SINGLE_ROW_MXFP8_QUANT  TILING_KEY : 10000
     // SINGLE_ROW_NORMAL_QUANT TILING_KEY : 10001
-    // SINGLE_ROW_MXFP8_QUANT TILING_KEY : 10000
-    // MULTI_ROW_NORMAL_QUANT TILING_KEY : 10011
-    // MULTI_ROW_MXFP8_QUANT TILING_KEY : 10010
+    // SINGLE_ROW_MXFP4_QUANT  TILING_KEY : 10002
+    // MULTI_ROW_MXFP8_QUANT   TILING_KEY : 10010
+    // MULTI_ROW_NORMAL_QUANT  TILING_KEY : 10011
+    // MULTI_ROW_MXFP4_QUANT   TILING_KEY : 10012
     tilingKey_ = 10000;
     if (rowFactor_ != SINGLE_ROW) {
         tilingKey_ += 10;
     }
     if (quantMode_ == NORMAL_QUANT_MODE || quantMode_ == HIFLOAT_QUANT_MODE) {
         tilingKey_ += 1;
+    } else if (quantMode_ == MXFP4_QUANT_MODE) {
+        tilingKey_ += 2;
     }
 
     return ge::GRAPH_SUCCESS;

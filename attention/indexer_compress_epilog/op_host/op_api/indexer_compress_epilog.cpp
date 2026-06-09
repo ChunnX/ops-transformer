@@ -34,18 +34,22 @@ const aclTensor *IndexerCompressEpilog(
     int64_t quantMode,
     bool roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t cacheBlockStride,
+    int64_t scaleBlockStride,
     aclOpExecutor *executor)
 {
     L0_DFX(IndexerCompressEpilog,
            indexerCompressCache, indexerCompressCacheScale,
            x, slotMapping,
-           quantMode, roundScale, scale);
+           quantMode, roundScale, scale, blockSize, cacheBlockStride, scaleBlockStride);
 
     ADD_TO_LAUNCHER_LIST_AICORE(IndexerCompressEpilog,
                                 OP_INPUT(indexerCompressCache, indexerCompressCacheScale,
                                          x, slotMapping),
                                 OP_OUTPUT(indexerCompressCache, indexerCompressCacheScale),
-                                OP_ATTR(quantMode, roundScale, static_cast<float>(scale)));
+                                OP_ATTR(quantMode, roundScale, static_cast<float>(scale),
+                                        blockSize, cacheBlockStride, scaleBlockStride));
 
     return indexerCompressCache;
 }

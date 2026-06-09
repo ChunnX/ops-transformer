@@ -90,9 +90,13 @@ public:
             indexerCompressCacheScaleLocal = indexerCompressCacheScaleQue.template DeQue<T2>();
             
             CopyOut(
-                indexerCompressCacheLocal, indexerCompressCacheGm[slot * tilingData->d], 1, tilingData->d);
+                indexerCompressCacheLocal,
+                indexerCompressCacheGm[PagedSlotOffset(slot, tilingData->blockSize,
+                    tilingData->cacheBlockStride, tilingData->cacheRowStride)], 1, tilingData->d);
             CopyOut(
-                indexerCompressCacheScaleLocal, indexerCompressCacheScaleGm[slot * CeilDiv(tilingData->d, PER_BLOCK_FP16)], 1,
+                indexerCompressCacheScaleLocal,
+                indexerCompressCacheScaleGm[PagedSlotOffset(slot, tilingData->blockSize,
+                    tilingData->scaleBlockStride, tilingData->scaleRowStride)], 1,
                 tilingData->scaleCol);
             
             indexerCompressCacheQue.template FreeTensor(indexerCompressCacheLocal);

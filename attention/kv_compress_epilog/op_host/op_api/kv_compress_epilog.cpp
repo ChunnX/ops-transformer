@@ -34,18 +34,21 @@ const aclTensor *KvCompressEpilog(
     int64_t quantMode,
     int64_t roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t blockStride,
     aclOpExecutor *executor)
 {
     L0_DFX(KvCompressEpilog,
            kvCompressCache,
            x, slotMapping,
-           quantGroupSize, quantMode, roundScale, scale);
+           quantGroupSize, quantMode, roundScale, scale, blockSize, blockStride);
 
     ADD_TO_LAUNCHER_LIST_AICORE(KvCompressEpilog,
                                 OP_INPUT(kvCompressCache,
                                          x, slotMapping),
                                 OP_OUTPUT(kvCompressCache),
-                                OP_ATTR(quantGroupSize, quantMode, roundScale, static_cast<float>(scale)));
+                                OP_ATTR(quantGroupSize, quantMode, roundScale, static_cast<float>(scale),
+                                        blockSize, blockStride));
 
     return kvCompressCache;
 }

@@ -55,6 +55,17 @@ __aicore__ inline int32_t CeilDiv(int32_t a, int b)
     return (a + b - 1) / b;
 }
 
+// Decode a flat slot into its physical offset in a 4D paged buffer
+// [blockNum, blockSize, 1, headDim] whose blockNum dimension is non-contiguous:
+//   offset = (slot / blockSize) * blockStride + (slot % blockSize) * rowStride
+// blockSize==1 (contiguous default) degrades to slot * rowStride.
+__aicore__ inline int64_t PagedSlotOffset(int64_t slot, int64_t blockSize, int64_t blockStride, int64_t rowStride)
+{
+    int64_t block = slot / blockSize;
+    int64_t pos = slot % blockSize;
+    return block * blockStride + pos * rowStride;
+}
+
 __aicore__ inline int32_t CeilAlign(int32_t a, int b)
 {
     return CeilDiv(a, b) * b;
@@ -154,47 +165,42 @@ __aicore__ inline void StoreMxFp8Scale(
 }
 
 
+// MX-FP8 量化, 每 32 个元素一个 e8m0 scale (标准 MX 块, amax-first + 正确尾数舍入,
+// 与 swiglu_group_quant 的 mxfp8 实现一致)。要求 curColNum % 32 == 0。
 template <typename T0, typename T1, typename T2, bool roundScale = true>
 __aicore__ inline void VFProcessDynamicMxFp8Quant(
-    const LocalTensor<T0>& yLocal, const LocalTensor<T1>& scaleLocal, const LocalTensor<T2>& xLocal, 
-    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum) 
+    const LocalTensor<T0>& yLocal, const LocalTensor<T1>& scaleLocal, const LocalTensor<T2>& xLocal,
+    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum)
 {
     __local_mem__ T0* yLocalAddr = (__local_mem__ T0*)yLocal.GetPhyAddr();
     __local_mem__ T1* scaleLocalAddr = (__local_mem__ T1*)scaleLocal.GetPhyAddr();
     __local_mem__ T2* xLocalAddr = (__local_mem__ T2*)xLocal.GetPhyAddr();
-    uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
+    constexpr uint32_t MXB = 32;
+    uint32_t scaleCol = CeilDiv(curColNum, MXB);
     uint32_t curColNumAlign = RoundUp<T2>(curColNum);
     uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
-    uint16_t loopCountFoldTwo = loopCount / 2;
-    uint16_t loopCountReminder = loopCount % 2;
-    uint32_t tailReminder = curColNum - (loopCount - 1) * VL_FP32;
-    uint32_t scaleColNumAlign = RoundUp<T1>((curColNum + 128 - 1) / 128);
-    uint32_t sregNum = loopCountReminder == 0 ? curColNum - loopCountFoldTwo * VL_FP32 : loopCountFoldTwo * VL_FP32;
+    uint32_t scaleColNumAlign = RoundUp<T1>(scaleCol);
     __VEC_SCOPE__
     {
-        RegTensor<float> x0;
-        RegTensor<float> x0Abs;
-        RegTensor<float> x1;
-        RegTensor<float> x1Abs;
-        RegTensor<float> max0;
-        RegTensor<float> max1;
+        RegTensor<T2> raw;
+        RegTensor<float> x;
+        RegTensor<float> xAbs;
         RegTensor<float> max2;
+        RegTensor<float> dupScale;
         RegTensor<uint32_t> tmp0;
         RegTensor<uint32_t> tmp1;
         RegTensor<uint32_t> vreg0;
         RegTensor<uint32_t> vreg1;
         RegTensor<uint32_t> vreg2;
-        RegTensor<uint32_t> vreg3;
         RegTensor<uint32_t> vreg4;
         RegTensor<int32_t> vreg5;
         RegTensor<uint32_t> zero;
         RegTensor<uint32_t> one;
         RegTensor<uint32_t> tmp3;
-        RegTensor<float> dupScale;
-        MaskReg pregLoop;
+        RegTensor<T0> outReg;
+        MaskReg pm;
         MaskReg preg1 = CreateMask<T1, AscendC::MicroAPI::MaskPattern::VL1>();
         MaskReg pregMerge = CreateMask<float, AscendC::MicroAPI::MaskPattern::VL1>();
-        MaskReg pregMain = CreateMask<float>();
         MaskReg cmpMask;
         Duplicate(tmp0, FAST_LOG_AND_VALUE1, pregMerge);
         Duplicate(tmp1, FAST_LOG_AND_VALUE2, pregMerge);
@@ -202,22 +208,25 @@ __aicore__ inline void VFProcessDynamicMxFp8Quant(
         Duplicate(one, static_cast<uint32_t>(1), pregMerge);
         Duplicate(tmp3, static_cast<uint32_t>(127), pregMerge);
         for (uint16_t i = 0; i < curRowNum; i++) {
-            uint32_t sreg = sregNum;
-            for (uint16_t j = 0; j < loopCountFoldTwo; j++) {
-                pregLoop = UpdateMask<float>(sreg);
-                LoadInputData<T2>(x0, xLocalAddr, pregMain, 2 * j * VL_FP32 + i * curColNumAlign);
-                LoadInputData<T2>(x1, xLocalAddr, pregLoop, (2 * j + 1) * VL_FP32 + i * curColNumAlign);
-                Abs(x0Abs, x0, pregMain);
-                Abs(x1Abs, x1, pregLoop);
-                ReduceMax(max0, x0Abs, pregMain);
-                ReduceMax(max1, x1Abs, pregLoop);
-                Max(max2, max0, max1, pregMerge);
+            __local_mem__ T2* xp = xLocalAddr + i * curColNumAlign;
+            __local_mem__ T0* yp = yLocalAddr + i * dstCurColNumAlign;
+            for (uint32_t g = 0; g < scaleCol; g++) {
+                uint32_t cnt = MXB;
+                pm = UpdateMask<float>(cnt);  // 32-lane mask
+                AscendC::MicroAPI::DataCopy<
+                    T2, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    raw, xp, MXB);
+                Cast<float, T2, castTraitB162B32Even>(x, raw, pm);
+                Abs(xAbs, x, pm);
+                ReduceMax(max2, xAbs, pm);
                 Maxs(max2, max2, static_cast<float>(1e-4), pregMerge);
-                Muls(max2, max2, coeff, pregMerge);
+                Muls(max2, max2, coeff, pregMerge);  // sf = amax / fp8max
                 if constexpr (roundScale) {
+                    // round to power-of-two with correct mantissa check (== swiglu mxfp8):
+                    // e8m0 = exp + (mantissa != 0); scale = 2^(e8m0 - 127)
                     ShiftRights(vreg0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
-                    And(vreg1, vreg0, tmp0, pregMerge);
-                    And(vreg2, vreg1, tmp1, pregMerge);
+                    And(vreg1, vreg0, tmp0, pregMerge);                              // exp field
+                    And(vreg2, (RegTensor<uint32_t> &)max2, tmp1, pregMerge);        // mantissa field
                     Compare<uint32_t, AscendC::CMPMODE::NE>(cmpMask, vreg2, zero, pregMerge);
                     Select(vreg4, one, zero, cmpMask);
                     Sub(vreg1, vreg1, tmp3, pregMerge);
@@ -225,63 +234,35 @@ __aicore__ inline void VFProcessDynamicMxFp8Quant(
                     Adds(vreg5, (RegTensor<int32_t> &)vreg1, static_cast<int32_t>(127), pregMerge);
                     ShiftLefts((RegTensor<int32_t> &)max2, vreg5, static_cast<int16_t>(23), pregMerge);
                 }
-                Duplicate(dupScale, max2, pregMain);
-                Div(x0, x0, dupScale, pregMain);
-                Div(x1, x1, dupScale, pregLoop);
-                Maxs(x0, x0, fp8Min, pregMain);
-                Mins(x0, x0, fp8Max, pregMain);
-                Maxs(x1, x1, fp8Min, pregLoop);
-                Mins(x1, x1, fp8Max, pregLoop);
-                StoreOutputData<T0>(yLocalAddr, x0, pregMain, 2 * j * VL_FP32 + i * dstCurColNumAlign);
-                StoreOutputData<T0>(yLocalAddr, x1, pregLoop, (2 * j + 1) * VL_FP32 + i * dstCurColNumAlign);
-                StoreMxFp8Scale<T1>(scaleLocalAddr, max2, preg1, j + i * scaleColNumAlign);
-            }
-            // 处理尾块, 这里只有一个for循环
-            pregLoop = UpdateMask<float>(tailReminder);
-            for (uint16_t j = 0; j < loopCountReminder; j++) {
-                LoadInputData<T2>(x0, xLocalAddr, pregLoop, 2 * loopCountFoldTwo * VL_FP32 + i * curColNumAlign);
-                Abs(x0Abs, x0, pregLoop);
-                ReduceMax(max0, x0Abs, pregLoop);
-                Maxs(max2, max0, static_cast<float>(1e-4), pregMerge);
-                Muls(max2, max2, coeff, pregMerge);
-                if constexpr (roundScale) {
-                    ShiftRights(vreg0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
-                    And(vreg1, vreg0, tmp0, pregMerge);
-                    And(vreg2, vreg1, tmp1, pregMerge);
-                    Compare<uint32_t, AscendC::CMPMODE::NE>(cmpMask, vreg2, zero, pregMerge);
-                    Select(vreg4, one, zero, cmpMask);
-                    Sub(vreg1, vreg1, tmp3, pregMerge);
-                    Add(vreg1, vreg1, vreg4, pregMerge);
-                    Adds(vreg5, (RegTensor<int32_t> &)vreg1, static_cast<int32_t>(127), pregMerge);
-                    ShiftLefts((RegTensor<int32_t> &)max2, vreg5, static_cast<int16_t>(23), pregMerge);
-                }
-                Duplicate(dupScale, max2, pregLoop);
-                Div(x0, x0, dupScale, pregLoop);
-                Maxs(x0, x0, fp8Min, pregLoop);
-                Mins(x0, x0, fp8Max, pregLoop);
-                StoreOutputData<T0>(yLocalAddr, x0, pregLoop, 2 * loopCountFoldTwo * VL_FP32 + i * dstCurColNumAlign);
-                StoreMxFp8Scale<T1>(scaleLocalAddr, max2, preg1, loopCountFoldTwo + i * scaleColNumAlign);
+                Duplicate(dupScale, max2, pm);
+                Div(x, x, dupScale, pm);
+                Maxs(x, x, fp8Min, pm);
+                Mins(x, x, fp8Max, pm);
+                Cast<T0, float, castTraitF32toFp8Even>(outReg, x, pm);
+                AscendC::MicroAPI::DataCopy<
+                    T0, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    yp, outReg, MXB, pm);
+                StoreMxFp8Scale<T1>(scaleLocalAddr, max2, preg1, g + i * scaleColNumAlign);
             }
         }
     }
 }
 
+// Normal 动态量化, 整行一个 float32 scale (scale = rowmax / fp8max)。两遍处理:
+// 第一遍跨整行求 amax, 第二遍按该 scale 量化。NaN 安全 (排除 NaN 求 max, 结果 NaN 时保留原值)。
 template <typename T0, typename T1>
 __aicore__ inline void VFProcessDynamicBlockQuant(
     const LocalTensor<T0>& yLocal, const LocalTensor<float>& scaleLocal, const LocalTensor<T1>& xLocal,
     float coeff, const uint16_t curRowNum, const uint32_t curColNum)
 {
+    (void)coeff;
     __local_mem__ T0* yLocalAddr = (__local_mem__ T0*)yLocal.GetPhyAddr();
     __local_mem__ float* scaleLocalAddr = (__local_mem__ float*)scaleLocal.GetPhyAddr();
     __local_mem__ T1* xLocalAddr = (__local_mem__ T1*)xLocal.GetPhyAddr();
     uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
     uint32_t curColNumAlign = RoundUp<T1>(curColNum);
     uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
-    uint16_t loopCountFoldTwo = loopCount / 2;
-    uint16_t loopCountReminder = loopCount % 2;
-    uint32_t tailReminder = curColNum - (loopCount - 1) * VL_FP32;
-    uint32_t scaleColNumAlign = RoundUp<float>((curColNum + 128 - 1) / 128);
-    uint32_t sregNum = loopCountReminder == 0 ? curColNum - loopCountFoldTwo * VL_FP32 : loopCountFoldTwo * VL_FP32;
+    uint32_t scaleRowAlign = RoundUp<float>(1);  // 整行一个 scale
     static constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, false};
     uint32_t maxValueInt = 0;
     if constexpr (IsSameType<T0, fp8_e5m2_t>::value) {
@@ -294,88 +275,57 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
 
     __VEC_SCOPE__
     {
-        RegTensor<float> xLeft;
-        RegTensor<float> xRight;
-        RegTensor<float> x0Left;
-        RegTensor<float> x0Right;
-        RegTensor<float> x1Left;
-        RegTensor<float> x1Right;
-        RegTensor<float> xAbsLeft;
-        RegTensor<float> xAbsRight;
-        RegTensor<float> xMax;
-        RegTensor<float> tmp;
-        RegTensor<float> dupScale;
+        RegTensor<float> x;
+        RegTensor<float> xAbs;
+        RegTensor<float> partMax;
+        RegTensor<float> rowMax;
+        RegTensor<float> x0;
+        RegTensor<float> x1;
         RegTensor<float> scale;
-        RegTensor<float> scale0;
-        RegTensor<float> scale1;
+        RegTensor<float> dupScale;
         RegTensor<float> inf;
-        RegTensor<float> one;
         RegTensor<float> zero;
         RegTensor<uint32_t> coeffReg;
-        MaskReg pregLoop = CreateMask<float>();
-        Duplicate(one, static_cast<float>(1.0f), pregLoop);
-        Duplicate(coeffReg, maxValueInt, pregLoop);
-        Duplicate(zero, 0.0f);
-        Duplicate(inf, 1.0f);
-        Div<float, &mode>(inf, inf, zero, pregLoop);
         MaskReg pregMain = CreateMask<float>();
         MaskReg preg1 = CreateMask<float, AscendC::MicroAPI::MaskPattern::VL1>();
-        MaskReg compareLeft;
- 	    MaskReg compareRight;
-        MaskReg compareScalar;
+        MaskReg pm;
+        MaskReg cmpAbs;
+        MaskReg cmpScalar;
+        MaskReg cmpQ;
+        Duplicate(coeffReg, maxValueInt, pregMain);
+        Duplicate(zero, 0.0f, pregMain);
+        Duplicate(inf, 1.0f, pregMain);
+        Div<float, &mode>(inf, inf, zero, pregMain);
         for (uint16_t i = 0; i < curRowNum; i++) {
-            uint32_t sreg = sregNum;
-            for (uint16_t j = 0; j < loopCountFoldTwo; j++) {
-                pregLoop = UpdateMask<float>(sreg);
-                LoadInputData<T1>(xLeft, xLocalAddr, pregMain, 2 * j * VL_FP32 + i * curColNumAlign);
-                LoadInputData<T1>(xRight, xLocalAddr, pregLoop, (2 * j + 1) * VL_FP32 + i * curColNumAlign);
-                Muls(xAbsLeft, xLeft, 0.0f, pregMain);
- 	            Compare<float, CMPMODE::NE>(compareLeft, xAbsLeft, xAbsLeft, pregMain);
- 	            MaskNot(compareLeft, compareLeft, pregMain);
- 	            Abs(xAbsLeft, xLeft, compareLeft);
-                ReduceMax(scale0, xAbsLeft, pregMain);
-                Muls(xAbsRight, xRight, 0.0f, pregLoop);
- 	            Compare<float, CMPMODE::NE>(compareRight, xAbsRight, xAbsRight, pregLoop);
- 	            MaskNot(compareRight, compareRight, pregLoop);
- 	            Abs(xAbsRight, xRight, compareRight);
-                ReduceMax(scale1, xAbsRight, pregLoop);
-                Max(scale, scale0, scale1, preg1);
-                CompareScalar<float, CMPMODE::NE>(compareScalar, scale, (float)0.0, preg1);
-                Mul(scale, scale, (RegTensor<float>&)coeffReg, compareScalar);
-                Min(scale, scale, inf, preg1);
-                Duplicate(dupScale, scale, pregMain);
-                DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleLocalAddr + j + i * scaleColNumAlign, scale, preg1);
-                Div<float, &mode>(x0Left, xLeft, dupScale, pregMain);
-                Muls(x1Left, x0Left, 0.0f, pregMain);
-                Compare<float, CMPMODE::NE>(compareLeft, x1Left, x1Left, pregMain);
-                Select(xLeft, xLeft, x0Left, compareLeft);
-                Div<float, &mode>(x0Right, xRight, dupScale, pregLoop);
-                Muls(x1Right, x0Right, 0.0f, pregLoop);
-                Compare<float, CMPMODE::NE>(compareRight, x1Right, x1Right, pregLoop);
-                Select(xRight, xRight, x0Right, compareRight);
-                StoreOutputData<T0>(yLocalAddr, xLeft, pregMain, 2 * j * VL_FP32 + i * dstCurColNumAlign);
-                StoreOutputData<T0>(yLocalAddr, xRight, pregLoop, (2 * j + 1) * VL_FP32 + i * dstCurColNumAlign);
+            // pass 1: 整行 amax (排除 NaN)
+            Duplicate(rowMax, 0.0f, preg1);
+            uint32_t sreg = curColNum;
+            for (uint16_t j = 0; j < loopCount; j++) {
+                pm = UpdateMask<float>(sreg);
+                LoadInputData<T1>(x, xLocalAddr, pm, j * VL_FP32 + i * curColNumAlign);
+                Muls(xAbs, x, 0.0f, pm);
+                Compare<float, CMPMODE::NE>(cmpAbs, xAbs, xAbs, pm);
+                MaskNot(cmpAbs, cmpAbs, pm);
+                Abs(xAbs, x, cmpAbs);
+                ReduceMax(partMax, xAbs, cmpAbs);
+                Max(rowMax, rowMax, partMax, preg1);
             }
-            // 处理尾块, 这里只有一个for循环
-            uint32_t sregTail = tailReminder;
-            pregLoop = UpdateMask<float>(sregTail);
-            for (uint16_t j = 0; j < loopCountReminder; j++) {
-                LoadInputData<T1>(xLeft, xLocalAddr, pregLoop, loopCountFoldTwo * 2 * VL_FP32 + i * curColNumAlign);
-                Muls(xAbsLeft, xLeft, 0.0f, pregLoop);
-                Compare<float, CMPMODE::NE>(compareLeft, xAbsLeft, xAbsLeft, pregLoop);
-                MaskNot(compareLeft, compareLeft, pregLoop);
-                Abs(xAbsLeft, xLeft, compareLeft);
-                ReduceMax(scale, xAbsLeft, pregLoop);
-                CompareScalar<float, CMPMODE::NE>(compareScalar, scale, (float)0.0, preg1);
-                Mul(scale, scale, (RegTensor<float>&)coeffReg, compareScalar);
-                Min(scale, scale, inf, preg1);
-                Duplicate(dupScale, scale, pregLoop);
-                DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleLocalAddr + loopCountFoldTwo + i * scaleColNumAlign, scale, preg1);
-                Div<float, &mode>(x0Left, xLeft, dupScale, pregLoop);
-                Muls(x1Left, x0Left, 0.0f, pregLoop);
-                Compare<float, CMPMODE::NE>(compareLeft, x1Left, x1Left, pregLoop);
-                Select(xLeft, xLeft, x0Left, compareLeft);
-                StoreOutputData(yLocalAddr, xLeft, pregLoop, loopCountFoldTwo * 2 * VL_FP32 + i * dstCurColNumAlign);
+            CompareScalar<float, CMPMODE::NE>(cmpScalar, rowMax, (float)0.0, preg1);
+            Mul(scale, rowMax, (RegTensor<float>&)coeffReg, cmpScalar);  // rowmax / fp8max
+            Min(scale, scale, inf, preg1);
+            DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+                scaleLocalAddr + i * scaleRowAlign, scale, preg1);
+            // pass 2: 量化
+            Duplicate(dupScale, scale, pregMain);
+            sreg = curColNum;
+            for (uint16_t j = 0; j < loopCount; j++) {
+                pm = UpdateMask<float>(sreg);
+                LoadInputData<T1>(x, xLocalAddr, pm, j * VL_FP32 + i * curColNumAlign);
+                Div<float, &mode>(x0, x, dupScale, pm);
+                Muls(x1, x0, 0.0f, pm);
+                Compare<float, CMPMODE::NE>(cmpQ, x1, x1, pm);
+                Select(x, x, x0, cmpQ);
+                StoreOutputData<T0>(yLocalAddr, x, pm, j * VL_FP32 + i * dstCurColNumAlign);
             }
         }
     }

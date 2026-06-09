@@ -31,6 +31,7 @@ int64_t RoundUp(int64_t x, int64_t y) {
     return CeilDiv(x, y) * y;
 }
 
+
 ge::graphStatus KvCompressEpilogTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -106,7 +107,15 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     auto scaleAttr = attrs->GetAttrPointer<float>(SCALE_ATTR_INDEX);
     scalesAttr_ = scaleAttr == nullptr ? 1.0f : *scaleAttr;
 
-    OP_LOGI(context_->GetNodeName(), "quant_group_size: %ld quantMode_: %ld roundScale_: %ld", quantGroupSize_, quantMode_, roundScale_);
+    const int64_t* attrBlockSize = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_ATTR_INDEX);
+    blockSizeAttr_ = (attrBlockSize != nullptr) ? *attrBlockSize : 0;
+
+    const int64_t* attrBlockStride = attrs->GetAttrPointer<int64_t>(BLOCK_STRIDE_ATTR_INDEX);
+    blockStrideAttr_ = (attrBlockStride != nullptr) ? *attrBlockStride : 0;
+
+    OP_LOGI(context_->GetNodeName(),
+            "quant_group_size: %ld quantMode_: %ld roundScale_: %ld blockSize: %ld blockStride: %ld",
+            quantGroupSize_, quantMode_, roundScale_, blockSizeAttr_, blockStrideAttr_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -174,7 +183,41 @@ ge::graphStatus KvCompressEpilogTiling::ValidateDtypes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::DoOpTiling() 
+ge::graphStatus KvCompressEpilogTiling::GetKvCacheLayout()
+{
+    // kv_compress_cache is the in-place output (input 0 == output 0), a 4D paged cache
+    // [blockNum, blockSize, 1, headDim]. The blockNum dimension is NON-CONTIGUOUS: its
+    // physical stride is an ARBITRARY value (>= blockSize*headDim), independent of the
+    // inner three dims. The GE tiling context does NOT expose view strides for an
+    // aclnn-launched view (GetInputStride()/GetOutputStride() both return empty), so the
+    // blockNum stride (and the logical blockSize) are passed explicitly as op attributes.
+    //
+    // Each token row of kvCacheCol (== headDim) bytes is written at
+    //   gmOffset = block * kvCacheBlockStride + pos * kvCacheRowStride
+    // with block = slot / kvCacheBlockSize, pos = slot % kvCacheBlockSize. Positions within
+    // a block are contiguous, so the per-position stride is headDim (== kvCacheCol).
+    OP_CHECK_IF(blockSizeAttr_ <= 0,
+              OP_LOGE(context_->GetNodeName(),
+                       "block_size attr must be > 0 for the 4D paged cache, got %ld", blockSizeAttr_),
+              return ge::GRAPH_FAILED);
+
+    kvCacheBlockSize_ = blockSizeAttr_;
+    kvCacheRowStride_ = kvCacheCol_;
+
+    int64_t contiguousBlockStride = kvCacheBlockSize_ * kvCacheCol_;
+    kvCacheBlockStride_ = (blockStrideAttr_ > 0) ? blockStrideAttr_ : contiguousBlockStride;
+    OP_CHECK_IF(kvCacheBlockStride_ < contiguousBlockStride,
+              OP_LOGE(context_->GetNodeName(),
+                       "block_stride %ld must be >= blockSize*headDim %ld", kvCacheBlockStride_, contiguousBlockStride),
+              return ge::GRAPH_FAILED);
+
+    OP_LOGI(context_->GetNodeName(),
+            "kvCacheLayout: blockSize=%ld rowStride(headDim)=%ld blockStride=%ld kvCacheCol=%ld",
+            kvCacheBlockSize_, kvCacheRowStride_, kvCacheBlockStride_, kvCacheCol_);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
 {
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(coreNum_));
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
@@ -191,6 +234,12 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     kvCacheCol_ = RoundUp(concatCol, DEFAULT_QUANT_GROUP_SIZE);
 
     int64_t padCol = kvCacheCol_ - concatCol;
+
+    // Resolve the kv_compress_cache 4D paged layout (with a non-contiguous blockNum
+    // dimension) to drive per-token GM offsets in the kernel.
+    if (GetKvCacheLayout() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
@@ -223,6 +272,9 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);
     tilingData_.set_kvCacheCol(kvCacheCol_);
+    tilingData_.set_kvCacheRowStride(kvCacheRowStride_);
+    tilingData_.set_kvCacheBlockSize(kvCacheBlockSize_);
+    tilingData_.set_kvCacheBlockStride(kvCacheBlockStride_);
     tilingData_.set_scaleCol(scaleCol_);
     tilingData_.set_concatCol(concatCol);
     tilingData_.set_quantMode(quantMode_);
@@ -275,6 +327,9 @@ void KvCompressEpilogTiling::DumpTilingInfo()
     info << "bs: " << tilingData_.get_bs();
     info << ", d: " << tilingData_.get_d();
     info << ", kvCacheCol: " << tilingData_.get_kvCacheCol();
+    info << ", kvCacheRowStride: " << tilingData_.get_kvCacheRowStride();
+    info << ", kvCacheBlockSize: " << tilingData_.get_kvCacheBlockSize();
+    info << ", kvCacheBlockStride: " << tilingData_.get_kvCacheBlockStride();
     info << ", scaleCol: " << tilingData_.get_scaleCol();
     info << ", concatCol: " << tilingData_.get_concatCol();
     info << ", quantMode: " << tilingData_.get_quantMode();

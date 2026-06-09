@@ -30,6 +30,7 @@
 namespace optiling {
 
 // ---------- Constants ----------
+constexpr int64_t KV_COMPRESS_CACHE_INPUT_INDEX = 0;
 constexpr int64_t X_INPUT_INDEX = 1;
 constexpr int64_t SLOT_MAPPING_INDEX = 2;
 constexpr int64_t KV_COMPRESS_CACHE_OUTPUT_INDEX = 0;
@@ -38,6 +39,8 @@ constexpr int64_t QUANT_GROUP_SIZE_ATTR_INDEX = 0;
 constexpr int64_t QUANT_MODE_ATTR_INDEX = 1;
 constexpr int64_t ROUND_SCALE_ATTR_INDEX = 2;
 constexpr int64_t SCALE_ATTR_INDEX = 3;
+constexpr int64_t BLOCK_SIZE_ATTR_INDEX = 4;
+constexpr int64_t BLOCK_STRIDE_ATTR_INDEX = 5;
 
 constexpr int64_t QUANT_MDOE_GROUP_QUANT_BF16 = 1;
 constexpr int64_t QUANT_MDOE_GROUP_QUANT_E8M0 = 2;
@@ -59,6 +62,9 @@ BEGIN_TILING_DATA_DEF(KvCompressEpilogTilingData)
 TILING_DATA_FIELD_DEF(int64_t, bs);
 TILING_DATA_FIELD_DEF(int64_t, d);
 TILING_DATA_FIELD_DEF(int64_t, kvCacheCol);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheRowStride);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheBlockSize);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheBlockStride);
 TILING_DATA_FIELD_DEF(int64_t, scaleCol);
 TILING_DATA_FIELD_DEF(int64_t, concatCol);
 TILING_DATA_FIELD_DEF(int64_t, padCol);
@@ -102,6 +108,7 @@ protected:
     ge::graphStatus GetInputShapes();
     ge::graphStatus GetAttributes();
     ge::graphStatus GetDtypeInfo();
+    ge::graphStatus GetKvCacheLayout();
     void CountTilingKey();
 
     // Validation
@@ -127,7 +134,10 @@ private:
     // Shape info from inputs
     int64_t bs_ = 0;  // First dimension of x (to be partitioned)
     int64_t d_ = 0;  // Second dimension of x
-    int64_t kvCacheCol_ = 0;  // kvCache cols
+    int64_t kvCacheCol_ = 0;  // kvCache cols (bytes written per token row == headDim)
+    int64_t kvCacheRowStride_ = 0;  // within-block per-token row stride (physical headDim)
+    int64_t kvCacheBlockSize_ = 1;  // tokens per block (logical); 1 for the 2D layout
+    int64_t kvCacheBlockStride_ = 0;  // physical stride between consecutive blocks (non-contiguous blockNum)
     int64_t scaleCol_ = 0;  // scale cols
 
     int64_t rowOfFormerBlock_ = 0;
@@ -143,6 +153,8 @@ private:
     int64_t quantMode_ = 1;
     int64_t roundScale_ = 1;
     float scalesAttr_ = 0;
+    int64_t blockSizeAttr_ = 0;    // tokens per block (logical); required for the 4D paged cache
+    int64_t blockStrideAttr_ = 0;  // arbitrary blockNum stride in elements (0 => contiguous blockSize*headDim)
 
     // Data types
     ge::DataType xDtype_ = ge::DT_BF16;

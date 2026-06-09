@@ -29,6 +29,8 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
     int64_t quantMode,
     int64_t roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t blockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

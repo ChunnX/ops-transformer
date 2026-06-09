@@ -55,6 +55,12 @@ TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfTailBlock);  // 尾核最后一次
 TILING_DATA_FIELD_DEF(int64_t, quantMode);
 TILING_DATA_FIELD_DEF(int64_t, roundScale);
 TILING_DATA_FIELD_DEF(float, scalesAttr);
+// 4D paged layout [blockNum, blockSize, 1, headDim]; blockNum non-contiguous.
+TILING_DATA_FIELD_DEF(int64_t, blockSize);          // blockSize dim (1 => contiguous flat slots)
+TILING_DATA_FIELD_DEF(int64_t, cacheRowStride);     // per-position stride of cache (= headDim elems)
+TILING_DATA_FIELD_DEF(int64_t, cacheBlockStride);   // per-block (blockNum) stride of cache
+TILING_DATA_FIELD_DEF(int64_t, scaleRowStride);     // per-position stride of scale (= scaleCol)
+TILING_DATA_FIELD_DEF(int64_t, scaleBlockStride);   // per-block (blockNum) stride of scale
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(IndexerCompressEpilog, IndexerCompressEpilogTilingData)
@@ -100,6 +106,14 @@ private:
     int64_t quantMode_ = 1;
     float scalesAttr_ = 0;
     bool roundScale_ = true;
+    int64_t blockSizeAttr_ = 0;
+    int64_t cacheBlockStrideAttr_ = 0;
+    int64_t scaleBlockStrideAttr_ = 0;
+    int64_t blockSize_ = 1;
+    int64_t cacheRowStride_ = 0;
+    int64_t cacheBlockStride_ = 0;
+    int64_t scaleRowStride_ = 0;
+    int64_t scaleBlockStride_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     int64_t tilingKey_ = 0;
 };

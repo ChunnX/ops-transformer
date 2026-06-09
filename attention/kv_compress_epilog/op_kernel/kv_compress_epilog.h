@@ -146,10 +146,19 @@ template <typename T0, typename U, typename T1>
             kvCacheQue.template EnQue(kvCacheLocal);
             kvCacheLocal = kvCacheQue.template DeQue<T1>();
             for (int32_t curValidIdx = 0; curValidIdx < validIdx; curValidIdx++) {
-                int32_t slot = indexLocal.GetValue(curValidIdx);
+                int64_t slot = static_cast<int64_t>(indexLocal.GetValue(curValidIdx));
+                // Decode the global slot into a (block, position-in-block) pair and write
+                // each row at its correct physical location in the 4D paged cache
+                // [blockNum, blockSize, 1, headDim], whose blockNum dimension is
+                // non-contiguous (blockStride = blockSize*numHeads*headDim != blockSize*headDim).
+                // kvCacheCol bytes are written per row.
+                int64_t block = slot / tilingData->kvCacheBlockSize;
+                int64_t posInBlock = slot % tilingData->kvCacheBlockSize;
+                int64_t gmOffset = block * tilingData->kvCacheBlockStride +
+                                   posInBlock * tilingData->kvCacheRowStride;
                 CopyOut(
                     kvCacheLocal[curValidIdx * RoundUp<T1>(tilingData->kvCacheCol)],
-                    kvCacheGm[slot * tilingData->kvCacheCol], 1, tilingData->kvCacheCol);
+                    kvCacheGm[gmOffset], 1, tilingData->kvCacheCol);
             }
             kvCacheQue.template FreeTensor(kvCacheLocal);
         }

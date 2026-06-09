@@ -29,6 +29,9 @@ aclnnStatus aclnnIndexerCompressEpilogGetWorkspaceSize(
     int64_t quantMode,
     bool roundScale,
     double scale,
+    int64_t blockSize,
+    int64_t cacheBlockStride,
+    int64_t scaleBlockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

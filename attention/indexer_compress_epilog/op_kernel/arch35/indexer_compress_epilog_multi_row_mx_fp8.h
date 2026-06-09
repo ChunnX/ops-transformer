@@ -103,10 +103,12 @@ public:
                 int64_t curSlotIdx = indexLocal.GetValue(curValidIdx);
                 CopyOut(
                     indexerCompressCacheLocal[curValidIdx * RoundUp<T1>(tilingData->d)],
-                    indexerCompressCacheGm[curSlotIdx * tilingData->d], 1, tilingData->d);
+                    indexerCompressCacheGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
+                        tilingData->cacheBlockStride, tilingData->cacheRowStride)], 1, tilingData->d);
                 CopyOut(
                     indexerCompressCacheScaleLocal[curValidIdx * RoundUp<T2>(tilingData->scaleCol)],
-                    indexerCompressCacheScaleGm[curSlotIdx * CeilDiv(tilingData->d, PER_BLOCK_FP16)], 1,
+                    indexerCompressCacheScaleGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
+                        tilingData->scaleBlockStride, tilingData->scaleRowStride)], 1,
                     tilingData->scaleCol);
             }
             indexerCompressCacheQue.template FreeTensor(indexerCompressCacheLocal);
