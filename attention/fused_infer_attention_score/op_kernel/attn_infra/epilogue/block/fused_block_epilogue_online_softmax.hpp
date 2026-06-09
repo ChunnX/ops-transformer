@@ -171,7 +171,7 @@ public:
         } else {
             AscendC::SetVectorMask<int8_t>(0x0, mask);
         }
-    } 
+    }
 
     __aicore__ inline
     void SetBlockReduceMask(int32_t len)
@@ -1832,7 +1832,8 @@ public:
                     // the number of integral heads within a cycle
                     uint32_t integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
                     // the token num of the epilogue part
-                    uint32_t epiTokenNumTemp = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
+                    uint32_t epiTokenNumTemp = rowNumCurLoop - proTokenNum -
+                        integralHeadNum * tokenNumPerHeadThisSubBlock;
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                     if (doTriUPreMask && doTriUNextMask) {
                         CopyMaskGmToUb(
@@ -1905,8 +1906,8 @@ public:
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ?
             (rowNum - rowSplitSubBlock) : rowSplitSubBlock;  //本核实际要处理的行数
         uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;  //本核子块在fullmask的行偏移
-        uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ? rowOffsetThisSubBlock : 0; 
-        uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock); 
+        uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ? rowOffsetThisSubBlock : 0;
+        uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock);
         // calc qNstartIdx per vec core
         uint32_t qNStartIdxVec =  (qNBlockSize == 1) ? qNStartIdx : (subBlockIdx == 1) ? (qNStartIdx + qNSplitSubBlock) : qNStartIdx;
         // calc Full  shift in gm
