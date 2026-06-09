@@ -1096,9 +1096,12 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
         HandleLastRoundBoundary(resTensor, tileHistFp32);
     }
 
-    WriteCoreTopKFromWs(resTensor, tileHistFp32);
+    bool isLastRound = (remainK_ == 0 || roundId == 0);
+    if (isLastRound) {
+        WriteCoreTopKFromWs(resTensor, tileHistFp32);
+    }
 
-    return (remainK_ == 0 || roundId == 0);
+    return isLastRound;
 }
 
 template <typename BSAT>
