@@ -733,7 +733,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessAmlaNupdate(const At
     constexpr uint32_t dGroupSize = 128U;
     constexpr uint32_t mSplitSize = 64U; // tmpQue size 32KB，一次只能处理64个N，最大保存的数据大小：64*128*sizeof(int32)
     constexpr uint32_t ONE_BLOCK_SIZE = 32U; // 32B
-    uint32_t subMSize = Align(mSplitInfo.vecDealM, 16U);
+    uint32_t subMSize = AttentionCommon::Align(mSplitInfo.vecDealM, 16U);
     constexpr uint16_t elementPerBlock = ONE_BLOCK_SIZE / sizeof(int32_t); // 单个datablock的元素数，int32_t类型的为32/4=8
     
     uint32_t loopCount = (subMSize + mSplitSize - 1) / mSplitSize;
