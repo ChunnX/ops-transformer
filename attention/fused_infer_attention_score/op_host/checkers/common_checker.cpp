@@ -524,9 +524,9 @@ ge::graphStatus CommonChecker::CheckMultiDtype(const FiaTilingInfo &fiaInfo)
 ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.bSize > B_LIMIT || fiaInfo.bSize <= 0) {
-        std::string reason = "B of query must be within the range (0, " + std::to_string(B_LIMIT) + "].";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
-            ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+        std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + "].";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis B",
+            std::to_string(fiaInfo.bSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo.s1Size < 0) {
@@ -585,7 +585,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
         }
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
         if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
                 std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
                 "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} in the Decode MLA scenario.");
             return ge::GRAPH_FAILED;
