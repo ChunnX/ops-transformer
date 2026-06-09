@@ -411,11 +411,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-    if (dstRankId != epRankId_) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * UB_ALIGN));
-        DataCopy(sendFlagHandleGMTensor_, flagTensor_, UB_ALIGN / sizeof(int32_t));
-    }
+    // if (dstRankId != epRankId_) {
+    //     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    //     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * UB_ALIGN));
+    //     DataCopy(sendFlagHandleGMTensor_, flagTensor_, UB_ALIGN / sizeof(int32_t));
+    // }
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -570,6 +570,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                             curExpertCnt * hAlignWinSize_);
 
             GM_ADDR localAddr = (GM_ADDR)(xGM_ + j * axisH_);
+            if (dstRankId == epRankId_) {
+                ProcessToken(localAddr, remoteAddr, j, dstRankId, curExpertCnt);
+                continue;
+            }
             hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_);
         }
     }
