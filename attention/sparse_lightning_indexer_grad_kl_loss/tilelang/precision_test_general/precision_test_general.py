@@ -191,8 +191,8 @@ def gen_inputs_corrected(case_config, seed=42):
             bmm1_scaled = bmm1_full.float() * scale_value
             sm_max_val = bmm1_scaled.max(dim=-1).values
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-            softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
-            softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
+            softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+            softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
             softmax_max = softmax_max.squeeze(0)
             softmax_sum = softmax_sum.squeeze(0)
         else:
@@ -205,8 +205,8 @@ def gen_inputs_corrected(case_config, seed=42):
             bmm1_scaled = bmm1_full.float() * scale_value
             sm_max_val = bmm1_scaled.max(dim=-1).values
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-            softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
-            softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(dtype)
+            softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+            softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
 
     return {
         "query": query,
