@@ -1926,8 +1926,9 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
 
     OP_CHECK_IF(
         (fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND"),
-        OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                                "the inputLayout of input does not support TND."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", inputLayout.c_str(),
+            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, "
+            "input_layout cannot be TND"),
         return ge::GRAPH_FAILED);
 
     if (fiaInfo.s1Size == 1) {
@@ -1947,40 +1948,48 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
             keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
         }
-        OP_CHECK_IF((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
-                     keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
-                     fiaInfo.inputKvType == ge::DT_INT8,
-                    OP_LOGE(fiaInfo.opName,
-                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                            "if S of query > 1, keyAntiquantMode/valueAntiquantMode 2, 3, 4, 5 are not supported!"),
-                    return ge::GRAPH_FAILED);
+        if ((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
+             keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
+            fiaInfo.inputKvType == ge::DT_INT8) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantModee",
+                std::to_string(keyAntiquantMode).c_str(),
+                "When the datatype of key/value is int8 and the S axis of query > 1, keyAntiquantMode 2, 3, 4, 5 are not supported");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF(((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-                     fiaInfo.inputKvType == ge::DT_INT8 &&
-                     (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                            "if keyAntiquantMode/valueAntiquantMode is 0 or 1, the data type of query and output only "
-                            "support BF16!"),
-                    return ge::GRAPH_FAILED);
+        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
+            fiaInfo.inputKvType == ge::DT_INT8 &&
+            (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16)) {
+            std::string dtypeMsg = Ops::Base::ToString(fiaInfo.inputQType) + " and " + Ops::Base::ToString(fiaInfo.outputType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
+                dtypeMsg.c_str(),
+                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "the datatype of query and attention_out must be BF16");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF(((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-                    fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16),
-                    OP_LOGE(fiaInfo.opName,
-                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                            "if keyAntiquantMode/valueAntiquantMode is 0 or 1, S of query should not be greater than 16!"),
-                    return ge::GRAPH_FAILED);
+        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
+            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+                std::to_string(fiaInfo.s1Size).c_str(),
+                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "the axis S of query should not be greater than 16");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_CHECK_IF(((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-                    fiaInfo.inputKvType == ge::DT_INT8 && !fiaInfo.batchContinuousFlag),
-                    OP_LOGE(fiaInfo.opName,
-                            "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario,"
-                            "if keyAntiquantMode/valueAntiquantMode is 0 or 1, tensorlist is not supported!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32),
-                    OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode scenario, int4 and int32 data "
-                                            "types are not supported for the key and value."),
-                    return ge::GRAPH_FAILED);
+        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
+            fiaInfo.inputKvType == ge::DT_INT8 && !fiaInfo.batchContinuousFlag) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", "0",
+                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, tensorlist is not supported");
+            return ge::GRAPH_FAILED;
+        }
+        if (fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32) {
+            std::string dtypeMsg = Ops::Base::ToString(fiaInfo.inputKvType);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
+                dtypeMsg.c_str(),
+                "In keyAntiquant/valueAntiquant split mode scenario, the datatypes of key and value cannot be int4 or int32");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -319,7 +319,9 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
                         "The datatype of QuantScale2 and quantOffset2 must be the same"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(quantOffset2Dim != quantScale2Dim,
-                    OP_LOGE(fiaInfo.opName, "QuantScale2 and quantOffset2 should have same dim!"),
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "quant_scale2 and quant_offset2",
+                (std::to_string(quantOffset2Dim) + "D and " + std::to_string(quantScale2Dim) + "D").c_str(),
+                "The shape dims of quant_scale2 and quant_offset2 must be the same"),
                     return ge::GRAPH_FAILED);
         if (quantOffset2ShapeSize != quantScale2ShapeSize) {
             std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
