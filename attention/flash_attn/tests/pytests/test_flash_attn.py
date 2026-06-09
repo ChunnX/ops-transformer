@@ -11,6 +11,7 @@
 
 import sys
 import os
+import gc
 import argparse
 import torch
 from pathlib import Path
@@ -274,6 +275,12 @@ if __name__ == "__main__":
                                "total": -1, "fail_ratio": float('nan')}}
 
         reporter.record(name, result, error=err, dtype=dtype)
+
+        del result, params
+        gc.collect()
+        if torch.npu.is_available():
+            torch.npu.empty_cache()
+
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))
