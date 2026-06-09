@@ -47,8 +47,7 @@ static aclnnStatus CheckParams(const aclTensor *bufferHandle, const aclTensor *i
 
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *bufferHandle, const aclTensor *indices,
                                                aclTensor *fetched, int32_t hiddenSize,
-                                               int64_t numEntriesPerRank, const char *group,
-                                               int64_t outputDtype,
+                                               int64_t numEntriesPerRank, int64_t outputDtype,
                                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(bufferHandle, indices, fetched);
