@@ -15,9 +15,13 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
 
+#include "kernel_operator.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "kernel_tiling/kernel_tiling.h"
+#include "lib/matmul_intf.h"
+#include "lib/matrix/matmul/tiling.h"
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
-using AscendC::Reg::StoreDist;
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #else
@@ -39,10 +43,6 @@ using AscendC::Reg::StoreDist;
 #else
 #include "../common/buffer.h"
 #endif
-
-#include "kernel_operator_list_tensor_intf.h"
-#include "lib/matmul_intf.h"
-#include "lib/matrix/matmul/tiling.h"
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
