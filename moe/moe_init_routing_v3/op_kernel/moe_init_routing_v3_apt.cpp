@@ -160,6 +160,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
 #endif
 
     auto t = &tilingData;
+    const bool isInt8DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC;
+    const bool isInt4DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC;
 
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED)) {
         if constexpr (!IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value &&
@@ -179,10 +181,10 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT)) {
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                        IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
-            if (t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC) {
+            if (isInt8DynamicQuant) {
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, 
+                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
@@ -190,10 +192,10 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             }
         } else if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
                              IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
-            if (t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC) {
+            if (isInt4DynamicQuant) {
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, 
+                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
@@ -384,7 +386,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         // 动态量化
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                        IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
-            if (t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC) {
+            if (isInt8DynamicQuant) {
                 TPipe gatherPipe;
                 MoeGatherOutDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
                 gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
@@ -399,7 +401,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         // INT4动态量化（非全载路径）：复用动态量化kernel，通过quantMode区分INT8/INT4。
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
                       IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
-            if (t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC) {
+            if (isInt4DynamicQuant) {
                 TPipe gatherPipe;
                 MoeGatherOutDynamicQuant<DTYPE_X, int4b_t> gatherDynamicQuantOp;
                 gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
