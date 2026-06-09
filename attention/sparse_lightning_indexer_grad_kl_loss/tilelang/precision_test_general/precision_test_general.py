@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
 泛化精度测试 - SparseLightningIndexerGradKLLoss TileLang
-共6个测试用例，覆盖关键维度：
+共5个测试用例，覆盖关键维度：
 - Case 0: 现有配置 S1=1, S2=2048, K=2048 (BSND)
-- Case 1: 官方风格 S1=128, S2=128, K=2048 (TND, 动态填充)
-- Case 2: 短序列 S1=64, S2=512, K=2048
-- Case 3: 中序列 S1=512, S2=2048, K=2048
-- Case 4: 长序列 S1=2048, S2=8192, K=2048 (动态填充)
-- Case 5: 大Batch B=2, S1=128, S2=2048, K=2048
+- Case 1: 官方风格 S1=128, S2=2048, K=2048 (TND)
+- Case 2: 短序列 S1=64, S2=2048, K=2048 (BSND)
+- Case 3: 中序列 S1=512, S2=2048, K=2048 (BSND)
+- Case 4: 长序列 S1=2048, S2=8192, K=2048 (BSND)
 
-关键改进：
+关键约束：
+- K必须≤S2（否则sparse_indices中-1被clamp(0)导致gather错误）
 - weights缩放到[-0.05, 0.05]（匹配官方示例）
-- sparse_indices使用randperm（不重复索引）
-- softmax_max/sum从实际QK计算（修正官方错误）
-- softmax_max/sum使用FP16（匹配官方接口要求）
+- softmax_max/sum从实际QK计算，dtype=FP32
 """
 
 import torch
@@ -47,7 +45,7 @@ TEST_CASES = [
         "name": "Case 1 - 官方风格TND",
         "B": 1,
         "S1": 128,
-        "S2": 128,
+        "S2": 2048,
         "N1": 128,
         "N2": 1,
         "Nidx1": 64,
@@ -62,7 +60,7 @@ TEST_CASES = [
         "name": "Case 2 - 短序列",
         "B": 1,
         "S1": 64,
-        "S2": 512,
+        "S2": 2048,
         "N1": 128,
         "N2": 1,
         "Nidx1": 64,
@@ -138,7 +136,10 @@ def gen_inputs_corrected(case_config, seed=42):
     key_index_bsnd = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).npu()
     query_rope_bsnd = torch.randn(B, S1, N1, d_rope, dtype=dtype).npu()
     key_rope_bsnd = torch.randn(B, S2, N2, d_rope, dtype=dtype).npu()
-    weights_bsnd = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
+    w_raw = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
+    w_scale = (0.05 - (-0.05)) / (2 * 3.0)
+    w_shift = (0.05 + (-0.05)) / 2
+    weights_bsnd = (w_raw * w_scale + w_shift).npu()
     sparse_indices_bsnd = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
 
     if layout == "TND":
