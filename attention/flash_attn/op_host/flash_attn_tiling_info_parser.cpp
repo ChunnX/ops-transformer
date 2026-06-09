@@ -299,18 +299,17 @@ ge::graphStatus FaInfoParser::GetQkHeadDim()
 ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenQ != nullptr) {
-            if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %lld", *opParamInfo_.maxSeqlenQ);
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenQ == -1) {
-                s1Size_ = queryTSize_;
-            } else {
-                s1Size_ = *opParamInfo_.maxSeqlenQ;
-            }
-        } else {
+        OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
+                    OP_LOGE(opName_, "max_seqlen_q must be provided when layout_q is TND."),
+                    return ge::GRAPH_FAILED);
+        if (*opParamInfo_.maxSeqlenQ < -1) {
+            OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %lld", *opParamInfo_.maxSeqlenQ);
+            return ge::GRAPH_FAILED;
+        }
+        if (*opParamInfo_.maxSeqlenQ == -1) {
             s1Size_ = queryTSize_;
+        } else {
+            s1Size_ = *opParamInfo_.maxSeqlenQ;
         }
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
@@ -333,18 +332,17 @@ void FaInfoParser::GetKvStorageMode()
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenKV != nullptr) {
-            if (*opParamInfo_.maxSeqlenKV < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %lld", *opParamInfo_.maxSeqlenKV);
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenKV == -1) {
-                s2Size_ = keyTSize_;
-            } else {
-                s2Size_ = *opParamInfo_.maxSeqlenKV;
-            }
-        } else {
+        OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
+                    OP_LOGE(opName_, "max_seqlen_kv must be provided when layout_kv is TND."),
+                    return ge::GRAPH_FAILED);
+        if (*opParamInfo_.maxSeqlenKV < -1) {
+            OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %lld", *opParamInfo_.maxSeqlenKV);
+            return ge::GRAPH_FAILED;
+        }
+        if (*opParamInfo_.maxSeqlenKV == -1) {
             s2Size_ = keyTSize_;
+        } else {
+            s2Size_ = *opParamInfo_.maxSeqlenKV;
         }
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
