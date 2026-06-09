@@ -238,5 +238,3 @@ npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg='', 
         for i, receive_cnt in enumerate(receive_cnt_list):
             print(f"[INFO] rank_{i} receive_cnt: {receive_cnt}")
     ```
-
--   图模式调用（暂不支持）
