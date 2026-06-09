@@ -264,7 +264,9 @@ struct CopyL1ToL0B<ArchTag, NpuArch::Gemm::GemmType<float, layout::nN, AscendC::
         loadDataParams.dstGap = 0;
         loadDataParams.dstFracGap = NpuArch::Detail::Alignment::CeilDiv<C0_NUM_PER_FRACTAL>(layoutDst.orgShape(0)) - 1;
 
-        for (uint32_t i = 0; i < NpuArch::Detail::Alignment::CeilDiv<2 * FLAOT_SIZE_NUM_PER_C0>(layoutDst.orgShape(1)); i++)
+        for (uint32_t i = 0;
+            i < NpuArch::Detail::Alignment::CeilDiv<2 * FLAOT_SIZE_NUM_PER_C0>(layoutDst.orgShape(1));
+            i++)
         {
             AscendC::LoadDataWithTranspose(
                 dstTensor[i * layoutDst.stride(3) * 2],
