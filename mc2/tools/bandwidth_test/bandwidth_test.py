@@ -116,7 +116,7 @@ else:
         {'bs': 256, 'data_size': 16384, 'max_bs': 256},      # 8MB
         {'bs': 512, 'data_size': 16384, 'max_bs': 512},      # 16MB
         {'bs': 1024, 'data_size': 16384, 'max_bs': 1024},    # 32MB
-	    {'bs': 2048, 'data_size': 16384, 'max_bs': 2048},    # 64MB
+        {'bs': 2048, 'data_size': 16384, 'max_bs': 2048},    # 64MB
         {'bs': 4096, 'data_size': 16384, 'max_bs': 4096},    # 128MB
         {'bs': 8192, 'data_size': 8192, 'max_bs': 8192},    # 128MB
     ]
@@ -389,7 +389,7 @@ def init_hccl_comm(rank, world_size_local):
 
 
 def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    """生成测试输入数据"""
+    """生成测试输入数据，每个发送方内部的目标rank均衡"""
     torch.manual_seed(random_seed)
     
     x_per_rank = [
@@ -397,10 +397,19 @@ def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tenso
         for _ in range(world_size)
     ]
     
-    dstrank_id_per_rank = [
-        torch.randint(0, world_size, [test_bs], dtype=torch.int32)
-        for _ in range(world_size)
-    ]
+    dstrank_id_per_rank = []
+    for _ in range(world_size):
+        # 计算每个目标 rank 应分配的数量（均衡分配）
+        base = test_bs // world_size
+        rem = test_bs % world_size
+        targets = []
+        for r in range(world_size):
+            count = base + (1 if r < rem else 0)
+            targets.extend([r] * count)
+        # 随机打乱顺序，使每个发送方内部的目标顺序随机
+        indices = torch.randperm(test_bs).tolist()
+        shuffled_targets = [targets[i] for i in indices]
+        dstrank_id_per_rank.append(torch.tensor(shuffled_targets, dtype=torch.int32))
     
     return x_per_rank, dstrank_id_per_rank
 
@@ -810,7 +819,7 @@ def run_bandwidth_test(
             logger.error(f"[ERROR] Rank {rank} 带宽测试执行失败")
             return None
     
-    data_size_bytes = test_data_size
+    data_size_bytes = test_data_size * 2
     perf_result = get_bandwidth_performance(profiling_path, data_size_bytes, world_size, len(x_per_rank[0]))
     
     return perf_result
@@ -862,7 +871,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     for i, cfg in enumerate(test_configs):
         test_data_size = cfg['data_size']
         test_bs = cfg['bs']
-        data_size_bytes = test_data_size
+        data_size_bytes = test_data_size * 2
         config_index = i + 1
         
         config_profiling_path = f'{profiling_path}_config_{config_index}'

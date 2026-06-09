@@ -46,8 +46,8 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
     }
     std::string group_str = std::string(group);
     std::string comm_alg_str = std::string(comm_alg);
-    char *group_ptr = const_cast<char *>(group.c_str());
-    char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
+    char *group_ptr = const_cast<char *>(group_str.c_str());
+    char *comm_alg_ptr = const_cast<char *>(comm_alg_str.c_str());
 
     ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size,
               max_bs, mode, comm_alg_ptr, aiv_num, y, receive_cnt);
