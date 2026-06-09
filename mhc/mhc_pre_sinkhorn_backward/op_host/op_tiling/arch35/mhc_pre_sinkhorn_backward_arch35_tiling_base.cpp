@@ -365,6 +365,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
     MhcPreSinkhornBackwardTilingData* tilingData =
     context_->GetTilingData<MhcPreSinkhornBackwardTilingData>();
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
 
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
