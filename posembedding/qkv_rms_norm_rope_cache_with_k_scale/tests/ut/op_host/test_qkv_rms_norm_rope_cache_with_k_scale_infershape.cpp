@@ -22,9 +22,9 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{256, 128}, {256, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{17}, {17}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{8, 2, 128, 128}, {8, 2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{8, 2, 128, 128}, {8, 2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{8, 2, 128, 1}, {8, 2, 128, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{8, 128, 2, 128}, {8, 128, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+        {{{8, 128, 2, 128}, {8, 128, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+        {{{8, 128, 2, 1}, {8, 128, 2, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -55,9 +55,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
     std::vector<std::vector<int64_t>> expected = {
         {16, 17, 128},
         {16, 17},
-        {8, 2, 128, 128},
-        {8, 2, 128, 128},
-        {8, 2, 128, 1},
+        {8, 128, 2, 128},
+        {8, 128, 2, 128},
+        {8, 128, 2, 1},
     };
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
