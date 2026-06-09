@@ -24,7 +24,8 @@ class Reporter:
 
     def save_csv(self, path: Path):
         fields = ["case", "attn_pass", "attn_max_abs", "attn_fail_ratio",
-                  "lse_pass", "lse_max_abs", "lse_fail_ratio", "error"]
+                  "attn_fail_cnt", "lse_pass", "lse_max_abs",
+                  "lse_fail_ratio", "error"]
         with open(path, "w", newline="") as f:
             w = csv.DictWriter(f, fields)
             w.writeheader()
@@ -36,6 +37,7 @@ class Reporter:
                     "attn_pass": a.get("passed"),
                     "attn_max_abs": a.get("max_abs", ""),
                     "attn_fail_ratio": a.get("fail_ratio", ""),
+                    "attn_fail_cnt": a.get("fail_cnt", ""),
                     "lse_pass": l.get("passed") if l.get("total", 0) > 0 else "",
                     "lse_max_abs": l.get("max_abs", ""),
                     "lse_fail_ratio": l.get("fail_ratio", ""),

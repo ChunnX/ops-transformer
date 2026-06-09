@@ -27,14 +27,14 @@ def run_case(params: dict,
     elif "block_table" in params and params["block_table"] is not None:
         inputs["block_table"] = params["block_table"].to(primary.device)
 
-    # 2. CPU golden（始终在 BNSD 格式下计算）
+    # 2. primary 先算
+    print(f"  [primary] {primary.name} 计算...")
+    primary_out = primary.compute(inputs, params)
+
+    # 3. CPU golden 后算
     print(f"  [golden] CPU 参考计算...")
     cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
     golden_out = golden.compute(cpu_inputs, params)
-
-    # 3. primary 计算
-    print(f"  [primary] {primary.name} 计算...")
-    primary_out = primary.compute(inputs, params)
 
     # 4. 精度对比 —— CPU golden 始终 BNSD，统一转 target layout
     cpu_raw = golden_out["out"]
