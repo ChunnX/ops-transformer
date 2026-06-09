@@ -34,7 +34,7 @@
         printf(message, ##__VA_ARGS__); \
     } while(0)
 
-constexpr int DEV_NUM = 4;
+constexpr int DEV_NUM = 2;
 static std::mutex barrierMtx;
 static std::condition_variable barrierCv;
 static int barrierCount = 0;
@@ -138,7 +138,7 @@ int LaunchOneThreadEngramFetch(Args &args)
     // Phase 1: Get workspace size
     ret = aclnnEngramFetchGetWorkspaceSize(
         bufferHandle, indices, fetched,
-        hiddenSize, numEntriesPerRank, hcomName, outputDtype,
+        hiddenSize, numEntriesPerRank, outputDtype,
         &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnEngramFetchGetWorkspaceSize failed. ret = %d\n", ret); return ret);
