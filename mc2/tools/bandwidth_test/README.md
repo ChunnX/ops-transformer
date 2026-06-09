@@ -41,7 +41,7 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
 is_full_core = 1         # 1: 使用全部核心; 0: 使用部分核心
 core_num = 16            # is_full_core=0 时的核心数
-aiv_num = 32             # AIV 核心数 (core_num * 2)
+aiv_num = 32             # AIV 核心数 (core_num * 2)，后续存在core_num与aiv_num = 1:1
 ```
 
 ### 性能采集配置
