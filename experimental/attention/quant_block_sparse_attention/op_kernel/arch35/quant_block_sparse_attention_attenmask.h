@@ -59,7 +59,7 @@ struct AttenMaskInfo {
     int64_t attenMaskS1Offset;
 };
 
-__aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
+__aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
     int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size, int64_t s2BaseSize, 
     ConstInfo &constInfo)
 {
@@ -103,7 +103,7 @@ __aicore__ inline void BoolCopyInRegbase(LocalTensor<uint8_t> &dstTensor, Global
     }
 }
 
-template <bool hasAtten, bool isMxfp8FullQuant = false>
+template <bool hasAtten>
 __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_t deltaPre,
                                                int64_t s1Offset, const RunInfo &runInfo, 
                                                ConstInfo &constInfo,
@@ -111,9 +111,6 @@ __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_
 {
     if constexpr (hasAtten == true) {
         uint32_t s2BaseSize = constInfo.s2BaseSize;
-        if constexpr (isMxfp8FullQuant) {
-            s2BaseSize /= 2;
-        }
         int64_t causalOrNextFactor = deltaCausalOrNext - s2BaseSize;
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE) ||
             attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
@@ -313,9 +310,9 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 }
 #endif
                                       
-template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
+template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-                                                      AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
+                                                      AttenMaskInfo &attenMaskInfo, bool first_block = true, const bool useDn = false, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten == true) {
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
@@ -330,53 +327,30 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
             s1Offset = s1Offset % constInfo.s1Size;
         }
         int64_t s2Offset = 0;
-        s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * constInfo.s2BaseSize;
-        if constexpr (isMxfp8FullQuant) {
-            s2Offset += subLoop * (constInfo.s2BaseSize / 2);
-        }
-        if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)) {
-            deltaCausalOrNext = s1Offset - s2Offset;
-        } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
-            deltaCausalOrNext = s1Offset - s2Offset - deltaN;
-        } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
-            if (runInfo.nextTokensPerBatch < 0) {
-                s1Offset -= runInfo.nextTokensPerBatch;
-            }
-            deltaPre = s1Offset - s2Offset - runInfo.preTokensPerBatch - 1;
-            deltaCausalOrNext = s1Offset - s2Offset + runInfo.nextTokensPerBatch;
-            attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize,
-                constInfo.s2BaseSize, attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
-        } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
-            deltaCausalOrNext = s1Offset - s2Offset - deltaN;
-            if ((constInfo.s1Size + ((__gm__ int64_t *)attenMaskInfo.prefixNAddr)[runInfo.boIdx]) >
-                runInfo.actualS2Size) {
-                // prefix reuse attenMaskOffsetPre
-                deltaPre = ((__gm__ int64_t *)attenMaskInfo.prefixNAddr)[runInfo.boIdx] - runInfo.s2StartIdx -
-                           runInfo.s2LoopCount * constInfo.s2BaseSize;
-                attenMaskInfo.attenMaskOffsetPre = ComputeOffsetForPrefixRectangle(deltaPre, constInfo.s2BaseSize,
-                                                                                   attenMaskInfo.attenMaskS2Size);
-            }
+        if (first_block) {
+            s2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
         } else {
-            return 0;
+            s2Offset = runInfo.sparseBlkIdx2 * constInfo.blockSize;
         }
-        GetAttenMaskComputeMode<hasAtten, isMxfp8FullQuant>(deltaCausalOrNext, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
+        
+        if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
+            deltaCausalOrNext = s1Offset - s2Offset - deltaN;
+        }
+        GetAttenMaskComputeMode<hasAtten>(deltaCausalOrNext, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
         int64_t ret = 0;
 
         uint32_t s2BaseSize = constInfo.s2BaseSize;
-        if constexpr (isMxfp8FullQuant) {
-            s2BaseSize /= 2;
-        }
         ret = ComputeOffsetForCausal(deltaCausalOrNext, constInfo.s1BaseSize, s2BaseSize,
             attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         return ret;
     }
 }
 
-template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
+template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-    AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
+    AttenMaskInfo &attenMaskInfo, const bool first_block = false, const bool useDn = false, const int32_t subLoop = 0)
 {
-    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
+    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo, first_block, useDn, subLoop);
     return result;
 }
 
@@ -392,6 +366,28 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
                           attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
         return;
+    }
+}
+
+template <bool hasAtten>
+__aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
+                                         GlobalTensor<uint8_t> &srcTensor,
+                                         RunInfo &runInfo, ConstInfo &constInfo,
+                                         AttenMaskInfo &attenMaskInfo, bool needAtten1, bool needAtten2)
+{
+    if constexpr (hasAtten) {
+        LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
+        if (needAtten1) {
+            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
+            BoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.s2SparseBlk1RealSize,
+                          constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+        }
+        if (needAtten2) {
+            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, false);
+            BoolCopyInRegbase(attenMaskUb[(constInfo.s1BaseSize >> 1) * runInfo.s2SparseBlk1RealSize], srcTensor, maskOffset, runInfo.s2SparseBlk2RealSize,
+                            constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+        }
+        attenMaskInQue.template EnQue(attenMaskUb);
     }
 }
 
