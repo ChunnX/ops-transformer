@@ -32,10 +32,10 @@ constexpr uint32_t FD_METADATA_SIZE = 8;
 
 // FA Metadata Index Definitions
 constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t FA_BN2_START_INDEX = 1;
+constexpr uint32_t FA_BN1_START_INDEX = 1;
 constexpr uint32_t FA_M_START_INDEX = 2;
 constexpr uint32_t FA_S2_START_INDEX = 3;
-constexpr uint32_t FA_BN2_END_INDEX = 4;
+constexpr uint32_t FA_BN1_END_INDEX = 4;
 constexpr uint32_t FA_M_END_INDEX = 5;
 constexpr uint32_t FA_S2_END_INDEX = 6;
 constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
