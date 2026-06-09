@@ -37,11 +37,10 @@ static inline bool IsUnknownRank(const gert::Shape *check_shape){
 static graphStatus InferShape4MoeTokenUnpermuteGrad(gert::InferShapeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTokenUnpermuteGrad");
-    const gert::Shape* permutedTokensShape = context->GetInputShape(INPUT_PERMUTED_TOKENS_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensShape);
-    const gert::Shape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    const gert::Shape* permutedTokensShape = context->GetOptionalInputShape(INPUT_PERMUTED_TOKENS_IDX);
+ 	const gert::Shape* unpermutedOutputDShape = context->GetOptionalInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);    
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
-    const gert::Shape* rowIdMapShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
+    const gert::Shape* rowIdMapShape = context->GetOptionalInputShape(INPUT_ROWIDMAP_IDX);    
     OP_CHECK_NULL_WITH_CONTEXT(context, rowIdMapShape);
     const gert::Shape* probShape = context->GetOptionalInputShape(INPUT_PROB_IDX);
 
@@ -51,16 +50,23 @@ static graphStatus InferShape4MoeTokenUnpermuteGrad(gert::InferShapeContext* con
     OP_CHECK_NULL_WITH_CONTEXT(context, probGradShape);
 
     // permutedTokensGrad
-    if (IsUnknownRank(permutedTokensShape)) { // [-2]输入
+    if (permutedTokensShape != nullptr && IsUnknownRank(permutedTokensShape)) {
         OP_LOGD(context->GetNodeName(), "Input shape is -2, set output shape to (-2)");
         permutedTokensGradShape->SetDim(DIM_0, UNKNOWN_RANK_DIM_VALUE_);
     } else {
-        if (permutedTokensShape->GetDimNum() != DIM_NUM_TWO || unpermutedOutputDShape->GetDimNum() != DIM_NUM_TWO ||
+        if (unpermutedOutputDShape->GetDimNum() != DIM_NUM_TWO ||
             rowIdMapShape->GetDimNum() != DIM_NUM_ONE) {
             OP_LOGE(
                 context->GetNodeName(),
                 "The dim number of input must be 2, indices must be 1, but got: input %zu, indices %zu",
-                permutedTokensShape->GetDimNum(), rowIdMapShape->GetDimNum());
+                unpermutedOutputDShape->GetDimNum(), rowIdMapShape->GetDimNum());
+ 	             return ge::GRAPH_FAILED;
+ 	         }
+ 	         if (permutedTokensShape != nullptr && permutedTokensShape->GetDimNum() != DIM_NUM_TWO) {
+ 	             OP_LOGE(
+ 	                 context->GetNodeName(),
+ 	                 "The dim number of permuted_tokens must be 2, but got: %zu",
+ 	                 permutedTokensShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
         uint32_t inputGradDim0 = rowIdMapShape->GetDim(DIM_0);
@@ -86,12 +92,13 @@ static ge::graphStatus InferDataType4MoeTokenUnpermuteGrad(gert::InferDataTypeCo
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataType4MoeTokenUnpermuteGrad");
     OP_LOGD(
         context->GetNodeName(), "input input dtype: %s",
-        Ops::Base::ToString(context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX)).c_str());
-    context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX));
-    context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX));
-    // 混精场景PROBGRAD dtype与PROB一致，与PERMUTED_TOKENS不一致
+        Ops::Base::ToString(context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX)).c_str());
+ 	context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX));
+ 	context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_UNPERMUTEDOUTPUTD_IDX)); 	    
+    
+        // 混精场景PROBGRAD dtype与PROB一致，与PERMUTED_TOKENS不一致
     if (context->GetOptionalInputDataType(INPUT_PROB_IDX) != ge::DT_UNDEFINED) {
-        context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_PROB_IDX));
+        context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetOptionalInputDataType(INPUT_PROB_IDX));
     }
     OP_LOGD(
         context->GetNodeName(), "output input_grad dtype: %s",
