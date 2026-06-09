@@ -169,8 +169,8 @@ def gen_inputs_corrected(case_config, seed=42):
         key_index = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).npu()
         query_rope = torch.randn(B, S1, N1, d_rope, dtype=dtype).npu()
         key_rope = torch.randn(B, S2, N2, d_rope, dtype=dtype).npu()
-weights = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
-    sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
+        weights = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
+        sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
 
     if layout == "TND":
         for s1_idx in range(S1):
