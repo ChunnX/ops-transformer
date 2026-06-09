@@ -517,7 +517,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 }
             }
         }
-        sTaskId++;
+        if (this->actualSelectedBlockCount > 0) {
+            sTaskId++;
+        }
     }
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
