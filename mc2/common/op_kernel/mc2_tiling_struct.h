@@ -131,6 +131,7 @@ struct RCSTiling {
     uint32_t dataType;
     uint32_t commInt8WorkSpace;
     uint32_t dynamicQuantTempBuffSize;
+    uint32_t batchInvariant;
 };
 
 struct TileL2Tiling {

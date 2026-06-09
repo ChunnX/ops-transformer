@@ -435,6 +435,12 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
       OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
+    bool batchInvariant = mc2tiling::IsBatchInvariant();
+    MutableRCSTilingDataA5().batchInvariant = batchInvariant ? 1U : 0U;
+    if (batchInvariant && !mc2tiling::IsDeterministic()) {
+        OP_LOGI(opName_, "ASCEND_MC2_BATCH_INVARIANT=1 is enabled; set HCCL_DETERMINISTIC=true "
+                         "for process-wide deterministic communication.");
+    }
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());

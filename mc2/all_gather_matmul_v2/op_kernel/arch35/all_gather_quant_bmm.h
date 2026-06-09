@@ -50,6 +50,8 @@ public:
 private:
     __aicore__ inline void AllGatherCommit();               /* allgather通信 */
     __aicore__ inline void QuantMatmulCompute();            /* 计算入口 */
+    __aicore__ inline void QuantMatmulLocalCompute();       /* 本地块计算 */
+
     __aicore__ inline void QuantMatmulGatherCompute();      /* 远端计算 */
     __aicore__ inline void PostProcess();                   /* 后处理 */
     __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM,
@@ -63,6 +65,7 @@ private:
     GM_ADDR bGM_;
     GM_ADDR biasGM_;
     GM_ADDR dequantGM1_;
+    GM_ADDR localDequantGM1_;
     GM_ADDR gatherDequantGM1_;
     GM_ADDR dequantGM2_;
     GM_ADDR dequantGM_;
@@ -115,6 +118,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
     cGM_ = cGM;
     biasGM_ = biasGM;
     dequantGM1_ = dequantGM1;
+    localDequantGM1_ = dequantGM1;
     dequantGM2_ = dequantGM2;
     dequantGM_ = scaleGM;
     workspaceGM_ = workspaceGM;
@@ -211,6 +215,40 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 }
 
 /**
+ * @brief 本地块计算流程
+ * @return void
+*/
+template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
+           bool BTrans, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
+                                         X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulLocalCompute()
+{
+    auto &&cfg = tilingData_->param;
+    // 当N=0时，跳过本地计算
+    if (cfg.rankN == 0) {
+        return;
+    }
+    auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling;     // QuantBatchMatmulV3TilingData 本地核切分tiling参数
+    uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka;  // 整块K轴大小
+
+    MatMulASWKernel<
+        AType, BType, X2ScaleType, BiasType, CType, CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, ATrans, BTrans>
+        op;
+    GM_ADDR workspaceGM = workspaceGM_;
+    // 本卡位置与rankId一致，C矩阵本卡矩阵首地址为rankid*cSize
+    GM_ADDR cGM = cGM_ + static_cast<uint64_t>(rankId_) * static_cast<uint64_t>(cfg.rankM) *
+                             static_cast<uint64_t>(qBMMLocalTiling.matmulTiling.N) *
+                             sizeof(CType); // 卡上原始数据大小rankM
+    if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
+        // Workspace偏移留出scale目的地址
+        workspaceGM += DequantBmm::Align(CeilDiv(tilingKa, MX_BLOCK_SIZE), EVEN_ALIGN) *
+                       static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
+    }
+    op.Init(aGM_, bGM_, biasGM_, dequantGM2_, localDequantGM1_, cGM, workspaceGM, &qBMMLocalTiling, tPipe_);
+    op.Process();
+}
+
+/**
  * @brief 其他片计算流程
  * @param count: 切分块数，isTail为true时，应传入tail尾块数，isTail为false时，应传入tile整块数
  * @param qMmv3Tiling: 核切分信息，isTail为true时，应传入tail切分信息，isTail为false时，应传入tile切分信息
@@ -237,13 +275,12 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         return;
     }
 
-    // BI-fix (issue #2872): construct cfgUnified with rankM scaled to TOTAL gather-buffer M.
-    // Original cfg.rankM = per-rank input M (e.g. 8). After HCCL allgather, the gather
-    // buffer contains rankDim * per-rank-M rows. For Mc2QuantBatchMatmulASWKernel
-    // (isGather=false) to correctly interpret this as rankDim sub-chunks of per-rank-M
-    // rows each, rankM must be the total M.
-    Mc2Tiling::RCSTiling cfgUnified = cfg;
-    cfgUnified.rankM = cfg.rankM * cfg.rankDim;
+    bool batchInvariant = (cfg.batchInvariant != 0U);
+    Mc2Tiling::RCSTiling cfgForCompute = cfg;
+    if (batchInvariant) {
+        // BI-fix (issue #2872): cfgForCompute.rankM must cover the full gather-buffer M.
+        cfgForCompute.rankM = cfg.rankM * cfg.rankDim;
+    }
 
     GetTPipePtr() -> Destroy();
     GetTPipePtr() -> Init();
@@ -255,14 +292,13 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         // Workspace偏移留出scale1目的地址
         workspaceGM += DequantBmm::Align(CeilDiv(qMmv3Tiling.matmulTiling.Ka, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
-        // isGather=false: process all rankDim slices uniformly (mirror reduce_scatter_v2 pattern)
         mmv3.Init(
             aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(),
-            cfgUnified, isTail, false, preCoreNum_);
+            cfgForCompute, isTail, !batchInvariant, preCoreNum_);
     } else {
         mmv3.Init(
             aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(),
-            cfgUnified, isTail, false, preCoreNum_);
+            cfgForCompute, isTail, !batchInvariant, preCoreNum_);
     }
 
     uint32_t shift = isTail ? cfg.tileCnt : 0;
@@ -291,17 +327,17 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulCompute()
 {
     auto &&cfg = tilingData_->param;
-    // BI-fix (issue #2872): unified-kernel pattern — local-path compute removed,
-    // route ALL rank data (including own, via HCCL GroupCopy to gather buffer)
-    // through a single Mc2QuantBatchMatmulASWKernel(isGather=false) call.
-    // Mirrors matmul_reduce_scatter_v2's ExecuteAicMatMulPipeline structural pattern.
-    if (cfg.rankN == 0) {
+    bool batchInvariant = (cfg.batchInvariant != 0U);
+    if (!batchInvariant) {
+        // Default fast path: preserve master LOCAL compute + HCCL gather overlap.
+        if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
+            QuantMatmulLocalCompute();
+        }
+    } else if (cfg.rankN == 0) {
         return;
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
-    // Wait for own-rank's HCCL GroupCopy to finish populating gather buffer slot,
-    // plus wait for scale1 gather (under MX) before single unified compute.
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         aGM_ = gatherOut_;
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
