@@ -75,11 +75,12 @@ static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op
     if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
         return ACLNN_SUCCESS;
     }
-    CHECK_COND((viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-               "When weight dtype is DT_FLOAT4, the dimnum of weight viewShape should be 3, but got %lu.",
+    CHECK_COND((viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT ||
+                viewShape.GetDimNum() == MULTI_WEIGHT_ND_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+               "When weight dtype is DT_FLOAT4, the dimnum of weight viewShape should be 2 or 3, but got %lu.",
                viewShape.GetDimNum());
-    int64_t lastSecondDim = viewShape.GetDim(WEIGHT_VIEW_LAST_SECOND_DIM_INDEX);
-    int64_t lastDim = viewShape.GetDim(WEIGHT_VIEW_LAST_DIM_INDEX);
+    int64_t lastSecondDim = viewShape.GetDim(viewShape.GetDimNum() - WEIGHT_VIEW_LAST_DIM_INDEX);
+    int64_t lastDim = viewShape.GetDim(viewShape.GetDimNum() - 1);
     CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
                "When weight dtype is DT_FLOAT4, the last two dimensions of weight should not be 1, but got "
                "%ld and %ld.",
@@ -178,6 +179,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
                        GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                        "storage shape dim num must be 4 when multi-weight NZ v2");
+            CHECK_RET(CheckMxfp4WeightNzViewShape(w, viewShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
             // weight的StorageFormat无条件视为NZ
             weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
