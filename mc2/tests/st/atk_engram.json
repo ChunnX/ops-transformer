@@ -1,0 +1,50 @@
+[
+  {
+    "id": 0,
+    "name": "aclnnEngram",
+    "api_type": "function_engram",
+    "standard": {
+      "acc": {"max_re_ratio": 0.001, "avg_re_ratio": 0.001}
+    },
+    "inputs": [
+      {"name": "num_entries", "type": "attr", "dtype": "int64_t", "range_values": 65536},
+      {"name": "hidden", "type": "attr", "dtype": "int64_t", "range_values": 256},
+      {"name": "num_tokens", "type": "attr", "dtype": "int64_t", "range_values": 1024},
+      {"name": "num_qps", "type": "attr", "dtype": "int64_t", "range_values": 8},
+      {"name": "hybrid_mode", "type": "attr", "dtype": "int64_t", "range_values": 0},
+      {"name": "group", "type": "attr", "dtype": "string"}
+    ]
+  },
+  {
+    "id": 1,
+    "name": "aclnnEngramWrite",
+    "api_type": "function_engram_write",
+    "standard": {
+      "acc": {"max_re_ratio": 0.001, "avg_re_ratio": 0.001}
+    },
+    "inputs": [
+      {"name": "storage", "type": "tensor", "dtype": "bf16", "shape": [65536, 256], "range_values": [-5, 5]},
+      {"name": "num_entries", "type": "attr", "dtype": "int64_t", "range_values": 65536},
+      {"name": "hidden", "type": "attr", "dtype": "int64_t", "range_values": 256},
+      {"name": "hybrid_mode", "type": "attr", "dtype": "int64_t", "range_values": 0},
+      {"name": "copy_flag", "type": "attr", "dtype": "int64_t", "range_values": 1},
+      {"name": "group", "type": "attr", "dtype": "string"}
+    ]
+  },
+  {
+    "id": 2,
+    "name": "aclnnEngramFetch",
+    "api_type": "function_engram_fetch",
+    "standard": {
+      "acc": {"max_re_ratio": 0.001, "avg_re_ratio": 0.001}
+    },
+    "inputs": [
+      {"name": "indices", "type": "tensor", "dtype": "int32", "shape": [1024], "range_values": [0, 524287]},
+      {"name": "num_entries", "type": "attr", "dtype": "int64_t", "range_values": 65536},
+      {"name": "hidden", "type": "attr", "dtype": "int64_t", "range_values": 256},
+      {"name": "num_tokens", "type": "attr", "dtype": "int64_t", "range_values": 1024},
+      {"name": "hybrid_mode", "type": "attr", "dtype": "int64_t", "range_values": 0},
+      {"name": "group", "type": "attr", "dtype": "string"}
+    ]
+  }
+]
