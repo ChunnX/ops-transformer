@@ -92,38 +92,26 @@ void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, 
             fitsL0a ? 1U : 0U, fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
 }
 
-} // namespace
+struct DerivedHeadNums {
+    uint64_t qkN = 0;
+    uint64_t qkvN = 0;
+};
 
-uint64_t AlignUp(uint64_t value, uint64_t align)
+struct TokenTileSelection {
+    uint64_t tokenTile = 0;
+    uint64_t tokenTilePerAiv = 0;
+};
+
+DerivedHeadNums CalcDerivedHeadNums(const ContractInput &input)
 {
-    if (align == 0) {
-        return value;
-    }
-    return ((value + align - 1) / align) * align;
+    DerivedHeadNums nums;
+    nums.qkN = input.numQHeads + input.numKHeads;
+    nums.qkvN = nums.qkN + input.numVHeads;
+    return nums;
 }
 
-uint64_t CeilDiv(uint64_t value, uint64_t divisor)
+ContractStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName)
 {
-    if (divisor == 0) {
-        return 0;
-    }
-    return (value + divisor - 1) / divisor;
-}
-
-uint64_t CalcCubeTokenSize(uint64_t tokenSize)
-{
-    return AlignUp(tokenSize, kAivPerAic);
-}
-
-uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize)
-{
-    return CalcCubeTokenSize(tokenSize) / kAivPerAic;
-}
-
-ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling, const std::string &opName)
-{
-    tiling = {};
-    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
     if (input.totalTokens == 0) {
         OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0.");
         return ContractStatus::kInvalidTotalTokens;
@@ -174,16 +162,21 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale is missing.");
         return ContractStatus::kMissingVScale;
     }
+    return ContractStatus::kSuccess;
+}
 
-    const uint64_t qkN = input.numQHeads + input.numKHeads;
-    const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
-    LogContractInputSummary(opName, input, qkN, qkvN);
-    if (qkN == 0 || qkvN == 0) {
-        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: derived qkN=%lu qkvN=%lu.", qkN,
-                qkvN);
+ContractStatus ValidateDerivedHeadNums(const DerivedHeadNums &nums, const std::string &opName)
+{
+    if (nums.qkN == 0 || nums.qkvN == 0) {
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: derived qkN=%lu qkvN=%lu.",
+                nums.qkN, nums.qkvN);
         return ContractStatus::kInvalidHeadNums;
     }
+    return ContractStatus::kSuccess;
+}
 
+ContractStatus ValidateDtypes(const ContractInput &input, const std::string &opName)
+{
     if (!HasDtype(input.qkv, ContractDtype::kBf16) || !HasDtype(input.qGamma, ContractDtype::kFloat) ||
         !HasDtype(input.kGamma, ContractDtype::kFloat) || !HasDtype(input.cosSin, ContractDtype::kFloat) ||
         !HasDtype(input.slotMapping, ContractDtype::kInt32) || !HasDtype(input.kCache, ContractDtype::kFloat8E4M3fn) ||
@@ -202,8 +195,12 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 static_cast<uint32_t>(input.kRotation.dtype), static_cast<uint32_t>(input.vScale.dtype));
         return ContractStatus::kInvalidDtype;
     }
+    return ContractStatus::kSuccess;
+}
 
-    if (!IsShape3D(input.qkv.shape, qkvN, input.totalTokens, input.headDim)) {
+ContractStatus ValidateShapes(const ContractInput &input, const DerivedHeadNums &nums, const std::string &opName)
+{
+    if (!IsShape3D(input.qkv.shape, nums.qkvN, input.totalTokens, input.headDim)) {
         OP_LOGD(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: qkv shape rank=%u dims={%lu,%lu,%lu,%lu}.",
                 input.qkv.shape.rank, input.qkv.shape.dim0, input.qkv.shape.dim1, input.qkv.shape.dim2,
@@ -275,6 +272,11 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 input.kScaleCache.shape.dim2, input.kScaleCache.shape.dim3);
         return ContractStatus::kInvalidScaleShape;
     }
+    return ContractStatus::kSuccess;
+}
+
+ContractStatus ValidateStrides(const ContractInput &input, const std::string &opName)
+{
     if (!IsCacheStrideValid(input.kCache.stride, input.headDim)) {
         OP_LOGD(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
@@ -310,62 +312,73 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 input.kScaleCache.stride.stride2, input.kScaleCache.stride.stride3);
         return ContractStatus::kInvalidScaleStride;
     }
+    return ContractStatus::kSuccess;
+}
 
+bool TrySelectTokenTile(const ContractInput &input, const DerivedHeadNums &nums, uint64_t fp8NtdStagingHeads,
+                        uint64_t tokenTile, const std::string &opName, TokenTileSelection &selection)
+{
+    const uint64_t tokenTilePerAiv = CalcCubeHalfTokenSize(tokenTile);
+    const uint64_t rowTile = tokenTile * nums.qkN;
+    const uint64_t rowTileAligned = AlignUp(rowTile, 16);
+    const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input.numQHeads, input.numKHeads);
+    const bool fitsUb = tokenTilePerAiv * nums.qkN <= kUbOutputRowsPerAiv &&
+                        tokenTilePerAiv * nums.qkvN <= kUbInputRowsPerAiv &&
+                        tokenTilePerAiv * fp8NtdStagingHeads <= kFp8NtdStagingRowsPerAiv;
+    const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
+    const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows && qkAlignedRows <= kL0cMaxRows;
+    const bool accepted = fitsUb && fitsL0a && fitsL0c;
+    LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
+                          fitsL0a, fitsL0c, accepted);
+    if (accepted) {
+        selection.tokenTile = tokenTile;
+        selection.tokenTilePerAiv = tokenTilePerAiv;
+        return true;
+    }
+    return false;
+}
+
+ContractStatus SelectTokenTile(const ContractInput &input, const DerivedHeadNums &nums, const std::string &opName,
+                               TokenTileSelection &selection)
+{
     const uint64_t fp8NtdStagingHeads = std::max({input.numQHeads, input.numKHeads, input.numVHeads});
     const uint64_t initialTokenTilePerAiv =
-        std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN,
+        std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / nums.qkN, kUbInputRowsPerAiv / nums.qkvN,
             kFp8NtdStagingRowsPerAiv / fp8NtdStagingHeads});
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
             "ubOutputLimit=%lu ubInputLimit=%lu fp8NtdStagingLimit=%lu.",
-            initialTokenTilePerAiv, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN,
+            initialTokenTilePerAiv, kUbOutputRowsPerAiv / nums.qkN, kUbInputRowsPerAiv / nums.qkvN,
             kFp8NtdStagingRowsPerAiv / fp8NtdStagingHeads);
-    uint64_t selectedTokenTile = 0;
-    uint64_t selectedTokenTilePerAiv = 0;
-    const auto trySelectTokenTile = [&](uint64_t tokenTile) {
-        const uint64_t tokenTilePerAiv = CalcCubeHalfTokenSize(tokenTile);
-        const uint64_t rowTile = tokenTile * qkN;
-        const uint64_t rowTileAligned = AlignUp(rowTile, 16);
-        const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input.numQHeads, input.numKHeads);
-        const bool fitsUb = tokenTilePerAiv * qkN <= kUbOutputRowsPerAiv &&
-                            tokenTilePerAiv * qkvN <= kUbInputRowsPerAiv &&
-                            tokenTilePerAiv * fp8NtdStagingHeads <= kFp8NtdStagingRowsPerAiv;
-        const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
-        const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
-                             qkAlignedRows <= kL0cMaxRows;
-        const bool accepted = fitsUb && fitsL0a && fitsL0c;
-        LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
-                              fitsL0a, fitsL0c, accepted);
-        if (accepted) {
-            selectedTokenTile = tokenTile;
-            selectedTokenTilePerAiv = tokenTilePerAiv;
-            return true;
-        }
-        return false;
-    };
+
     uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
     while (searchTokenTilePerAiv > 0) {
-        if (trySelectTokenTile(2 * searchTokenTilePerAiv)) {
+        if (TrySelectTokenTile(input, nums, fp8NtdStagingHeads, 2 * searchTokenTilePerAiv, opName, selection)) {
             break;
         }
         --searchTokenTilePerAiv;
     }
-    if (selectedTokenTile == 0) {
-        (void)trySelectTokenTile(1);
+    if (selection.tokenTile == 0) {
+        (void)TrySelectTokenTile(input, nums, fp8NtdStagingHeads, 1, opName, selection);
     }
-    if (selectedTokenTile == 0) {
+    if (selection.tokenTile == 0) {
         OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: no token tile candidate fits.");
         return ContractStatus::kUnsupportedResource;
     }
+    return ContractStatus::kSuccess;
+}
 
+void FillContractTiling(const ContractInput &input, const DerivedHeadNums &nums, const TokenTileSelection &selection,
+                        ContractTiling &tiling)
+{
     tiling.coreTokenTile = CeilDiv(input.totalTokens, input.aicNum);
     tiling.coreGroupNum = CeilDiv(input.totalTokens, tiling.coreTokenTile);
-    tiling.tokenTilePerAiv = selectedTokenTilePerAiv;
-    tiling.tokenTile = selectedTokenTile;
-    tiling.qkHeadTile = qkN;
+    tiling.tokenTilePerAiv = selection.tokenTilePerAiv;
+    tiling.tokenTile = selection.tokenTile;
+    tiling.qkHeadTile = nums.qkN;
     tiling.vHeadTile = input.numVHeads;
     tiling.dimTile = kDimTileFast;
-    tiling.rowTile = tiling.tokenTile * qkN;
+    tiling.rowTile = tiling.tokenTile * nums.qkN;
     tiling.rowTileAligned = AlignUp(tiling.rowTile, 16);
     tiling.kCacheStrideBlock = input.kCache.stride.stride0;
     tiling.kCacheStrideHead = input.kCache.stride.stride1;
@@ -376,7 +389,10 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     tiling.kScaleCacheStrideBlock = input.kScaleCache.stride.stride0;
     tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride1;
     tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride2;
+}
 
+void LogContractTilingResult(const std::string &opName, const ContractTiling &tiling)
+{
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
             "tokenTile=%lu tokenTilePerAiv=%lu qkHeadTile=%lu vHeadTile=%lu rowTile=%lu rowTileAligned=%lu "
@@ -389,6 +405,73 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
             tiling.kCacheStrideBlock, tiling.kCacheStrideHead, tiling.kCacheStrideToken, tiling.vCacheStrideBlock,
             tiling.vCacheStrideHead, tiling.vCacheStrideToken, tiling.kScaleCacheStrideBlock,
             tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
+}
+
+} // namespace
+
+uint64_t AlignUp(uint64_t value, uint64_t align)
+{
+    if (align == 0) {
+        return value;
+    }
+    return ((value + align - 1) / align) * align;
+}
+
+uint64_t CeilDiv(uint64_t value, uint64_t divisor)
+{
+    if (divisor == 0) {
+        return 0;
+    }
+    return (value + divisor - 1) / divisor;
+}
+
+uint64_t CalcCubeTokenSize(uint64_t tokenSize)
+{
+    return AlignUp(tokenSize, kAivPerAic);
+}
+
+uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize)
+{
+    return CalcCubeTokenSize(tokenSize) / kAivPerAic;
+}
+
+ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling, const std::string &opName)
+{
+    tiling = {};
+    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
+    ContractStatus status = ValidateScalarInputs(input, opName);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+
+    const DerivedHeadNums nums = CalcDerivedHeadNums(input);
+    LogContractInputSummary(opName, input, nums.qkN, nums.qkvN);
+    status = ValidateDerivedHeadNums(nums, opName);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+
+    status = ValidateDtypes(input, opName);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+    status = ValidateShapes(input, nums, opName);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+    status = ValidateStrides(input, opName);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+
+    TokenTileSelection selection;
+    status = SelectTokenTile(input, nums, opName, selection);
+    if (status != ContractStatus::kSuccess) {
+        return status;
+    }
+
+    FillContractTiling(input, nums, selection, tiling);
+    LogContractTilingResult(opName, tiling);
     return ContractStatus::kSuccess;
 }
 

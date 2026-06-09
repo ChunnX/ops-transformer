@@ -111,6 +111,12 @@ bool BlockDimsMatch(const TensorShapeInfo &lhs, const TensorShapeInfo &rhs)
     return lhs.dim0 == rhs.dim0 && lhs.dim2 == rhs.dim2;
 }
 
+struct HeadNumsAttr {
+    uint64_t numQHeads = 0;
+    uint64_t numKHeads = 0;
+    uint64_t numVHeads = 0;
+};
+
 ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
                                          TensorStrideInfo &strideInfo)
 {
@@ -342,8 +348,7 @@ void LogTilingData(const std::string &opName, const QkvRmsNormRopeCacheWithKScal
             contractTiling.dimTile);
 }
 
-ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::string &opName, ContractInput &input,
-                                   float &epsilon)
+ge::graphStatus ParseHeadNumsAttr(gert::TilingContext *context, const std::string &opName, HeadNumsAttr &headNumsAttr)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -357,12 +362,22 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
                     return ge::GRAPH_FAILED);
     }
 
-    const auto qkv = ToTensorInfo(context, kQkvIndex);
-    const auto cosSin = ToTensorInfo(context, kCosSinIndex);
-    TensorContractInfo kCache;
-    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKCacheIndex, kCache) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "failed to parse kCache tensor info."), return ge::GRAPH_FAILED);
-    const auto cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
+    headNumsAttr.numQHeads = static_cast<uint64_t>(headNumsData[0]);
+    headNumsAttr.numKHeads = static_cast<uint64_t>(headNumsData[1]);
+    headNumsAttr.numVHeads = static_cast<uint64_t>(headNumsData[2]);
+    return ge::GRAPH_SUCCESS;
+}
+
+float ParseEpsilonAttr(gert::TilingContext *context)
+{
+    auto attrs = context->GetAttrs();
+    const float *epsilonAttr = attrs == nullptr ? nullptr : attrs->GetFloat(kEpsilonAttrIndex);
+    return epsilonAttr == nullptr ? kDefaultEpsilon : *epsilonAttr;
+}
+
+void FillShapeDerivedFields(const TensorContractInfo &qkv, const TensorContractInfo &cosSin,
+                            const TensorContractInfo &cuSeqLen, ContractInput &input)
+{
     const auto &qkvShape = qkv.shape;
     const auto &cosSinShape = cosSin.shape;
     const auto &cuSeqLenShape = cuSeqLen.shape;
@@ -376,21 +391,10 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
     if (cosSinShape.rank >= 1) {
         input.maxSeqLen = cosSinShape.dim0;
     }
+}
 
-    input.numQHeads = static_cast<uint64_t>(headNumsData[0]);
-    input.numKHeads = static_cast<uint64_t>(headNumsData[1]);
-    input.numVHeads = static_cast<uint64_t>(headNumsData[2]);
-
-    input.qkv = qkv;
-    input.qGamma = ToTensorInfo(context, kQGammaIndex);
-    input.kGamma = ToTensorInfo(context, kKGammaIndex);
-    input.cosSin = cosSin;
-    input.slotMapping = ToTensorInfo(context, kSlotMappingIndex);
-    input.kCache = kCache;
-    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kVCacheIndex, input.vCache) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKScaleCacheIndex, input.kScaleCache) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
+void DeriveBlockShape(const std::string &opName, ContractInput &input)
+{
     const TensorShapeInfo *blockShape = nullptr;
     const char *blockShapeSource = "none";
     const bool kCacheHasBlockDims = HasUsableBlockDims(input.kCache.shape);
@@ -426,13 +430,50 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
             "hasBlockDims={k:%u,v:%u,kScale:%u}.",
             blockShapeSource, input.blockNum, input.blockSize, kCacheHasBlockDims ? 1U : 0U,
             vCacheHasBlockDims ? 1U : 0U, kScaleCacheHasBlockDims ? 1U : 0U);
-    input.cuSeqLen = cuSeqLen;
+}
+
+ge::graphStatus FillRequiredTensorInputs(gert::TilingContext *context, const std::string &opName,
+                                         ContractInput &input)
+{
+    input.qkv = ToTensorInfo(context, kQkvIndex);
+    input.qGamma = ToTensorInfo(context, kQGammaIndex);
+    input.kGamma = ToTensorInfo(context, kKGammaIndex);
+    input.cosSin = ToTensorInfo(context, kCosSinIndex);
+    input.slotMapping = ToTensorInfo(context, kSlotMappingIndex);
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKCacheIndex, input.kCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse kCache tensor info."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kVCacheIndex, input.vCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKScaleCacheIndex, input.kScaleCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
+    input.cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
+    return ge::GRAPH_SUCCESS;
+}
+
+void FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input)
+{
     input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
     input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);
     input.vScale = ToOptionalTensorInfo(context, kVScaleIndex);
+}
 
-    const float *epsilonAttr = attrs->GetFloat(kEpsilonAttrIndex);
-    epsilon = epsilonAttr == nullptr ? kDefaultEpsilon : *epsilonAttr;
+ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::string &opName, ContractInput &input,
+                                   float &epsilon)
+{
+    HeadNumsAttr headNumsAttr;
+    OP_CHECK_IF(ParseHeadNumsAttr(context, opName, headNumsAttr) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse head_nums attr."), return ge::GRAPH_FAILED);
+
+    input.numQHeads = headNumsAttr.numQHeads;
+    input.numKHeads = headNumsAttr.numKHeads;
+    input.numVHeads = headNumsAttr.numVHeads;
+    OP_CHECK_IF(FillRequiredTensorInputs(context, opName, input) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
+
+    FillShapeDerivedFields(input.qkv, input.cosSin, input.cuSeqLen, input);
+    DeriveBlockShape(opName, input);
+    FillOptionalTensorInputs(context, input);
+    epsilon = ParseEpsilonAttr(context);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -461,6 +502,65 @@ void FillTilingData(const ContractInput &input, const ContractTiling &contractTi
     tilingData.epsilon = epsilon;
 }
 
+ge::graphStatus ValidateCompileInfo(const std::string &opName,
+                                    const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo)
+{
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu l0cSize=%lu "
+            "opWorkspaceSize=%lu.",
+            compileInfo.aicNum, compileInfo.aivNum, compileInfo.ubSize, compileInfo.l1Size,
+            compileInfo.l0cSize, compileInfo.opWorkspaceSize);
+    OP_CHECK_IF(compileInfo.aicNum == 0, OP_LOGE(opName.c_str(), "aicNum in compile info must be greater than 0."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
+                                  const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData, size_t &tilingDataSize)
+{
+    auto rawTilingData = context->GetRawTilingData();
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData->GetData());
+    tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
+    OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
+                OP_LOGE(opName.c_str(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
+                return ge::GRAPH_FAILED);
+    const size_t tilingCapacity = rawTilingData->GetCapacity();
+    OP_CHECK_IF(tilingDataSize > tilingCapacity,
+                OP_LOGE(opName.c_str(), "tiling data size[%zu] exceeds capacity[%zu].", tilingDataSize,
+                        tilingCapacity),
+                return ge::GRAPH_FAILED);
+    const auto ret = memcpy_s(rawTilingData->GetData(), tilingCapacity,
+                              reinterpret_cast<const void *>(&tilingData), tilingDataSize);
+    OP_CHECK_IF(ret != EOK,
+                OP_LOGE(opName.c_str(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
+                return ge::GRAPH_FAILED);
+    rawTilingData->SetDataSize(tilingDataSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ApplyTilingContext(gert::TilingContext *context, const std::string &opName,
+                                   const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
+                                   const ContractTiling &contractTiling,
+                                   const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData)
+{
+    size_t tilingDataSize = 0;
+    OP_CHECK_IF(CopyRawTilingData(context, opName, tilingData, tilingDataSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "copy QkvRmsNormRopeCacheWithKScale raw tiling data failed."),
+                return ge::GRAPH_FAILED);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128);
+    context->SetTilingKey(tilingKey);
+    context->SetBlockDim(contractTiling.coreGroupNum);
+
+    size_t workspaceSize = 0;
+    OP_CHECK_IF(SetWorkspace(context, opName, compileInfo, workspaceSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "set QkvRmsNormRopeCacheWithKScale workspace failed."),
+                return ge::GRAPH_FAILED);
+    LogTilingData(opName, tilingData, contractTiling, tilingKey, contractTiling.coreGroupNum, tilingDataSize,
+                  workspaceSize);
+    return ge::GRAPH_SUCCESS;
+}
+
 } // namespace
 
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context)
@@ -470,12 +570,8 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale tiling start.");
     auto compileInfo = context->GetCompileInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu l0cSize=%lu "
-            "opWorkspaceSize=%lu.",
-            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size,
-            compileInfo->l0cSize, compileInfo->opWorkspaceSize);
-    OP_CHECK_IF(compileInfo->aicNum == 0, OP_LOGE(opName.c_str(), "aicNum in compile info must be greater than 0."),
+    OP_CHECK_IF(ValidateCompileInfo(opName, *compileInfo) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "invalid QkvRmsNormRopeCacheWithKScale compile info."),
                 return ge::GRAPH_FAILED);
 
     ContractInput input;
@@ -497,33 +593,9 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
 
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData;
     FillTilingData(input, contractTiling, epsilon, tilingData);
-    auto rawTilingData = context->GetRawTilingData();
-    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
-    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData->GetData());
-    const size_t tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
-    OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(opName.c_str(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
+    OP_CHECK_IF(ApplyTilingContext(context, opName, *compileInfo, contractTiling, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "apply QkvRmsNormRopeCacheWithKScale tiling context failed."),
                 return ge::GRAPH_FAILED);
-    const size_t tilingCapacity = rawTilingData->GetCapacity();
-    OP_CHECK_IF(tilingDataSize > tilingCapacity,
-                OP_LOGE(opName.c_str(), "tiling data size[%zu] exceeds capacity[%zu].", tilingDataSize,
-                        tilingCapacity),
-                return ge::GRAPH_FAILED);
-    const auto ret = memcpy_s(rawTilingData->GetData(), tilingCapacity,
-                              reinterpret_cast<const void *>(&tilingData), tilingDataSize);
-    OP_CHECK_IF(ret != EOK,
-                OP_LOGE(opName.c_str(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
-                return ge::GRAPH_FAILED);
-    rawTilingData->SetDataSize(tilingDataSize);
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128);
-    context->SetTilingKey(tilingKey);
-    context->SetBlockDim(contractTiling.coreGroupNum);
-    size_t workspaceSize = 0;
-    OP_CHECK_IF(SetWorkspace(context, opName, *compileInfo, workspaceSize) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "set QkvRmsNormRopeCacheWithKScale workspace failed."),
-                return ge::GRAPH_FAILED);
-    LogTilingData(opName, tilingData, contractTiling, tilingKey, contractTiling.coreGroupNum, tilingDataSize,
-                  workspaceSize);
     OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale tiling success.");
     return ge::GRAPH_SUCCESS;
 }
