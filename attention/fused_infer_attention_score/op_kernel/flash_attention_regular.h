@@ -133,11 +133,11 @@ namespace SplitFuse {
             gV.SetGlobalBuffer((__gm__ ElementK *)currentValue);
             AscendC::GlobalTensor<ElementQ> gPseShift;
             gPseShift.SetGlobalBuffer((__gm__ ElementQ *)params.pseShift);
-            gBlockTable.SetGlobalBuffer((__gm__ int32_t *)(params.blockTables));
             AscendC::GlobalTensor<int64_t> gActualQseqlen;
             AscendC::GlobalTensor<ElementMask> gMask;
             gMask.SetGlobalBuffer((__gm__ ElementMask *)params.mask);
             AscendC::GlobalTensor<int32_t> gBlockTable;
+            gBlockTable.SetGlobalBuffer((__gm__ int32_t *)(params.blockTables));
             gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
             AscendC::GlobalTensor<int64_t> gActualKvseqlen;
             gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
