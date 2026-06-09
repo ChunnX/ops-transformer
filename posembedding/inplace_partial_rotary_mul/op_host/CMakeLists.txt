@@ -12,7 +12,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         inplace_partial_rotary_mul_def.cpp
     )
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul ACLNNTYPE aclnn_inner)
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
@@ -34,5 +34,5 @@ if (BUILD_OPS_RTY_KERNEL)
                     --op_relocatable_kernel_binary=true
     )
 else()
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul ACLNNTYPE aclnn_inner)
 endif()
