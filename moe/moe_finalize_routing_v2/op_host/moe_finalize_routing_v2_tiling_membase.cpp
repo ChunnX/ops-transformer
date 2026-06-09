@@ -201,7 +201,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
             std::to_string(expandedRowIdxShape.GetDimNum()).c_str(), "1D"),
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
-    k_ = 1;
+    int64_t attrK = *(attrsPtr->GetAttrPointer<int64_t>(4));
+    k_ = attrK;
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
@@ -214,6 +215,10 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
             k_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K",
                 std::to_string(k_).c_str(), "K can not be 0."), return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(
+        k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+            std::to_string(k_).c_str(), "k must be greater than 0 when scales is null."),
+        return ge::GRAPH_FAILED);
 
     int64_t n = nk / k_;
     totalRowNum_ = n;
