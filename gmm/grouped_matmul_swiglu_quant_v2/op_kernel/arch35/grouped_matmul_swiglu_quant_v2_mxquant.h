@@ -23,7 +23,13 @@
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
 
-template <typename layoutA, typename layoutB>
+template <class BlockMmadBase_, bool IS_MX_WEIGHT_NZ_MULTI_TENSOR>
+class GmmSwigluBlockMmadWithMultiWeightNzFlag : public BlockMmadBase_ {
+public:
+    static constexpr bool isMxWeightNzMultiTensor = IS_MX_WEIGHT_NZ_MULTI_TENSOR;
+};
+
+template <typename layoutA, typename layoutB, bool IS_MX_WEIGHT_NZ_MULTI_TENSOR = false>
 __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
                                      GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
                                      GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
@@ -51,9 +57,12 @@ __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightSc
                                                           true>;
     // 定义shape的形状，tuple保存 m n k batch
     using ProblemShape = MatmulShape;
-    using BlockMmad = Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
-                                                 L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
-                        Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
+    using BlockMmadBase = Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC,
+                                                          L1TileShape, L0TileShape, BlockScheduler,
+                                                          QuantMatmulWithTileMultiBlock<>,
+                                                          Tile::TileCopy<Arch::DAV3510,
+                                                                         Tile::CopyInAndCopyOutSplitMWithParams>>;
+    using BlockMmad = GmmSwigluBlockMmadWithMultiWeightNzFlag<BlockMmadBase, IS_MX_WEIGHT_NZ_MULTI_TENSOR>;
     using QGmmKernel =
     Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
