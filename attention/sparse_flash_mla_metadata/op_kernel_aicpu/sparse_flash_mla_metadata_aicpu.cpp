@@ -971,7 +971,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
 
     // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
-                             assignContext.coreCache.cost + curCost)) { 
+                             assignContext.coreCache.cost + curCost)) {
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;

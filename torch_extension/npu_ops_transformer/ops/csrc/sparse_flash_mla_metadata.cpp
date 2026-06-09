@@ -35,8 +35,7 @@ at::Tensor npu_sparse_flash_mla_metadata(
     int64_t cmp_topk, int64_t cmp_ratio, int64_t ori_mask_mode, int64_t cmp_mask_mode, int64_t ori_win_left,
     int64_t ori_win_right, c10::string_view layout_q, c10::string_view layout_kv, bool has_ori_kv, bool has_cmp_kv)
 {
-    const c10::string_view device = "npu";
-    at::Device output_device = at::Device(std::string(device));
+    at::Device output_device = at::Device(std::string("npu"));
     if (cu_seqlens_q.has_value()) {
         output_device = cu_seqlens_q.value().device();
     } else if (cu_seqlens_ori_kv.has_value()) {

@@ -142,7 +142,7 @@ struct SplitInfo {
         cmpS2BaseNum(batchSize),
         s1GTailSize(batchSize),
         oriS2TailSize(batchSize),
-        cmpS2TailSize(batchSize){}
+        cmpS2TailSize(batchSize) sparse_flash_mla_metadata_aicpu.cpp:974{}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
