@@ -18,7 +18,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "log/log.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
@@ -70,13 +70,13 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
                           [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
                           aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
-    OP_CHECK_NULL(epRecvCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", x, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", assistInfoForCombine, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", expertTokensNums, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", tpRecvCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchV2", epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
         return false;

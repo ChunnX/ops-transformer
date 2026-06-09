@@ -13,7 +13,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_teardown.h"
@@ -40,14 +40,14 @@ static bool CheckNotNull(
     const char* groupEp, aclTensor* expandXOut, aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut,
     aclTensor* expertTokenNumsOut)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(y, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(commCmdInfo, return false);
-    OP_CHECK_NULL(expandXOut, return false);
-    OP_CHECK_NULL(dynamicScalesOut, return false);
-    OP_CHECK_NULL(assistInfoForCombineOut, return false);
-    OP_CHECK_NULL(expertTokenNumsOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", x, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", y, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", commCmdInfo, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", expandXOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", dynamicScalesOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", assistInfoForCombineOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatchTeardown", expertTokenNumsOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchTeardown", "groupEp");
         return false;

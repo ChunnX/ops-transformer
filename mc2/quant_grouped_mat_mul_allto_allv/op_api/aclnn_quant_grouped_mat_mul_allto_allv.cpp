@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_grouped_mat_mul_allto_allv.h"
 #include "acl/acl.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
 #include "common/utils/op_mc2.h"
@@ -74,9 +74,9 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 // 检查必要输入是否为空，必须非空
 static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *y)
 {
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(y, return false);
+    OP_CHECK_NULL("aclnnInnerQuantGroupedMatMulAlltoAllv", gmmX, return false);
+    OP_CHECK_NULL("aclnnInnerQuantGroupedMatMulAlltoAllv", gmmWeight, return false);
+    OP_CHECK_NULL("aclnnInnerQuantGroupedMatMulAlltoAllv", y, return false);
     return true;
 }
 

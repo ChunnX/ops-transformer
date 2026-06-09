@@ -13,7 +13,7 @@
 #include "acl/acl.h"
 #include "log/log.h"
 #include "aclnnInner_allto_all_matmul.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "common/utils/hccl_util.h"
@@ -205,17 +205,17 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
                                 int64_t x1QuantMode, const aclTensor *x1ScaleOptional, const aclTensor *x2Scale,
                                 const aclTensor *output, const aclTensor *alltoAllOutOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X1_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X2_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerAlltoAllMatmul", x1, X1_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerAlltoAllMatmul", x2, X2_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerAlltoAllMatmul", x2Scale, SCALE_DTYPE_SUPPORT_LIST, return false);
     if (x1QuantMode == static_cast<int64_t>(QuantModeType::DYN_PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(x1ScaleOptional, x1, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnInnerAlltoAllMatmul", x1ScaleOptional, x1, return false);
     } else if (x1QuantMode == static_cast<int64_t>(QuantModeType::PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerAlltoAllMatmul", x1ScaleOptional, SCALE_DTYPE_SUPPORT_LIST, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerAlltoAllMatmul", output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, alltoAllOutOptional, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnInnerAlltoAllMatmul", x1, alltoAllOutOptional, return false);
     }
     return true;
 }

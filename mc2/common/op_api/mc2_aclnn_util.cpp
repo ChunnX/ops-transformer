@@ -10,7 +10,7 @@
 
 #include "mc2_aclnn_util.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "log/log.h"
 
 namespace MC2Aclnn {
@@ -39,7 +39,7 @@ bool IsNeedScaleTrans(const aclTensor *mxScaleTensor)
 
 bool IsTensorContiguous(const aclTensor *tensor)
 {
-    OP_CHECK_NULL(tensor, return false);
+    OP_CHECK_NULL("IsTensorContiguous", tensor, return false);
 
     int dimNum = tensor->GetViewShape().GetDimNum();
     if (dimNum <= 0) {

@@ -18,7 +18,7 @@
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -181,7 +181,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
         }
     }
     for (size_t i = 0; i < xGroupedSize; ++i) {
-        OP_CHECK_NULL((*gmmParams.x)[i], continue);
+        OP_CHECK_NULL("aclnnGroupedMatMulAllReduce", (*gmmParams.x)[i], continue);
         size_t xDims = (*gmmParams.x)[i]->GetViewShape().GetDimNum();
         if (xDims > MAX_FM_DIM || xDims < MIN_FM_DIM) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -191,7 +191,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
         }
     }
     for (size_t i = 0; i < weightGroupedSize; ++i) {
-        OP_CHECK_NULL((*gmmParams.weight)[i], continue);
+        OP_CHECK_NULL("aclnnGroupedMatMulAllReduce", (*gmmParams.weight)[i], continue);
         size_t weightDims = (*gmmParams.weight)[i]->GetViewShape().GetDimNum();
         if (weightDims != MIN_FM_DIM) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -209,7 +209,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
             return ACLNN_ERR_PARAM_INVALID;
         }
         for (size_t i = 0; i < biasGroupedSize; ++i) {
-            OP_CHECK_NULL((*gmmParams.bias)[i], continue);
+            OP_CHECK_NULL("aclnnGroupedMatMulAllReduce", (*gmmParams.bias)[i], continue);
             size_t biasDims = (*gmmParams.bias)[i]->GetViewShape().GetDimNum();
             if (biasDims != 1) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -391,8 +391,8 @@ static bool CheckTensorListDataType(const aclTensorList* tensorList, const DataT
 {
     for (size_t i = 0; i < tensorList->Size(); ++i) {
         const aclTensor* tensor = (*tensorList)[i];
-        OP_CHECK_NULL(tensor, continue);
-        OP_CHECK_DTYPE_NOT_MATCH(tensor, dtype, return false);
+        OP_CHECK_NULL("aclnnInnerGroupedMatMulAllReduce", tensor, continue);
+        OP_CHECK_DTYPE_NOT_MATCH("aclnnInnerGroupedMatMulAllReduce", tensor, dtype, return false);
     }
     return true;
 }

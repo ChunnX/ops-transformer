@@ -17,7 +17,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -76,9 +76,9 @@ const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
 // 检查入参是否为nullptr
 static bool CheckNotNull(const aclTensor* x, const aclTensor* scales, const aclTensor* output)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(scales, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_CHECK_NULL("aclnnInnerQuantReduceScatterV2", x, return false);
+    OP_CHECK_NULL("aclnnInnerQuantReduceScatterV2", scales, return false);
+    OP_CHECK_NULL("aclnnInnerQuantReduceScatterV2", output, return false);
     return true;
 }
 

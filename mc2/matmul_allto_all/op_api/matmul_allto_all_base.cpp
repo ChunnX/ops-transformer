@@ -17,7 +17,7 @@
 #include "securec.h"
 #include "common/utils/op_mc2.h"
 #include "acl/acl.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "common/utils/op_mc2_def.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "opdev/common_types.h"
@@ -102,11 +102,11 @@ static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {op::
 static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                 const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, output, return false);
     // biasDtype可以为输入xDtype，也可以为fp32
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
@@ -123,16 +123,16 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
 static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                     const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, output, return false);
     if (biasOptional != nullptr) {
         auto biasDtype = biasOptional->GetDataType();
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
         if (x1->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
+            OP_CHECK_DTYPE_NOT_SAME("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, biasOptional, return false);
         } else if (biasDtype != op::DataType::DT_FLOAT) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
                                         op::ToString(biasDtype).GetString(),

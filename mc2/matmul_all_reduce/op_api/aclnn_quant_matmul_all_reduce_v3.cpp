@@ -53,10 +53,10 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_310P = {op::
 static bool CheckNotNull(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* dequantScale, const aclTensor* output)
 {
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(dequantScale, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV3", x1, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV3", x2, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV3", dequantScale, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV3", output, return false);
     return true;
 }
 
@@ -75,40 +75,40 @@ static bool CheckDtypeValid(
 
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     // 对于量化来说，x1,x2只为INT8
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", x1, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", x2, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", dequantScale, dequantDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", output, outDtypeList, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeList, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", x3, outDtypeList, return false);
         // 检查x3和output的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", x3, output, return false);
     }
     // 检查x1和x2的数据类型是否相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", x1, x2, return false);
     // BF16场景，dequantScale的dtype与output一致，为BF16
     if (output->GetDataType() == op::DataType::DT_BF16 || dequantScale->GetDataType() == op::DataType::DT_BF16) {
-        OP_CHECK_DTYPE_NOT_SAME(dequantScale, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", dequantScale, output, return false);
     }
     // pertokenScale必须为float32
     if (pertokenScale != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(pertokenScale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", pertokenScale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
         // FP16场景，dequantScale的dtype与pertokenScale一致，为float32
         if (output->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(dequantScale, pertokenScale, return false);
+            OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", dequantScale, pertokenScale, return false);
         }
     }
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
         // 检查commQuantScale1 commQuantScale2的数据类型是否在算子的支持列表内
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale1Optional, DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale2Optional, DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", commQuantScale1Optional, DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV3", commQuantScale2Optional, DTYPE_SUPPORT_LIST, return false);
         // 检查commQuantScale1Optional commQuantScale2Optional和output的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(commQuantScale1Optional, output, return false);
-        OP_CHECK_DTYPE_NOT_SAME(commQuantScale2Optional, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", commQuantScale1Optional, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV3", commQuantScale2Optional, output, return false);
     }
     return true;
 }
@@ -145,13 +145,13 @@ static bool CheckShape(
 {
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
 
-    OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
-    OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
+    OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV3", x1, TWO_DIMS, return false);
+    OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV3", x1, THREE_DIMS, return false);
     if (isWeightNZ) {
         return true;
     }
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnQuantMatmulAllReduceV3", x2, TWO_DIMS, return false);
 
     uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -169,24 +169,24 @@ static bool CheckShape(
     // output的最后一维与x2的最后一维相同
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE("aclnnQuantMatmulAllReduceV3", output, outShape, return false);
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        OP_CHECK_WRONG_DIMENSION("aclnnQuantMatmulAllReduceV3", bias, ONE_DIM, return false);
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE("aclnnQuantMatmulAllReduceV3", bias, biasShape, return false);
     }
 
     // x3 shape [s,m,n]
     if (x3 != nullptr) {
-        OP_CHECK_SHAPE_NOT_EQUAL(x3, output, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL("aclnnQuantMatmulAllReduceV3", x3, output, return false);
     }
 
     // scale和offset为per-tensor则shape为[1]，为per-channel则shape为[n]或者[1,n]
-    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
-    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
+    OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV3", dequantScale, ONE_DIM, return false);
+    OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV3", dequantScale, TWO_DIMS, return false);
     const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
     if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
                                       dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
@@ -201,8 +201,8 @@ static bool CheckShape(
 
     // pertokenScale的shape为[m]
     if (pertokenScale != nullptr) {
-        OP_CHECK_MIN_DIM(pertokenScale, ONE_DIM, return false);
-        OP_CHECK_MAX_DIM(pertokenScale, ONE_DIM, return false);
+        OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV3", pertokenScale, ONE_DIM, return false);
+        OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV3", pertokenScale, ONE_DIM, return false);
         const size_t pertokenScaleLen = pertokenScale->GetViewShape().GetDimNum();
         int64_t x1M = 1;
         for (size_t dim = 0; dim < x1Len - 1; dim++) {
@@ -223,10 +223,10 @@ static bool CheckShape(
         return false;
     }
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
-        OP_CHECK_MIN_DIM(commQuantScale1Optional, ONE_DIM, return false);
-        OP_CHECK_MAX_DIM(commQuantScale1Optional, TWO_DIMS, return false);
-        OP_CHECK_MIN_DIM(commQuantScale2Optional, ONE_DIM, return false);
-        OP_CHECK_MAX_DIM(commQuantScale2Optional, TWO_DIMS, return false);
+        OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV3", commQuantScale1Optional, ONE_DIM, return false);
+        OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV3", commQuantScale1Optional, TWO_DIMS, return false);
+        OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV3", commQuantScale2Optional, ONE_DIM, return false);
+        OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV3", commQuantScale2Optional, TWO_DIMS, return false);
         const size_t commQuantScale1OptionalLen = commQuantScale1Optional->GetViewShape().GetDimNum();
         const size_t commQuantScale2OptionalLen = commQuantScale2Optional->GetViewShape().GetDimNum();
         if (commQuantScale1OptionalLen != commQuantScale2OptionalLen) {

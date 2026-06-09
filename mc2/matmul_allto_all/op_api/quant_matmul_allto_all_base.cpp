@@ -21,7 +21,7 @@
 #include "common/op_api/mc2_aclnn_util.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
 #include "opdev/op_executor.h"
@@ -201,17 +201,17 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_SCALE = {op:
 static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                                    const aclTensor *x2Scale, const aclTensor *bias, const aclTensor *y)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_X, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_X, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(y, DTYPE_SUPPORT_LIST_Y, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, DTYPE_SUPPORT_LIST_SCALE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, DTYPE_SUPPORT_LIST_SCALE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1, DTYPE_SUPPORT_LIST_X, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2, DTYPE_SUPPORT_LIST_X, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", y, DTYPE_SUPPORT_LIST_Y, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, DTYPE_SUPPORT_LIST_SCALE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale, DTYPE_SUPPORT_LIST_SCALE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1, x2, return false);
     auto biasDtype = bias->GetDataType();
     auto yDtype = y->GetDataType();
     if (biasDtype != ge::DT_FLOAT) {
-        OP_CHECK_DTYPE_NOT_SAME(y, bias, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", y, bias, return false);
     } else if (yDtype != ge::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "y",
                 op::ToString(yDtype).GetString(), "DT_BF16");

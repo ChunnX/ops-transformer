@@ -15,7 +15,7 @@
 #include <algorithm>
 
 #include "aclnn_distribute_barrier_v2.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
@@ -53,7 +53,7 @@ extern aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTe
 bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(xRef, return false);
+    OP_CHECK_NULL("aclnnDistributeBarrier", xRef, return false);
     if (group == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnDistributeBarrier", "group");
         return false;

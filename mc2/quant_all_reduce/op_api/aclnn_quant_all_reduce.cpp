@@ -17,7 +17,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -69,9 +69,9 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
 static bool  QuantAllReduceCheckNotNull(const aclTensor* x, const aclTensor* scales,
                                         const aclTensor* output)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(scales, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_CHECK_NULL("QuantAllReduceCheckNotNull", x, return false);
+    OP_CHECK_NULL("QuantAllReduceCheckNotNull", scales, return false);
+    OP_CHECK_NULL("QuantAllReduceCheckNotNull", output, return false);
     return true;
 }
 

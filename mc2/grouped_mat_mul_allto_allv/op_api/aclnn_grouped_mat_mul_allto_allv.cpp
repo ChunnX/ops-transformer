@@ -9,7 +9,7 @@
  */
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "log/log.h"
@@ -44,9 +44,9 @@ static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight,
     (void)transGmmWeight;
     (void)transMmWeight;
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(y, return false);
+    OP_CHECK_NULL("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", gmmX, return false);
+    OP_CHECK_NULL("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", gmmWeight, return false);
+    OP_CHECK_NULL("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", y, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize",
             "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
