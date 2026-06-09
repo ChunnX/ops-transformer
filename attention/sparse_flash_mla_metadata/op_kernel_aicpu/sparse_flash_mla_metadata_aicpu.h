@@ -94,8 +94,8 @@ struct FlashDecodeResult {
     std::vector<uint32_t> fdMStart {};          // FD负载均衡阶段，每个vector处理的归约任务的m轴起点
     std::vector<uint32_t> fdMNum {};            // FD负载均衡阶段，每个vector处理的归约任务的m轴行数
 
-    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) :
-        fdBN2Idx(aicNum),
+    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum)
+        : fdBN2Idx(aicNum),
         fdMIdx(aicNum),
         fdWorkspaceIdx(aicNum),
         fdS2SplitNum(aicNum),
@@ -118,8 +118,8 @@ struct SplitResult {
     uint32_t maxS2GBaseNum { 0U };      // 单个核最大s2基本块数量
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
-    SplitResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2End(aicNum),
+    SplitResult(uint32_t aicNum, uint32_t aivNum)
+        : bN2End(aicNum),
         gS1End(aicNum),
         s2End(aicNum),
         firstFdDataWorkspaceIdx(aicNum),
@@ -136,8 +136,8 @@ struct SplitInfo {
     std::vector<uint32_t> cmpS2TailSize {};                   // cmpS2方向，尾块size
     bool isKvSeqAllZero { true };
 
-    explicit SplitInfo(uint32_t batchSize) :
-        s1GBaseNum(batchSize),
+    explicit SplitInfo(uint32_t batchSize)
+        : s1GBaseNum(batchSize),
         oriS2BaseNum(batchSize),
         cmpS2BaseNum(batchSize),
         s1GTailSize(batchSize),
@@ -154,8 +154,8 @@ struct CostInfo {
     int64_t totalCost { 0 };
     int64_t maxS1GCost { 0 };  // 记录所有S1G行中的最大开销
 
-    explicit CostInfo(uint32_t batchSize) :
-        bN2CostOfEachBatch(batchSize),
+    explicit CostInfo(uint32_t batchSize)
+        : bN2CostOfEachBatch(batchSize),
         bN2BlockOfEachBatch(batchSize),
         bN2LastBlockCostOfEachBatch(batchSize) {}
 };
@@ -165,8 +165,8 @@ struct SplitContext {
     SplitInfo splitInfo { 0U };
     CostInfo costInfo { 0U };
 
-    explicit SplitContext(uint32_t batchSize) :
-        splitInfo(batchSize),
+    explicit SplitContext(uint32_t batchSize)
+        : splitInfo(batchSize),
         costInfo(batchSize) {}
 };
 

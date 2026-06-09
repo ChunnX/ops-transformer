@@ -195,7 +195,7 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验切g模板核数
-    if(numHeadsQ == 128) {
+    if (numHeadsQ == 128) {
         if (aicCoreNum == 1 || aivCoreNum == 1) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, "
                 "but got %u and %u", aicCoreNum, aivCoreNum);
@@ -209,7 +209,7 @@ aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqlensQOptional, const aclTe
                                 const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedOriKvOptional,
                                 const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
                                 const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional,
-                                int64_t oriTopk, int64_t cmpTopk,int64_t cmpRatio, int64_t oriMaskMode,
+                                int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
                                 int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
                                 const char *layoutKvOptional, const aclTensor *metadata)
 {
@@ -541,7 +541,7 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
     int64_t queryBatchSize = GetQueryBatchSizeQsmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize);
     if (hasOriKv) {
         int64_t oriKvBatchSize = GetOriKvBatchSizeQsmla(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
-                                                       batchSize);
+                                                        batchSize);
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
@@ -551,7 +551,7 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
     }
     if (hasCmpKv) {
         int64_t cmpKvBatchSize = GetCmpKvBatchSizeQsmla(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
-                                                       batchSize);
+                                                        batchSize);
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,

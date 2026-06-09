@@ -78,7 +78,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return (ParamsCheck() && ParamsInit());
 }
 
-bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck() 
+bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
 {
     // 校验输出 metadata 是否为空
     if (metadata_ == nullptr) {
@@ -238,7 +238,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriMaskMode()
         oriPreToken_ = INT64_MAX;
         oriNextToken_ = 0;
         oriAttentionMode_ = HAS_MASK;
-    } else {  //SparseMode = 4
+    } else {  // SparseMode = 4
         oriPreToken_ = (oriWinLeft_ > -1) ? oriWinLeft_ : INT64_MAX;
         oriNextToken_ = (oriWinRight_ > -1) ? oriWinRight_ : INT64_MAX;
         oriAttentionMode_ = HAS_MASK;
@@ -255,7 +255,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpMaskMode()
         cmpPreToken_ = INT64_MAX;
         cmpNextToken_ = 0;
         cmpAttentionMode_ = HAS_MASK;
-    } else {  //SparseMode = 4
+    } else {  // SparseMode = 4
         cmpPreToken_ = (oriWinLeft_ > -1) ? oriWinLeft_ : INT64_MAX;
         cmpNextToken_ = (oriWinRight_ > -1) ? oriWinRight_ : INT64_MAX;
         cmpAttentionMode_ = HAS_MASK;
@@ -325,7 +325,7 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     if (layoutQ_ == "TND") {
         // 如果是 TND，尝试使用 cuSeqlensQ_
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr =static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+            const int32_t *s1Ptr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
             return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
         }
     }
@@ -528,7 +528,7 @@ Range<int64_t> MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint3
     int64_t s2Size = isCmpKv ? static_cast<int64_t>(batchCache.cmpRevertS2Size) :
         static_cast<int64_t>(batchCache.oriS2Size);
     hasMask = isCmpKv ? cmpAttentionMode_ : oriAttentionMode_;
-    if (!hasMask) { //attentionMaskFlag ?
+    if (!hasMask) {
         return std::make_pair(0, s2Size - 1);
     }
 
@@ -561,8 +561,8 @@ Range<int64_t> MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint3
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, 
-                                                                BatchCache &batchCache)
+void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext,
+                                                               BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -590,10 +590,10 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriS1GCache(S1GCache &s1GCac
         s1GCache.oriS1GLastBlockCost = 0;
         s1GCache.oriS1GNormalBlockCost = 0;
     } else {
-        //计算 ori 方向 Block 数量及 Cost
+        // 计算 ori 方向 Block 数量及 Cost
         s1GCache.oriS1GBlock = s1GCache.oriS2End - s1GCache.oriS2Start;
         // 判断 ori S2 方向是否包含尾块
-        uint32_t curOriTailS2Num = (s1GCache.oriS2TailSize != 0U) ? 1U : 0U;// Updated check using local var
+        uint32_t curOriTailS2Num = (s1GCache.oriS2TailSize != 0U) ? 1U : 0U;
         uint32_t curOriNormalS2Num = s1GCache.oriS1GBlock - curOriTailS2Num;
         if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) &&
             splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
@@ -602,8 +602,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriS1GCache(S1GCache &s1GCac
             s1GCache.oriS1GLastBlockCost = curOriTailS2Num > 0U ? typeCost_[ORI_TAIL_BLOCK][ORI_TAIL_BLOCK] :
                                             typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK];
             s1GCache.oriS1GNormalBlockCost = typeCost_[ORI_TAIL_BLOCK][ORI_NORMAL_BLOCK];
-        }
-        else {
+        } else {
             s1GCache.oriS1GCost = typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] * curOriNormalS2Num +
                 typeCost_[ORI_NORMAL_BLOCK][ORI_TAIL_BLOCK] * curOriTailS2Num;
             s1GCache.oriS1GLastBlockCost = curOriTailS2Num > 0U ? typeCost_[ORI_NORMAL_BLOCK][ORI_TAIL_BLOCK] :
@@ -623,10 +622,10 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCac
         s1GCache.cmpS1GLastBlockCost = 0;
         s1GCache.cmpS1GNormalBlockCost = 0;
     } else {
-        //计算 cmp 方向 Block 数量及 Cost
+        // 计算 cmp 方向 Block 数量及 Cost
         s1GCache.cmpS1GBlock = s1GCache.cmpS2End - s1GCache.cmpS2Start;
         // 判断 Cmp S2 方向是否包含尾块
-        uint32_t curCmpTailS2Num = (s1GCache.cmpS2TailSize != 0U) ? 1U : 0U;// Updated check using local var
+        uint32_t curCmpTailS2Num = (s1GCache.cmpS2TailSize != 0U) ? 1U : 0U;
         uint32_t curCmpNormalS2Num = s1GCache.cmpS1GBlock - curCmpTailS2Num;
         if (s1GCache.s1GIdx == (splitInfo.s1GBaseNum[s1GCache.bIdx] - 1U) &&
             splitInfo.s1GTailSize[s1GCache.bIdx] != 0U) {
@@ -814,7 +813,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, con
         if (s1GCache.s1GCost > costInfo.maxS1GCost) {
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
-        if(s1GCache.s1GBlock > 0){
+        if (s1GCache.s1GBlock > 0) {
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
         }
     }
@@ -888,7 +887,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext 
     }
 }
 
-void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, 
+void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext,
                                                               AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
@@ -942,10 +941,10 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
                                  assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
         // 计算新一行的信息
-        do{
+        do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        }while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -978,7 +977,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext
 
     // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
-            assignContext.coreCache.cost + curCost)) { 
+                             assignContext.coreCache.cost + curCost)) { 
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
@@ -1141,7 +1140,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::SplitFD(SplitResult &splitRes)
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
     // 计算每个核处理的load
-    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; //向上取整，避免核负载为0
+    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
@@ -1153,7 +1152,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::SplitFD(SplitResult &splitRes)
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             splitRes.fdRes.fdIdx[curCoreIndex] = i;
             splitRes.fdRes.fdMStart[curCoreIndex] = vid * curAveMSize;
-            splitRes.fdRes.fdMNum[curCoreIndex] = 
+            splitRes.fdRes.fdMNum[curCoreIndex] =
                 (vid < curFDVectorNum - 1) ? curAveMSize : (splitRes.fdRes.fdMSize[i] - vid * curAveMSize);
             curCoreIndex++;
         }

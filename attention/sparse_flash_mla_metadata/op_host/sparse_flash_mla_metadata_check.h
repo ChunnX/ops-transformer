@@ -183,7 +183,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验切g模板核数
-    if(numHeadsQ == 128) {
+    if (numHeadsQ == 128) {
         if (aicCoreNum == 1 || aivCoreNum == 1) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, "
                 "but got %u and %u", aicCoreNum, aivCoreNum);
@@ -197,7 +197,7 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedOriKvOptional,
                                const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
                                const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional,
-                               int64_t oriTopk, int64_t cmpTopk,int64_t cmpRatio, int64_t oriMaskMode,
+                               int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
                                int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
                                const char *layoutKvOptional, const aclTensor *metadata)
 {
@@ -334,7 +334,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize,const char *layoutQOptional,
+                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
                                  const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
