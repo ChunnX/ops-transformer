@@ -178,6 +178,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_v2/README.md">lightning_indexer_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/lightning_indexer_grad/README.md">lightning_indexer_grad</a></td>
     <td>✓</td>
     <td>✓</td>
