@@ -1786,8 +1786,9 @@ SparseEnum FlashAttentionScoreTilingRegbase::GetPrefixNList(std::ostringstream &
     }
     if (isPrefixNullptr) {
         if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_,
-                "[%s] prefixN cannot be nullptr when sparseMode is 6.", templateName);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+                "prefixN", "nullptr",
+                "prefixN cannot be nullptr when sparseMode is 6.");
             failReason << "prefixN cannot be nullptr when sparseMode is 6.";
         } else {
             OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
