@@ -32,17 +32,18 @@ __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR gr
                                                           GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
                                                           GM_ADDR tiling)
 {
+    (void)bias;
     TPipe tPipe;
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS &&
         QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
         GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
-            x, weight, weightScale, xScale, bias, groupList, y, yScale, workspace, tiling);
+            x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     } else if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_TRANS &&
                QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
         GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
-            x, weight, weightScale, xScale, bias, groupList, y, yScale, workspace, tiling);
+            x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

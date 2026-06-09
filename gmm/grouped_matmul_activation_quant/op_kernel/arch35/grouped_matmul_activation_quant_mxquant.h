@@ -30,8 +30,8 @@ constexpr int64_t DEFAULT_PROBLEM_SHAPE_VALUE = 1;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
-                                          GM_ADDR bias, GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale,
-                                          GM_ADDR workspace, GM_ADDR tiling)
+                                          GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
+                                          GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMActivationQuantTilingDataParams, gmmActivationQuantParams,
                            gmmActivationQuantParams_, tiling);
@@ -77,7 +77,7 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
     Params params = {
         {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
          DEFAULT_PROBLEM_SHAPE_VALUE},
-        {x, weight, weightScale, xScale, y, bias, groupList},
+        {x, weight, weightScale, xScale, y, nullptr, groupList},
         {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
          static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
          static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
