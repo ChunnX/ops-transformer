@@ -202,7 +202,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ProcessQk(uint64_t s1gL0RealSize, uint64
 {
     if (mmInfo.s1gL0LoopId == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % DOUBLE_BUF_NUM);
-        if constexpr (K_LAYOUT_T == LI_LAYOUT::PA_BSND) {
+        if constexpr (K_LAYOUT_T == LI_LAYOUT::PA_BBND) {
             KeyNd2NzForPA(mmInfo.s2L0RealSize, runInfo.s2Idx * constInfo_.s2BaseSize + mmInfo.s2GmOffset, runInfo);
         } else {
             KeyNd2Nz(mmInfo.s2L0RealSize, mmInfo, runInfo);

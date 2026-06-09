@@ -11,12 +11,12 @@ add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
-        quant_lightning_indexer_def.cpp
-     )
+        quant_lightning_indexer_v2_def.cpp
+    )
 endif()
 
 add_ops_compile_options(
-    OP_NAME QuantLightningIndexer
+    OP_NAME QuantLightningIndexerV2
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -Werror
@@ -24,4 +24,6 @@ add_ops_compile_options(
             -mllvm -cce-aicore-hoist-movemask=false
 )
 
-add_modules_sources(OPTYPE quant_lightning_indexer ACLNNTYPE aclnn)
+if (NOT BUILD_OPS_RTY_KERNEL)
+    add_modules_sources(OPTYPE quant_lightning_indexer_v2 ACLNNTYPE aclnn)
+endif()

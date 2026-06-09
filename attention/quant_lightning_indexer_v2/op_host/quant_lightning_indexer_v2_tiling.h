@@ -39,7 +39,7 @@ struct TilingOptionalParaInfo {
 enum class DataLayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BBND = 2
 };
 
 // ------------------算子原型索引常量定义----------------
@@ -49,24 +49,25 @@ constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX = 3;
 constexpr uint32_t KEY_DEQUANT_SCALE_INDEX = 4;
-constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
-constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
-constexpr uint32_t BLOCK_TABLE_INDEX = 7;
-constexpr uint32_t METADATA_INDEX = 8;
-constexpr uint32_t quant_lightning_indexer = 0;
+constexpr uint32_t CU_SEQLENS_Q_INDEX = 5;
+constexpr uint32_t CU_SEQLENS_K_INDEX = 6;
+constexpr uint32_t SEQUSED_Q_INDEX = 7;
+constexpr uint32_t SEQUSED_K_INDEX = 8;
+constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
+constexpr uint32_t BLOCK_TABLE_INDEX = 10;
+constexpr uint32_t METADATA_INDEX = 12;
+constexpr uint32_t SPARSE_INDICES_INDEX = 0;
+
 // Attributes Index
-constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
-constexpr uint32_t ATTR_KEY_QUANT_MODE_INDEX = 1;
+constexpr uint32_t ATTR_TOPK_INDEX = 0;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 1;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
-constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 5;
-constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 6;
-constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 7;
-constexpr uint32_t ATTR_CMP_RATIO_INDEX = 8;
-constexpr uint32_t ATTR_RETURN_VALUES_INDEX = 9;
-constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 10;
-constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 11;
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
+constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
+
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -173,7 +174,7 @@ public:
     ge::DataType outputType = ge::DT_INT32;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::PA_BSND;
+    DataLayout inputKLayout = DataLayout::PA_BBND;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
@@ -233,7 +234,7 @@ public:
     bool batchSupperFlag_ = false;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::PA_BSND;
+    DataLayout kLayout_ = DataLayout::PA_BBND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;

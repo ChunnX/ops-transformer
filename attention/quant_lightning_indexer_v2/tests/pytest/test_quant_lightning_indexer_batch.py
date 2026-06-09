@@ -44,7 +44,7 @@ else:
 
 def qli(testcase_files):   # 初始化参数和tensor
     cpu_result, npu_result, topk_value, params = quant_lightning_indexer_pt_loadprocess.test_qli_process(testcase_files, device_id=0)
-    if npu_result is not None:
+    if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
         result = "Failed"
@@ -65,20 +65,22 @@ def qli(testcase_files):   # 初始化参数和tensor
         "qk_dtype": params[10],
         "dequant_dtype": params[11],
         "actual_seq_dtype": params[12],
-        "act_seq_q": params[13],
-        "act_seq_k": params[14],
-        "query_quant_mode": params[15],
-        "key_quant_mode": params[16],
-        "layout_query": params[17],
-        "layout_key": params[18],
-        "sparse_count":params[19],
-        "sparse_mode":params[20],
-        "query_datarange":params[21],
-        "key_datarange":params[22],
-        "weights_datarange":params[23],
-        "q_scale_datarange":params[24],
-        "k_scale_datarange":params[25],
-        "cmp_ratio":params[26],
+        "cu_seq_q": params[13],
+        "cu_seq_k": params[14],
+        "act_seq_q": params[15],
+        "act_seq_k": params[16],
+        "cmp_residual_k": params[17],
+        "quant_mode": params[18],
+        "layout_query": params[19],
+        "layout_key": params[20],
+        "sparse_count":params[21],
+        "sparse_mode":params[22],
+        "query_datarange":params[23],
+        "key_datarange":params[24],
+        "weights_datarange":params[25],
+        "q_scale_datarange":params[26],
+        "k_scale_datarange":params[27],
+        "cmp_ratio":params[28],
         "result":result,
         "fulfill_percent":fulfill_percent
     }

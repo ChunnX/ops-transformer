@@ -29,10 +29,13 @@ TEST_PARAMS = {
         "qk_dtype": [torch.float8_e4m3fn],
         "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
+        "cu_seqlens_q": [[0,3,3,3,3,3,3,3,3]],
+        "cu_seqlens_k": [[0,28,34,50,66,77,86,90,111]],
         "act_seq_q": [[3,3,3,3,3,3,3,3]],
         "act_seq_k": [[28,24,80,96,47,76,0,111]], #PA场景非前缀和，表示每个batch_size的实际token数
-        "query_quant_mode": [0],
-        "key_quant_mode": [0],
+        "cmp_residual_k": [[3,3,3,3,3,3,3,3]],
+        "max_seqlen_q": [-1],
+        "quant_mode": [0],
         "layout_query": ["BSND"],
         "layout_key":["PA_BSND"],
         "sparse_count": [512],
@@ -42,7 +45,8 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
-        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+        "cmp_ratio":[1], #1/2/4/8/16/32/64/128
+        "return_value":[0]
     },
 
     "quant_li_default_hifp8_a5":{
@@ -61,8 +65,9 @@ TEST_PARAMS = {
         "actual_seq_dtype": [torch.int32],
         "act_seq_q": [[3,3,3,3,3,3,3,3]],
         "act_seq_k": [[28,24,80,96,47,76,0,111]], #PA场景非前缀和，表示每个batch_size的实际token数
-        "query_quant_mode": [0],
-        "key_quant_mode": [0],
+        "max_seqlen_q": [-1],
+        "cmp_residual_k":[[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]],
+        "quant_mode": [0], 
         "layout_query": ["BSND"],
         "layout_key":["PA_BSND"],
         "sparse_count": [512],
@@ -72,7 +77,8 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
-        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+        "cmp_ratio":[1], #1/2/4/8/16/32/64/128
+        "return_value":[0]
     },
 
     "quant_li_default_a3":{

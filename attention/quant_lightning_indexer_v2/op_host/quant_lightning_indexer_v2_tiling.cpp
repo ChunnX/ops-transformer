@@ -65,9 +65,7 @@ ge::graphStatus QLIInfoParser::CheckRequiredAttrExistence() const
 
     OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE(opName_, "attr sparse_mode is nullptr"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, OP_LOGE(opName_, "query_quant_mode is nullptr"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.keyQuantMode == nullptr, OP_LOGE(opName_, "key_quant_mode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr, OP_LOGE(opName_, "query_quant_mode is nullptr"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -120,7 +118,7 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
 
 void QLIInfoParser::GetOptionalInputParaInfo()
 {
-    opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+    opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INDEX);
     opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
     opParamInfo_.actualSeqLengthsK.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_K_INDEX);
     opParamInfo_.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
@@ -147,8 +145,8 @@ void QLIInfoParser::GetInputParaInfo()
 
 void QLIInfoParser::GetOutputParaInfo()
 {
-    opParamInfo_.attenOut.desc = context_->GetOutputDesc(quant_lightning_indexer);
-    opParamInfo_.attenOut.shape = context_->GetOutputShape(quant_lightning_indexer);
+    opParamInfo_.attenOut.desc = context_->GetOutputDesc(SPARSE_INDICES_INDEX);
+    opParamInfo_.attenOut.shape = context_->GetOutputShape(SPARSE_INDICES_INDEX);
 }
 
 ge::graphStatus QLIInfoParser::GetAttrParaInfo()
@@ -158,21 +156,20 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
-    opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
+    static const int64_t max_val = 9223372036854775807;
+    static const int64_t key_stride0 = -1;
 
-    opParamInfo_.queryQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX);
-    opParamInfo_.keyQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_KEY_QUANT_MODE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
-    opParamInfo_.sparseCount = attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_COUNT_INDEX);
-    opParamInfo_.sparseMode = attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX);
-    opParamInfo_.preTokens = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKENS_INDEX);
-    opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKENS_INDEX);
-    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
-    opParamInfo_.returnValues = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUES_INDEX);
-    opParamInfo_.keyStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_STRIDE0_INDEX);
-    opParamInfo_.keyDequantScaleStride0 = attrs->GetAttrPointer<int64_t>(ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX);
+    opParamInfo_.sparseCount = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
+    opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
+    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
+    opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
+    opParamInfo_.preTokens = &max_val;
+    opParamInfo_.nextTokens = &max_val;
+    opParamInfo_.keyStride0 = key_stride0;
+    opParamInfo_.keyDequantScaleStride0 = key_stride0;
 
     if (opParamInfo_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
@@ -198,11 +195,8 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     if (opParamInfo_.returnValues != nullptr) {
         OP_LOGI(context_->GetNodeName(), "returnValues is:%s", *opParamInfo_.returnValues ? "true" : "false");
     }
-    if (opParamInfo_.queryQuantMode != nullptr) {
+    if (opParamInfo_.quantMode != nullptr) {
         OP_LOGI(context_->GetNodeName(), "query_quant_mode mode is:%d", *opParamInfo_.queryQuantMode);
-    }
-    if (opParamInfo_.keyQuantMode != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "key_quant_mode mode is:%d", *opParamInfo_.keyQuantMode);
     }
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
 
@@ -215,8 +209,8 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     std::string layout_query(opParamInfo_.layOutQuery);
 
     OP_CHECK_IF(
-            ((std::string(opParamInfo_.layOutKey) != "PA_BSND")),
-            OP_LOGE(opName_, "input attr layout_key only supported PA_BSND,"
+            ((std::string(opParamInfo_.layOutKey) != "PA_BBND")),
+            OP_LOGE(opName_, "input attr layout_key only supported PA_BBND,"
                         "but now layout_key is %s.", layout_key.c_str()),
                         return ge::GRAPH_FAILED);
 
@@ -241,7 +235,7 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") && (std::string(opParamInfo_.layOutQuery) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        ((std::string(opParamInfo_.layOutKey) != "PA_BSND") &&
+        ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
         (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
         OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
                   "but now layout_key is %s, layout_query is %s.",
@@ -346,7 +340,7 @@ ge::graphStatus QLIInfoParser::GetQueryKeyAndOutLayout()
 
     const map<string, DataLayout> layoutKeyMap = {
         {"BSND", DataLayout::BSND}, {"TND", DataLayout::TND},
-        {"PA_BSND", DataLayout::PA_BSND}, {"PA_BBND", DataLayout::PA_BSND}};
+        {"PA_BSND", DataLayout::PA_BBND}, {"PA_BBND", DataLayout::PA_BBND}};
     std::string layout_key(opParamInfo_.layOutKey);
     auto KLayout = layoutKeyMap.find(layout_key);
     if (KLayout != layoutKeyMap.end()) {
@@ -358,19 +352,19 @@ ge::graphStatus QLIInfoParser::GetQueryKeyAndOutLayout()
 
 ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 {
-    if (kLayout_ == DataLayout::PA_BSND) {
+    if (kLayout_ == DataLayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE(opName_, "key layout only supported PA_BSND, input block_table must not be null"),
+                   OP_LOGE(opName_, "key layout only supported PA_BBND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-            OP_LOGE(opName_, "key layout only supported PA_BSND, input actual_seq_lengths_key must not be null"),
+            OP_LOGE(opName_, "key layout only supported PA_BBND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                    OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                   OP_LOGE(opName_, "key layout is not PA_BSND, input block_table must be null"),
+                   OP_LOGE(opName_, "key layout is not PA_BBND, input block_table must be null"),
                    return ge::GRAPH_FAILED);
     }
 
@@ -406,7 +400,7 @@ ge::graphStatus QLIInfoParser::CheckShapeDim()
                 OP_LOGE(opName_, "the dim num of block_table's shape should be 2, but now is %u",
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        ((kLayout_ == DataLayout::PA_BSND)||(kLayout_ == DataLayout::BSND)) &&
+        ((kLayout_ == DataLayout::PA_BBND)||(kLayout_ == DataLayout::BSND)) &&
         (opParamInfo_.key.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR),
         OP_LOGE(opName_, "the dim num of key's shape should be 4, but now is %u",
                 opParamInfo_.key.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
@@ -463,7 +457,7 @@ ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::T
 
 ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
 {
-    // PA_BSND
+    // PA_BBND
     if (kLayout_ == DataLayout::TND) {
         n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
     } else {
@@ -494,7 +488,7 @@ ge::graphStatus QLIInfoParser::GetBatchSize()
     // 获取B基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、Q和K都为TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
-    // 3、Q为TND，K为PA_BSND时，以actual_seq_lens_k数组的长度为B轴大小
+    // 3、Q为TND，K为PA_BBND时，以actual_seq_lens_k数组的长度为B轴大小
     if (qLayout_ == DataLayout::BSND) {
         bSize_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
         OP_LOGI(context_->GetNodeName(), "b: %d, s: %d, n: %d,d :%d",
@@ -609,7 +603,7 @@ ge::graphStatus QLIInfoParser::GetS2Size()
     // 获取S2基准值
     // 1、BATCH_CONTINUOUS时, 从key的S轴获取
     // 3、PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
-    if (kLayout_ == DataLayout::PA_BSND) {
+    if (kLayout_ == DataLayout::PA_BBND) {
         return GetS2SizeForPageAttention();
     }
     return GetS2SizeForBatchContinuous();
@@ -642,7 +636,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     if (qLayout_ == DataLayout::TND) {
         // -----------------------check BatchSize-------------------
         // bSize_ 来源于act_seq_q
-        OP_CHECK_IF((kLayout_ == DataLayout::PA_BSND) &&
+        OP_CHECK_IF((kLayout_ == DataLayout::PA_BBND) &&
                 ((opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                 (opParamInfo_.blockTable.tensor != nullptr &&
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)),
@@ -653,7 +647,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                 bSize_, opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize(),
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF((kLayout_ != DataLayout::PA_BSND) &&
+        OP_CHECK_IF((kLayout_ != DataLayout::PA_BBND) &&
                    (opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_),
             OP_LOGE(
                 opName_,
@@ -674,7 +668,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     } else {
         // -----------------------check BatchSize-------------------
         // bSize_ 来源于query
-        OP_CHECK_IF((kLayout_ == DataLayout::PA_BSND) &&
+        OP_CHECK_IF((kLayout_ == DataLayout::PA_BBND) &&
                     ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.blockTable.tensor != nullptr &&
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
@@ -687,7 +681,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                               opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0),
                               opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((kLayout_ != DataLayout::PA_BSND) &&
+        OP_CHECK_IF((kLayout_ != DataLayout::PA_BBND) &&
                     ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
@@ -799,7 +793,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.blockSize = blockSize_;
     QLIInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    QLIInfo.pageAttentionFlag = (kLayout_ == DataLayout::PA_BSND);
+    QLIInfo.pageAttentionFlag = (kLayout_ == DataLayout::PA_BBND);
     QLIInfo.batchSupperFlag = batchSupperFlag_;
     QLIInfo.sparseMode = *opParamInfo_.sparseMode;
     QLIInfo.sparseCount = *opParamInfo_.sparseCount;
@@ -863,22 +857,22 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     // -------------set workspacesize-----------------
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4;          // 4: fp32
     constexpr uint32_t DOUBLE_BUFFER = 2;              // 双Buffer
-    constexpr uint32_t M_BASE_SIZE = 512;              // m轴基本块大小
-    constexpr uint32_t S2_BASE_SIZE = 512;             // S2轴基本块大小
+    constexpr uint32_t M_BASE_SIZE = 256;              // m轴基本块大小
+    constexpr uint32_t S2_BASE_SIZE = 2048;             // S2轴基本块大小
     constexpr uint32_t V1_RES_ELEM_SIZE = 4;           // 4: int32
     constexpr uint32_t V1_RES_ELEM_TYPE = 2;           // 保留Index和Value 2种数据
     constexpr uint32_t V1_DECODE_PARAM_ELEM_SIZE = 8;  // 8: int64
     constexpr uint32_t V1_DECODE_PARAM_NUM = 16;       // Decode参数个数
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;         // Decode每个核需要存储头和尾部两块数据
-    constexpr uint32_t S1_BASE_SIZE = 8;               // S1轴基本块的大小
+    constexpr uint32_t S1_BASE_SIZE = 4;               // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 2048;           // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t s1BaseSize = 4;
-        constexpr uint32_t s2BaseSize = 128;
+        constexpr uint32_t S1_BASE_SIZE_950 = 4;
+        constexpr uint32_t S2_BASE_SIZE_950 = 128;
         workspaceSize +=
-        s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint16_t) * aicNum;
+        S1_BASE_SIZE_950 * ((tilingInfo->s2Size + S2_BASE_SIZE_950 - 1) / S2_BASE_SIZE_950) * S2_BASE_SIZE_950 * sizeof(uint16_t) * aicNum;
         // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
         workspaceSize +=
         V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
