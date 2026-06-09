@@ -16,9 +16,9 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos,
-                                                           const aclTensor* sin, int64_t rotary_mode,
-                                                           const aclIntArray *partialSlice,
-                                                           uint64_t* workspaceSize, aclOpExecutor** executor)
+                                                         const aclTensor* sin, int64_t rotary_mode,
+                                                         const aclIntArray *partialSlice,
+                                                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     aclnnStatus ret = aclnnInnerInplacePartialRotaryMulGetWorkspaceSize(
         const_cast<aclTensor*>(x), cos, sin, rotary_mode, partialSlice, workspaceSize, executor);
@@ -26,7 +26,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, con
 }
 
 aclnnStatus aclnnInplacePartialRotaryMul(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                           aclrtStream stream)
+                                         aclrtStream stream)
 {
     aclnnStatus ret = aclnnInnerInplacePartialRotaryMul(workspace, workspaceSize, executor, stream);
     return ret;

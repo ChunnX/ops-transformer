@@ -100,7 +100,8 @@ __aicore__ inline void InterleavedSplitBSN<T>::Init(GM_ADDR x, GM_ADDR cos, GM_A
     } else if (coreCalcTail != 0) {
         ubCalcSeqLoop = coreCalcTail;
         ioOffset = frontCoreNum * coreCalcNum * bufferNdSize + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSize;
-        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
+        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll
+            + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
         triOffset = frontCoreNum * coreCalcNum * headDim + (blockIdx - frontCoreNum) * coreCalcTail * headDim;
     }
 
@@ -154,8 +155,10 @@ __aicore__ inline void InterleavedSplitBSN<T>::CopyInX(LocalTensor<T> &x, uint32
     dataCopyParams.blockLen = headDim * sizeof(T);
     dataCopyParams.srcStride = (allHeadDim - headDim)* sizeof(T);
     dataCopyParams.dstStride = 0;
-    DataCopyPad(x, xGm[batchIdx * seqLen * bufferNdSizeAll + seqIdx * bufferNdSizeAll + numHeadsIdx * ubCalcNNum * allHeadDim + start],
-                dataCopyParams, {false, 0, 0, 0});
+    DataCopyPad(x,
+        xGm[batchIdx * seqLen * bufferNdSizeAll + seqIdx * bufferNdSizeAll +
+            numHeadsIdx * ubCalcNNum * allHeadDim + start],
+        dataCopyParams, {false, 0, 0, 0});
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
@@ -205,7 +208,8 @@ __aicore__ inline void InterleavedSplitBSN<T>::CopyOut(uint32_t batchIdx, uint32
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = (allHeadDim - headDim)* sizeof(T);
     LocalTensor<T> y = outQueY.DeQue<T>();
-    DataCopyPad(yGm[batchIdx * seqLen * bufferNdSizeAll + seqIdx * bufferNdSizeAll + numHeadsIdx * ubCalcNNum * allHeadDim + start], y,
+    DataCopyPad(yGm[batchIdx * seqLen * bufferNdSizeAll + seqIdx * bufferNdSizeAll + numHeadsIdx * ubCalcNNum *
+        allHeadDim + start], y,
                 dataCopyParams);
     outQueY.FreeTensor(y);
 }

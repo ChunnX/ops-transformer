@@ -257,7 +257,8 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     auto xInput = context_->GetInputShape(0);
     auto inputR1 = context_->GetInputShape(1);
     auto inputR2 = context_->GetInputShape(2);
-    OP_CHECK_IF(xInput == nullptr || inputR1 == nullptr || inputR2 == nullptr, OP_LOGE(context_->GetNodeName(), "get input nullptr."),
+    OP_CHECK_IF(xInput == nullptr || inputR1 == nullptr || inputR2 == nullptr, OP_LOGE(context_->GetNodeName(),
+        "get input nullptr."),
         return ge::GRAPH_FAILED);
     auto yOutput = context_->GetOutputShape(0);
     OP_CHECK_IF(yOutput == nullptr, OP_LOGE(context_->GetNodeName(), "get output nullptr."),
@@ -605,7 +606,7 @@ int64_t InplacePartialRotaryMulTiling::GetMixedTilingKeyOffset() const
 }
 
 ge::graphStatus InplacePartialRotaryMulTiling::InitSplitTilingData(int64_t &batchSizeOut, int64_t &seqLenOut,
-                                                                    int64_t &numHeadsOut)
+                                                                   int64_t &numHeadsOut)
 {
     if (r1dim1_ == 1 && r1dim2_ == 1 && xdim0_ == r1dim0_) {
         seqLenOut = r1dim0_;
@@ -639,7 +640,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::InitSplitTilingData(int64_t &batc
 }
 
 ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitNMixed(int64_t numHeads, int64_t headDimAlign,
-                                                                  int64_t ubSize)
+                                                                 int64_t ubSize)
 {
     const int64_t bufferSize = ubSize - TBUF_SIZE;
     int64_t totalHeadNum1Size = headDimAlign *

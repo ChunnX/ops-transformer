@@ -293,7 +293,8 @@ public:
             if (workspaces != nullptr) {
                 workspaces[0] = static_cast<size_t>(16) * 1024 * 1024;
             }
-            noopTiling.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+            noopTiling.SaveToBuffer(context_->GetRawTilingData()->GetData(),
+                context_->GetRawTilingData()->GetCapacity());
             context_->GetRawTilingData()->SetDataSize(noopTiling.GetDataSize());
             return ge::GRAPH_SUCCESS;
         }
@@ -353,7 +354,8 @@ protected:
 
 class InplacePartialRopeRegBaseTilingClassAAndB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit InplacePartialRopeRegBaseTilingClassAAndB(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassAAndB(
+        gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -388,7 +390,8 @@ private:
 
 class InplacePartialRopeRegBaseTilingClassAB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit InplacePartialRopeRegBaseTilingClassAB(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassAB(
+        gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -412,7 +415,8 @@ private:
 
 class InplacePartialRopeRegBaseTilingClassABAAndBA : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit InplacePartialRopeRegBaseTilingClassABAAndBA(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassABAAndBA(
+        gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -446,7 +450,8 @@ private:
 
 class InplacePartialRopeRegBaseTilingClassBAB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit InplacePartialRopeRegBaseTilingClassBAB(gert::TilingContext *context_) : InplacePartialRopeRegBaseTilingClass(context_)
+    explicit InplacePartialRopeRegBaseTilingClassBAB(
+        gert::TilingContext *context_) : InplacePartialRopeRegBaseTilingClass(context_)
     {
     }
 

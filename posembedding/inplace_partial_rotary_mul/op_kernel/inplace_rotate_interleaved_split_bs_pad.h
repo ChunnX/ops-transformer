@@ -104,7 +104,8 @@ __aicore__ inline void InterleavedSplitBSPad<T>::Init(GM_ADDR x, GM_ADDR cos, GM
     } else if (coreCalcTail != 0) {
         ubCalcSeqLoop = coreCalcTail;
         ioOffset = frontCoreNum * coreCalcNum * bufferNdSize + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSize;
-        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
+        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll
+            + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
         triOffset = frontCoreNum * coreCalcNum * headDim + (blockIdx - frontCoreNum) * coreCalcTail * headDim;
     }
 

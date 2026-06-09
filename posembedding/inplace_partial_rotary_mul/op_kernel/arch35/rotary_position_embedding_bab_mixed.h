@@ -163,7 +163,9 @@ __aicore__ inline void RotaryPositionEmbeddingBABMixed<TX>::ProcessN(const Local
             0,
             static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),
             0};
-        if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+        if (
+            tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE))
+        {
             copyInParams = {static_cast<uint16_t>(currSNum * currDNum),
                 tilingData_->sliceLength * sizeof(TX),
                 static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),
