@@ -286,7 +286,8 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube1(GlobalTensor<dataType> leftMatrixG
             WaitFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT);
         }
         WaitFlag<HardEvent::MTE1_M>(B_FLAG_SHIFT + rightMatrixPingPong);
-        commonMadParams.m = baseM;
+        uint32_t realM = (baseM == 1) ? 2 : baseM;
+        commonMadParams.m = realM;
         commonMadParams.n = realN;
         commonMadParams.k = baseK;
         commonMadParams.unitFlag = 3;
@@ -424,7 +425,8 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube2(GlobalTensor<dataType> leftMatrixG
             WaitFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT);
         }
         WaitFlag<HardEvent::MTE1_M>(B_FLAG_SHIFT + rightMatrixPingPong);
-        commonMadParams.m = baseM;
+        uint32_t realM = (baseM == 1) ? 2 : baseM;
+        commonMadParams.m = realM;
         commonMadParams.n = realN;
         commonMadParams.k = 1;
         commonMadParams.unitFlag = 3;
@@ -556,7 +558,8 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube3(GlobalTensor<dataType> leftMatrixG
         // mad (M, N, K)
         WaitFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT + leftMatrixPingPong);
         WaitFlag<HardEvent::MTE1_M>(B_FLAG_SHIFT + rightMatrixPingPong);
-        commonMadParams.m = baseM;
+        uint32_t realM = (baseM == 1) ? 2 : baseM;
+        commonMadParams.m = realM;
         commonMadParams.n = baseN;
         commonMadParams.k = realK;
         commonMadParams.unitFlag = (i == loopK - 1) ? 3 : 2;
@@ -636,8 +639,8 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube4(GlobalTensor<dataType> leftMatrixG
     WaitFlag<HardEvent::MTE2_MTE1>(B_FLAG_SHIFT);
     WaitFlag<HardEvent::M_MTE1>(B_CONFLICT_FLAG_SHIFT);
     commonLoadData2dParamsTranspose.repeatTimes = constInfo.headDim / C0_SIZE;
-    commonLoadData2dParamsTranspose.srcStride = baseK / C0_SIZE;
-    for (int i = 0; i < baseK / C0_SIZE; i++) {
+    commonLoadData2dParamsTranspose.srcStride = RoundUp(baseK, C0_SIZE) / C0_SIZE;
+    for (int i = 0; i < RoundUp(baseK, C0_SIZE) / C0_SIZE; i++) {
         AscendC::LoadData(
             rightMatrixL0BPingTensor[i * constInfo.headDim * C0_SIZE], 
             rightMatrixL1PingTensor[i * C0_SIZE * C0_SIZE],

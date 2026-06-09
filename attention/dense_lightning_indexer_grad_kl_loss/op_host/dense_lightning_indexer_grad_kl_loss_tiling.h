@@ -119,7 +119,7 @@ protected:
                             int32_t actualSeqLensK, int32_t sparseMode);
     int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
                                 std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
-                                LayoutType layout, int64_t &accumLen);
+                                LayoutType layout);
     int64_t FindBIndex(int64_t bIndex, int64_t curBs1Index, int64_t &accumulateLen);
     void CalcMultiCoreOffset(int64_t &bStartIdx, int64_t &s1StartIdx, int64_t &bEndIdx, int64_t &s1EndIdx, int64_t &aicIdx);
     int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t,

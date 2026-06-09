@@ -1126,10 +1126,8 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     const gert::StorageShape *pseShiftShape = context_->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
-        OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)) &&
-                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE)) &&
-                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)),
-                    OP_LOGE(opName_, "PseType(%ld) is not support, pseType must be 0/2/3.", pseType_),
+        OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
+                    OP_LOGE(opName_, "PseType(%ld) is not supported, pseType must be 0.", pseType_),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
@@ -1277,16 +1275,16 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
             *opParamInfo_.valueAntiquantMode == 7) {
-            fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
-            fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
         } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
                    (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
                     *opParamInfo_.valueAntiquantMode == 0)) {
-            fullQuantMode_ = FiaFullQuantMode::PER_TOKEN_HEAD_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT;
         } else {
-            fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1407,7 +1405,7 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     }
 
     fiaInfo.actualLenQDims = actualLenQDims_;
-    fiaInfo.actualLenDims = actualLenDims_;
+    fiaInfo.actualLenKvDims = actualLenDims_;
     fiaInfo.maxActualseq = maxActualseq_;
     fiaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
     fiaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;

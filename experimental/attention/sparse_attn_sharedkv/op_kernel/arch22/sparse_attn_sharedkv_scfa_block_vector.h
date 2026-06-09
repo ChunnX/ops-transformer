@@ -45,8 +45,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
-    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<int32_t> &kvValidSizeGm,
-                                                const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm,
+    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm,
                                                 const GlobalTensor<KV_T> &cmpKvGm,
                                                 const GlobalTensor<int32_t> &oriBlockTableGm,
                                                 const GlobalTensor<int32_t> &cmpBlockTableGm);
@@ -122,7 +121,7 @@ private:
     static constexpr SAS_LAYOUT LAYOUT_T = SAST::layout;
     static constexpr SAS_LAYOUT KV_LAYOUT_T = SAST::kvLayout;
 
-    static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 4;
+    static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 3;
     static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
     static constexpr uint64_t SYNC_INPUT_BUF1_PONG_FLAG = 3;
     static constexpr uint64_t SYNC_INPUT_BUF2_FLAG = 4;
@@ -163,7 +162,6 @@ private:
     GlobalTensor<KV_T> kvMergeGm_;
     GlobalTensor<KV_T> keyGm_;
     GlobalTensor<int32_t> topkGm_;
-    GlobalTensor<int32_t> kvValidSizeGm_;
     GlobalTensor<KV_T> oriKvGm_;
     GlobalTensor<KV_T> cmpKvGm_;
     GlobalTensor<int32_t> oriBlockTableGm_;
@@ -251,14 +249,12 @@ __aicore__ inline void SASVectorBlock<SAST>::InitParams(const struct ConstInfo &
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<int32_t> &kvValidSizeGm,
-                                                                  const GlobalTensor<KV_T> &kvMergeGm,
+__aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
                                                                   const GlobalTensor<KV_T> &oriKvGm,
                                                                   const GlobalTensor<KV_T> &cmpKvGm,
                                                                   const GlobalTensor<int32_t> &oriBlockTableGm,
                                                                   const GlobalTensor<int32_t> &cmpBlockTableGm)
 {
-    this->kvValidSizeGm_ = kvValidSizeGm;
     this->kvMergeGm_ = kvMergeGm;
     this->oriKvGm_ = oriKvGm;
     this->cmpKvGm_ = cmpKvGm;
@@ -659,7 +655,7 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
 
-    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % 4 * 512 * 512 +
+    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
                 kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
 }

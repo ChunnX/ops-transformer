@@ -106,13 +106,13 @@ struct ArgContext {
     Tensor sequsedQOptional {};
     Tensor sequsedKOptional {};
     Tensor cmpResidualKOptional {};
-    int64_t batchSizeOptional { 0 };
-    int64_t maxSeqlenQOptional { 0 };
-    int64_t maxSeqlenKOptional { 0 };
+    int64_t batchSize { 0 };
+    int64_t maxSeqlenQ { 0 };
+    int64_t maxSeqlenK { 0 };
     char *layoutQOptional { nullptr };
     char *layoutKOptional { nullptr };
-    int64_t maskModeOptional { 0 };
-    int64_t cmpRatioOptional { 0 };
+    int64_t maskMode { 0 };
+    int64_t cmpRatio { 0 };
     // output
     Tensor metaData {};
 };
@@ -213,17 +213,17 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
-    context.maskModeOptional = 0;                   // 0: no mask, 3: causal
-    context.cmpRatioOptional = 1;                   // [1, 128], 1: no compress
+    context.maskMode = 0;                   // 0: no mask, 3: causal
+    context.cmpRatio = 1;                   // [1, 128], 1: no compress
     context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
     context.layoutKOptional = (char *)malloc(sizeof(char) * 16);
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
     strcpy(context.layoutKOptional, "BSND");                // BSND,TND,PA_BBND
 
     if (!scenario.hasCuSeq && !scenario.hasSeqused) {
-        context.batchSizeOptional = batchSize;
-        context.maxSeqlenKOptional = 1024;
-        context.maxSeqlenQOptional = 1024;
+        context.batchSize = batchSize;
+        context.maxSeqlenK = 1024;
+        context.maxSeqlenQ = 1024;
         return ACL_SUCCESS;
     }
 
@@ -274,8 +274,8 @@ int main() {
         context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
         context.sequsedKOptional.data, context.cmpResidualKOptional.data,
         context.numHeadsQ, context.numHeadsK, context.headDim, context.topk,
-        context.batchSizeOptional, context.maxSeqlenQOptional, context.maxSeqlenKOptional, context.layoutQOptional,
-        context.layoutKOptional, context.maskModeOptional, context.cmpRatioOptional,
+        context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
+        context.layoutKOptional, context.maskMode, context.cmpRatio,
         context.metaData.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 

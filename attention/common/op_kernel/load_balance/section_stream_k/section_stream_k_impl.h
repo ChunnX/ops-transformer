@@ -447,8 +447,8 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IB
 
     // 1. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
     int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(m_param.mBaseSize);
-    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(m_param.mBaseSize),
-        NumToIndex(static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.GetGroupSize())));
+    int64_t s1GLastToken = NumToIndex(std::min(s1GFirstToken + static_cast<int64_t>(m_param.mBaseSize),
+        static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.GetGroupSize())));
 
     int64_t s1FirstToken;
     int64_t s1LastToken;

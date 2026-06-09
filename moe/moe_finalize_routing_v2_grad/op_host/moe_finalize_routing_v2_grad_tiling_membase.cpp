@@ -64,7 +64,9 @@ ge::graphStatus MoeFinalizeRoutingV2GradMembase::CalcTilingKey()
     }
 
     OP_CHECK_IF(
-        (hiddenPrePart_ <= 0), OP_LOGE(nodeName_, "hiddenPrePart_ is less than 0."),
+        (hiddenPrePart_ <= 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "hiddenPrePart", std::to_string(hiddenPrePart_).c_str(), "hiddenPrePart must be greater than 0"),
         return ge::GRAPH_FAILED);
 
     if (hidden_ <= hiddenPrePart_) {

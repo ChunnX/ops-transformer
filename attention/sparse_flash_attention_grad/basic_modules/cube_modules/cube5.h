@@ -39,19 +39,6 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
     if (runInfo.isLastBasicBlock) {
         totalSel = totalSel - selectedBlockSize + runInfo.lastBlockSize;
     }
-
-    const bool isSmallS2 = runInfo.isSmallS2;
-    const int64_t sparsePGmOffset = pGmOffset;
-    const int64_t densePGmOffset = runInfo.mm345GmOffset;
-    const int64_t denseDyGmOffset = runInfo.dyGmOffset;
-
-    int64_t currentPGmOffset;
-    if (isSmallS2) {
-        currentPGmOffset = densePGmOffset;
-    } else {
-        currentPGmOffset = sparsePGmOffset;
-    }
-
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
         LocalTensor<T1> current_l1_dy_tensor, l1_p_tensor;
         l1_p_tensor = l1_p_tensors[ping_pong_flag_l1_p_];
@@ -60,30 +47,32 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int64_t dyGmOffset, cons
         mmParam.singleM = min(selectedBlockSize * blockOffset, totalSel - (mIdx - blkCntOffset) * selectedBlockSize);
 
         int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
-        CopyGmToL1(l1_p_tensor, pWorkspaceGm[currentPGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
+        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             if (unlikely(reloadDy)) {
                 // last block reload dy
                 WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
                 current_l1_dy_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
-                int64_t currentDyGmOffset;
-                if (isSmallS2) {
-                    currentDyGmOffset = denseDyGmOffset + dIdx * perLoopDSize;
-                } else {
-                    currentDyGmOffset = dyGmOffset + dIdx * perLoopDSize;
-                }
+                int64_t currentDyGmOffset = runInfo.dyGmOffset + dIdx * perLoopDSize;
                 CopyGmToL1(current_l1_dy_tensor, attentionGradGm[currentDyGmOffset], dimG, perLoopDSize, dimDv);
             } else {
                 current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * dimGAlign];
             }
             LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
-
-            int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
+            
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            if constexpr (IS_DETERMINISTIC) {
+                int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
+                MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                        aL0TensorPingPong, bL0TensorPingPong,
+                        mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            } else {
+                int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize * mmParam.singleM;
+                MmadInnerWithSyncFixpNzOut<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                        aL0TensorPingPong, bL0TensorPingPong,
+                        mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            }
             UpdatePingPongFlag(ping_pong_flag_l0c_);
             if (unlikely(reloadDy)) {
                 SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);

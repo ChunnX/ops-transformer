@@ -169,11 +169,11 @@ __aicore__ inline void GmmAddProcess<ComputeType>::SetMKN(const int32_t splitVal
 template <typename ComputeType>
 __aicore__ inline void GmmAddProcess<ComputeType>::UpdateMnConfig(MNConfig& mnConfig)
 {
-    mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+    mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     mnConfig.nAxisBaseOffset += mnConfig.n;
     mnConfig.mAxisBaseOffset += mnConfig.m;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>
@@ -363,6 +363,7 @@ __aicore__ inline void GmmAddCompute<mmType, sync>::MmCompute(MNConfig& mnConfig
         static_cast<uint32_t>((mnConfig.n - curSingleN) * sizeof(CT)), 0};
     AscendC::DataCopyPad<CT>(yGm[outOffset], tensorIn, copyParams);
     AscendC::SetAtomicNone();
+
     cubeNum++;
 }
 template <typename mmType, bool sync>
