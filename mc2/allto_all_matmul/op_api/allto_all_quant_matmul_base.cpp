@@ -325,10 +325,10 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
         isAllDtypesValid =
             CheckMXQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The input x1QuantMode %ld and x2QuantMode %ld do not match any currently supported quantization mode "
-                "scenarios.",
-                x1QuantMode, x2QuantMode);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnAlltoAllQuantMatmul",
+            "x1QuantMode/x2QuantMode",
+            (std::to_string(x1QuantMode) + "/" + std::to_string(x2QuantMode)).c_str(),
+            "The value of x1QuantMode and x2QuantMode must be within the supported range.");
     }
     return isAllDtypesValid;
 }

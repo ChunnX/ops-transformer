@@ -223,7 +223,8 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitCalcParamsE
     }
 
     if constexpr (IS_SPLIT_G) {
-        maxS2LoopCnt = avgBaseNum * (constInfo.sparseBlockCount + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+        maxS2LoopCnt = avgBaseNum * (Min(constInfo.sparseBlockCount, constInfo.s2Size) +
+            constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
 
     if (aicIdx >= usedCoreNum) {
