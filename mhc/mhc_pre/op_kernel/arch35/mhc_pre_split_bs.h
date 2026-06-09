@@ -327,10 +327,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curbloc
 template <class T, class P>
 __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
 {
+    AscendC::CrossCoreWaitFlag(SYNC_C2V1);
     if (vectorOffset_.singleCoreM <= 0) {
         return;
     }
-    AscendC::CrossCoreWaitFlag(SYNC_C2V1);
     uint64_t lenT = 0;
     uint64_t lenD = 0;
     uint64_t singleCoreOffset = 0;
