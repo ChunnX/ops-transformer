@@ -61,8 +61,8 @@ int64_t MhcSinkhornBaseTiling::BackwardCalOccupySize(int64_t ubFactor, int64_t n
 
     int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
     int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
-    int64_t normOutSize = Ops::Base::CeilAlign(2 * ubFactor * nSize * nAlignSize, dataBlockNum);
-    int64_t sumOutSize = Ops::Base::CeilAlign(2 * ubFactor * nAlignSize, dataBlockNum);
+    int64_t normOutSize = Ops::Base::CeilAlign(ubFactor * nSize * nAlignSize, dataBlockNum);
+    int64_t sumOutSize = Ops::Base::CeilAlign(ubFactor * nAlignSize, dataBlockNum);
     int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumOutSize) * xDtypeSize;
     return occupySize;
 }
