@@ -570,7 +570,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
     tilingData.set_c1(c1);
     tilingData.set_aivNum(aivNum);
     tilingData.set_skIterCount(skIterCount);
-    tilingData.set_hcEps(hcEps);
     tilingData.set_tileSize(tile);
 
     ADD_TILING_DATA(context, tilingData);

@@ -23,13 +23,13 @@
 
 namespace optiling {
 
-struct ScatterNdUpdateCompileInfo {
+struct MhcPreSinkhornBackwardCompileInfo {
   int64_t core_numAiv{1};
   int64_t core_numAic{1};
   int64_t ub_size{1};
 };
 
-using namespace Ops::NN::Optiling;
+using Ops::Transformer::OpTiling;
 class MhcPreSinkhornBackwardArch35Tiling : public TilingBaseClass {
 public:
     explicit MhcPreSinkhornBackwardArch35Tiling(gert::TilingContext* context) : TilingBaseClass(context) {
