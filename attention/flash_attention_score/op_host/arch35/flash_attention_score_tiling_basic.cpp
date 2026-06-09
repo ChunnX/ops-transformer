@@ -143,10 +143,10 @@ protected:
                 pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             } else {
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
-                        "s1Size and s2Size", (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
-                        "The values of s1Size and s2Size must be the same "
-                        "when pse alibi is used with s1Size > 1024");
-                    return false;
+                    "s1Size and s2Size", (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
+                    "The values of s1Size and s2Size must be the same "
+                    "when pse alibi is used with s1Size > 1024");
+                return false;
             }
         }
         inputParamsRegbase_->set_pseEncodeType(static_cast<uint8_t>(pseEncodeType));
