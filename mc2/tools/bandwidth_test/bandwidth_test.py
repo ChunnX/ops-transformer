@@ -195,7 +195,7 @@ def check_setting():
 def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
     active = num_loop // num_repeat - num_warmup
 
-    experimental_config = torch_npu.profiler._ExperimentalConfig(  # noqa: SLF001
+    experimental_config = torch_npu.profiler._ExperimentalConfig(
         export_type=torch_npu.profiler.ExportType.Text,
         aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
         profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
@@ -371,7 +371,7 @@ def init_hccl_comm(rank, world_size_local):
     torch.npu.synchronize()
     logger.debug(f"[DEBUG] device_{rank} NPU同步完成")
     
-    hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)  # noqa: SLF001
+    hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     logger.debug(f"[DEBUG] device_{rank} HCCL通信域名称: {hcomm_info}, 长度: {len(hcomm_info) if hcomm_info else 0}")
     
     if not hcomm_info or len(hcomm_info) == 0:
