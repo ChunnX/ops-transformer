@@ -472,6 +472,23 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_api/aclnn_grouped_matmul.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_quant_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_infershape.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.cpp  
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_950_checker.h 
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/grouped_matmul_swiglu_quant_v2_basic_tiling.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_api/grouped_matmul_swiglu_quant_v2_utils.h
+                - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/quant_grouped_matmul_inplace_add_950_checker.cpp
+                - ops/ops-transformer/gmm/quant_grouped_matmul_dequant/op_host/quant_grouped_matmul_dequant_tiling.cpp
+                - ops/ops-transformer/gmm/quant_grouped_matmul_dequant/op_api/aclnn_quant_grouped_matmul_dequant.cpp
+                - ops/ops-transformer/gmm/grouped_matmul_add/op_api/aclnn_grouped_matmul_add.cpp
             opensource_style: null 
             kernel_style: null  
         unrelease:
