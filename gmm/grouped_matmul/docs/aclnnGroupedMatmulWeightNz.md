@@ -22,7 +22,7 @@
 
     **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
 
-      - 输入的weight的数据格式支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
+      - 输入的weight会被强制按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
       - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
 
@@ -192,7 +192,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>weight</td>
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
-    <td>tensorList长度支持[1, 128]或者[1, 1024]。支持昇腾亲和数据排布格式(nz)。</td>
+    <td>tensorList长度支持[1, 128]或者[1, 1024]。接口会将该参数强制按昇腾亲和数据排布格式（FRACTAL_NZ）解析。</td>
     <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup>、
     FLOAT8_E4M3FN<sup>2</sup></td>
     <td>FRACTAL_NZ</td>
@@ -420,16 +420,16 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
-      - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
+      - `weight`会被强制按FRACTAL_NZ格式解析。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。非全量化场景，当数据类型为FLOAT4_E2M1时，需确保FLOAT32表示的FLOAT4_E2M1已转换为正确的类型。当为INT4类型时，需确保权重数据已按INT4打包方式准备。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
       - `offsetOptional`、`antiquantOffsetOptional`暂不支持。
       - `groupType`支持m轴分组，仅非量化支持不分组。
       - `quantGroupSize`暂不支持。
-      - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
+      - `actType`取值范围为0、1、2、4、5。量化场景下传入1、2、4、5时当前仅打印warning提示，不做拦截，建议传入0。综合约束请参见<a href="#约束说明">约束说明</a>。
       - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在全量化场景最多支持1个tensor。
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
-      - `weight`可使用`aclnnCalculateMatmulWeightSizeV2`及`aclnnTransMatmulWeight`完成ND到NZ转换。当传入INT32时，接口内部将每个INT32识别成8个INT4。
+      - `weight`会被强制按FRACTAL_NZ格式解析。当传入INT32时，接口内部将每个INT32识别成8个INT4。
       - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
 
 
@@ -525,7 +525,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为BFLOAT16、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或FLOAT32、activationInputOptional为空、out为BFLOAT16。
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为FLOAT32、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16。
-    - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。weight支持NZ转置输入，即输入为[E,N,K]， 但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐， K按照64对齐， N按照16对齐， ND不支持转置输入。
+    - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。weight支持NZ转置输入，即输入为[E,N,K]， 但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
 
   - 伪量化场景支持的输入类型为：
 
@@ -590,8 +590,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 仅全量化且groupType为0场景下支持groupListType为2，此时要求 groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
-      - 在伪量化和非量化场景下，actType仅支持0。
-      - 在全量化场景下，当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
+      - 在非量化和伪量化场景下，actType仅支持0。
+      - 在量化场景下，actType建议传入0；传入1、2、4、5时当前仅打印warning提示，不做拦截，不保证激活函数生效。
   - 当前支持非量化场景、伪量化场景与全量化场景
   - 非量化场景支持的数据类型为：
     - 输入weight矩阵的n轴与k轴需要满足32B对齐
@@ -1089,115 +1089,50 @@ int CreateAclTensorList(const std::vector<T> &hostData, const std::vector<std::v
     *tensor = aclCreateTensorList(tensors, size);
     return ACL_SUCCESS;
 }
-template <typename T>
-int CreateAclTensorWithFormat(const std::vector<T> &hostData, const std::vector<int64_t> &shape, int64_t **storageShape,
-                              uint64_t *storageShapeSize, void **deviceAddr, aclDataType dataType, aclTensor **tensor,
-                              aclFormat format)
+std::vector<int64_t> GetWeightNzStorageShape(const std::vector<int64_t> &shape)
 {
-    auto size = hostData.size() * sizeof(T);
-    // 调用aclrtMalloc申请device侧内存
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-
-    // 计算连续tensor的strides
-    std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
-    }
-
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, *storageShape,
-                              *storageShapeSize, *deviceAddr);
-    return 0;
+    constexpr int64_t nzBlockK = 16L;
+    constexpr int64_t nzBlockN = 64L;
+    int64_t e = shape[0];
+    int64_t k = shape[1];
+    int64_t n = shape[2];
+    return {e, (n + nzBlockN - 1) / nzBlockN, (k + nzBlockK - 1) / nzBlockK, nzBlockK, nzBlockN};
 }
 
 template <typename T>
 int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                      aclDataType dataType, aclTensor **tensor, aclrtStream &stream)
+                      aclDataType dataType, aclTensor **tensor)
 {
-    void *srcDeviceAddr = nullptr;
-    aclTensor *srcTensor = nullptr;
+    if (shape.size() != 3) {
+        LOG_PRINT("Shape must be 3D for NZ format\n");
+        return -1;
+    }
+    std::vector<int64_t> storageShape = GetWeightNzStorageShape(shape);
     auto size = hostData.size() * sizeof(T);
 
-    auto ret = aclrtMalloc(&srcDeviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
 
-    ret = aclrtMemcpy(srcDeviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
     std::vector<int64_t> strides(shape.size(), 1L);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    srcTensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                                shape.data(), shape.size(), srcDeviceAddr);
-
-    int64_t *dstShape = nullptr;
-    uint64_t dstShapeSize = 0;
-    int actualFormat;
-    ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, 29, aclFormat::ACL_FORMAT_ND, &dstShape, &dstShapeSize,
-                                                   &actualFormat);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCastCalculateSizeAndFormat failed. ERROR: %d\n", ret);
-              return ret);
-
-    aclTensor *dstTensor = nullptr;
-    void *dstDeviceAddr = nullptr;
-
-    uint64_t tensorSize = 1;
-    for (int64_t i = 0; i < dstShape[i]; i++) {
-        tensorSize *= dstShape[i];
-    }
-    ret = aclrtMalloc(&dstDeviceAddr, tensorSize * sizeof(T), ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-    int64_t weightLen = shape.size();
-    for (int64_t i = 0; i < weightLen + 2; i++) {
-        tensorSize = tensorSize * dstShape[i];
-    }
-    std::vector<uint16_t> dstTensorHostData(tensorSize, 0);
-
-    ret = CreateAclTensorWithFormat(dstTensorHostData, shape, &dstShape, &dstShapeSize, &dstDeviceAddr, dataType,
-                                    &dstTensor, static_cast<aclFormat>(actualFormat));
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("CreateAclTensorWithFormat failed. ERROR: %d\n", ret); return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor;
-    void *workspaceAddr = nullptr;
-    std::unique_ptr<void, aclError (*)(void *)> workspaceAddrPtr(workspaceAddr, aclrtFree);
-
-    // 调用aclnnNpuFormatCastGetWorkspaceSize第一段接口
-    ret = aclnnNpuFormatCastGetWorkspaceSize(srcTensor, dstTensor, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCastGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-    // 根据第一段接口计算出的workspaceSize申请device内存
-
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-
-    // 调用aclnnNpuFormatCastGetWorkspaceSize第二段接口
-    ret = aclnnNpuFormatCast(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCast failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-    *tensor = dstTensor;
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0,
+                              aclFormat::ACL_FORMAT_FRACTAL_NZ, storageShape.data(), storageShape.size(), *deviceAddr);
     return ACL_SUCCESS;
 }
 
 template <typename T>
 int CreateAclTensorListNz(const std::vector<T> &hostData, const std::vector<std::vector<int64_t>> &shapes,
-                          void **deviceAddr, aclDataType dataType, aclTensorList **tensor, aclrtStream &stream)
+                          void **deviceAddr, aclDataType dataType, aclTensorList **tensor)
 {
     int size = shapes.size();
     aclTensor *tensors[size];
     for (int i = 0; i < size; ++i) {
-        int ret = CreateAclTensorNz<T>(hostData, shapes[i], deviceAddr + i, dataType, tensors + i, stream);
+        int ret = CreateAclTensorNz<T>(hostData, shapes[i], deviceAddr + i, dataType, tensors + i);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
     }
     *tensor = aclCreateTensorList(tensors, size);
@@ -1257,7 +1192,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t groupListType = 0L;
     int64_t actType = 0L;
     std::vector<int8_t> xHostData(m * k, 10);
-    std::vector<int8_t> weightHostData(groupnum * k * n, 10);
+    std::vector<int8_t> weightHostData(GetShapeSize(GetWeightNzStorageShape(weightShape[0])), 10);
     std::vector<uint16_t> yHostData(m * n, 0);
     std::vector<int64_t> groupListData = {256, 512};
     std::vector<int8_t> scaleHostData(groupnum * n, 1);
@@ -1270,7 +1205,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> xTensorPtr(x, aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     // 创建weight aclTensorList
-    ret = CreateAclTensorListNz(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_INT8, &weight, stream);
+    ret = CreateAclTensorListNz(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_INT8, &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorPtr(weight,
                                                                                            aclDestroyTensorList);
