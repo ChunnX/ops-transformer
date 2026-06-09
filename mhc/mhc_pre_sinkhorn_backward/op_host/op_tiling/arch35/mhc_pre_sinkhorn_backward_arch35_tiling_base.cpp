@@ -46,6 +46,8 @@ constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t BF16_BYTE_SIZE = 2;
+constexpr int64_t ALPHA_SIZE_3 = 3;
+constexpr int64_t N_SIZE_4 = 4;
 
 bool MhcPreSinkhornBackwardArch35Tiling::IsCapable()
 {
@@ -60,11 +62,11 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
     OP_CHECK_IF(
-        (aivNum <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAiv."), return ge::GRAPH_FAILED);
+        (coreNumAiv <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAiv."), return ge::GRAPH_FAILED);
     coreNumAiv_ = coreNumAiv;
     auto coreNumAic = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(
-        (aivNum <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAic."), return ge::GRAPH_FAILED);
+        (coreNumAic <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAic."), return ge::GRAPH_FAILED);
     coreNumAic_ = coreNumAic;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
@@ -81,7 +83,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
         OP_LOGE(context_, "input x shape is nullptr");
         return ge::GRAPH_FAILED;
     }
-    const auto skSumPtr = context->GetInputShape(SUM_OUT_IDX);
+    const auto skSumPtr = context_->GetInputShape(SUM_OUT_IDX);
     if (skSumPtr == nullptr) {
         OP_LOGE(context_, "input sum_out shape is nullptr");
         return ge::GRAPH_FAILED;
@@ -369,8 +371,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
-    mm1Tiling.SetOrgShape(mm1M, mm1N, mm1K);
-    mm1Tiling.SetShape(mm1M, mm1N, mm1K);
+    mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
+    mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
     mm1Tiling.SetBufferSpace(-1, -1, -1);
     mm1Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
@@ -381,8 +383,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     mm2Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType, true);
     mm2Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm2Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm2Tiling.SetOrgShape(mm2M, mm2N, mm2K);
-    mm2Tiling.SetShape(mm2M, mm2N, mm2K);
+    mm2Tiling.SetOrgShape(mm2M_, mm2N_, mm2K_);
+    mm2Tiling.SetShape(mm2M_, mm2N_, mm2K_);
     mm2Tiling.SetBias(false);
     mm2Tiling.SetBufferSpace(-1, -1, -1);
     mm2Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
@@ -396,7 +398,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     tilingData->n = n_;
     tilingData->c0 = c0_;
     tilingData->c1 = c1_;
-    tilingData->aivNum = core_numAiv;
+    tilingData->aivNum = coreNumAiv_;
     tilingData->skIterCount = skIterCount_;
     tilingData->tileSize = tile_;
 
@@ -407,7 +409,7 @@ void MhcPreSinkhornBackwardArch35Tiling::DoUbTiling()
 {
     c0_ = 64;
     c1_ = c_ / c0_;
-    coreTaskCount_ = (batchSize_ * seqLength_ + core_numAiv_ - 1) / core_numAiv_;
+    coreTaskCount_ = (batchSize_ * seqLength_ + coreNumAiv_ - 1) / coreNumAiv_;
     tile_ = min(coreTaskCount_, (int64_t) 64);
     tileUB_ = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
         ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
@@ -424,7 +426,7 @@ void MhcPreSinkhornBackwardArch35Tiling::DoUbTiling()
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
 {
-    DoUbTiling()
+    DoUbTiling();
     return SetTilingData();
 }
 
@@ -437,7 +439,7 @@ uint64_t MhcPreSinkhornBackwardArch35Tiling::GetTilingKey() const
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::PostTiling()
 {
     context_->SetDynUBufSize(ubSize_);
-    context->SetBlockDim(aicNum);
+    context->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
