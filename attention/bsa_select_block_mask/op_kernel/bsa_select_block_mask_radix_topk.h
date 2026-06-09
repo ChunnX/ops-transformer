@@ -94,6 +94,7 @@ private:
     __aicore__ inline void SToVSync();
     __aicore__ inline void MTE2ToMTE3Sync();
     __aicore__ inline void MTE3ToMTE2Sync();
+    __aicore__ inline void MTE3ToVSync();
     __aicore__ inline void VToMTE3Sync();
     __aicore__ inline void MTE2ToVSync();
     __aicore__ inline void MTE2ToSSync();
@@ -604,6 +605,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::MTE3ToMTE2Sync()
 }
 
 template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::MTE3ToVSync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventID);
+    WaitFlag<HardEvent::MTE3_V>(eventID);
+}
+
+template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::VToMTE3Sync()
 {
     event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
@@ -833,6 +842,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
 
     SToVSync();
     globalHist.SetValue(0, static_cast<int32_t>(globalHistBoundaryNum_));
+    MTE3ToVSync();
     ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
                       (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
     MTE3ToMTE2Sync();
