@@ -238,11 +238,19 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
                 tempN, fiaInfo.n2Size),
             return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+            OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize + 4,
+            OP_LOGE(fiaInfo.opName, "When page attention enable, if full quant mode is query per-token-head, value per-head, "
+                    "blocksize(%u) of kvCache should be %u",
+                tempBlockSize, fiaInfo.blockSize),
+            return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
             OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
                 tempBlockSize, fiaInfo.blockSize),
             return ge::GRAPH_FAILED);
-        
+        }
+
         if (fiaInfo.inputKvType == ge::DT_INT4) {
             OP_CHECK_IF(tempD != compareD,
                 OP_LOGE(fiaInfo.opName, "When page attention enable, if input kv dataType is INT32, "
