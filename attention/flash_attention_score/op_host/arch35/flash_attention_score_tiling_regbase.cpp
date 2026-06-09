@@ -361,6 +361,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+            "actual_seq_qlen and actual_seq_kvlen",
+            (std::to_string(actualSeqQLen) + " and " + std::to_string(actualSeqKVLen)).c_str(),
             "The Value of q must be equal to kv with VarLen scene."), return false);
     bSize = actualSeqQLen;
     accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
@@ -538,8 +540,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
                             std::to_string(n1Size).c_str(),
-                            "The value of attr head_num must be equal to the 1st dim “
-                            ”of input query when the layout is BNSD"),
+                            "The value of attr head_num must be equal to the 1st dim "
+                            "of input query when the layout is BNSD"),
                         return false);
             gSize = queryShape.GetDim(1) / n2Size;
             s1Size = queryShape.GetDim(2); // 2: S idx
@@ -593,8 +595,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
             std::string nValueMsg = std::to_string(n1Size) + " and " + std::to_string(n2Size);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
                 nValueMsg.c_str(),
-                "The shape of input query should be the same as the shape of input key “
-                ”at the N dim when input dtype is HIFLOAT8");
+                "The shape of input query should be the same as the shape of input key "
+                "at the N dim when input dtype is HIFLOAT8");
             return ge::GRAPH_FAILED;
         }
         if (dSize != 128) {
@@ -741,8 +743,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
             if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
                 std::string dimStr = std::to_string(pseDimNum) + "D";
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "pse shape",
-                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or “
-                    ”1D (N2) when it is pse inner mode");
+                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or "
+                    "1D (N2) when it is pse inner mode");
                 return false;
             }
             pseShapeType = PseShapeType::PSE_B_N2_G_SLOPE;
@@ -1902,8 +1904,9 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::SetQKVStartIdx() {
     // 当kvStartIdx - qStartIdx超出范围后，由于编译器不支持大数值类型转换，kernel侧int_64转float类型时可能发生截断。
     OP_CHECK_IF(kvStartIdx - qStartIdx > INT32_MAX || kvStartIdx - qStartIdx < INT32_MIN,
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
-            "The difference between kvStartIdx and qStartIdx must be within the range [%d %d].",
-            INT32_MIN, INT32_MAX),
+            "kvStartIdx and qStartIdx",
+            std::to_string(kvStartIdx - qStartIdx).c_str(),
+            "The difference between kvStartIdx and qStartIdx must be within the range [INT32_MIN, INT32_MAX]."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
