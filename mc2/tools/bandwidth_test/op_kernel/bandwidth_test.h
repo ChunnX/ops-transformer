@@ -425,7 +425,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit(
     totalUsedUB_ += waitStatusBufSize;
     uint64_t recvWinBlockNumSpace = epWorldSize_ * sizeof(float);
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ?
+                                  recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
     totalUsedUB_ += gatherMaskOutSize;
 

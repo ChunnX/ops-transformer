@@ -17,15 +17,15 @@ import socket
 import logging
 import traceback
 import time
-import pandas as pd
-import numpy as np
-from math import ceil
-from typing import List, Tuple, Dict, Any
 import torch
 import torch_npu
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.multiprocessing import Process, Manager
+import pandas as pd
+import numpy as np
+from math import ceil
+from typing import List, Tuple, Dict, Any
 
 import npu_ops_transformer
 
@@ -94,7 +94,7 @@ if is_single_test:
     bs = 2
     data_size = 8192
     max_bs = 2
-    test_configs = [{'bs': bs, 'data_size': data_size, 'max_bs': max_bs},]
+    test_configs = [{'bs': bs, 'data_size': data_size, 'max_bs': max_bs}, ]
 
     # 计算 HCCL_BUFFSIZE 大小
     os.environ['HCCL_BUFFSIZE'] = cal_hccl_buffsize(bs, data_size, world_size)
@@ -249,10 +249,10 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     mean_time_s = mean_time_us / 1e6
     min_time_s = min_time_us / 1e6
     
-    single_rank_data_bytes = test_bs * data_size_bytes * ((num_world_size-1) / num_world_size)
+    single_rank_data_bytes = test_bs * data_size_bytes * ((num_world_size - 1) / num_world_size)
     total_data_bytes = single_rank_data_bytes * num_world_size
-    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 / (num_world_size-1)
-    max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / (num_world_size-1)
+    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 / num_world_size
+    max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / num_world_size
     single_rank_data_kb = single_rank_data_bytes / 1024
     
     logger.info("=" * 60)
@@ -364,22 +364,27 @@ def init_hccl_comm(rank, world_size_local):
     logger.info(f"device {rank} 初始化通信域")
     comm_group = dist.new_group(backend="hccl", ranks=ranks_list)
     
-    logger.debug(f"[DEBUG] device_{rank} 等待所有进程初始化完成...")
+    logger.debug("[DEBUG] device_%s 等待所有进程初始化完成...", rank)
     dist.barrier()
-    logger.debug(f"[DEBUG] device_{rank} barrier完成")
+    logger.debug(f"[DEBUG] device_%s barrier完成", rank)
     
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} NPU同步完成")
+    logger.debug(f"[DEBUG] device_%s NPU同步完成", rank)
     
     hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-    logger.debug(f"[DEBUG] device_{rank} HCCL通信域名称: {hcomm_info}, 长度: {len(hcomm_info) if hcomm_info else 0}")
+    logger.debug(
+    "[DEBUG] device_%s HCCL通信域名称: %s, 长度: %s",
+    rank,
+    hcomm_info,
+    len(hcomm_info) if hcomm_info else 0
+    )
     
     if not hcomm_info or len(hcomm_info) == 0:
         raise RuntimeError(f"device_{rank} HCCL通信域获取失败")
     
     dist.barrier()
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} 通信域完全就绪")
+    logger.debug(f"[DEBUG] device_%s 通信域完全就绪", rank)
     
     return hcomm_info, comm_group
 
@@ -491,7 +496,7 @@ def compare_result(
             logger.info(f"相对差异:")
             logger.info(rel_diff)
         
-        if max_rel_diff > rtol and max_diff > atol:
+        if max_rel_diff > rtol or max_diff > atol:
             logger.error(f"[ERROR] {name} 精度不满足要求:")
             logger.error(f"  最大相对误差: {max_rel_diff}")
             logger.error(f"  容忍范围: rtol={rtol}, atol={atol}")
@@ -569,19 +574,22 @@ def run_bandwidth_test_npu(
                             torch.exp(tensor)
                     prof.step()
     else:
-        torch._dynamo.reset()
-        tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-        model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
-        loop_time = 2
-        repeat_time = 1
-        warm_time = 1
-        with get_profiling(loop_time, repeat_time, warm_time, profiling_path) as prof:
-            for i in range(loop_time):
-                y, receive_cnt = model(**bandwidth_test_kwargs)
-                if i == 1:
-                    for _ in range(100):
-                        torch.exp(tensor)
-                prof.step()
+        if not is_perf_mode:
+            y, receive_cnt = model(**bandwidth_test_kwargs)
+        else:
+            torch._dynamo.reset()
+            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+            model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
+            loop_time = 2
+            repeat_time = 1
+            warm_time = 1
+            with get_profiling(loop_time, repeat_time, warm_time, profiling_path) as prof:
+                for i in range(loop_time):
+                    y, receive_cnt = model(**bandwidth_test_kwargs)
+                    if i == 1:
+                        for _ in range(100):
+                            torch.exp(tensor)
+                    prof.step()
     
     torch.npu.synchronize()
     torch.npu.empty_cache()
