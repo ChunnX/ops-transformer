@@ -53,8 +53,8 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
             {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
 
     std::vector<std::vector<int64_t>> expected = {
-        {17, 16, 128},
-        {17, 16},
+        {16, 17, 128},
+        {16, 17},
         {8, 2, 128, 128},
         {8, 2, 128, 128},
         {8, 2, 128, 1},

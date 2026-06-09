@@ -23,6 +23,7 @@ constexpr uint64_t kL0aMaxRows = 128;
 constexpr uint64_t kL0cMaxRows = 256;
 constexpr uint64_t kUbInputRowsPerAiv = 160;
 constexpr uint64_t kUbOutputRowsPerAiv = 128;
+constexpr uint64_t kFp8NtdStagingRowsPerAiv = 80;
 constexpr uint64_t kDimTileFast = 128;
 constexpr uint64_t kAivPerAic = 2;
 

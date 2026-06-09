@@ -76,8 +76,9 @@ void LogContractInputSummary(const std::string &opName, const ContractInput &inp
             input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, input.aicNum);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
-            "ubOutputRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
-            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kL0aMaxRows, kL0cMaxRows, kAivPerAic);
+            "ubOutputRowsPerAiv=%lu fp8NtdStagingRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
+            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kFp8NtdStagingRowsPerAiv, kL0aMaxRows,
+            kL0cMaxRows, kAivPerAic);
 }
 
 void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, uint64_t tokenTile, uint64_t rowTile,
@@ -297,12 +298,15 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         return ContractStatus::kInvalidScaleStride;
     }
 
+    const uint64_t fp8NtdStagingHeads = std::max({input.numQHeads, input.numKHeads, input.numVHeads});
     const uint64_t initialTokenTilePerAiv =
-        std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN});
+        std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN,
+            kFp8NtdStagingRowsPerAiv / fp8NtdStagingHeads});
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
-            "ubOutputLimit=%lu ubInputLimit=%lu.",
-            initialTokenTilePerAiv, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN);
+            "ubOutputLimit=%lu ubInputLimit=%lu fp8NtdStagingLimit=%lu.",
+            initialTokenTilePerAiv, kUbOutputRowsPerAiv / qkN, kUbInputRowsPerAiv / qkvN,
+            kFp8NtdStagingRowsPerAiv / fp8NtdStagingHeads);
     uint64_t selectedTokenTile = 0;
     uint64_t selectedTokenTilePerAiv = 0;
     const auto trySelectTokenTile = [&](uint64_t tokenTile) {
@@ -311,7 +315,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         const uint64_t rowTileAligned = AlignUp(rowTile, 16);
         const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, input.numQHeads, input.numKHeads);
         const bool fitsUb = tokenTilePerAiv * qkN <= kUbOutputRowsPerAiv &&
-                            tokenTilePerAiv * qkvN <= kUbInputRowsPerAiv;
+                            tokenTilePerAiv * qkvN <= kUbInputRowsPerAiv &&
+                            tokenTilePerAiv * fp8NtdStagingHeads <= kFp8NtdStagingRowsPerAiv;
         const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
         const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
                              qkAlignedRows <= kL0cMaxRows;

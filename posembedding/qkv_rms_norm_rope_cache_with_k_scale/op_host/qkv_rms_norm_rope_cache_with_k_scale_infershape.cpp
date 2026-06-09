@@ -64,13 +64,13 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     const int64_t headDim = qkvShape->GetDimNum() >= 3 ? qkvShape->GetDim(2) : kUnknownDim;
 
     qOutShape->SetDimNum(3);
-    qOutShape->SetDim(0, totalTokens);
-    qOutShape->SetDim(1, qHeads);
+    qOutShape->SetDim(0, qHeads);
+    qOutShape->SetDim(1, totalTokens);
     qOutShape->SetDim(2, headDim);
 
     qScaleShape->SetDimNum(2);
-    qScaleShape->SetDim(0, totalTokens);
-    qScaleShape->SetDim(1, qHeads);
+    qScaleShape->SetDim(0, qHeads);
+    qScaleShape->SetDim(1, totalTokens);
 
     *kCacheOutShape = *kCacheShape;
     *vCacheOutShape = *vCacheShape;
