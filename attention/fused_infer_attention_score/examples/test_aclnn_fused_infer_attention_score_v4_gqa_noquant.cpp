@@ -162,9 +162,9 @@ int main() {
     auto tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
 
     // Create attentionOut aclTensor.
-    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
+    fia_ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        return fia_ret;
     }
 
     // Create Attrs.
@@ -193,9 +193,9 @@ int main() {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
         valueAntiquantMode, queryQuantMode, attentionOutTensor, nullptr, &workspaceSize, &executor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnFusedInferAttentionScoreV4GetWorkspaceSize failed. ERROR: %d\n", ret);
-        return ret;
+    if (!CHECK_RET(fia_ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnFusedInferAttentionScoreV4GetWorkspaceSize failed. ERROR: %d\n", fia_ret);
+        return fia_ret;
     }
     // Apply for device memory based on the workspaceSize calculated from the first interface paragraph.
     void *workspaceAddr = nullptr;
@@ -224,7 +224,7 @@ int main() {
     // according to the specific API interface definition.
     auto size = GetShapeSize(attentionOutShape);
     std::vector<op::fp16_t> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
+    fia_ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(fia_ret == ACL_SUCCESS)) { 
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", fia_ret); 
