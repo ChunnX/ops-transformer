@@ -22,7 +22,7 @@
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_struct.h"
 
 namespace optiling {
-using public Ops::Transformer::OpTiling;
+using Ops::Transformer::OpTiling;
 
 struct MhcPreSinkhornBackwardCompileInfo {
   int64_t core_numAiv{1};
@@ -30,7 +30,7 @@ struct MhcPreSinkhornBackwardCompileInfo {
   int64_t ub_size{1};
 };
 
-class MhcPreSinkhornBackwardArch35Tiling : TilingBaseClass {
+class MhcPreSinkhornBackwardArch35Tiling : public TilingBaseClass {
 public:
     explicit MhcPreSinkhornBackwardArch35Tiling(gert::TilingContext* context) : TilingBaseClass(context) {
     }
