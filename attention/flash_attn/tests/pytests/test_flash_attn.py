@@ -89,7 +89,7 @@ if __name__ == "__main__":
         with open(str(csv_path)) as f:
             all_rows = list(csv_mod.DictReader(f))
         flash_rows = [r for r in all_rows if r.get("OP Type") == "FlashAttn"]
-        fieldnames = all_rows[0].keys() if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
+        fieldnames = list(all_rows[0].keys()) if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
 
         # 顶层只保留 FlashAttn
         with open(str(csv_path), "w", newline="") as f:
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         cold_idxs = [i for i, c in enumerate(cases_list) if c.get("S1", 9999) <= args.perf_cold_thr]
         ordered = [(i, "hot") for i in hot_idxs] + [(i, "cold") for i in cold_idxs]
 
-        fieldnames = all_rows[0].keys() if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
+        fieldnames = list(all_rows[0].keys()) if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
         pos = 0
         for idx_ord, (case_idx, mode) in enumerate(ordered):
             tag = f"{mode}{idx_ord}"
