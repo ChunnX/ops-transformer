@@ -168,7 +168,7 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
                 return false);
     uint32_t kernelTypeSize = ge::GetSizeByDataType(kernelType);
     OP_CHECK_IF((kernelTypeSize <= 0),
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "key",
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "key",
                    std::to_string(kernelTypeSize).c_str(),
                    "The value of kernelTypeSize must be greater than 0"),
                return false);
@@ -221,7 +221,7 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
 
     uint32_t floatDataSize =  ge::GetSizeByDataType(ge::DT_FLOAT);
     OP_CHECK_IF((floatDataSize <= 0),
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "softmax_max and softmax_sum",
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "softmax_max and softmax_sum",
                    std::to_string(floatDataSize).c_str(),
                    "The value of floatDataSize must be greater than 0"),
                return false);

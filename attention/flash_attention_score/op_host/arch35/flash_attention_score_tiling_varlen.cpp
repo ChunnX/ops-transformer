@@ -302,12 +302,12 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
     bool CheckBandPretokenAndNexttoken(SparseEnum &sparseType)
     {
         if (preTokens < 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "pre_tokens",
                 std::to_string(preTokens).c_str(), "The value of pre_tokens must be greater than zero");
             return false;
         }
         if (nextTokens < 0 && preTokens + nextTokens < 0) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "pre_tokens and next_tokens",
                 (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
                 "The following constraint must be met: next_tokens >= 0 or pre_tokens + next_tokens >= 0");
             return false;
@@ -317,7 +317,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                 continue;
             }
             if (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i]) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "next_tokens",
                     std::to_string(nextTokens).c_str(),
                     "The following constraint must be met for each batch: "
                     "actual_seq_len_q - next_tokens <= actual_seq_len_kv");
@@ -416,7 +416,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                        return false);
         } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
             if (actualSeqLenData[bandIndex] - nextTokens > actualSeqLenKvData[bandIndex]) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "next_tokens",
                     std::to_string(nextTokens).c_str(),
                     "The following constraint must be met for the band index batch: "
                     "actual_seq_len_q - next_tokens <= actual_seq_len_kv");
@@ -424,7 +424,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
             }
             int64_t firstS2 = actualSeqLenKvData[bandIndex];
             if (preTokens < firstS2) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "pre_tokens",
                     std::to_string(preTokens).c_str(),
                     "The value of pre_tokens must be greater than the first "
                     "valid actual_seq_len_kv in BAND_LEFT_UP_CAUSAL mode");
@@ -439,7 +439,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                                SparseEnum &sparseType)
     {
         if (nextTokens < 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "next_tokens",
                 std::to_string(nextTokens).c_str(), "To have valid data blocks, the value of "
                     "next_tokens must be greater than zero");
             return false;
@@ -452,7 +452,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                 continue;
             }
             if (actualSeqLenKvData[i] + preTokens < actualSeqLenData[i]) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "pre_tokens",
                     std::to_string(preTokens).c_str(),
                     "The following constraint must be met for each batch: "
                     "actual_seq_len_kv + pre_tokens >= actual_seq_len_q");
@@ -474,7 +474,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                 sparseType = SparseEnum::BAND;
                 return true;
             } else {
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "pre_tokens and next_tokens",
                     (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
                     "The following constraint must be met: "
                     "pre_tokens + next_tokens >= min(actual_seq_len_kv) when pre_tokens < 0");
@@ -518,7 +518,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
         for (int64_t i = 0; i < bSize; ++i) {
 if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                     if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "prefix_n",
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
                             std::to_string(prefixNData[i]).c_str(),
                             "The value of prefix_n must be [0, actual_seq_len_kv] "
                             "when actual_seq_len_q > actual_seq_len_kv");
@@ -531,7 +531,7 @@ if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
 } else {
                     if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
                         prefixNData[i] > actualSeqLenKvData[i]) {
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "prefix_n",
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
                             std::to_string(prefixNData[i]).c_str(),
                             "The value of prefix_n must be [actual_seq_len_kv - actual_seq_len_q, "
                             "actual_seq_len_kv] when actual_seq_len_q <= actual_seq_len_kv");
@@ -547,7 +547,7 @@ if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
     bool VarLenSparseModeProcess(SparseEnum &sparseType)
     {
         if (!CheckPretokenAndNexttoken(sparseType)) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "pre_tokens and next_tokens",
                 (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
                 "The values of pre_tokens and next_tokens must satisfy the sparse mode constraints");
             return false;
@@ -568,7 +568,7 @@ if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                   preTokens, nextTokens, s1Size, s2Size, hasAttenMask);
         if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX) ||
             sparseMode > static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "sparse_mode",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
                 std::to_string(sparseMode).c_str(), "The value of sparse_mode must be within "
                     "the supported range for VarLen mode");
             return false;
