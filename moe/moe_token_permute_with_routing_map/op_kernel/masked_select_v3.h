@@ -76,9 +76,8 @@ __aicore__ inline void VToMTE3Sync()
 }
 
 // 二分累加到2 * offset以内，再累加成offset大小
-template <typename T>
 __aicore__ inline void BinaryAddFunc(
-    LocalTensor<T> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset)
+    LocalTensor<float> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset)
 {
     int32_t totalLen = hiddensizeLen;
     int32_t halfLen = AlignUp(CeilDiv(totalLen, HALf_INTERVAL), BUFFER_32B_CALNUM);
@@ -94,8 +93,7 @@ __aicore__ inline void BinaryAddFunc(
     PipeBarrier<PIPE_V>();
 }
 
-template <typename T>
-__aicore__ inline void ReduceSumFunc(LocalTensor<T> dstBuffer, LocalTensor<T> tmpBuffer, int32_t hiddensizeLen)
+__aicore__ inline void ReduceSumFunc(LocalTensor<float> dstBuffer, LocalTensor<float> tmpBuffer, int32_t hiddensizeLen)
 {
     if (hiddensizeLen >= MASK_LEN) { // 二分累加到128以内，再累加成64大小，用blockreducesum
         PipeBarrier<PIPE_V>();
@@ -212,26 +210,16 @@ public:
         PipeBarrier<PIPE_ALL>();
 
         actualOutTokens = 0;
-        LocalTensor<int32_t> sumInt32 = sumBuf.Get<int32_t>();
-
-        if (needCoreNum > 0 && needCoreNum <= MASK_LEN) {
-            MoeTokenPermute::SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-            ReduceSumFunc(sumInt32, offsetLocal, static_cast<int32_t>(needCoreNum));
-            MoeTokenPermute::SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-            actualOutTokens = sumInt32.GetValue(0);
-            MoeTokenPermute::SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
-        } else {
-            for (int32_t i = 0; i < needCoreNum; i++) {
-                actualOutTokens += offsetLocal.GetValue(i);
-            }
+        auto blockIdInNeedCore = min(blockIdx, needCoreNum);
+        for (int32_t i = 0; i < blockIdInNeedCore; i++) {
+            ind += offsetLocal.GetValue(i);
+        }
+        actualOutTokens = ind;
+        for (int32_t i = blockIdInNeedCore; i < needCoreNum; i++) {
+            actualOutTokens += offsetLocal.GetValue(i);
         }
 
         if (this->blockIdx < needCoreNum) {
-            if (blockIdx > 0) {
-                ReduceSumFunc(sumInt32, offsetLocal, static_cast<int32_t>(blockIdx));
-                MoeTokenPermute::SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-                ind = static_cast<uint64_t>(sumInt32.GetValue(0));
-            }
             this->outOffset = 0;
             if (hasProb) {
                 yGlobal.SetGlobalBuffer((__gm__ T*)y + ind);
