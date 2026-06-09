@@ -35,41 +35,42 @@
 #include "hccl/hcomm_res_defs.h"
 #include "hccl/hccl_rank_graph.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
-    #include "torch_npu/csrc/flopcount/FlopCount.h"
+#include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
 #define NPU_NAME_SPACE at_npu::native
 
-using _HcclKfcAllocOpArgs = HcclResult (*)(void **);                                        // 通信配置对象创建
-using _HcclKfcOpArgsSetAlgConfig = HcclResult (*)(void *, char *);                          // 设置通信类型
-using _HcclKfcOpArgsSetCommEngine = HcclResult (*)(void *, uint8_t);                        // 设置通信方式
-using _HcclCreateOpResCtx = HcclResult (*)(HcclComm, uint8_t, void *, void **);             // 创建HcclContext
+using _HcclKfcAllocOpArgs = HcclResult (*)(void **);                                      // 通信配置对象创建
+using _HcclKfcOpArgsSetAlgConfig = HcclResult (*)(void *, char *);                        // 设置通信类型
+using _HcclKfcOpArgsSetCommEngine = HcclResult (*)(void *, uint8_t);                      // 设置通信方式
+using _HcclCreateOpResCtx = HcclResult (*)(HcclComm, uint8_t, void *, void **);           // 创建HcclContext
 using _HcclGetRemoteIpcHcclBuf = HcclResult (*)(HcclComm, uint64_t, void **, uint64_t *); // 获取远端地址
-using _HcclKfcFreeOpArgs = HcclResult (*)(void *);                                          // 释放通信配置对象
-using _HcclCommGetHandleWithName = HcclResult (*)(const char *, HcclComm*);                 // 通过groupName获取groupHandle
-using _HcclGetRankSize = HcclResult (*)(HcclComm, uint32_t *);                              // 获取通信域大小
-using _HcclGetRankId = HcclResult (*)(HcclComm, uint32_t *);                                // 获取卡号
-using _HcclGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);                   // 获取本卡地址
+using _HcclKfcFreeOpArgs = HcclResult (*)(void *);                                        // 释放通信配置对象
+using _HcclCommGetHandleWithName = HcclResult (*)(const char *, HcclComm *); // 通过groupName获取groupHandle
+using _HcclGetRankSize = HcclResult (*)(HcclComm, uint32_t *);               // 获取通信域大小
+using _HcclGetRankId = HcclResult (*)(HcclComm, uint32_t *);                 // 获取卡号
+using _HcclGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);    // 获取本卡地址
+using _HcclBarrier = HcclResult (*)(HcclComm, aclrtStream);                  // 执行Barrier同步
 
 // 通过group名称获取comm handle
-using _HcomGetCommHandleByGroup = HcclResult (*)(const char*, HcclComm*);
- // 获取rank间通信链路
-using _HcclRankGraphGetLinks = HcclResult (*)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*);
+using _HcomGetCommHandleByGroup = HcclResult (*)(const char *, HcclComm *);
+// 获取rank间通信链路
+using _HcclRankGraphGetLinks = HcclResult (*)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *);
 // 获取网络层信息
-using _HcclRankGraphGetLayers = HcclResult (*)(HcclComm, uint32_t**, uint32_t*);
+using _HcclRankGraphGetLayers = HcclResult (*)(HcclComm, uint32_t **, uint32_t *);
 // 获取每层rank数量
-using _HcclRankGraphGetRankSizeByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_t*);
+using _HcclRankGraphGetRankSizeByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 // 初始化channel描述符
 using _HcclRankGraphGetRanksByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_t **, uint32_t *);
 // 获取channel句柄
-using _HcclChannelAcquire = HcclResult (*)(HcclComm, CommEngine, HcclChannelDesc*, uint32_t, ChannelHandle*);
+using _HcclChannelAcquire = HcclResult (*)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *);
 // 通过channel获取buffer
-using _HcclChannelGetHcclBuffer = HcclResult (*)(HcclComm, ChannelHandle, void**, uint64_t*);
+using _HcclChannelGetHcclBuffer = HcclResult (*)(HcclComm, ChannelHandle, void **, uint64_t *);
 // 创建引擎context
-using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char*, CommEngine, uint64_t, void**);
+using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char *, CommEngine, uint64_t, void **);
 // 获取引擎context
-using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char*, CommEngine, void**, uint64_t*);
+using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char *, CommEngine, void **, uint64_t *);
 // 拷贝context
-using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t);
+using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char *, void *, uint64_t, uint64_t);
 
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
@@ -81,6 +82,7 @@ static _HcclCommGetHandleWithName HcclCommGetHandleWithNameFunc = nullptr;
 static _HcclGetRankSize HcclGetRankSizeFunc = nullptr;
 static _HcclGetRankId HcclGetRankIdFunc = nullptr;
 static _HcclGetHcclBuffer HcclGetHcclBufferFunc = nullptr;
+static _HcclBarrier HcclBarrierFunc = nullptr;
 
 // 新HCCL EngineCtx API函数指针
 static _HcomGetCommHandleByGroup HcomGetCommHandleByGroupFunc = nullptr;
@@ -105,7 +107,7 @@ inline const char *GetHcclFwkLibName(void)
 }
 
 template <typename T>
-inline T GetFuncAddr(void * opApiHandler, const char *libName, const char *apiName)
+inline T GetFuncAddr(void *opApiHandler, const char *libName, const char *apiName)
 {
     auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetHcclLibName(), apiName);
     if (funcAddr == nullptr) {
@@ -142,22 +144,28 @@ inline void InitHcclFunctions()
     TORCH_CHECK(HcclKfcAllocOpArgsFunc != nullptr, "getHcclKfcAllocOpArgs failed.");
     HcclKfcFreeOpArgsFunc = GetHcclFuncAddr<_HcclKfcFreeOpArgs>("HcclKfcFreeOpArgs"); // 释放通信配置对象
     TORCH_CHECK(HcclKfcFreeOpArgsFunc != nullptr, "getHcclKfcFreeOpArgs failed.");
-    HcclKfcOpArgsSetCommEngineFunc = GetHcclFuncAddr<_HcclKfcOpArgsSetCommEngine>("HcclKfcOpArgsSetCommEngine"); // 设置通信方式
+    HcclKfcOpArgsSetCommEngineFunc =
+        GetHcclFuncAddr<_HcclKfcOpArgsSetCommEngine>("HcclKfcOpArgsSetCommEngine"); // 设置通信方式
     TORCH_CHECK(HcclKfcOpArgsSetCommEngineFunc != nullptr, "getHcclKfcOpArgsSetCommEngine failed.");
     HcclGetRankIdFunc = GetHcclFuncAddr<_HcclGetRankId>("HcclGetRankId"); // 获取本卡卡号
     TORCH_CHECK(HcclGetRankIdFunc != nullptr, "getFuncHcclGetRankId failed.");
     HcclGetHcclBufferFunc = GetHcclFuncAddr<_HcclGetHcclBuffer>("HcclGetHcclBuffer"); // 获取本卡地址
     TORCH_CHECK(HcclGetHcclBufferFunc != nullptr, "getFuncHcclGetHcclBuffer failed.");
-    HcclGetRemoteIpcHcclBufFunc = GetHcclFwkFuncAddr<_HcclGetRemoteIpcHcclBuf>("HcclGetRemoteIpcHcclBuf"); // 获取远端地址
+    HcclGetRemoteIpcHcclBufFunc =
+        GetHcclFwkFuncAddr<_HcclGetRemoteIpcHcclBuf>("HcclGetRemoteIpcHcclBuf"); // 获取远端地址
     TORCH_CHECK(HcclGetRemoteIpcHcclBufFunc != nullptr, "getFuncHcclGetRemoteIpcHcclBuf failed.");
-    HcclKfcOpArgsSetAlgConfigFunc = GetHcclFuncAddr<_HcclKfcOpArgsSetAlgConfig>("HcclKfcOpArgsSetAlgConfig");  // 设置通信类型
+    HcclKfcOpArgsSetAlgConfigFunc =
+        GetHcclFuncAddr<_HcclKfcOpArgsSetAlgConfig>("HcclKfcOpArgsSetAlgConfig"); // 设置通信类型
     TORCH_CHECK(HcclKfcOpArgsSetAlgConfigFunc != nullptr, "getFuncHcclKfcOpArgsSetAlgConfig failed.");
-    HcclCommGetHandleWithNameFunc = GetHcclFwkFuncAddr<_HcclCommGetHandleWithName>("HcclCommGetHandleWithName"); // 通过groupName获取groupHandle
+    HcclCommGetHandleWithNameFunc =
+        GetHcclFwkFuncAddr<_HcclCommGetHandleWithName>("HcclCommGetHandleWithName"); // 通过groupName获取groupHandle
     TORCH_CHECK(HcclCommGetHandleWithNameFunc != nullptr, "getFuncHcclCommGetHandleWithName failed.");
-    HcclCreateOpResCtxFunc = GetHcclFuncAddr<_HcclCreateOpResCtx>("HcclCreateOpResCtx");  // 创建HcclContext
+    HcclCreateOpResCtxFunc = GetHcclFuncAddr<_HcclCreateOpResCtx>("HcclCreateOpResCtx"); // 创建HcclContext
     TORCH_CHECK(HcclCreateOpResCtxFunc != nullptr, "getFuncHcclCreateOpResCtx failed.");
     HcclGetRankSizeFunc = GetHcclFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
     TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
+    HcclBarrierFunc = GetHcclFuncAddr<_HcclBarrier>("HcclBarrier"); // 执行Barrier同步
+    TORCH_CHECK(HcclBarrierFunc != nullptr, "getFuncHcclBarrier failed.");
 }
 
 // 初始化新的EngineCtx API (从libhccl_fwk.so加载)
@@ -169,11 +177,11 @@ inline void InitHcclEngineCtxFunctions()
     TORCH_CHECK(HcclRankGraphGetLinksFunc != nullptr, "getHcclRankGraphGetLinks failed.");
     HcclRankGraphGetLayersFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetLayers>("HcclRankGraphGetLayers");
     TORCH_CHECK(HcclRankGraphGetLayersFunc != nullptr, "getHcclRankGraphGetLayers failed.");
-    HcclRankGraphGetRankSizeByLayerFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetRankSizeByLayer>(
-        "HcclRankGraphGetRankSizeByLayer");
+    HcclRankGraphGetRankSizeByLayerFunc =
+        GetHcclFwkFuncAddr<_HcclRankGraphGetRankSizeByLayer>("HcclRankGraphGetRankSizeByLayer");
     TORCH_CHECK(HcclRankGraphGetRankSizeByLayerFunc != nullptr, "getHcclRankGraphGetRankSizeByLayer failed.");
-    HcclRankGraphGetRanksByLayerFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetRanksByLayer>(
-        "HcclRankGraphGetRanksByLayer");
+    HcclRankGraphGetRanksByLayerFunc =
+        GetHcclFwkFuncAddr<_HcclRankGraphGetRanksByLayer>("HcclRankGraphGetRanksByLayer");
     TORCH_CHECK(HcclRankGraphGetRanksByLayerFunc != nullptr, "getHcclRankGraphGetRanksByLayer failed.");
     HcclChannelAcquireFunc = GetHcclFwkFuncAddr<_HcclChannelAcquire>("HcclChannelAcquire");
     TORCH_CHECK(HcclChannelAcquireFunc != nullptr, "getHcclChannelAcquire failed.");
