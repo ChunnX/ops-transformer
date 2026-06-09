@@ -404,6 +404,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                 }
             }
         }
+        SyncAll();
         return;
     }
 
