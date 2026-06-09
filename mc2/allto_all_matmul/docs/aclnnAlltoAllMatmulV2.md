@@ -167,7 +167,7 @@ aclnnStatus aclnnAlltoAllMatmulV2(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>数据类型与输入x1保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
