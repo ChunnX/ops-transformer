@@ -91,7 +91,12 @@ try:
     torch.npu.synchronize(); print("  OK"); off_ok = True
 except Exception as e: print(f"  FAIL: {e}"); off_ok = False
 if tl_ok and off_ok:
-    print("\n[3] 精度对比:"); all_pass = True
+    # Debug: print shapes and first values
+    print(f"\n[DEBUG] TileLang dWeights: shape={dw_tl.shape}, dtype={dw_tl.dtype}, range=[{dw_tl.float().min().item():.6f}, {dw_tl.float().max().item():.6f}]")
+    print(f"[DEBUG] Official dWeights: shape={dw_off.shape}, dtype={dw_off.dtype}, range=[{dw_off.float().min().item():.6f}, {dw_off.float().max().item():.6f}]")
+    print(f"[DEBUG] TileLang Loss: {loss_tl.float().item():.6f}")
+    print(f"[DEBUG] Official Loss: {loss_off.float().item():.6f}")
+    print(f"\n[3] 精度对比:"); all_pass = True
     for name, tl_v, off_v in [("dQueryIndex", d_qi_tl, d_qi_off), ("dKeyIndex", d_ki_tl, d_ki_off), ("dWeights", dw_tl, dw_off)]:
         has_nan = torch.isnan(tl_v).any().item()
         if has_nan:
