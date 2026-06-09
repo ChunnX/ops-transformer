@@ -406,7 +406,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     if (dstRankId != epRankId_) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS + curExpertCnt) * UB_ALIGN));
+        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * UB_ALIGN));
         DataCopy(sendFlagHandleGMTensor_, flagTensor_, UB_ALIGN / sizeof(int32_t));
     }
 }
@@ -498,16 +498,16 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             uint32_t round = 0;
             uint32_t sendTokenNum = 0;
             round = Ceil(curSendCnt, toltalTokenNum);
-            sendTokenNum = curSendCnt / round; // 每个round发送的token数
+            sendTokenNum = curSendCnt > toltalTokenNum ? toltalTokenNum : curSendCnt; // 每个round发送的token数
             for (uint32_t r = 0; r < round; ++r) {
-                uint32_t processCnt = r == (round - 1) ? curSendCnt % round : sendTokenNum;
-                if (processCnt == 0) {
+                uint32_t needProcessCnt = r == (round - 1) ? curSendCnt - sendTokenNum * (round - 1) : sendTokenNum;
+                if (needProcessCnt == 0) {
                     continue;
                 }
                 uint32_t index = (i - startExpert) * axisBS_  + r * sendTokenNum;
-                DataCopy(flagTensor, sendFlagHandleGMTensor_[index * 8], processCnt * 8);
+                DataCopy(flagTensor, sendFlagHandleGMTensor_[index * 8], needProcessCnt * 8);
                 SyncFunc<AscendC::HardEvent::MTE2_S>();
-                for (uint32_t j =0; j < processCnt; ++j) {
+                for (uint32_t j =0; j < needProcessCnt; ++j) {
                    if (flagTensor.GetValue(j * 8) == 1) {
                         uint32_t dstRankId = i;
                         GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
@@ -516,7 +516,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                                                     epRankId_ * expertPerSizeOnWin_ + (r * sendTokenNum + j) * hAlignWinSize_);
                         flagTensor.SetValue(j * 8, 0);
                         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, srcRankGM, hAlignWinSize_);
-                        sendFlagHandleGMTensor_.SetValue(index, 0);
                         sendSumTensor_(i - startExpert) += 1;
                         if (sendSumTensor_(i - startExpert) == curSendCnt) {
                             processCnt += 1;
@@ -524,7 +523,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                    }
                 }
                 SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopy(sendFlagHandleGMTensor_[index * 8], flagTensor, processCnt * 8);
+                DataCopy(sendFlagHandleGMTensor_[index * 8], flagTensor, needProcessCnt * 8);
             }
         }
         if (processCnt == processExpertNum) {
