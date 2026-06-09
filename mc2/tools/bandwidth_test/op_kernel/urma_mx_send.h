@@ -210,7 +210,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
-    PRINTF("aivId_ = %d\n", aivId_);
+    //PRINTF("aivId_ = %d\n", aivId_);
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -244,8 +244,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         aivNumUsedComm_ = COMM_MAX_USE_AIV_NUM;
         aivNumUsedCompute_ = aivNum_ - COMM_MAX_USE_AIV_NUM;
     }
-    PRINTF("aivNumUsedComm_ = %d\n", aivNumUsedComm_);
-    PRINTF("aivNumUsedCompute_ = %d\n", aivNumUsedCompute_);
+    // PRINTF("aivNumUsedComm_ = %d\n", aivNumUsedComm_);
+    // PRINTF("aivNumUsedCompute_ = %d\n", aivNumUsedCompute_);
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -345,9 +345,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     totalUsedUB_ += maxSize;
 
     // ============ 初始化数据队列 ============
-    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
-    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
-    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+    if (aivId_ < aivNumUsedCompute_) {
+         uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+        bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+        tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+    }
+    
 
     dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
     subExpIdTensor_ = subExpBuf_.Get<int32_t>();
@@ -440,8 +443,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (aivId_ < aivNumUsedCompute_) {
         return;
     }
-    PipeBarrier<PIPE_ALL>();
-    tpipe_->Reset();
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     processExpertNum = epWorldSize_  / aivNumUsedComm_;
     uint32_t remainderRankNum = epWorldSize_ % aivNumUsedComm_;
@@ -454,7 +455,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     endExpert = startExpert + processExpertNum;
    
-    PRINTF("CommProcess startExpert = %d, endExpert = %d, processExpertNum = %d\n", startExpert, endExpert, processExpertNum);
+    //PRINTF("CommProcess startExpert = %d, endExpert = %d, processExpertNum = %d\n", startExpert, endExpert, processExpertNum);
     if (startExpert >= endExpert || processExpertNum == 0) { 
         return; 
     }
@@ -473,7 +474,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
     PipeBarrier<PIPE_ALL>();
-    uint32_t toltalTokenNum = (MAX_UB_SIZE - 2 *lenth) / UB_ALIGN; // 一次可以搬运进来的token数
+    uint32_t toltalTokenNum = (MAX_UB_SIZE - 2 *lenth - totalUsedUB_) / UB_ALIGN; // 一次可以搬运进来的token数
     uint32_t processCnt = 0;
     for(uint32_t i = startExpert; i < endExpert; ++i) {
         if (sendCntTensor_.GetValue(i - startExpert) == 0 || i == epRankId_) { // 无需发送的expert直接标记完成
@@ -485,10 +486,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     tpipe_->InitBuffer(tempBuf, toltalTokenNum * UB_ALIGN);
     LocalTensor<int32_t> flagTensor = tempBuf.Get<int32_t>();
     while(true) {
-        cnt += 1;
-        if (cnt > 100000000) {
-            break;
-        }
+        // cnt += 1;
+        // if (cnt > 100000) {
+        //     break;
+        // }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             uint32_t curSendCnt = sendCntTensor_(i - startExpert);
             uint32_t curSumCnt = sendSumTensor_(i - startExpert);
@@ -520,17 +521,18 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                         if (sendSumTensor_(i - startExpert) == curSendCnt) {
                             processCnt += 1;
                         }
+                        SyncFunc<AscendC::HardEvent::S_MTE3>();
+                        DataCopy(sendFlagHandleGMTensor_[index * 8 + j * 8], flagTensor[j * 8], 1);
                    }
                 }
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopy(sendFlagHandleGMTensor_[index * 8], flagTensor, needProcessCnt * 8);
+               
             }
         }
         if (processCnt == processExpertNum) {
             break;
         }
     }
-    PRINTF("CommProcess cnt = %d\n", cnt);
+    // PRINTF("CommProcess cnt = %d\n", cnt);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -549,7 +551,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
+    //PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
     
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
