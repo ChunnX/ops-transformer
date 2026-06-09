@@ -19,16 +19,94 @@
 #include <string>
 #include <vector>
 
-#include "mc2_common_log.h"
+// Clear log/log.h macros that may have been introduced before this header.
+#undef OpLogSub
+#undef OpLogErrSub
+#undef D_OP_LOGI
+#undef D_OP_LOGW
+#undef D_OP_LOGE
+#undef D_OP_LOGD
+#undef OP_LOGI
+#undef OP_LOGW
+#undef OP_LOGE_WITHOUT_REPORT
+#undef OP_LOGE
+#undef OP_LOGD
 
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
 
+// opdev/common_types.h pulls in opdev/op_log.h, whose OP_LOGE family uses
+// aclnn errno as the first argument. MC2 host/tiling code uses opName first.
+#undef OpLogSub
+#undef OpLogErrSub
+#undef D_OP_LOGI
+#undef D_OP_LOGW
+#undef D_OP_LOGE
+#undef D_OP_LOGD
+#undef OP_LOGI
+#undef OP_LOGW
+#undef OP_LOGE_WITHOUT_REPORT
+#undef OP_LOGE
+#undef OP_LOGD
+
+#include "mc2_common_log.h"
+
 #include "../op_kernel/mc2_tiling_struct.h"
 #include "tiling/tiling_api.h"
 #include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
+
+#undef OpLogSub
+#undef OpLogErrSub
+#undef D_OP_LOGI
+#undef D_OP_LOGW
+#undef D_OP_LOGE
+#undef D_OP_LOGD
+#undef OP_LOGI
+#undef OP_LOGW
+#undef OP_LOGE_WITHOUT_REPORT
+#undef OP_LOGE
+#undef OP_LOGD
+
+#define OpLogSub(moduleId, level, opInfo, fmt, ...)                                                                   \
+    do {                                                                                                              \
+        if (CheckLogLevel(static_cast<int>(moduleId), level) == 1) {                                                  \
+            DlogRecord(                                                                                               \
+                static_cast<int>(moduleId), level,                                                                    \
+                "[%s:%d][%s]"                                                                                         \
+                "[%s][%" PRIu64 "] OpName:[%s] " fmt,                                                                 \
+                __FILE__, __LINE__, OP_SUBMOD_NAME, __FUNCTION__, Ops::Base::GetTid(), Ops::Base::GetSafeStr(opInfo), \
+                ##__VA_ARGS__);                                                                                       \
+        }                                                                                                             \
+    } while (0)
+
+#define OpLogErrSub(moduleId, level, opInfo, fmt, ...)                                                                \
+    do {                                                                                                              \
+        if (CheckLogLevel(static_cast<int>(moduleId), level) == 1) {                                                  \
+            DlogRecord(                                                                                               \
+                static_cast<int>(moduleId), level,                                                                    \
+                "[%s:%d][%s]"                                                                                         \
+                "[%s][%" PRIu64 "] OpName:[%s] " fmt,                                                                 \
+                __FILE__, __LINE__, OP_SUBMOD_NAME, __FUNCTION__, Ops::Base::GetTid(), Ops::Base::GetSafeStr(opInfo), \
+                ##__VA_ARGS__);                                                                                       \
+        }                                                                                                             \
+    } while (0)
+
+#define D_OP_LOGI(opName, fmt, ...) OpLogSub(OP, DLOG_INFO, opName, fmt, ##__VA_ARGS__)
+#define D_OP_LOGW(opName, fmt, ...) OpLogSub(OP, DLOG_WARN, opName, fmt, ##__VA_ARGS__)
+#define D_OP_LOGE(opName, fmt, ...) OpLogErrSub(OP, DLOG_ERROR, opName, fmt, ##__VA_ARGS__)
+#define D_OP_LOGD(opName, fmt, ...) OpLogSub(OP, DLOG_DEBUG, opName, fmt, ##__VA_ARGS__)
+
+#define OP_LOGI(opName, ...) D_OP_LOGI(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
+#define OP_LOGW(opName, ...) D_OP_LOGW(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
+#define OP_LOGE_WITHOUT_REPORT(opName, ...) D_OP_LOGE(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
+#define OP_LOGE(opName, ...)                           \
+    do {                                               \
+        OP_LOGE_WITHOUT_REPORT(opName, ##__VA_ARGS__); \
+        REPORT_INNER_ERR_MSG("EZ9999", ##__VA_ARGS__); \
+    } while (0)
+#define OP_LOGD(opName, ...) D_OP_LOGD(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
 
 using namespace op;
 
