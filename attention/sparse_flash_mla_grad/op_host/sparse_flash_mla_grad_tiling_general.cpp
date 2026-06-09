@@ -23,6 +23,8 @@ constexpr uint32_t WORKSPACE_BASE_CAL = 32 * 1024 * 1024; // 100MB系统预留
 constexpr uint32_t BLOCK = 32;                            // 32B
 constexpr uint32_t B32 = 4;                               // 4B
 constexpr uint32_t B16 = 2;
+constexpr uint32_t SINGLE_N_512 = 512;
+constexpr uint32_t SINGLE_N_128 = 128;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t SINGLE_M = 128;
@@ -100,7 +102,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoOpTiling()
     // Init
     int32_t selBlkCntAlign = CeilCommon(tilingData.opInfo.get_selectedBlockCount(), 8) * 8;
     tmpData.singleM = tmpData.mode == SMLAG_SCFA_MODE ? tilingData.opInfo.get_G() : SINGLE_M;
-    tmpData.singleN = 128;
+    tmpData.singleN = tmpData.mode == SMLAG_SCFA_MODE && selBlkCntAlign >= SINGLE_N_512 ? 
+                      SINGLE_N_512 : 
+                      SINGLE_N_128;
     tmpData.s1BasicSize = tmpData.mode == SMLAG_SCFA_MODE ? 1 : tmpData.singleM / tilingData.opInfo.get_G();
 
     // setTilingData
@@ -260,6 +264,11 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoSftTiling()
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
+
+    uint32_t remainSize = maxUbSize - sftBaseNAlign * B32 - tilingData.opInfo.get_G() * 32;
+    int64_t maxGatherSize = remainSize / (tilingData.opInfo.get_D() * B16 * PING_PONG_BUFFER);
+    maxGatherSize = maxGatherSize / 2 * 2;
+    tilingData.splitCoreParams.set_maxGatherSize(maxGatherSize);
 
     return ge::GRAPH_SUCCESS;
 }
