@@ -467,7 +467,7 @@ int RunMinusOneWithAlignedProbsExample(int32_t deviceId) {
 
 int main() {
     // 根据自己的实际device填写deviceId
-    int32_t deviceId = 2;
+    int32_t deviceId = 0;
 
     auto ret = RunOriginalPadModeExample(deviceId);
     CHECK_RET(ret == 0, return ret);
