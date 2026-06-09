@@ -571,7 +571,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
         }
         ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId, curExpertCnt);
     }
-
+    PipeBarrier<PIPE_ALL>();
+    sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_));
+    DataCacheCleanAndInvalid<int32_t,CacheLine::ENTIRE_DATA_CACHE>(sendFlagHandleGMTensor_);
+    for (uint32_t i = 0; i < axisBS_ * epWorldSize_; ++i) {
+       PRINTF("SendToMoeExpert i = %d, epRankId_ = %d, sendFlagHandleGMTensor_(i) = %d\n", i, epRankId_, sendFlagHandleGMTensor_.GetValue(i));
+    }
 }
 
 template <TemplateBandwidthTestTypeClass>
