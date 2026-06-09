@@ -21,6 +21,40 @@
 
 #include "mc2_common_log.h"
 
+#ifdef OP_LOG_LIBOPAPI_ONLY
+#include "opdev/op_log.h"
+#undef OpLogErrSub
+#define OpLogErrSub(moduleId, level, opInfo, fmt, ...)                                              \
+    do {                                                                                             \
+        if (CheckLogLevel(static_cast<int>(moduleId), level) == 1) {                                 \
+            DlogRecord(                                                                              \
+                static_cast<int>(moduleId), level,                                                   \
+                "[%s:%d][%s]"                                                                        \
+                "[%s][%" PRIu64 "] OpName:[%s] " fmt,                                                \
+                __FILE__, __LINE__, OP_SUBMOD_NAME, __FUNCTION__, Ops::Base::GetTid(),               \
+                Ops::Base::GetSafeStr(opInfo), ##__VA_ARGS__);                                       \
+        }                                                                                            \
+    } while (0)
+#undef D_OP_LOGE
+#define D_OP_LOGE(opName, fmt, ...) OpLogErrSub(OP, DLOG_ERROR, opName, fmt, ##__VA_ARGS__)
+#undef OP_LOGE_WITHOUT_REPORT
+#define OP_LOGE_WITHOUT_REPORT(opName, ...) D_OP_LOGE(Ops::Base::GetOpInfo(opName), __VA_ARGS__)
+#undef OP_LOGE
+#define OP_LOGE(errno, ...)                                                                     \
+    do {                                                                                        \
+        OP_LOGE_WITHOUT_REPORT(GetOpName().c_str(), __VA_ARGS__);                                \
+        REPORT_ERROR_MESSAGE(errno, __VA_ARGS__);                                               \
+    } while (false)
+#undef CHECK_RET
+#define CHECK_RET(condition, ret_value)                                                         \
+    do {                                                                                        \
+        if (unlikely(!(condition))) {                                                           \
+            OP_LOGE(ACLNN_ERR_INNER, "check %s failed.", #condition);                           \
+            return ret_value;                                                                   \
+        }                                                                                       \
+    } while (false)
+#endif
+
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
