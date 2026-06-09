@@ -469,7 +469,8 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | -1/0/2 | FLOAT16 | FLOAT16 | FLOAT16/FLOAT32/null | FLOAT16 |
 | -1/0/2 | FLOAT32 | FLOAT32 | FLOAT32/null | FLOAT32 |
 
-#### 静态量化场景数据类型
+<details>
+<summary>静态量化场景数据类型</summary>
 
 | groupType | x | weight | biasOptional | scaleOptional | out |
 |:---:|:---:|:---:|:---|:---|:---|
@@ -489,7 +490,10 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | 0/2 | perchannel | `(g, N)` |
 | 0/2 | pertensor | `(g, 1)` 或 `(g,)` |
 
-#### 动态量化（T-T/T-C/K-T/K-C）场景数据类型
+</details>
+
+<details>
+<summary>动态量化（T-T/T-C/K-T/K-C）场景数据类型</summary>
 
 | groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
 |:---:|:---:|:---:|:---|:---|:---|:---|
@@ -508,7 +512,10 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | 2 | pertoken | `(g, M)` |
 | 2 | pertensor | `(g, 1)` 或 `(g,)` |
 
-#### 动态量化（MX）场景
+</details>
+
+<details>
+<summary>动态量化（MX）场景</summary>
 
 | groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|
@@ -531,7 +538,10 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 - x 为 FLOAT4_E2M1 时，K 须为偶数且 K≠2；weight 非转置时 N 须为偶数。
 
-#### 动态量化（G-B）场景
+</details>
+
+<details>
+<summary>动态量化（G-B）场景</summary>
 
 | groupType | x | weight | scaleOptional | perTokenScaleOptional | out |
 |:---:|:---:|:---:|:---|:---|:---|
@@ -551,6 +561,8 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 |:---:|:---|
 | 0 | `(M, ceil(K/gsK))` |
 | 2 | `(K/gsK + g, M)` |
+
+</details>
 
 #### 伪量化场景数据类型
 
