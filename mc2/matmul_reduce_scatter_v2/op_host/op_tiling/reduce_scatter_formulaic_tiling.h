@@ -25,6 +25,8 @@ constexpr double scatterLargerNKCommGrowRatio1 = 1.5;
 constexpr double scatterLargerNKCommGrowRatio2 = 1.2;
 constexpr uint64_t ONE_KILO = 1024;
 constexpr double UNBALANCE_RATIO = 1.5;
+// [IMPROVE] bound 判定迟滞裕度：0.0=关闭(原逻辑)；0.1 表示 mm>=0.9*comm 即判计算 bound
+constexpr double BOUND_DECISION_MARGIN = 0.10;
 
 class MMPlusReduceScatter : public OneCalcOneCommBase {
     public:

@@ -53,6 +53,16 @@ constexpr double FRONT_UTIL_EXPONENT_COEFFICIENT = 0.6;
 constexpr double CUBE_UTIL_EXPONENT_COEFFICIENT = 0.7;
 constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
+// [IMPROVE] 910B cubeUtil 修正参数：原 910B 分支只按 L2 驻留估利用率，无小 shape
+// 降额、无 base block 几何量化损失、reduce_scatter 路径漏 K 对齐折扣，导致系统性
+// 高估 cubeUtil（恒 0.85），进而在判定边界附近误判 bound 类型。
+// 修正三项：(1) 移植 950 风格小 shape 修正(K 算访比 + MN 并行粒度)；
+//          (2) base block 几何量化损失；(3) 补 reduce_scatter K cacheline 折扣。
+// 数值：阈值/指数/单项增益沿用 950(820/1280/0.6/0.7/1.4)，基准沿用 0.75；
+//      上限按 910B 自身 L2 标定改为 0.85(910B cube util 实测上限)。
+constexpr bool ENABLE_910B_CUBEUTIL_FIX = true;
+constexpr double MAX_CUBE_UTIL_910B = 0.85;       // 910B util 上限(对齐 L2 PART util)
+constexpr double K_CACHELINE_UNALIGN_RATIO = 0.85; // K cacheline 不对齐 MTE2 折扣
 }
 
 class MatmulPerformanceModel {
@@ -60,6 +70,9 @@ public:
     MatmulParameters mmShapeInfo_;
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
     double cubeUtil_ = 0.8;
+    // [IMPROVE] 记录修正前的 L2 占用 util(原始 0.85 量纲)，供 reduce_scatter 的
+    // SetCommTimeFactor 带宽冲突判定使用，避免 cubeUtil 重标定后误触发 <0.85 阈值。
+    double rawL2Util_ = 0.8;
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC; 
 
@@ -126,6 +139,8 @@ public:
     void CheckKvalueAlignVersion310P();
     void FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce, uint64_t* maxTileLen = nullptr);
     double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t* maxTileLen = nullptr);
+    // [IMPROVE] 910B(SOC910_B, 非量化) cubeUtil 修正，返回修正后利用率
+    double ApplyCubeUtilFix910B(uint64_t mSize, uint64_t rankTileNum, double baseUtil);
     double FindCubeUtilQuantVersion310P() const;
     double FindCubeUtilVersion310P() const;
     void ChangeCubeUtilByKAlign();

@@ -128,6 +128,7 @@ double MatmulPerformanceModel::FindCubeUtilByL2Usage(uint64_t mSize,
   tmpUtil *= static_cast<double>(
       std::min(mBlockNum * nBlockNum, mmShapeInfo_.coreNum) /
       static_cast<double>(mmShapeInfo_.coreNum));
+  rawL2Util_ = tmpUtil;  // [IMPROVE] 修正前量纲，供 comm 带宽冲突判定
 
   /*950
   cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，小于这个阈值
@@ -168,7 +169,51 @@ double MatmulPerformanceModel::FindCubeUtilByL2Usage(uint64_t mSize,
   return tmpUtil;
 }
 
-double MatmulPerformanceModel::FindCubeUtilQuantVersion310P() const {
+// [IMPROVE] 910B cubeUtil 修正：950 风格小 shape 降额 + base block 几何量化 + K 对齐折扣。
+// 思想见 matmul_performance.h 中 ENABLE_910B_CUBEUTIL_FIX 注释。数值结构沿用 950，
+// 上限按 910B 重标为 0.85。
+double MatmulPerformanceModel::ApplyCubeUtilFix910B(uint64_t mSize,
+                                                    uint64_t rankTileNum,
+                                                    double baseUtil) {
+  // (1) 950 风格：K 算访比增益 + MN 调和平均(并行粒度)增益，负增益无界、正增益封顶 1.4
+  double mEff = static_cast<double>(mSize * rankTileNum);
+  double mnHarmonic =
+      mEff * static_cast<double>(mmShapeInfo_.nValue) /
+      (mEff + static_cast<double>(mmShapeInfo_.nValue));
+  double kExp = std::min(
+      MatmulPerformance::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
+      std::pow(static_cast<double>(mmShapeInfo_.kValue),
+               MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT) /
+          std::pow(MatmulPerformance::KVALUE_THRESHOLD,
+                   MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT));
+  double mnExp = std::min(
+      MatmulPerformance::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
+      std::pow(mnHarmonic, MatmulPerformance::FRONT_UTIL_EXPONENT_COEFFICIENT) /
+          std::pow(MatmulPerformance::MNVALUE_THRESHOLD,
+                   MatmulPerformance::FRONT_UTIL_EXPONENT_COEFFICIENT));
+  double shapeUtil = MatmulPerformance::AVERAGE_CUBE_UTIL * kExp * mnExp;
+  // 取 L2 占用 util 与小 shape util 的较小者：只降不升
+  double util = std::min(baseUtil, shapeUtil);
+
+  // (2) base block 几何量化损失：N/M 非整除 baseN/baseM 时有效算力打折(纯几何)
+  uint64_t baseN = mmShapeInfo_.baseN;
+  uint64_t baseM = mmShapeInfo_.baseM;
+  double nGeom = static_cast<double>(mmShapeInfo_.nValue) /
+                 static_cast<double>((mmShapeInfo_.nValue + baseN - 1) / baseN * baseN);
+  double mGeom = static_cast<double>(mSize) /
+                 static_cast<double>((mSize + baseM - 1) / baseM * baseM);
+  util *= nGeom * mGeom;
+
+  // (3) K 方向 MTE2：K cacheline(512B) 不对齐折扣(reduce_scatter 路径原本漏计)
+  if ((mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize) %
+          MatmulPerformance::CACHE_LINE_LEN != 0) {
+    util *= MatmulPerformance::K_CACHELINE_UNALIGN_RATIO;
+  }
+
+  return std::min(MatmulPerformance::MAX_CUBE_UTIL_910B, util);
+}
+
+
   return 1.0 / (MatmulPerformance::UTIL_BY_K_DENOMINATOR_OFFSET_SOC310P +
                 MatmulPerformance::UTIL_BY_K_DENOMINATOR_GRADIENT_SOC310P *
                     static_cast<double>(ONE_KBYTE) /
@@ -213,6 +258,13 @@ void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum,
   }
 
   cubeUtil_ = FindCubeUtilByL2Usage(mSize, rankTileNum, maxTileLen);
+
+  // [IMPROVE] 910B 小 shape / 几何量化修正(socType==SOC910_B，非量化场景)
+  if (MatmulPerformance::ENABLE_910B_CUBEUTIL_FIX &&
+      mmShapeInfo_.socType == SocVersion::SOC910_B &&
+      calcType_ == MatmulCalcType::FP16) {
+    cubeUtil_ = ApplyCubeUtilFix910B(mSize, rankTileNum, rawL2Util_);
+  }
 
   if (mmShapeInfo_.socType == SocVersion::SOC950) {
     double mnharmonicMean =

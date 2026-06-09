@@ -24,7 +24,14 @@ void MMPlusReduceScatter::SetCommTimeFactorForA5()
 void MMPlusReduceScatter::SetCommTimeFactorForOther()
 {
     // 通算并行时通信有膨胀，大K场景膨胀明显，做特殊处理
-    bool bwGrowthByUtil = matmulPerf_.cubeUtil_ < PART_L2_UTIL;
+    // [IMPROVE] 带宽冲突判据 <0.85 是按修正前 util 量纲标定的；910B cubeUtil 修正后
+    // util 会降到 ~0.7，若仍用 cubeUtil_ 会误触发 ×1.5 通信膨胀，反向劣化 bound 判定。
+    // 故 910B 修正开启时改用 rawL2Util_(修正前量纲)。
+    double utilForBw = matmulPerf_.cubeUtil_;
+    if (MatmulPerformance::ENABLE_910B_CUBEUTIL_FIX && clusterInfo_.socType == SocVersion::SOC910_B) {
+        utilForBw = matmulPerf_.rawL2Util_;
+    }
+    bool bwGrowthByUtil = utilForBw < PART_L2_UTIL;
     bool bwGrowthByShape = clusterInfo_.kValue >= LARGE_K_BOUNDARY && clusterInfo_.nValue > LARGE_N_BOUNDARY;
     bool smallDim = rankDim_ <= MIN_COMM_RANKDIM || rankTileNum_ <= MatmulPerformance::SMALL_RANKTILE;
     bwGrowthByUtil = bwGrowthByUtil && !smallDim;
@@ -58,7 +65,14 @@ void MMPlusReduceScatter::EstimateKernelTime()
     double totalMatmulTime = EstimateTotalMatmulTime();
     double totalTpTime = EstimateTotalCommTime();
     ratioCalcComm_ = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
-    if (totalMatmulTime >= totalTpTime) {
+    // [IMPROVE] bound 判定迟滞：910B3(核少)天然贴判定边界，单点 util 误差就会翻分类。
+    // mm 与 comm 接近(差距 < BOUND_DECISION_MARGIN)时偏向判计算 bound——因 cubeUtil
+    // 历史被高估、mmTime 被低估，真实更易是计算 bound。margin=0 等价原逻辑。
+    bool compBound = totalMatmulTime >= totalTpTime;
+    if (MatmulPerformance::ENABLE_910B_CUBEUTIL_FIX && clusterInfo_.socType == SocVersion::SOC910_B) {
+        compBound = totalMatmulTime >= totalTpTime * (1.0 - BOUND_DECISION_MARGIN);
+    }
+    if (compBound) {
         tilingM_.cutRes.shortTileAtBack = true;
     }
 
