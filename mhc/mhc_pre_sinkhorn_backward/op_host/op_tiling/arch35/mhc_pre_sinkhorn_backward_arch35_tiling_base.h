@@ -50,7 +50,7 @@ protected:
 
 private:
     ge::graphStatus CheckShape(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c);
-    ge::graphStatus SetTilingData(gert::TilingContext* context);
+    ge::graphStatus SetTilingData();
     void DoUbTiling();
 
 private:
