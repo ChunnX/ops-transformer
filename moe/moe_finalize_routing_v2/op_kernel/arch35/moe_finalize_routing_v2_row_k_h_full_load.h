@@ -274,7 +274,7 @@ private:
                 ProcessCopyExpert(rowOuterIdx, rowInnerIdx, innerBiasLocal, curScale);
             } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
                        expertIdx < tilingData->constantExpertEnd) {
-                ProcessConstExpert(rowOuterIdx, rowInnerIdx, innerBiasLocal, curScale);
+                ProcessConstExpert(rowOuterIdx, rowInnerIdx, innerBiasLocal, curScale, expertIdx);
             } else {
                 ProcessExpandXBiasScale<T, S>(
                     yLocal[rowInnerIdx * tilingData->h], expandedXLocal[expandedRowIdxGmValue * tilingData->h],
@@ -301,7 +301,7 @@ private:
     }
 
     __aicore__ inline void ProcessConstExpert(int64_t rowOuterIdx, int64_t rowInnerIdx,
-                                               LocalTensor<T> innerBiasLocal, S curScale)
+                                               LocalTensor<T> innerBiasLocal, S curScale, int64_t expertIdx)
     {
         int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
             rowOuterIdx * tilingData->rowFactor * tilingData->h + rowInnerIdx * tilingData->h;
