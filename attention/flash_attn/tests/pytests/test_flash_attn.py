@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
     parser.add_argument("--result_csv", type=str, default="result.csv", help="精度结果 CSV 输出路径")
+    parser.add_argument("--one_by_one", action="store_true", help="逐个 case 执行，每个完成后暂停")
     args = parser.parse_args()
 
     # ── 加载用例 ──
@@ -70,7 +71,8 @@ if __name__ == "__main__":
         out = Path(args.perf_output)
 
         csv_path = run_all_perf(cases_list, args.perf_runs, args.perf_cold_thr,
-                                out, case_names=run_cases)
+                                out, case_names=run_cases,
+                                one_by_one=args.one_by_one)
 
         if csv_path is None or not csv_path.exists():
             print("[ERROR] msprof 采集失败")
@@ -206,6 +208,8 @@ if __name__ == "__main__":
                                "total": -1, "fail_ratio": float('nan')}}
 
         reporter.record(name, result, error=err, dtype=dtype)
+        if args.one_by_one and i + 1 < len(run_cases):
+            input(f"  [{i+1}/{len(run_cases)}] 回车继续...")
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))

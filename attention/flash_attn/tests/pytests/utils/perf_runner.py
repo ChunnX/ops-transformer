@@ -154,7 +154,7 @@ def _serialize_params(c: Dict) -> str:
 
 def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
                  output_dir: Path, case_names: List[str] = None,
-                 device_id: int = 0) -> Optional[Path]:
+                 device_id: int = 0, one_by_one: bool = False) -> Optional[Path]:
     """Run each case as a separate msprof invocation. Returns merged op_summary.csv."""
     import csv as csv_mod
     output_dir = Path(output_dir)
@@ -236,6 +236,9 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
             "error": error_msg,
         })
         csv_f.flush()
+
+        if one_by_one and i + 1 < len(cases):
+            input(f"  [{i+1}/{len(cases)}] 回车继续...")
 
     csv_f.close()
 
