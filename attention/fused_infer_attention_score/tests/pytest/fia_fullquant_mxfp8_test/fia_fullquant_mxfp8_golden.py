@@ -53,7 +53,7 @@ ENABLE_PA = True
 BLOCK_SIZE = 512
 
 SPARSE_MODE = 3
-PRE_TOKENS = 2147483647
+PRE_TOKENS = 1023
 NEXT_TOKENS = 0
 GLOBAL_WINDOW_SIZE = 4
 FP8_DTYPE = torch.float8_e4m3fn
@@ -721,7 +721,7 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         delta = k_lens_acl - q_lens_acl
         causal_mask = k_range > (q_range + delta)
         return causal_mask | q_padding_mask | k_padding_mask
-    elif sparse_mode == 4:
+    elif sparse_mode == 5:
         delta = k_lens_acl - q_lens_acl
         next_mask = k_range > (q_range + delta + NEXT_TOKENS)
         pre_mask = k_range < (q_range + delta - PRE_TOKENS)
@@ -944,6 +944,8 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         num_key_value_heads=kv_n,
         softmax_scale=softmax_scale,
         input_layout=layout,
+        pre_tokens=PRE_TOKENS,
+        next_tokens=NEXT_TOKENS,
         sparse_mode=sparse_mode,
         quant_scale_p=p_scale,
         out_dtype=out_dtype,
