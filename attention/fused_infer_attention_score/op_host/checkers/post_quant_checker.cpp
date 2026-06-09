@@ -167,7 +167,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureOutputEqual(const FiaTilingInfo &f
             std::string reasonMsg = "When quantScale2 is not empty, "
                 "the datatype of attenOut must be the same as the datatype of key and value";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
-                Ops::Base::ToString(outputType).c_str(), reasonMsg),
+                Ops::Base::ToString(outputType).c_str(), reasonMsg);
             return ge::GRAPH_FAILED;
         }
     }

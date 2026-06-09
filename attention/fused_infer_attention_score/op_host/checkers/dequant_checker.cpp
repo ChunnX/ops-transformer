@@ -1428,21 +1428,24 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
     
     if ((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
         (std::find(supportedLayoutListFP8.begin(), supportedLayoutListFP8.end(), inputLayout) ==
-                 supportedLayoutListFP8.end()),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
-                fiaInfo.opParamInfo.layOut,
-                "In MLA fullquant scenario, when the datatype of query is FLOAT8_E4M3FN or HIFLOAT8, "
-                "layout must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD"),
-                return ge::GRAPH_FAILED);
+        supportedLayoutListFP8.end())) {
+
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+            fiaInfo.opParamInfo.layOut,
+            "In MLA fullquant scenario, when the datatype of query is FLOAT8_E4M3FN or HIFLOAT8, "
+            "layout must be BSH/BSND/BNSD/TND/BSH_NBSD/BSND_NBSD/BNSD_NBSD/TND_NTD");
+        return ge::GRAPH_FAILED;
+    }
 
     if (fiaInfo.inputQType == ge::DT_INT8 &&
         (std::find(supportedLayoutListINT8.begin(), supportedLayoutListINT8.end(), inputLayout) ==
-                 supportedLayoutListINT8.end()),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
-                fiaInfo.opParamInfo.layOut,
-                "In MLA fullquant scenario, when the datatype of query is INT8, "
-                "layout must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD"),
-                return ge::GRAPH_FAILED);
+        supportedLayoutListINT8.end())) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+            fiaInfo.opParamInfo.layOut,
+            "In MLA fullquant scenario, when the datatype of query is INT8, "
+            "layout must be BSH/BSND/TND/BSH_NBSD/BSND_NBSD/TND_NTD");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1527,8 +1530,8 @@ ge::graphStatus DequantChecker::CheckGSizeFullquant(const FiaTilingInfo &fiaInfo
 {
     if (enableIFAMLAFullQuant_) { // G <= 128
         if (fiaInfo.gSize < NUM1 || fiaInfo.gSize > NUM_128) {
-            std::string qShape = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
-            std::string kShape = ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
+            std::string qShape = Ops::Base::ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
+            std::string kShape = Ops::Base::ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
             std::string shapesStr = qShape + " and " + kShape;
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key",
                 shapesStr.c_str(),
@@ -1537,8 +1540,8 @@ ge::graphStatus DequantChecker::CheckGSizeFullquant(const FiaTilingInfo &fiaInfo
         }
     } else {
         if (fiaInfo.gSize < NUM1 || fiaInfo.gSize > G_LIMIT) {
-            std::string qShape = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
-            std::string kShape = ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
+            std::string qShape = Ops::Base::ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
+            std::string kShape = Ops::Base::ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
             std::string shapesStr = qShape + " and " + kShape;
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key",
                 shapesStr.c_str(),
@@ -1737,7 +1740,7 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
         if (inputKvType == ge::DT_INT4) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
                 Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
-                "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode")
+                "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode");
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF((inputKvType != ge::DT_INT8),

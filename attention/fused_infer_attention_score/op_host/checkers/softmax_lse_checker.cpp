@@ -55,8 +55,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
                 "When softmaxLseFlag is true, softmaxLse cannot be empty"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", "empty",
-                "The TensorDesc of softmaxLse cannot be empty"),
+            OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "TensorDesc of softmax_lse"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
