@@ -88,12 +88,17 @@ if __name__ == "__main__":
         import csv as csv_mod
         perf_log = _read_perf_log(str(out))
 
-        # 读取完整 CSV 行
+        # 读取完整 CSV，过滤 FlashAttn 行
         with open(str(csv_path)) as f:
             all_rows = list(csv_mod.DictReader(f))
         flash_rows = [r for r in all_rows if r.get("OP Type") == "FlashAttn"]
+        fieldnames = all_rows[0].keys() if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
 
-        perf_log = _read_perf_log(str(out))
+        # 顶层 op_summary.csv 也只保留 FlashAttn
+        with open(str(csv_path), "w", newline="") as f:
+            w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
+            for row in flash_rows:
+                w.writerow(row)
         if not perf_log:
             print("  [WARN] _perf_log.jsonl 为空或不存在，跳过拆分")
 
