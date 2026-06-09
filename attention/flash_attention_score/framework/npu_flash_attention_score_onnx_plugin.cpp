@@ -154,7 +154,7 @@ static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_
   }
 
   if (required_attr_num != REQUIRED_ATTR) {
-    OP_LOGE_WITH_INVALID_INPUT(GetOpName(op_dest).c_str(), "required_attr_num", "attr num two is required.");
+    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op_dest).c_str(), "required_attr_num", "attr num two is required.");
     return FAILED;
   }
 
