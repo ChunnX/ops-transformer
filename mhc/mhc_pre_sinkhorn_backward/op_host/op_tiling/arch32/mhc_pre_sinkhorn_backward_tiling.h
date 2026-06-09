@@ -40,24 +40,6 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm2TilingData)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(MhcPreSinkhornBackward, MhcPreSinkhornBackwardTilingData)
 
-BEGIN_TILING_DATA_DEF(MhcPreSinkhornBackwardArch35TilingData)
-TILING_DATA_FIELD_DEF(int64_t, batchSize)
-TILING_DATA_FIELD_DEF(int64_t, seqLength)
-TILING_DATA_FIELD_DEF(int64_t, c)
-TILING_DATA_FIELD_DEF(int64_t, n)
-TILING_DATA_FIELD_DEF(int64_t, c0)      // tile for c
-TILING_DATA_FIELD_DEF(int64_t, c1)      // tile count of c
-TILING_DATA_FIELD_DEF(int64_t, aivNum)      // tile count of c
-TILING_DATA_FIELD_DEF(int64_t, tileGradY)
-TILING_DATA_FIELD_DEF(int64_t, tileHHat2)
-TILING_DATA_FIELD_DEF(int64_t, tileSize)
-TILING_DATA_FIELD_DEF(int64_t, skIterCount)
-TILING_DATA_FIELD_DEF(float, hcEps)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm2TilingData)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35TilingData)
-
 struct MhcPreSinkhornBackwardCompileInfo {
 };
 } // namespace optiling
