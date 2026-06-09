@@ -401,7 +401,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     if (dstRankId != epRankId_) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t)));
-        sendFlagHandleGMTensor_(curExpertCnt) = 1;
+        sendFlagHandleGMTensor_.SetValue(curExpertCnt, 1);
+        PipeBarrier<PIPE_ALL>();
         PRINTF("ProcessToken dstRankId = %d, curExpertCnt = %d, sendFlagHandleGMTensor_(curExpertCnt) = %d\n", dstRankId, curExpertCnt, sendFlagHandleGMTensor_(curExpertCnt));
     }
 }
