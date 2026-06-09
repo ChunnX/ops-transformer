@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
-from sparse_lightning_indexer_grad_kl_loss_pass import sparse_lightning_indexer_grad_kl_loss as sparse_lightning_indexer_grad_kl_loss_pass
+from sparse_lightning_indexer_grad_kl_loss_pass import sparse_lightning_indexer_grad_kl_loss_pass
 
 
 def run_precision_test():

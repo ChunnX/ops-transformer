@@ -758,7 +758,7 @@ def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx
 # ==============================================================================
 # Main entry: BSND layout
 # ==============================================================================
-def sparse_lightning_indexer_grad_kl_loss(
+def sparse_lightning_indexer_grad_kl_loss_pass(
     query: torch.Tensor,
     key: torch.Tensor,
     query_index: torch.Tensor,
@@ -940,7 +940,7 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     else:
         actual_k_len = torch.tensor([key.shape[0]], dtype=torch.int32)
 
-    d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss(
+    d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss_pass(
         query_b, key_b, query_index_b, key_index_b, weights_b, sparse_indices_b,
         softmax_max_b, softmax_sum_b, scale_value,
         actual_seq_lengths_query=actual_q_len,
