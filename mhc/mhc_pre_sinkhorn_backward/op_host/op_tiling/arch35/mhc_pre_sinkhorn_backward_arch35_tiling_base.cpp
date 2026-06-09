@@ -49,6 +49,10 @@ constexpr uint8_t BF16_BYTE_SIZE = 2;
 constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t N_SIZE_4 = 4;
 
+using namespace ge;
+using namespace std;
+using namespace AscendC;
+
 bool MhcPreSinkhornBackwardArch35Tiling::IsCapable()
 {
     return true;
@@ -376,7 +380,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     mm1Tiling.SetBias(false);
     mm1Tiling.SetBufferSpace(-1, -1, -1);
     mm1Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
-    if (mm1Tiling.GetTiling(tilingData.mm1TilingData) == -1) {
+    if (mm1Tiling.GetTiling(tilingData->mm1TilingData) == -1) {
         return ge::GRAPH_FAILED;
     }
 
@@ -388,7 +392,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     mm2Tiling.SetBias(false);
     mm2Tiling.SetBufferSpace(-1, -1, -1);
     mm2Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
-    if (mm2Tiling.GetTiling(tilingData.mm2TilingData) == -1) {
+    if (mm2Tiling.GetTiling(tilingData->mm2TilingData) == -1) {
         return ge::GRAPH_FAILED;
     }
 
@@ -439,7 +443,7 @@ uint64_t MhcPreSinkhornBackwardArch35Tiling::GetTilingKey() const
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::PostTiling()
 {
     context_->SetDynUBufSize(ubSize_);
-    context->SetBlockDim(coreNumAic_);
+    context_->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
@@ -451,7 +455,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
-    CHECK_NULLPTR(currentWorkspace);
+    OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
 
     return ge::GRAPH_SUCCESS;

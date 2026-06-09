@@ -21,6 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_struct.h"
 #include "err/ops_err.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
