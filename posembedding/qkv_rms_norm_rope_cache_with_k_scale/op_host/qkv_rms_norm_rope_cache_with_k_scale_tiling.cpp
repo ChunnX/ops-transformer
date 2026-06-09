@@ -320,7 +320,7 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
     const auto &kCacheShape = kCache.shape;
     const auto &cuSeqLenShape = cuSeqLen.shape;
     if (qkvShape.rank >= 3) {
-        input.totalTokens = qkvShape.dim0;
+        input.totalTokens = qkvShape.dim1;
         input.headDim = qkvShape.dim2;
     }
     if (cuSeqLenShape.rank == 1 && cuSeqLenShape.dim0 > 0) {

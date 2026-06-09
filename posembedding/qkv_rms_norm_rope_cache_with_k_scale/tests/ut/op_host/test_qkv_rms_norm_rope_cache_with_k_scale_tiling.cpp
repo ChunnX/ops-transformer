@@ -70,8 +70,8 @@ TensorStrideInfo Stride(std::initializer_list<uint64_t> strides, bool present = 
 
 void RefreshShapes(ContractInput &input)
 {
-    const uint64_t htot = input.numQHeads + input.numKHeads + input.numVHeads;
-    input.qkv.shape = Shape({input.totalTokens, htot, input.headDim});
+    const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
+    input.qkv.shape = Shape({qkvN, input.totalTokens, input.headDim});
     input.qGamma.shape = Shape({input.headDim});
     input.kGamma.shape = Shape({input.headDim});
     input.cosSin.shape = Shape({input.maxSeqLen, input.headDim});
@@ -265,6 +265,15 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, ContractStatu
 
 } // namespace
 
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesNtdQkvShape)
+{
+    auto input = BuildInput(512, 64, 8, 8);
+    EXPECT_EQ(input.qkv.shape.rank, 3U);
+    EXPECT_EQ(input.qkv.shape.dim0, input.numQHeads + input.numKHeads + input.numVHeads);
+    EXPECT_EQ(input.qkv.shape.dim1, input.totalTokens);
+    EXPECT_EQ(input.qkv.shape.dim2, input.headDim);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
 {
     struct Case {
@@ -448,7 +457,8 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
 {
     ContractTiling tiling;
     auto input = BuildInput();
-    input.qkv.shape.dim1 += 1;
+    const uint64_t invalidQkvN = input.numQHeads + input.numKHeads + input.numVHeads + 1;
+    input.qkv.shape = Shape({invalidQkvN, input.totalTokens, input.headDim});
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQkvShape);
 
     input = BuildInput();

@@ -17,7 +17,7 @@ namespace {
 std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
 {
     return {
-        {{{17, 20, 128}, {17, 20, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{20, 17, 128}, {20, 17, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{256, 128}, {256, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
