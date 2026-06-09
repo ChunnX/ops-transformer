@@ -41,6 +41,53 @@ static inline bool IsValidType(const DataType dtype)
     return dtype == ge::DT_FLOAT || dtype == ge::DT_FLOAT16 || dtype == ge::DT_BF16;
 }
 
+static bool IsValidShape(const int64_t shape1, const int64_t shape2, const int64_t shape3, const int64_t shape4)
+{
+    std::vector<int64_t> validValue = {-1};
+    std::vector<int64_t> currentValue = {shape1, shape2, shape3, shape4};
+    for (auto value : currentValue) {
+        if (value == -1) {
+            continue;
+        }
+        if (validValue.size() == 1) {
+            validValue.push_back(value);
+        } else if (validValue[1] != value) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static inline bool IsUnknownRank(const gert::Shape* check_shape)
+{
+    return check_shape->GetDimNum() == 1 && check_shape->GetDim(0) == UNKNOWN_RANK_DIM_VALUE_;
+}
+
+static inline bool IsUnknownShape(const gert::Shape* check_shape)
+{
+    for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
+        if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline ge::graphStatus SetAllUnknownDim(gert::Shape* outShape)
+{
+    outShape->SetDimNum(0);
+    outShape->AppendDim(UNKNOWN_DIM_VALUE_);
+    outShape->AppendDim(UNKNOWN_DIM_VALUE_);
+    return ge::GRAPH_SUCCESS;
+}
+
+inline ge::graphStatus SetUnknownRank(gert::Shape* outShape)
+{
+    outShape->SetDimNum(0);
+    outShape->AppendDim(UNKNOWN_RANK_DIM_VALUE_);
+    return ge::GRAPH_SUCCESS;
+}
+
 static const gert::Shape* CheckOptionalInput2DShape(gert::InferShapeContext* context, size_t inputIdx,
                                                       const char* inputName, gert::Shape* outShape)
 {
@@ -215,53 +262,6 @@ static ge::graphStatus InferDataTypeMoeFinalizeRoutingV2(gert::InferDataTypeCont
     return ge::GRAPH_SUCCESS;
 }
 
-static bool IsValidShape(const int64_t shape1, const int64_t shape2, const int64_t shape3, const int64_t shape4)
-{
-    std::vector<int64_t> validValue = {-1};
-    std::vector<int64_t> currentValue = {shape1, shape2, shape3, shape4};
-    for (auto value : currentValue) {
-        if (value == -1) {
-            continue;
-        }
-        if (validValue.size() == 1) {
-            validValue.push_back(value);
-        } else if (validValue[1] != value) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static inline bool IsUnknownRank(const gert::Shape* check_shape)
-{
-    return check_shape->GetDimNum() == 1 && check_shape->GetDim(0) == UNKNOWN_RANK_DIM_VALUE_;
-}
-
-static inline bool IsUnknownShape(const gert::Shape* check_shape)
-{
-    for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
-        if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
-            return true;
-        }
-    }
-    return false;
-}
-
-inline ge::graphStatus SetAllUnknownDim(gert::Shape* outShape)
-{
-    outShape->SetDimNum(0);
-    outShape->AppendDim(UNKNOWN_DIM_VALUE_);
-    outShape->AppendDim(UNKNOWN_DIM_VALUE_);
-    return ge::GRAPH_SUCCESS;
-}
-
-inline ge::graphStatus SetUnknownRank(gert::Shape* outShape)
-{
-    outShape->SetDimNum(0);
-    outShape->AppendDim(UNKNOWN_RANK_DIM_VALUE_);
-    return ge::GRAPH_SUCCESS;
-}
-
 static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* context)
 {
     auto outShape = context->GetOutputShape(INDEX_OUT);
@@ -294,14 +294,18 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
 
     int64_t lastDimExpandedX = 0;
     ge::graphStatus ret = CheckExpandedXShape(context, dropPadMode, outShape, lastDimExpandedX);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, return ret);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "expanded_x", "GRAPH_FAILED",
+            "CheckExpandedXShape failed."), return ge::GRAPH_FAILED);
     if (IsUnknownRank(context->GetInputShape(INDEX_IN_EXPANDED_X)) ||
         IsUnknownShape(context->GetInputShape(INDEX_IN_EXPANDED_X))) {
         return ret;
     }
 
     ret = CheckExpandedRowIdxShape(context, outShape);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, return ret);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "expanded_row_idx", "GRAPH_FAILED",
+            "CheckExpandedRowIdxShape failed."), return ge::GRAPH_FAILED);
     if (IsUnknownRank(context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX)) ||
         IsUnknownShape(context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX))) {
         return ret;
@@ -355,6 +359,8 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     OP_CHECK_IF(
         ValidateCrossShapeConsistency(context, dropPadMode, lastDimExpandedX, skip1InputShape, skip2InputShape,
             biasInputShape, scalesInputShape, expertIdxShape) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+            "ValidateCrossShapeConsistency failed."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
