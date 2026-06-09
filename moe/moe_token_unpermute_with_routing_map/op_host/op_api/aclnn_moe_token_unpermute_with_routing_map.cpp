@@ -22,6 +22,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
+#include "acl/acl_rt.h"
 #include "level0/sort.h"
 #include "level0/zero_op.h"
 #include "level0/mul.h"
@@ -364,12 +365,20 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
                                                                 sortValues->GetViewOffset());
         ViewDataType(sortValuesI32, op::DataType::DT_INT32);
         if(!permutedTokens->IsEmpty()){
-            // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
-            bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
-                            GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93 ||
- 	                        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) &&
-                            unpermutedTokens->GetViewShape().GetDim(0) < MAX_SORT_SHAPE_DIM &&
-                            (unpermutedTokensOut->GetDataType() == op::DataType::DT_BF16 || unpermutedTokensOut->GetDataType() == op::DataType::DT_FLOAT16);
+            int64_t deterministicValue = 0;
+            aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
+            bool isDeterministic = (aclRet == ACL_SUCCESS && deterministicValue == 1);
+            const auto outDtype = unpermutedTokensOut->GetDataType();
+            const bool platformOk = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
+                                     GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93 ||
+                                     GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+            const bool shapeOk = unpermutedTokens->GetViewShape().GetDim(0) < MAX_SORT_SHAPE_DIM;
+            const bool dtypeOk = (outDtype == op::DataType::DT_BF16 || outDtype == op::DataType::DT_FLOAT16 ||
+                                  outDtype == op::DataType::DT_FLOAT);
+            // 确定性场景下统一走 MoeInplaceIndexAddWithSorted，避免 moe_inplace_index_add 确定性慢路径
+            bool useNewOp = platformOk && shapeOk && dtypeOk &&
+                            ((outDtype == op::DataType::DT_BF16 || outDtype == op::DataType::DT_FLOAT16) ||
+                             isDeterministic);
             #ifdef BUILD_OPEN_PROJECT_API
                 if (useNewOp) {
                     indexAddRes =
