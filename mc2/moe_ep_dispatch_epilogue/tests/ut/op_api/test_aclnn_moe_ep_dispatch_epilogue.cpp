@@ -42,7 +42,7 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic) {
 
     TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc recvTopkWeightsDesc = TensorDesc({upperA, topK}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);

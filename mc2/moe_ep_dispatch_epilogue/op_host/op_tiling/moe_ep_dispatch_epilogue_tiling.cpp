@@ -1,16 +1,13 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the CANN Open Software License Agreement Version 2.0.
  */
 
 /*!
  * \file moe_ep_dispatch_epilogue_tiling.cpp
- * \brief
+ * \brief Expert-sorted epilogue tiling — perSlotBytes = ALIGN_UP(hidden*2, 512) + 512,
+ *        eAlloc from output shape, workspace for rank+expert prefix sums.
  */
 
 #include <cmath>
@@ -28,6 +25,10 @@
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling_key.h"
 #include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
+
+#ifndef ALIGN_UP
+#define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
+#endif
 
 using namespace AscendC;
 using namespace ge;
@@ -50,20 +51,18 @@ constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
-constexpr uint64_t UB_ALIGN = 32UL;
-constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
+constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 768;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr uint32_t HIDDEN_ALIGN = 32U;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
     OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
-    OP_LOGD(nodeName, "hidden=%u, topK=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
-              info.cfg.hidden, info.cfg.topK, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aAlloc=%u, numLocalExperts=%u, aivNum=%u", info.aAlloc, info.numLocalExperts, info.aivNum);
-    OP_LOGD(nodeName, "windowBaseAddr=%lu, numRecvPerRankAddr=%lu, numRecvPerExpertAddr=%lu",
-              info.windowBaseAddr, info.numRecvPerRankAddr, info.numRecvPerExpertAddr);
+    OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
+              info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
+    OP_LOGD(nodeName, "aivNum=%u", info.aivNum);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName)
@@ -81,8 +80,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
     const gert::StorageShape *recvSrcMetaInternalShape = context->GetInputShape(RECV_SRC_META_INTERNAL_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaInternalShape);
-    OP_TILING_CHECK(recvSrcMetaInternalShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvSrcMetaInternalShape dims must be 2."), return ge::GRAPH_FAILED);
 
     const gert::StorageShape *numRecvPerRankHpShape = context->GetInputShape(NUM_RECV_PER_RANK_HP_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankHpShape);
@@ -98,7 +95,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 }
 
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                         MoeEpDispatchEpilogueInfo &info)
+                                          MoeEpDispatchEpilogueInfo &info)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -139,7 +136,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
-    info.numLocalExperts = info.cfg.numLocalExperts;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -163,20 +159,22 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
+    const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
+    info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
+    info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
+
     auto recvXShape = context->GetOutputShape(0);
     OP_TILING_CHECK(recvXShape == nullptr, OP_LOGE(nodeName, "recvX output shape is null."),
         return ge::GRAPH_FAILED);
-    info.aAlloc = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(0));
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
-    info.cfg.perSlotBytes = static_cast<uint32_t>(
-        ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
-        + 80UL + 16UL);
 
-    size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
+    OP_TILING_CHECK(info.cfg.hidden % HIDDEN_ALIGN != 0,
+        OP_LOGE(nodeName, "hidden must be a multiple of %u for DataCopy alignment, got %u.",
+            HIDDEN_ALIGN, info.cfg.hidden),
         return ge::GRAPH_FAILED);
-    uint64_t prefixSumBytes = static_cast<uint64_t>(info.cfg.epWorldSize + 1) * sizeof(int32_t);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + prefixSumBytes;
+
+    info.cfg.perSlotBytes = static_cast<uint32_t>(
+        ALIGN_UP(static_cast<uint64_t>(info.cfg.hidden) * 2UL, WIN_ADDR_ALIGN) + WIN_ADDR_ALIGN);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -186,6 +184,15 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     context->SetBlockDim(blockDim);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
+
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
+        return ge::GRAPH_FAILED);
+    uint64_t prefixSumBytes = ALIGN_UP(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), 8UL)
+                            + static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int64_t);
+    uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int32_t);
+    uint64_t rowStartBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int64_t);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + prefixSumBytes + hitCountBytes + rowStartBytes;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
