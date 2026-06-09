@@ -160,7 +160,7 @@ if __name__ == "__main__":
         n2 = params.get("N2", n1)
         if not (n1 >= n2 and n1 % n2 == 0):
             print(f"  跳过: N1={n1}, N2={n2} 不满足 N1>=N2 且 N1%N2==0")
-            reporter.record(name, {"attn": {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+            reporter.record(name, {"attn": {"passed": False, "max_abs": 0.0, "mean_abs": 0.0,
                                             "fail_cnt": 0, "total": 0, "fail_ratio": 0.0},
                                    "lse":  {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                                             "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}},
