@@ -249,7 +249,7 @@ aclnnGroupedMatmulV5GetWorkspaceSize(
 | weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~3 | √ |
 | out | 输出 | 公式中的输出 $y$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | N/A |
 | groupListOptional | 可选输入 | 分组轴方向各组大小分布 | 格式取决于 groupListType | INT64 | ND | 1~2 | √ |
-| tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否使能 weight NZ 格式；[2]=允许额外内存上限 | 兼容历史版本，不用时传 `nullptr` | INT64 | ND | 3 | N/A |
+| tuningConfigOptional | 可选输入 | [0]=预期 token 数（优化 tiling）；[1]=A8W4 场景是否开启 weight NZ 格式；[2]=允许额外内存上限 | 兼容历史版本，不用时传 `nullptr` | INT64 | ND | 3 | N/A |
 
 #### 属性类参数
 
@@ -658,7 +658,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | INT4 | INT4 (ND/NZ) | <span title="该参数在当前场景下必须传空（nullptr）">—</span> | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
 **约束**：
-- groupType=0，actType=0，groupListType=0/1。
+- groupType=0，actType=0，groupListType=0/1/2。
 - x/weight/out 仅支持长度为 1 的 TensorList。
 - x 不转置，2 维 `(M, K)`。
 - weight 3 维 `(E, K, N)`。ND 格式时 N 为 8 的倍数。
@@ -679,7 +679,8 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 
 **约束**：
 - groupType=0，actType=0。
-- x/weight/out 仅支持长度为 1 的 TensorList。
+- 当前支持x、out均为长度为1的TensorList。
+- weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
 - x/weight 均不转置。x 2 维 `(M, K)`；weight 3 维 `(E, K, N)`。
 - bias 为离线辅助结果：$bias_i = 8 \times weight_i \times scale_i$ 沿 K 轴规约，shape `(E, N)`。
 - weight=INT32 时，每个 INT32 视为 8 个 INT4。
@@ -693,7 +694,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 **offset 不为空（非对称量化）：**
 - scale shape `(E, 1, N)`。
 - offset 为离线辅助结果（$antiquantOffset \times scale$），shape `(E, 1, N)`，dtype=FLOAT32。
-- tuningConfigOptional[1] 可置 1 使能 weight 亲核格式（需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
+- tuningConfigOptional[1]可置1，以开启 weight 亲核格式（需 weight shape `(E, N, K)` 经 ND2NZ 转换），K ≥ 2048 && N ≥ 2048 时有性能优势。
 
 <a id="a16w8场景约束"></a>
 
@@ -707,7 +708,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | BFLOAT16 | INT8 (ND) | FLOAT/null | BFLOAT16 | BFLOAT16 | BFLOAT16 |
 
 **约束**：
-- x 不转置；groupType=-1/0；actType=0；groupListType=0/1。
+- x 不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
 - 仅 perchannel 模式。
 - weight 多 Tensor 时，pergroup 长度 $s_i = K_i / G_i$ 须各组相等。
 - antiquantScale/Offset shape：
@@ -729,7 +730,7 @@ shape 约束参见 [约束说明](#73-atlas-a3a2-训练系列产品) 中对应�
 | BFLOAT16 | INT4 (ND) | FLOAT/null | BFLOAT16 | BFLOAT16 | BFLOAT16 |
 
 **约束**：
-- x 不转置；groupType=-1/0；actType=0；groupListType=0/1。
+- x 不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
 - weight 最后一维为偶数；pergroup 场景下 weight 转置时 pergroup 长度为偶数。
 - pergroup 场景：G 须能整除对应 $K_i$。多 Tensor 时所有 $s_i$ 相等。
 - 非对称量化仅 perchannel。
@@ -762,7 +763,7 @@ tuningConfigOptional 为 Host 侧 aclIntArray，存储 INT64 元素。兼容历�
 | 索引 | 语义 | 适用场景 |
 |:---:|------|------|
 | [0] | 预期各专家处理的 token 数，tiling 按此优化 | A8W4、A8W8、A4W4（x/weight/out 单 Tensor） |
-| [1] | 是否使能 weight 亲核格式（需先转置再 NZ） | A8W4 |
+| [1] | 是否开启 weight 亲核格式（需先转置再 NZ） | A8W4 |
 | [2] | 允许额外 workspace 上限（-1=不限），用于定轴算法优化 | A8W8 |
 
 </details>
