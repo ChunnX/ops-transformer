@@ -13,6 +13,9 @@
  * \brief
  */
 
+#include <algorithm>
+#include <cstring>
+#include <vector>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -21,6 +24,89 @@ using npu_utils = at_npu::native::NpuUtils;
 using tensor_list = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
 const int DIM_ONE = 1;
 const int DIM_TWO = 2;
+
+aclDataType GetDynamicScalesDtype(const at::Tensor &x, const c10::optional<at::Tensor> &scales,
+                                  c10::optional<int64_t> scales_dtype, int64_t quant_mode)
+{
+    aclDataType dynamic_scale_dtype = ACL_FLOAT;
+    if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT) {
+        aclDataType scale_value_type = (scales.has_value() && scales.value().defined())
+            ? ConvertToAclDataType(scales.value().scalar_type()) : ACL_FLOAT;
+        dynamic_scale_dtype = (x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf)
+            ? ACL_FLOAT : (scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type);
+    } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
+        dynamic_scale_dtype = ACL_FLOAT8_E8M0;
+    }
+    return dynamic_scale_dtype;
+}
+
+std::vector<int64_t> GetDynamicScalesShape(const c10::optional<at::Tensor> &scales, int64_t quant_mode,
+                                           int64_t a, int64_t h)
+{
+    constexpr int64_t PER_GROUP_SIZE = 128;
+    constexpr int64_t MX_QUANT_SIZE = 32;
+    std::vector<int64_t> shape{a};
+    if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT && scales.has_value() && scales.value().defined()) {
+        TORCH_CHECK(scales.value().dim() >= DIM_TWO, "Expected scales to be at least 2D.");
+        shape = {a, scales.value().sizes()[1]};
+    } else if (quant_mode == QuantMode::QUANT_MODE_PERTOKEN) {
+        shape = {a};
+    } else if (quant_mode == QuantMode::QUANT_MODE_PERGROUP) {
+        shape = {a, (h + PER_GROUP_SIZE - 1) / PER_GROUP_SIZE};
+    } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
+        shape = {a, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / 2 * 2};
+    }
+    return shape;
+}
+
+at::ScalarType GetStorageScalarType(aclDataType dtype)
+{
+    switch (dtype) {
+        case ACL_UINT8:
+        case ACL_INT4:
+        case ACL_HIFLOAT8:
+        case ACL_FLOAT8_E8M0:
+        case ACL_FLOAT4_E2M1:
+        case ACL_FLOAT4_E1M2:
+            return at::kByte;
+        case ACL_INT8:
+            return at::kChar;
+        case ACL_INT16:
+            return at::kShort;
+        case ACL_INT32:
+            return at::kInt;
+        case ACL_INT64:
+            return at::kLong;
+        case ACL_FLOAT16:
+            return at::kHalf;
+        case ACL_FLOAT:
+            return at::kFloat;
+        case ACL_DOUBLE:
+            return at::kDouble;
+        case ACL_BOOL:
+            return at::kBool;
+        case ACL_BF16:
+            return at::kBFloat16;
+        case ACL_FLOAT8_E5M2:
+            return at::ScalarType::Float8_e5m2;
+        case ACL_FLOAT8_E4M3FN:
+            return at::ScalarType::Float8_e4m3fn;
+        default:
+            TORCH_CHECK(false, "unsupported acl dtype for tensor allocation.");
+    }
+    return at::kByte;
+}
+
+bool IsPackedFloat4(aclDataType dtype)
+{
+    return dtype == ACL_FLOAT4_E2M1 || dtype == ACL_FLOAT4_E1M2;
+}
+
+bool IsAscend950()
+{
+    static const char *soc_name = aclrtGetSocName();
+    return soc_name != nullptr && std::strstr(soc_name, "Ascend950") != nullptr;
+}
 
 /**
  * @brief ACLNN Warpper for aclnnMoeDistributeDispatchV4
@@ -109,23 +195,47 @@ tensor_list npu_moe_distribute_dispatch_v4(const at::Tensor &x, const at::Tensor
         ep_recv_cnt_num = ep_world_size * local_moe_expert_num;
     }
 
-    auto output_dtype = at::kChar;
+    aclDataType output_acl_dtype = ACL_INT8;
     if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT) {
-        output_dtype = x.scalar_type();
+        output_acl_dtype = ConvertToAclDataType(x.scalar_type());
     }
+    if (y_dtype.has_value()) {
+        output_acl_dtype = GetAclDataType(y_dtype.value());
+    }
+    auto output_dtype = GetStorageScalarType(output_acl_dtype);
 
     char *group_ep_ptr = const_cast<char *>(group_ep.data());
     std::string group_tp_str = std::string(group_tp);
     char *group_tp_ptr = const_cast<char *>(group_tp_str.c_str());
-    at::Tensor expand_x = at::empty({std::max(a, a * tp_world_size), h}, at::TensorOptions().dtype(output_dtype)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));  
+    at::Tensor expand_x = at::empty({std::max(a, a * tp_world_size), h},
+        at::TensorOptions().dtype(output_dtype)
+            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    bool special_y_type = y_dtype.has_value() && IsPackedFloat4(output_acl_dtype);
+    if (special_y_type && !scales.has_value()) {
+        TORCH_CHECK(h % 2 == 0,
+                    "The last dim input shape must be divisible by 2 if "
+                    "y dtype is torch_npu.float4_e2m1 or torch_npu.float4_e1m2");
+        expand_x = at::empty({std::max(a, a * tp_world_size), h / 2},
+            at::TensorOptions().dtype(output_dtype)
+                .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    }
+
     at::Tensor dynamic_scales{nullptr};
-    if (tp_world_size == 0) {
-        dynamic_scales = at::empty({a}, at::TensorOptions().dtype(at::kFloat)
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    aclDataType dynamic_scales_acl_dtype = GetDynamicScalesDtype(x, scales, scales_dtype, quant_mode);
+    auto dynamic_scales_dtype = GetStorageScalarType(dynamic_scales_acl_dtype);
+    if (IsAscend950()) {
+        auto dynamic_scales_shape = GetDynamicScalesShape(scales, quant_mode, std::max(a, a * tp_world_size), h);
+        dynamic_scales = at::empty(dynamic_scales_shape,
+            at::TensorOptions().dtype(dynamic_scales_dtype)
+                .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
     } else {
-        dynamic_scales = at::empty({a * tp_world_size}, at::TensorOptions().dtype(at::kFloat)
-            .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+        if (tp_world_size == 0) {
+            dynamic_scales = at::empty({a}, at::TensorOptions().dtype(dynamic_scales_dtype)
+                .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+        } else {
+            dynamic_scales = at::empty({a * tp_world_size}, at::TensorOptions().dtype(dynamic_scales_dtype)
+                .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+        }
     }
 
     at::Tensor expert_token_nums = at::empty({local_moe_expert_num}, at::TensorOptions().dtype(at::kLong)
@@ -149,11 +259,20 @@ tensor_list npu_moe_distribute_dispatch_v4(const at::Tensor &x, const at::Tensor
     std::string comm_alg_str = std::string(comm_alg);
     char *comm_alg_ptr = const_cast<char *>(comm_alg_str.c_str());
 
-    ACLNN_CMD(aclnnMoeDistributeDispatchV4, x, expert_ids, scales, x_active_mask, expert_scales,
+    aclDataType x_acl_dtype = x_dtype.has_value() ? GetAclDataType(x_dtype.value()) : ConvertToAclDataType(x.scalar_type());
+    at::Tensor scales_tensor = (scales.has_value() && scales.value().defined()) ? scales.value() : at::Tensor();
+    aclDataType scales_acl_dtype = scales_dtype.has_value() ? GetAclDataType(scales_dtype.value())
+        : ConvertToAclDataType(scales_tensor.defined() ? scales_tensor.scalar_type() : at::kFloat);
+    TensorWrapper x_wrapper = {x, x_acl_dtype};
+    TensorWrapper scales_wrapper = {scales_tensor, scales_acl_dtype};
+    TensorWrapper expand_x_wrapper = {expand_x, output_acl_dtype};
+    TensorWrapper dynamic_scales_wrapper = {dynamic_scales, dynamic_scales_acl_dtype};
+
+    ACLNN_CMD(aclnnMoeDistributeDispatchV4, x_wrapper, expert_ids, scales_wrapper, x_active_mask, expert_scales,
               elastic_info, performance_info, group_ep_ptr, ep_world_size, ep_rank_id, moe_expert_num,
               group_tp_ptr, tp_world_size, tp_rank_id, expert_shard_type, shared_expert_num, shared_expert_rank_num,
               quant_mode, global_bs_real, expert_token_nums_type, comm_alg_ptr, zero_expert_num, copy_expert_num,
-              const_expert_num, expand_x, dynamic_scales, assist_info_forcombine, expert_token_nums,
+              const_expert_num, expand_x_wrapper, dynamic_scales_wrapper, assist_info_forcombine, expert_token_nums,
               ep_recv_counts, tp_recv_counts, expand_scales);
 
     return std::tie(expand_x, dynamic_scales, assist_info_forcombine, expert_token_nums, ep_recv_counts, tp_recv_counts,
