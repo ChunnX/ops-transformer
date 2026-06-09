@@ -210,7 +210,7 @@ public:
         PipeBarrier<PIPE_ALL>();
 
         actualOutTokens = 0;
-        auto blockIdInNeedCore = min(blockIdx, static_cast<int32_t>(needCoreNum));
+        auto blockIdInNeedCore = blockIdx < needCoreNum ? blockIdx : needCoreNum;
         for (int32_t i = 0; i < blockIdInNeedCore; i++) {
             ind += offsetLocal.GetValue(i);
         }
