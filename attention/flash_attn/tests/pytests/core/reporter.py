@@ -57,6 +57,41 @@ class Reporter:
             self._csv_file = None
         return self._print_table(self._results, len(self._results), is_final=True)
 
+    @staticmethod
+    def _print_table(results: dict, total: int, is_final: bool) -> int:
+        SEP = "─" * 130
+        max_len = max((len(n) for n in results.keys()), default=28)
+        title = "  汇总结果" if is_final else f"  中间统计  ({len(results)}/{total})"
+        print(f"\n┌{SEP}┐")
+        print(f"│{title}")
+        print(f"├{SEP}┤")
+        hdr = (f"│  {'Case':<{max_len}}  {'Dtype':>5}  "
+               f"{'Attn':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │  "
+               f"{'LSE':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │")
+        print(hdr)
+        print(f"├{SEP}┤")
+        pass_cnt = fail_cnt = 0
+        for name, res in results.items():
+            a = res.get("attn", {})
+            l = res.get("lse", {})
+            dt = res.get("_dtype", "")
+            a_tag = "PASS" if a.get("passed") else "FAIL"
+            l_tag = ("PASS" if l.get("passed") else "FAIL") if l.get("total", 0) > 0 else "---"
+            a_max = f"{a.get('max_abs', 0):.6f}" if a.get("total", 0) > 0 else "N/A"
+            a_fr = f"{a.get('fail_ratio', 0)*100:.4f}%" if a.get("total", 0) > 0 else "N/A"
+            l_max = f"{l.get('max_abs', 0):.6f}" if l.get("total", 0) > 0 else "-"
+            l_fr = f"{l.get('fail_ratio', 0)*100:.4f}%" if l.get("total", 0) > 0 else "-"
+            print(f"│  {name:<{max_len}}  {dt:>5}  "
+                  f"{a_tag:>8}  {a_max:>12}  {a_fr:>10}  │  "
+                  f"{l_tag:>8}  {l_max:>12}  {l_fr:>10}  │")
+            if a.get("passed") and l.get("passed"): pass_cnt += 1
+            else: fail_cnt += 1
+        print(f"├{SEP}┤")
+        label = f"│  通过: {pass_cnt}   失败: {fail_cnt}   共: {len(results)}"
+        print(label)
+        print(f"└{SEP}┘")
+        return fail_cnt
+
 
 def _pct(v) -> str:
     if v is None or v == float('nan') or v < 0:
