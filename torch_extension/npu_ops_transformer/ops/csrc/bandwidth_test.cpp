@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -44,9 +44,10 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
         y = at::empty({max_recv_cnt, h}, x.options());
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
-
-    std::string group_ptr = group;
-    std::string comm_alg_ptr = comm_alg;
+    std::string group_str = std::string(group);
+    std::string comm_alg_str = std::string(comm_alg);
+    char *group_ptr = const_cast<char *>(group_str.c_str());
+    char *comm_alg_ptr = const_cast<char *>(comm_alg_str.c_str());
 
     ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size,
               max_bs, mode, comm_alg_ptr, aiv_num, y, receive_cnt);
