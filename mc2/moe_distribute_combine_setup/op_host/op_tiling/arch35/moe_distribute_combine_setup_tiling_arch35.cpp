@@ -22,11 +22,12 @@
 #include "op_host/tiling_templates_registry.h"
 
 namespace {
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
-constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 5;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 6;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 7;
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 4;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 6;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 8;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 9;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 10;
+
 constexpr int64_t GROUP_EP_SIZE_2 = 2;
 constexpr int64_t GROUP_EP_SIZE_4 = 4;
 constexpr int64_t GROUP_EP_SIZE_8 = 8;

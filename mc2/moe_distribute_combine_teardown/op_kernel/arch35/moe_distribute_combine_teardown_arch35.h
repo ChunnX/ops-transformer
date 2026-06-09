@@ -22,6 +22,7 @@
 #endif
 
 #include "kernel_operator.h"
+#include "adv_api/hcomm/hcomm.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_teardown_tiling_data.h"
 #if __has_include("../../moe_distribute_combine_setup/moe_distribute_base.h")
@@ -29,10 +30,12 @@
 #else
 #include "../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
 #endif
+#include "../../../common/op_kernel/mc2_moe_context.h"
 
 namespace MoeDistributeCombineTeardownImpl {
 
 using namespace AscendC;
+using namespace Mc2Aclnn;
 
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
@@ -49,7 +52,7 @@ class MoeDistributeCombineTeardown {
 
 public:
     __aicore__ inline MoeDistributeCombineTeardown(){};
-    __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
                                 GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
                                 GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineTeardownTilingData *tilingData);
@@ -66,13 +69,13 @@ private:
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(hcclContext_->windowsIn[rankId]) + winDataSizeOffset_ +
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + winDataSizeOffset_ +
                expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(hcclContext_->windowsOut[rankId]) + COMBINE_STATE_OFFSET +
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET +
                WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
     }
 
@@ -120,11 +123,11 @@ private:
     TBuf<> gatherTmpBuf_;
     TBuf<> statusSumOutBuf_;
 
-    __gm__ HcclCombinOpParam *hcclContext_{nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 };
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(
+__aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(GM_ADDR context,
     GM_ADDR /*expandX*/, GM_ADDR /*quantExpandX*/, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR expertScales,
     GM_ADDR /*commCmdInfo*/, GM_ADDR /*xActiveMask*/, GM_ADDR /*sharedExpertX*/, GM_ADDR XOut, GM_ADDR /*workspaceGM*/,
     TPipe *pipe, const MoeDistributeCombineTeardownTilingData *tilingData)
@@ -132,13 +135,13 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     moeDistributeCombineTeardownInfo_ = &(tilingData->moeDistributeCombineTeardownInfo);
-    hcclContext_ = (__gm__ HcclCombinOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    mc2Context_ = (__gm__ Mc2MoeContext* )context;
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     // 在teardown内进行状态切换，到setup内时，state即目标flag
     GlobalTensor<int32_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = (GM_ADDR)hcclContext_->windowsOut[moeDistributeCombineTeardownInfo_->epRankId];
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
                                                             STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);

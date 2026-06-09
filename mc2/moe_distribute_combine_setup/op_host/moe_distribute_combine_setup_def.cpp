@@ -54,7 +54,6 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("group_ep").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
@@ -80,7 +79,6 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
         this->AICore().AddConfig("ascend950", aicore_config);
-        //this->MC2().HcclGroup({"group_ep"});
     }
 };
 

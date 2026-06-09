@@ -33,7 +33,6 @@ namespace ge {
  * format: ND.
  *
  * @par Attributes
- * @li group_ep: Required. Input ep comm group name, ep means experts parallelism, dtype: String.
  * @li ep_world_size: Required. Input ep comm world size, dtype: int64.
  * @li ep_rank_id: Required. Input ep comm rank Id, dtype: int64.
  * @li moe_expert_num: Required. Input moe expert num, dtype: int64.
@@ -61,7 +60,6 @@ REG_OP(MoeDistributeCombineSetup)
     .INPUT(assist_info_for_combine, TensorType({DT_INT32}))
     .OUTPUT(quant_expand_x, TensorType({DT_INT8}))
     .OUTPUT(comm_cmd_info, TensorType({DT_INT32}))
-    .REQUIRED_ATTR(group_ep, String)
     .REQUIRED_ATTR(ep_world_size, Int)
     .REQUIRED_ATTR(ep_rank_id, Int)
     .REQUIRED_ATTR(moe_expert_num, Int)
@@ -69,8 +67,8 @@ REG_OP(MoeDistributeCombineSetup)
     .ATTR(expert_shard_type, Int, 0)
     .ATTR(shared_expert_num, Int, 1)
     .ATTR(shared_expert_rank_num, Int, 0)
-    .ATTR(comm_quant_mode, Int, 0)
     .ATTR(global_bs, Int, 0)
+    .ATTR(comm_quant_mode, Int, 0)
     .ATTR(comm_type, Int, 0)
     .ATTR(comm_alg, String, "")
     .OP_END_FACTORY_REG(MoeDistributeCombineSetup)

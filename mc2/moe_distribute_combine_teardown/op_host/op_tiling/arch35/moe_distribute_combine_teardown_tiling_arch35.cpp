@@ -18,13 +18,13 @@
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
 namespace {
-constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
-constexpr uint32_t ATTR_COMM_QUANT_MODE_INDEX = 8;
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 10;
+constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 11;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 12;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 15;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 16;
+constexpr uint32_t ATTR_COMM_QUANT_MODE_INDEX = 18;
+
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 constexpr int64_t NON_QUANT = 0;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
@@ -76,15 +76,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsWithoutRelation(
 {
     auto attrs = context_->GetAttrs();
 
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
-
-    OP_TILING_CHECK((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                        (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "groupEp", std::to_string(strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH)).c_str(), (std::string("[1, ") + std::to_string(MAX_GROUP_NAME_LENGTH) + ")").c_str()),
-                    return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
                       (*epWorldSizePtr == GROUP_EP_SIZE_8)),

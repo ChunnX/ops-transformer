@@ -233,9 +233,9 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, Mc2MoeContext *mc2ContextStruct,
-                                           const CommProtocol &protocol, const CommEngine &engine,
-                                           std::vector<ChannelHandle> &channels)
+aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+                                           Mc2MoeContext *mc2ContextStruct, const CommProtocol &protocol,
+                                           const CommEngine &engine, std::vector<ChannelHandle> &channels)
 {
     OP_LOGD("Start to get HCCL communication channel");
     uint32_t channelNum = rankDim - 1;
@@ -255,7 +255,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         return ret;
     }
 
-    ret = InitHcclChannel(hcclHandle, rankDim, mc2ContextStruct->epRankId, protocol, channelDesc);
+    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }

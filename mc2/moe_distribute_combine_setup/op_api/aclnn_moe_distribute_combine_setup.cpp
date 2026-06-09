@@ -157,10 +157,27 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     const char* opName = "moe_distribute_combine_setup";
     retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
     CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
-    retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(mc2Context,
-        expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId,
-        moeExpertNum, hcclBuffSize, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
-        commType, const_cast<char*>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
+    retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
+        mc2Context,
+        expandX,
+        expertIds,
+        assistInfoForCombine,
+        epWorldSize,
+        epRankId,
+        moeExpertNum,
+        hcclBuffSize,
+        expertShardType,
+        sharedExpertNum,
+        sharedExpertRankNum,
+        globalBs,
+        commQuantMode,
+        commType,
+        const_cast<char*>(commAlg),
+        quantExpandXOut,
+        commCmdInfoOut,
+        workspaceSize,
+        executor
+    );
     return retStatus;
 }
 
