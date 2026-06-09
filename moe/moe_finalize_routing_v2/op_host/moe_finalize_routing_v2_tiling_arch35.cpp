@@ -340,6 +340,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
 {
     // const_expert_alpha等的shape信息要与const_expert_range_num一致
     constExpertRangeNum = constantExpertEnd - constantExpertStart;
+    OP_LOGD(context_->GetNodeName(), "constantExpertEnd is %ld, constantExpertStart is %ld, idx is %ld\n", constantExpertEnd, constantExpertStart, idx);
     auto desc = context_->GetOptionalInputDesc(idx);
     if (desc) {
         OP_CHECK_IF(
@@ -351,6 +352,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
     }
     auto shape = context_->GetOptionalInputShape(idx);
     if (shape) {
+        OP_LOGD(context_->GetNodeName(), "dim 0 is %ld, dim 1 is %ld, idx is %ld\n", shape->GetStorageShape().GetDim(0), shape->GetStorageShape().GetDim(1), idx);
         OP_CHECK_IF(
             shape->GetStorageShape().GetDim(1) != h,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "const_expert",
@@ -490,6 +492,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetZeroShapeAttrsInfo(int64_t idx, int64_t& start, int64_t& end)
 {
+    OP_LOGD(context_, "DoGetZeroShapeAttrsInfo idx is %ld\n", idx);
     auto attrsPtr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     const auto *attrPtr = attrsPtr->GetAttrPointer<gert::ContinuousVector>(idx);
@@ -499,6 +502,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetZeroShapeAttrsInfo(int64_t idx
         end = attrList[1];
         OP_LOGD(context_, "Extracted input attrs start = %ld, end = %ld.", start, end);
     }
+    OP_LOGD(context_, "DoGetZeroShapeAttrsInfo start is %ld, end is %ld\n", start, end);
     return ge::GRAPH_SUCCESS;
 }
 
