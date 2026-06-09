@@ -252,15 +252,21 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 input.vScale.shape.rank, input.vScale.shape.dim0);
         return ContractStatus::kInvalidVScaleShape;
     }
-    if (!IsShape4D(input.kCache.shape, input.blockNum, input.numKHeads, input.blockSize, input.headDim) ||
-        !IsShape4D(input.vCache.shape, input.blockNum, input.numVHeads, input.blockSize, input.headDim)) {
+    if (!IsShape4D(input.kCache.shape, input.blockNum, input.numKHeads, input.blockSize, input.headDim)) {
         OP_LOGD(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale contract reject: cache shape kCache rank=%u dims={%lu,%lu,%lu,%lu}, "
-                "vCache rank=%u dims={%lu,%lu,%lu,%lu}.",
+                "QkvRmsNormRopeCacheWithKScale contract reject: kCache shape rank=%u dims={%lu,%lu,%lu,%lu}, "
+                "expected={%lu,%lu,%lu,%lu}.",
                 input.kCache.shape.rank, input.kCache.shape.dim0, input.kCache.shape.dim1, input.kCache.shape.dim2,
-                input.kCache.shape.dim3, input.vCache.shape.rank, input.vCache.shape.dim0, input.vCache.shape.dim1,
-                input.vCache.shape.dim2, input.vCache.shape.dim3);
-        return ContractStatus::kInvalidCacheShape;
+                input.kCache.shape.dim3, input.blockNum, input.numKHeads, input.blockSize, input.headDim);
+        return ContractStatus::kInvalidKCacheShape;
+    }
+    if (!IsShape4D(input.vCache.shape, input.blockNum, input.numVHeads, input.blockSize, input.headDim)) {
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: vCache shape rank=%u dims={%lu,%lu,%lu,%lu}, "
+                "expected={%lu,%lu,%lu,%lu}.",
+                input.vCache.shape.rank, input.vCache.shape.dim0, input.vCache.shape.dim1, input.vCache.shape.dim2,
+                input.vCache.shape.dim3, input.blockNum, input.numVHeads, input.blockSize, input.headDim);
+        return ContractStatus::kInvalidVCacheShape;
     }
     if (!IsShape4D(input.kScaleCache.shape, input.blockNum, input.numKHeads, input.blockSize, 1)) {
         OP_LOGD(opName.c_str(),
@@ -269,16 +275,23 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 input.kScaleCache.shape.dim2, input.kScaleCache.shape.dim3);
         return ContractStatus::kInvalidScaleShape;
     }
-    if (!IsCacheStrideValid(input.kCache.stride, input.headDim) ||
-        !IsCacheStrideValid(input.vCache.stride, input.headDim)) {
+    if (!IsCacheStrideValid(input.kCache.stride, input.headDim)) {
         OP_LOGD(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale contract reject: cache stride kCache present=%u rank=%u "
-                "strides={%lu,%lu,%lu,%lu}, vCache present=%u rank=%u strides={%lu,%lu,%lu,%lu}.",
+                "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
+                "strides={%lu,%lu,%lu,%lu}, headDim=%lu.",
                 input.kCache.stride.present ? 1U : 0U, input.kCache.stride.rank, input.kCache.stride.stride0,
                 input.kCache.stride.stride1, input.kCache.stride.stride2, input.kCache.stride.stride3,
+                input.headDim);
+        return ContractStatus::kInvalidKCacheStride;
+    }
+    if (!IsCacheStrideValid(input.vCache.stride, input.headDim)) {
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: vCache stride present=%u rank=%u "
+                "strides={%lu,%lu,%lu,%lu}, headDim=%lu.",
                 input.vCache.stride.present ? 1U : 0U, input.vCache.stride.rank, input.vCache.stride.stride0,
-                input.vCache.stride.stride1, input.vCache.stride.stride2, input.vCache.stride.stride3);
-        return ContractStatus::kInvalidCacheStride;
+                input.vCache.stride.stride1, input.vCache.stride.stride2, input.vCache.stride.stride3,
+                input.headDim);
+        return ContractStatus::kInvalidVCacheStride;
     }
     if (!CacheNonInnermostStridesMatch(input.kCache.stride, input.vCache.stride)) {
         OP_LOGD(opName.c_str(),
@@ -286,7 +299,7 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                 "k={%lu,%lu,%lu} v={%lu,%lu,%lu}.",
                 input.kCache.stride.stride0, input.kCache.stride.stride1, input.kCache.stride.stride2,
                 input.vCache.stride.stride0, input.vCache.stride.stride1, input.vCache.stride.stride2);
-        return ContractStatus::kInvalidCacheStride;
+        return ContractStatus::kMismatchedKvCacheStride;
     }
     if (!IsScaleStrideValid(input.kScaleCache.stride)) {
         OP_LOGD(opName.c_str(),
@@ -461,6 +474,16 @@ const char *ContractStatusName(ContractStatus status)
             return "invalid_scale_stride";
         case ContractStatus::kUnsupportedResource:
             return "unsupported_resource";
+        case ContractStatus::kInvalidKCacheShape:
+            return "invalid_k_cache_shape";
+        case ContractStatus::kInvalidVCacheShape:
+            return "invalid_v_cache_shape";
+        case ContractStatus::kInvalidKCacheStride:
+            return "invalid_k_cache_stride";
+        case ContractStatus::kInvalidVCacheStride:
+            return "invalid_v_cache_stride";
+        case ContractStatus::kMismatchedKvCacheStride:
+            return "mismatched_kv_cache_stride";
         default:
             return "unknown";
     }

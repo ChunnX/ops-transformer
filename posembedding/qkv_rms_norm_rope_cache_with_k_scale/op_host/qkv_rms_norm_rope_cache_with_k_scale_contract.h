@@ -52,7 +52,12 @@ enum class ContractStatus : uint32_t {
     kInvalidScaleShape,
     kInvalidCacheStride,
     kInvalidScaleStride,
-    kUnsupportedResource
+    kUnsupportedResource,
+    kInvalidKCacheShape,
+    kInvalidVCacheShape,
+    kInvalidKCacheStride,
+    kInvalidVCacheStride,
+    kMismatchedKvCacheStride
 };
 
 enum class ContractDtype : uint32_t {

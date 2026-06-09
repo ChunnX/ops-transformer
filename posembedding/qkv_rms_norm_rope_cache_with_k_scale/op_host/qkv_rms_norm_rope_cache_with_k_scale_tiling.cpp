@@ -101,6 +101,16 @@ TensorStrideInfo ToStrideInfo(const gert::Stride &stride)
     return info;
 }
 
+bool HasUsableBlockDims(const TensorShapeInfo &shape)
+{
+    return shape.rank >= 4 && shape.dim0 > 0 && shape.dim2 > 0;
+}
+
+bool BlockDimsMatch(const TensorShapeInfo &lhs, const TensorShapeInfo &rhs)
+{
+    return lhs.dim0 == rhs.dim0 && lhs.dim2 == rhs.dim2;
+}
+
 ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
                                          TensorStrideInfo &strideInfo)
 {
@@ -355,7 +365,6 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
     const auto cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
     const auto &qkvShape = qkv.shape;
     const auto &cosSinShape = cosSin.shape;
-    const auto &kCacheShape = kCache.shape;
     const auto &cuSeqLenShape = cuSeqLen.shape;
     if (qkvShape.rank >= 3) {
         input.totalTokens = qkvShape.dim1;
@@ -366,10 +375,6 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
     }
     if (cosSinShape.rank >= 1) {
         input.maxSeqLen = cosSinShape.dim0;
-    }
-    if (kCacheShape.rank >= 4) {
-        input.blockNum = kCacheShape.dim0;
-        input.blockSize = kCacheShape.dim2;
     }
 
     input.numQHeads = static_cast<uint64_t>(headNumsData[0]);
@@ -386,6 +391,41 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
                 OP_LOGE(opName.c_str(), "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKScaleCacheIndex, input.kScaleCache) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
+    const TensorShapeInfo *blockShape = nullptr;
+    const char *blockShapeSource = "none";
+    const bool kCacheHasBlockDims = HasUsableBlockDims(input.kCache.shape);
+    const bool vCacheHasBlockDims = HasUsableBlockDims(input.vCache.shape);
+    const bool kScaleCacheHasBlockDims = HasUsableBlockDims(input.kScaleCache.shape);
+    if (kCacheHasBlockDims && vCacheHasBlockDims && BlockDimsMatch(input.kCache.shape, input.vCache.shape)) {
+        blockShape = &input.kCache.shape;
+        blockShapeSource = "kCache/vCache";
+    } else if (kCacheHasBlockDims && kScaleCacheHasBlockDims &&
+               BlockDimsMatch(input.kCache.shape, input.kScaleCache.shape)) {
+        blockShape = &input.kCache.shape;
+        blockShapeSource = "kCache/kScaleCache";
+    } else if (vCacheHasBlockDims && kScaleCacheHasBlockDims &&
+               BlockDimsMatch(input.vCache.shape, input.kScaleCache.shape)) {
+        blockShape = &input.vCache.shape;
+        blockShapeSource = "vCache/kScaleCache";
+    } else if (kCacheHasBlockDims) {
+        blockShape = &input.kCache.shape;
+        blockShapeSource = "kCache";
+    } else if (vCacheHasBlockDims) {
+        blockShape = &input.vCache.shape;
+        blockShapeSource = "vCache";
+    } else if (kScaleCacheHasBlockDims) {
+        blockShape = &input.kScaleCache.shape;
+        blockShapeSource = "kScaleCache";
+    }
+    if (blockShape != nullptr) {
+        input.blockNum = blockShape->dim0;
+        input.blockSize = blockShape->dim2;
+    }
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale derived block shape: source=%s blockNum=%lu blockSize=%lu "
+            "hasBlockDims={k:%u,v:%u,kScale:%u}.",
+            blockShapeSource, input.blockNum, input.blockSize, kCacheHasBlockDims ? 1U : 0U,
+            vCacheHasBlockDims ? 1U : 0U, kScaleCacheHasBlockDims ? 1U : 0U);
     input.cuSeqLen = cuSeqLen;
     input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
     input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);

@@ -478,6 +478,26 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQkvShape);
 
     input = BuildInput();
+    input.kCache.shape.dim1 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
+
+    input = BuildInput();
+    input.vCache.shape.dim1 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
+
+    input = BuildInput();
+    input.kCache.shape.dim2 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
+
+    input = BuildInput();
+    input.vCache.shape.dim0 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
+
+    input = BuildInput();
+    input.kScaleCache.shape.dim2 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
+
+    input = BuildInput();
     input.kScaleCache.shape.dim3 = 2;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
 
@@ -543,12 +563,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
     auto input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
     input.vCache.stride = Stride({45000, 21000, 192, 1});
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
 
     input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
     input.vCache.stride = Stride({52000, 21000, 160, 1});
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
@@ -556,15 +576,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
     ContractTiling tiling;
     auto input = BuildInput();
     input.kCache.stride.stride3 = 2;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheStride);
 
     input = BuildInput();
     input.vCache.stride.stride1 = input.headDim - 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheStride);
 
     input = BuildInput();
     input.kCache.stride.rank = 3;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheStride);
 
     input = BuildInput();
     input.kScaleCache.stride.stride3 = 2;
