@@ -29,7 +29,11 @@
 
 using namespace AscendC;
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 
 #include "../../../common/op_kernel/moe_distribute_base.h"
 
@@ -58,12 +62,11 @@ using namespace AscendC;
 #include "mega_moe_kernel_a3.hpp"
 // #include "mega_moe_kernel_a2.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-
+namespace MegaMoeImpl {
 using namespace Catlass;
 using namespace AscendC::HcclContextDef;
 using namespace Mc2Tiling;
 
-namespace MegaMoeImpl {
 // Template parameter pack used by the unified MegaMoe class.
 //   AType_ : input X element type (DTYPE_X)
 //   BType_ : weight element type   (DTYPE_WEIGHT1)
@@ -156,7 +159,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     workspaceGM_ = workspaceGM;
 
     if constexpr (kRoutingIsQuant) {
-        auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
 
         aivNum = tilingData.common.aivNum;
@@ -174,7 +176,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     } else {
-        auto tiling = (__gm__ MegaMoeTilingDataNonQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
         aivNum = tilingData.common.aivNum;
