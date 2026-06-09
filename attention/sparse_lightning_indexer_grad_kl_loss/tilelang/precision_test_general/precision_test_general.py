@@ -169,16 +169,15 @@ def gen_inputs_corrected(case_config, seed=42):
             sparse_indices[s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
             if s2_real_len < K:
                 sparse_indices[s1_idx, 0, s2_real_len:] = -1
+        torch.npu.synchronize()
     else:
+        s2_real_len = min(S2, K)
+        indices = torch.randperm(S2)[:s2_real_len]
         for s1_idx in range(S1):
-            s2_real_size = S2 - S1 + s1_idx + 1
-            if s2_real_size <= 0:
-                s2_real_size = S2
-            s2_real_len = min(s2_real_size, K)
-            indices = torch.randperm(s2_real_size)[:s2_real_len]
             sparse_indices[0, s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
             if s2_real_len < K:
                 sparse_indices[0, s1_idx, 0, s2_real_len:] = -1
+        torch.npu.synchronize()
 
     with torch.no_grad():
         if layout == "TND":
@@ -205,6 +204,7 @@ def gen_inputs_corrected(case_config, seed=42):
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
             softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
             softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+        torch.npu.synchronize()
 
     return {
         "query": query,
@@ -389,6 +389,7 @@ def run_all_tests():
         else:
             failed_count += 1
         print()
+        torch.npu.synchronize()
 
     print("=" * 80)
     print("测试总结")
