@@ -131,19 +131,14 @@ int RunTest(const char* caseName,
   std::vector<int64_t> vShape = {Skv, N, D};
   std::vector<int64_t> attentionOutShape = {T, N, D};
 
-  // softmaxMax/Sum shape depends on softmaxOutLayout
-  std::vector<int64_t> softmaxMaxShape;
-  std::vector<int64_t> softmaxSumShape;
+  // softmaxMax/Sum shape is always [T, N, 8] (InferShape derives TND shape regardless of softmaxOutLayout).
+  // softmaxOutLayout only controls the internal data arrangement, not the tensor shape.
+  std::vector<int64_t> softmaxMaxShape = {T, N, 8};
+  std::vector<int64_t> softmaxSumShape = {T, N, 8};
   if (strlen(softmaxOutLayout) > 0 && strcmp(softmaxOutLayout, "same_as_input") == 0) {
-    // same_as_input: TND layout → [T, N, 8]
-    softmaxMaxShape = {T, N, 8};
-    softmaxSumShape = {T, N, 8};
-    LOG_PRINT("  softmaxMax/Sum layout: TND [T=%ld, N=%ld, 8]\n", T, N);
+    LOG_PRINT("  softmaxMax/Sum: shape [T=%ld, N=%ld, 8], data layout TND (same_as_input)\n", T, N);
   } else {
-    // empty string: NTD layout → [N, T, 8]
-    softmaxMaxShape = {N, T, 8};
-    softmaxSumShape = {N, T, 8};
-    LOG_PRINT("  softmaxMax/Sum layout: NTD [N=%ld, T=%ld, 8]\n", N, T);
+    LOG_PRINT("  softmaxMax/Sum: shape [T=%ld, N=%ld, 8], data layout NTD (empty string)\n", T, N);
   }
 
   PrintShape("query", qShape);
