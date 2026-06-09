@@ -636,27 +636,43 @@ public:
                             (constInfo.n2Size * constInfo.dSize, constInfo.bSize * constInfo.s2Size);
         auto gmK = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(keyGmAddr), layoutKGm);
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+        Buffer<BufferType::L1> mm1A;
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            mm1A = l1QBuffers.Get();
+        } else {
+            mm1A = l1QBuffers.GetPre();
+        }            
+        LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+        uint64_t offsetQL1 = mm1ATensor.GetPhyAddr();
+
+        Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
+        LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
+        uint64_t offsetKL1 = mm1BTensor.GetPhyAddr();
 
         // GM-->L1
         auto layoutQL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(runInfo.actMSize, constInfo.dSize);
-        uint64_t offsetQL1 = 0;
         auto tensorQL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, Q_T>(offsetQL1), layoutQL1);
-        auto gmTileQ = gmQ.Slice(
-            AscendC::Te::MakeCoord(
-                runInfo.bIdx * constInfo.s1Size * constInfo.gSize + runInfo.gS1Idx, // AscendC::Te::MakeCoord(runInfo.gS1Idx, runInfo.bIdx), 
-                runInfo.n2Idx * constInfo.dSize // AscendC::Te::MakeCoord(0, runInfo.n2Idx)
-            ), 
-            AscendC::Te::MakeShape(runInfo.actMSize, constInfo.dSize));
-        AscendC::printf("--- gmQ current Idx [bIdx | gS1Idx | n2Idx] = [%ld | %ld | %ld] ---\n", runInfo.bIdx, runInfo.gS1Idx, runInfo.n2Idx);
-        AscendC::printf("--- gmQ slice current coord = [%ld, %ld] ---\n", runInfo.bIdx * constInfo.s1Size * constInfo.gSize + runInfo.gS1Idx, runInfo.n2Idx * constInfo.dSize);
         auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
-        AscendC::Te::Copy(copyGm2L1, tensorQL1, gmTileQ);
-        asc_dump_gm(gmTileQ.Data().Get(), 1, runInfo.actMSize * constInfo.dSize);
 
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+            auto gmTileQ = gmQ.Slice(
+                AscendC::Te::MakeCoord(
+                    runInfo.bIdx * constInfo.s1Size * constInfo.gSize + runInfo.gS1Idx, // AscendC::Te::MakeCoord(runInfo.gS1Idx, runInfo.bIdx), 
+                    runInfo.n2Idx * constInfo.dSize // AscendC::Te::MakeCoord(0, runInfo.n2Idx)
+                ), 
+                AscendC::Te::MakeShape(runInfo.actMSize, constInfo.dSize)
+            );        
+            AscendC::Te::Copy(copyGm2L1, tensorQL1, gmTileQ);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+        } else {
+            mm1A = l1QBuffers.GetPre();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+        }    
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
         auto layoutKL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(constInfo.dSize, runInfo.actSingleLoopS2Size);
-        uint64_t offsetKL1 = ((runInfo.actMSize + 15) >> 4) * constInfo.dSize * AscendC::Te::C0_SIZE<Q_T>;
-        AscendC::printf("--- offsetKL1 = [%ld] ---\n", offsetKL1);
+        // uint64_t offsetKL1 = ((runInfo.actMSize + 15) >> 4) * constInfo.dSize * AscendC::Te::C0_SIZE<Q_T>;
         auto tensorKL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, KV_T>(offsetKL1), layoutKL1);
         auto gmTileK = gmK.Slice(
             AscendC::Te::MakeCoord(
@@ -664,28 +680,33 @@ public:
                 runInfo.bIdx * constInfo.s2Size + runInfo.s2Idx // AscendC::Te::MakeCoord(runInfo.s2Idx, runInfo.bIdx)
             ), 
             AscendC::Te::MakeShape(constInfo.dSize, runInfo.actSingleLoopS2Size));
-        AscendC::printf("--- gmK slice current coord = [%ld, %ld] ---\n", runInfo.n2Idx * constInfo.dSize, runInfo.bIdx * constInfo.s2Size + runInfo.s2Idx);
         AscendC::Te::Copy(copyGm2L1, tensorKL1, gmTileK);
-        asc_dump_gm(gmTileK.Data().Get(), 1, constInfo.dSize * runInfo.actSingleLoopS2Size);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
         
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
 
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
 
+        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+        LocalTensor<Q_T> mm1ResL0CTensor = mm1ResL0C.GetTensor<T>();
+        uint64_t offsetMM1ResL0C = mm1ResL0CTensor.GetPhyAddr();
+
         auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<16>>(runInfo.actMSize, runInfo.actSingleLoopS2Size);
-        auto tensorMM1ResL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(0), layoutMM1ResL0C);
+        auto tensorMM1ResL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(offsetMM1ResL0C), layoutMM1ResL0C);
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                     (uint32_t)constInfo.dSize, false, true);
-        MatMulKTensorAPI<Q_T, KV_T, T>(tensorQL1, tensorKL1, tensorMM1ResL0C, param);
+        MatMulTensorAPI<Q_T, KV_T, T>(tensorQL1, tensorKL1, tensorMM1ResL0C, mmL0ABuffers, mmL0BBuffers, param);
 
+        if (unlikely(runInfo.isLastS2Loop)) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(2);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(2);
 
         outputBuf.WaitCrossCore();
-        asc_dump_cbuf(tensorMM1ResL0C.Data().Get(), 1, 512);
 
         auto layoutUB = AscendC::Te::MakeFrameLayout<AscendC::Te::NDLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(((runInfo.actMSize + 1) >> 1 << 1), s2BaseSize);
         LocalTensor<T> mmRes = outputBuf.template GetTensor<T>();
