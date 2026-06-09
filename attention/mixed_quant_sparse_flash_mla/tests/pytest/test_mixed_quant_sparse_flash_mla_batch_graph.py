@@ -56,8 +56,10 @@ def qsmla_aclgraph(testcase_files):
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
 
-    if result in ("NPU ERROR", "Failed"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+    if result == "NPU ERROR":
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR 具体原因见算子报错")
 
 testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]]
 
