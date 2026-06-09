@@ -503,10 +503,10 @@ public:
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
-        if constexpr (hasAtten == true) {
-            attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
-        }
+        // if constexpr (hasAtten == true) {
+        //     attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
+        //     AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
+        // }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)];
