@@ -265,6 +265,7 @@ inline uint32_t SectionStreamKImpl::SetParam(const SectionStreamKParam &param)
 inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
+    const DeviceInfo &deviceInfo = computeContext.deviceInfo;
 
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     GridInfo &gridInfo = computeContext.gridInfo;
@@ -303,11 +304,12 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     uint32_t tokenSize = 0U;
     uint32_t bn2Idx = 0U;
     uint32_t tokenCost;
+    const uint32_t fdWorkspaceSize = deviceInfo.aicCoreMaxNum * m_param.mBaseSize * m_param.s2BaseSize;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;     // 2: k and v
-            if (!IsWithinTolerance(m_param.l2Byte, 0U, tokenSize + tokenCost) && tokenSize != 0U) {
+            if (!IsWithinTolerance(m_param.l2Byte, 0U, tokenSize + tokenCost - fdWorkspaceSize) && tokenSize != 0U) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
                 tokenSize = 0U;
@@ -554,6 +556,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
     faWithFdConfig.coreLimit = bestResultWithFd.usedCoreNum;
     faWithFdConfig.costLimit = bestResultWithFd.maxCost;
 
+    int64_t fdTolerance = m_param.fdTolerance;
     auto coreRange = CalcCoreRange(sectionIdx, computeContext);
         for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
         faConfig.coreNum = i;
@@ -573,12 +576,13 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
                 bestResultWithFd = tmpResult;
                 faWithFdConfig.coreLimit = bestResultWithFd.usedCoreNum;
                 faWithFdConfig.costLimit = bestResultWithFd.maxCost;
+                fdTolerance = std::max(bestResultWithFd.maxCost / 2, fdTolerance);
             }
             tmpResult.Clear();
         }
     }
     ScheduleFd(deviceInfo.aivCoreMaxNum, bestResultWithFd);
-    return (bestResult.maxCost + m_param.fdTolerance <= bestResultWithFd.maxCost) ? bestResult :
+    return (bestResult.maxCost - fdTolerance <= bestResultWithFd.maxCost) ? bestResult :
            bestResultWithFd;
 }
 
@@ -750,7 +754,7 @@ inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeConte
 
     while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
         SafeFloorDiv(costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx], m_param.faToleranceRatio, 0L),
-        assignContext.coreCache.cost + assignContext.bN2Cost)) {
+        assignContext.coreCache.cost + assignContext.bN2Cost - costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx])) {
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
         assignContext.curBN2Idx++;
@@ -785,7 +789,7 @@ inline void SectionStreamKImpl::AssignByRow(const ComputeContext &computeContext
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
         SafeFloorDiv(assignContext.s1GCache.s1GLastBlockCost, m_param.faToleranceRatio, 0L),
-        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
+        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost - assignContext.s1GCache.s1GLastBlockCost)) {
         assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
         assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
 

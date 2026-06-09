@@ -138,8 +138,9 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     // Device info
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
-    deviceInfo.aicCoreMinNum = 1U;
-    deviceInfo.aivCoreMinNum = aivCoreNum_;
+    deviceInfo.aicCoreMinNum = aicCoreNum_;
+    deviceInfo.aicCoreMinNum = 1;
+    // deviceInfo.aivCoreMinNum = aivCoreNum_;
     deviceInfo.cvRatio = aivCoreNum_ / aicCoreNum_;
     // baseInfo
     // actual seq size
@@ -234,7 +235,9 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRatio; // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 72U * 1024U * 1024U;
+    param.l2Byte = l2Byte_;
+    param.fdOn = fdOn_;
+    param.fdTolerance = 140;
     return true;
 }
 
