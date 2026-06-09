@@ -1109,12 +1109,22 @@ CompressorBlockVectorFullLoad<COMP>::DealVec2BaseBlock(const Vec2SplitInfo &spli
     int64_t inGmOffset = splitInfo.preScCnt * constInfo_.headDim;
     GlobalTensor<T> vec2InputGm = vec2InputGm_;
 
-    LocalTensor<T> normResUb = tmpBuf1.Get<T>();
-    LocalTensor<T> tempLocal = tmpBuf2.Get<T>();
+    // LocalTensor<T> normResUb = tmpBuf1.Get<T>();
+    // LocalTensor<T> tempLocal = tmpBuf2.Get<T>();
     if (useSingleCore_) {
         // RmsNorm
-        MultRowRmsNorm(normResUb, vec1ResUb[splitInfo.preScCnt * constInfo_.headDim], normWeightUb, tempLocal,
-                       needDealScSize);
+        // MultRowRmsNorm(normResUb, vec1ResUb[splitInfo.preScCnt * constInfo_.headDim], normWeightUb, tempLocal,
+        //                needDealScSize);
+        LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+        PipeBarrier<PIPE_V>();
+        // CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
+        Cast(outputUb, vec1ResUb[splitInfo.preScCnt * constInfo_.headDim], RoundMode::CAST_RINT, computeSize);
+        PipeBarrier<PIPE_V>();
+
+        outputQue1.EnQue(outputUb);
+        outputQue1.DeQue<X_T>();
+        CopyFinalResultOut(outputUb, sliceIterator);
+        outputQue1.FreeTensor(outputUb);
     } else {
         // CopyIn
         vec1ResUb = inputQue1.AllocTensor<T>();
@@ -1122,22 +1132,34 @@ CompressorBlockVectorFullLoad<COMP>::DealVec2BaseBlock(const Vec2SplitInfo &spli
         inputQue1.EnQue(vec1ResUb);
         inputQue1.DeQue<T>();
 
+        // PipeBarrier<PIPE_V>();
+        // // RmsNorm
+        // MultRowRmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, needDealScSize);
+        // inputQue1.FreeTensor(vec1ResUb);
+
+        LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
         PipeBarrier<PIPE_V>();
-        // RmsNorm
-        MultRowRmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, needDealScSize);
+        // CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
+        Cast(outputUb, vec1ResUb, RoundMode::CAST_RINT, computeSize);
+        PipeBarrier<PIPE_V>();
         inputQue1.FreeTensor(vec1ResUb);
+
+        outputQue1.EnQue(outputUb);
+        outputQue1.DeQue<X_T>();
+        CopyFinalResultOut(outputUb, sliceIterator);
+        outputQue1.FreeTensor(outputUb);
     }
     // rope: 只对后RD进行rope; 将normResUb每行前headDim -
     // ropeHeadDim个元素cast到X_T，然后再与rope后的结果组合存到outputUb
-    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
-    PipeBarrier<PIPE_V>();
-    CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
-    PipeBarrier<PIPE_V>();
+    // LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+    // PipeBarrier<PIPE_V>();
+    // CalRope(outputUb, normResUb, sliceInfo, needDealScSize);
+    // PipeBarrier<PIPE_V>();
     // CopyOut
-    outputQue1.EnQue(outputUb);
-    outputQue1.DeQue<X_T>();
-    CopyFinalResultOut(outputUb, sliceIterator);
-    outputQue1.FreeTensor(outputUb);
+    // outputQue1.EnQue(outputUb);
+    // outputQue1.DeQue<X_T>();
+    // CopyFinalResultOut(outputUb, sliceIterator);
+    // outputQue1.FreeTensor(outputUb);
 }
 
 template <typename COMP>
