@@ -1097,7 +1097,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
-    Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::GT, alignLen);
+    AscendC::CMPMODE cmpMode = (constInfo.sparsityMode == BSASparseMode::BottomK) ?
+        AscendC::CMPMODE::LT : AscendC::CMPMODE::GT;
+    Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
@@ -1205,6 +1207,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
     // Restore boundary value (twiddle inverse transform)
     int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
+    if (constInfo.sparsityMode == BSASparseMode::BottomK) {
+        boundaryHalf = static_cast<half>(-static_cast<float>(boundaryHalf));
+    }
 
     // === DUMP 600: TileTopK entry - boundaryHalf ===
     if (GetBlockIdx() == 0) {
@@ -1250,7 +1255,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
-            NegateDataForLargest(curBuf, curTileLen);
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
 
             // === DUMP 700: Before GT phase ===
