@@ -439,8 +439,7 @@ public:
                         curTileMod, gatheredKvSTileIdxDe,
                         (gatheredKvSTileIdxDe == 0),
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
-                        mm2ToReFlag,
-                        true);
+                        mm2ToReFlag);
 #endif
                 }
             }
