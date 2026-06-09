@@ -123,6 +123,7 @@ class InputSpec:
                method: str = "randn",
                when: Callable = None,
                layout_override: str = None,  # 覆盖全局 layout，如 k/v 用 layout_kv
+               range_key: str = None,  # 从 params[range_key] 读取 (lo, hi) 覆盖 low/high
                **kwargs) -> "InputSpec":
         """添加一个张量定义。
 
@@ -134,11 +135,13 @@ class InputSpec:
             method: "randn" | "uniform" | "fixed" | "zeros" | "custom"
             when:   fn(params) → bool，条件生成（None = 总是生成）
             layout_override: 覆盖全局 layout，如 k/v 应该用 layout_kv
+            range_key: params 中的 key 名（如 "q_range"），其值 (lo, hi) 覆盖 low/high
         """
         self._items.append(dict(
             name=name, shape=shape, layout=layout or {},
             dtype=dtype, method=method, when=when,
-            layout_override=layout_override, kwargs=kwargs,
+            layout_override=layout_override, range_key=range_key,
+            kwargs=kwargs,
         ))
         return self
 
@@ -164,7 +167,12 @@ class InputSpec:
             if not shape:
                 continue
             dt = it["dtype"] or _infer_dtype(params.get("Dtype", "fp16"))
-            t = _generate(it["method"], shape, dt, device, rng, **it["kwargs"])
+            kw = dict(it["kwargs"])
+            rk = it.get("range_key")
+            if rk and rk in params:
+                lo, hi = params[rk]
+                kw["low"], kw["high"] = float(lo), float(hi)
+            t = _generate(it["method"], shape, dt, device, rng, **kw)
             tensors[it["name"]] = t
         return tensors
 
@@ -230,7 +238,7 @@ flash_attn_inputs = (
     InputSpec("flash_attn")
     # q — 按 layout_q 生成
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
-            method="uniform", low=-5.0, high=5.0,
+            method="uniform", low=-5.0, high=5.0, range_key="q_range",
             when=lambda p: "q_range" in p)
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             when=lambda p: "q_range" not in p)
@@ -239,7 +247,7 @@ flash_attn_inputs = (
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
             "PA_BBND": "num_blocks,block_size,N2,D",
             "PA_BNBD": "num_blocks,N2,block_size,D"},
-            method="uniform", low=-5.0, high=5.0,
+            method="uniform", low=-5.0, high=5.0, range_key="k_range",
             when=lambda p: "k_range" in p, layout_override="layout_kv")
     .tensor("k", layout={
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
@@ -250,7 +258,7 @@ flash_attn_inputs = (
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
             "PA_BBND": "num_blocks,block_size,N2,_V",
             "PA_BNBD": "num_blocks,N2,block_size,_V"},
-            method="uniform", low=-5.0, high=5.0,
+            method="uniform", low=-5.0, high=5.0, range_key="v_range",
             when=lambda p: "v_range" in p, layout_override="layout_kv")
     .tensor("v", layout={
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
