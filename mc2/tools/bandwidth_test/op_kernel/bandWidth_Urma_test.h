@@ -561,7 +561,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
         for (uint32_t j = 0; j < axisBS_; ++j) {
             SyncFunc<AscendC::HardEvent::S_V>();
             uint32_t dstRankId = expertIdsTensor_(j);// expert_id 直接作为目标rank_id
-            if (dstRankId != startExpert) {
+            if (dstRankId != i) {
                 continue;
             }
             int32_t curExpertCnt = 0;
