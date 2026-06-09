@@ -293,7 +293,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                 rg_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                rg_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+
                 rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                 dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
 
@@ -517,13 +517,17 @@ def tilelang_grad_kl_loss_single_kernel(
                                 g_row = g_id * vector_baseg + i
                                 T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
                                 T.barrier_all()
-                                T.tile.compare(mask_ub, bmm2_ub[g_row, :], 0.0, "GT")
+                                T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
                                 T.barrier_all()
-                                T.tile.mul(rg_tmp_ub, diff_ub, weight_ub[i])
+                                T.tile.mul(mask_ub, mask_ub, -1.0)
                                 T.barrier_all()
-                                T.tile.select(rg_tmp_ub, mask_ub, rg_tmp_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                                T.tile.exp(mask_ub, mask_ub)
                                 T.barrier_all()
-                                T.copy(rg_tmp_ub, rg_ub[i, :])
+                                T.tile.sub(mask_ub, ones_ub, mask_ub)
+                                T.barrier_all()
+                                T.tile.mul(rg_ub[i, :], diff_ub, weight_ub[i])
+                                T.barrier_all()
+                                T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub)
                                 T.barrier_all()
 
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
@@ -573,7 +577,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             loss_chunk_ub,
                         )
                         T.barrier_all()
-                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_p_ub, loss_chunk_ub)
                         T.barrier_all()
@@ -583,7 +587,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             loss_chunk_ub,
                         )
                         T.barrier_all()
-                        T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                        T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_si_ub, loss_chunk_ub)
                         T.barrier_all()
