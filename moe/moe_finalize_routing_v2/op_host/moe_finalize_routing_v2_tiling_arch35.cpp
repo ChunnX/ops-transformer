@@ -58,6 +58,7 @@ const static int64_t ATTR_DROP_PAD_MODE_IDX = 0LL;
 const static int64_t ATTR_ZERO_EXPERT_RANGE_IDX = 1LL;
 const static int64_t ATTR_COPY_EXPERT_RANGE_IDX = 2LL;
 const static int64_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3LL;
+const static int64_t ATTR_K_IDX = 4LL;
 
 const static int64_t BATCH_COPY_EXPERT_NUM = 4;
 
@@ -187,9 +188,17 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scalesShape)
 {
+    auto attrsPtr = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
+    int64_t attrK = *(attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX));
+
     if (!scalesShape) {
         hasScales_ = false;
-        k = 1;
+        k = attrK;
+        OP_CHECK_IF(
+            k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(k).c_str(), "k must be greater than 0 when scales is null."),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 

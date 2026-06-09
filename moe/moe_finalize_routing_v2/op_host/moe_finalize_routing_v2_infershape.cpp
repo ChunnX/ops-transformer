@@ -29,6 +29,10 @@ static constexpr size_t INDEX_OUT = 0;
 static constexpr size_t SHAPE_SIZE = 2;
 static constexpr size_t INPUT_NUM = 7;
 static constexpr size_t ATTR_DROP_PAD_MODE = 0;
+static constexpr size_t ATTR_ZERO_EXPERT_RANGE_IDX = 1;
+static constexpr size_t ATTR_COPY_EXPERT_RANGE_IDX = 2;
+static constexpr size_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3;
+static constexpr size_t ATTR_K = 4;
 static constexpr int64_t VALUE_MODE_0 = 0;
 static constexpr int64_t VALUE_MODE_1 = 1;
 static constexpr int64_t VALUE_MODE_2 = 2;
@@ -294,7 +298,7 @@ static ge::graphStatus CheckCrossInputConsistency(gert::InferShapeContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* context)
+static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* context, int64_t k)
 {
     auto outShape = context->GetOutputShape(INDEX_OUT);
     outShape->SetDimNum(0);
@@ -304,6 +308,8 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
     int64_t valueDim0 = expandedSrcToDstRowInputShape->GetDim(0);
     if (scalesInputShape != nullptr) {
         valueDim0 = scalesInputShape->GetDim(0);
+    } else {
+        valueDim0 = valueDim0 / k;
     }
     outShape->AppendDim(valueDim0);
     outShape->AppendDim(expandedXInputShape->GetDim(expandedXInputShape->GetDimNum() - 1));
@@ -317,6 +323,26 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     const int64_t* dropPadModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dropPadModePtr);
     const int64_t dropPadMode = *dropPadModePtr;
+    auto zeroExpertRangePtr = attrs->GetListInt(ATTR_ZERO_EXPERT_RANGE_IDX);
+    if (zeroExpertRangePtr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "zeroExpertRangePtr");
+    }
+
+    auto copyExpertRangePtr = attrs->GetListInt(ATTR_COPY_EXPERT_RANGE_IDX);
+    if (copyExpertRangePtr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
+    }
+
+    auto constantExpertRangePtr = attrs->GetListInt(ATTR_CONST_EXPERT_RANGE_IDX);
+    if (constantExpertRangePtr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
+    }
+
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
+    if (kPtr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "k");
+    }
+    const int64_t k = *kPtr;
 
     auto outShape = context->GetOutputShape(INDEX_OUT);
     OP_CHECK_IF(
@@ -374,7 +400,7 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
             "Infershape4MoeFinalizeRoutingV2 failed!"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        MoeCopyShapeInput2OutputWithIdx(context) != ge::GRAPH_SUCCESS,
+        MoeCopyShapeInput2OutputWithIdx(context, k) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "infershape", "GRAPH_FAILED",
             "Infershape4MoeFinalizeRoutingV2 failed!"), return ge::GRAPH_FAILED);
 
