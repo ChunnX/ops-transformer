@@ -10,6 +10,7 @@
 
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
+#include <limits>
 #include <string>
 
 #include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
@@ -100,16 +101,28 @@ TensorStrideInfo ToStrideInfo(const gert::Stride &stride)
     return info;
 }
 
-TensorStrideInfo MakeContiguousStrideInfo(const gert::Shape &shape)
+ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
+                                         TensorStrideInfo &strideInfo)
 {
     gert::Stride stride;
     stride.SetDimNum(shape.GetDimNum());
     int64_t currentStride = 1;
     for (int32_t dim = static_cast<int32_t>(shape.GetDimNum()) - 1; dim >= 0; --dim) {
+        const int64_t dimValue = shape.GetDim(dim);
+        OP_CHECK_IF(dimValue < 0,
+                    OP_LOGE(opName.c_str(), "cache storage shape dim[%d]=%lld must be non-negative.", dim,
+                            static_cast<long long>(dimValue)),
+                    return ge::GRAPH_FAILED);
         stride.SetStride(dim, currentStride);
-        currentStride *= shape.GetDim(dim);
+        OP_CHECK_IF(dimValue > 0 && currentStride > std::numeric_limits<int64_t>::max() / dimValue,
+                    OP_LOGE(opName.c_str(),
+                            "cache contiguous stride overflow: currentStride=%lld dim[%d]=%lld.",
+                            static_cast<long long>(currentStride), dim, static_cast<long long>(dimValue)),
+                    return ge::GRAPH_FAILED);
+        currentStride *= dimValue;
     }
-    return ToStrideInfo(stride);
+    strideInfo = ToStrideInfo(stride);
+    return ge::GRAPH_SUCCESS;
 }
 
 ContractDtype ToContractDtype(ge::DataType dtype)
@@ -160,15 +173,15 @@ TensorContractInfo ToTensorInfo(gert::TilingContext *context, size_t index)
     return info;
 }
 
-TensorContractInfo ToCacheTensorInfo(gert::TilingContext *context, size_t index)
+ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::string &opName, size_t index,
+                                  TensorContractInfo &info)
 {
-    TensorContractInfo info;
     const auto storageShape = context->GetInputShape(index);
     if (storageShape == nullptr) {
         info.shape.present = false;
         info.stride.present = false;
         FillInputDtype(context, index, info);
-        return info;
+        return ge::GRAPH_SUCCESS;
     }
 
     if (context->InputIsView(index)) {
@@ -177,15 +190,17 @@ TensorContractInfo ToCacheTensorInfo(gert::TilingContext *context, size_t index)
             info.shape = ToShapeInfo(storageShape->GetShape());
             info.stride = ToStrideInfo(*inputStride);
             FillInputDtype(context, index, info);
-            return info;
+            return ge::GRAPH_SUCCESS;
         }
     }
 
     const gert::Shape &shape = storageShape->GetStorageShape();
     info.shape = ToShapeInfo(shape);
-    info.stride = MakeContiguousStrideInfo(shape);
+    OP_CHECK_IF(MakeContiguousStrideInfo(shape, opName, info.stride) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "make contiguous cache stride failed, input index=%zu.", index),
+                return ge::GRAPH_FAILED);
     FillInputDtype(context, index, info);
-    return info;
+    return ge::GRAPH_SUCCESS;
 }
 
 TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index)
@@ -296,7 +311,9 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
 
     const auto qkv = ToTensorInfo(context, kQkvIndex);
     const auto cosSin = ToTensorInfo(context, kCosSinIndex);
-    const auto kCache = ToCacheTensorInfo(context, kKCacheIndex);
+    TensorContractInfo kCache;
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKCacheIndex, kCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse kCache tensor info."), return ge::GRAPH_FAILED);
     const auto cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
     const auto &qkvShape = qkv.shape;
     const auto &cosSinShape = cosSin.shape;
@@ -327,8 +344,10 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::stri
     input.cosSin = cosSin;
     input.slotMapping = ToTensorInfo(context, kSlotMappingIndex);
     input.kCache = kCache;
-    input.vCache = ToCacheTensorInfo(context, kVCacheIndex);
-    input.kScaleCache = ToCacheTensorInfo(context, kKScaleCacheIndex);
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kVCacheIndex, input.vCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ToCacheTensorInfo(context, opName, kKScaleCacheIndex, input.kScaleCache) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
     input.cuSeqLen = cuSeqLen;
     input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
     input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);
@@ -398,18 +417,24 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
 
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData;
     FillTilingData(input, contractTiling, epsilon, tilingData);
-    OP_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData());
-    OP_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData()->GetData());
+    auto rawTilingData = context->GetRawTilingData();
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
+    OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData->GetData());
     const size_t tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
                 OP_LOGE(opName.c_str(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
                 return ge::GRAPH_FAILED);
-    const auto ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
+    const size_t tilingCapacity = rawTilingData->GetCapacity();
+    OP_CHECK_IF(tilingDataSize > tilingCapacity,
+                OP_LOGE(opName.c_str(), "tiling data size[%zu] exceeds capacity[%zu].", tilingDataSize,
+                        tilingCapacity),
+                return ge::GRAPH_FAILED);
+    const auto ret = memcpy_s(rawTilingData->GetData(), tilingCapacity,
                               reinterpret_cast<const void *>(&tilingData), tilingDataSize);
     OP_CHECK_IF(ret != EOK,
                 OP_LOGE(opName.c_str(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
                 return ge::GRAPH_FAILED);
-    context->GetRawTilingData()->SetDataSize(tilingDataSize);
+    rawTilingData->SetDataSize(tilingDataSize);
     const uint64_t tilingKey = GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(contractTiling.coreGroupNum);

@@ -11,9 +11,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <thread>
 
 #include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 #include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
@@ -226,6 +229,40 @@ TileSyncCounts CountFixedTileSyncProtocol(const TileParam &tile, uint64_t qkHead
     return counts;
 }
 
+struct ConcurrentTilingCase {
+    uint64_t totalTokens;
+    uint64_t numQHeads;
+    uint64_t numKHeads;
+    uint64_t numVHeads;
+    uint64_t headDim;
+    uint64_t aicNum;
+    ContractStatus status;
+    uint64_t tokenTile;
+    uint64_t tokenTilePerAiv;
+    uint64_t coreTokenTile;
+    uint64_t coreGroupNum;
+};
+
+struct ConcurrentTilingResult {
+    bool ok = true;
+    size_t failedCase = 0;
+    uint32_t failedIteration = 0;
+    ContractStatus status = ContractStatus::kSuccess;
+    ContractTiling tiling;
+};
+
+bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, ContractStatus status, const ContractTiling &tiling)
+{
+    if (status != item.status) {
+        return false;
+    }
+    if (status != ContractStatus::kSuccess) {
+        return tiling.tokenTile == 0U && tiling.coreTokenTile == 0U && tiling.coreGroupNum == 0U;
+    }
+    return tiling.tokenTile == item.tokenTile && tiling.tokenTilePerAiv == item.tokenTilePerAiv &&
+           tiling.coreTokenTile == item.coreTokenTile && tiling.coreGroupNum == item.coreGroupNum;
+}
+
 } // namespace
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
@@ -332,6 +369,63 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBou
     const uint64_t qCopyBlockLen = qRowsPerAiv * input.headDim;
     EXPECT_EQ(qRowsPerAiv, 48U);
     EXPECT_EQ(qCopyBlockLen, 6144U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, ValidateAndBuildTilingIsStableAcrossThreads)
+{
+    constexpr uint32_t kThreadCount = 8U;
+    constexpr uint32_t kIterations = 64U;
+    const std::array<ConcurrentTilingCase, 5U> cases = {{
+        {128, 16, 2, 2, 128, 32, ContractStatus::kSuccess, 6, 3, 4, 32},
+        {512, 64, 8, 8, 128, 32, ContractStatus::kSuccess, 1, 1, 16, 32},
+        {1024, 16, 2, 2, 128, 32, ContractStatus::kSuccess, 6, 3, 32, 32},
+        {128, 128, 8, 8, 128, 32, ContractStatus::kUnsupportedResource, 0, 0, 0, 0},
+        {128, 16, 2, 2, 64, 32, ContractStatus::kUnsupportedHeadDim, 0, 0, 0, 0},
+    }};
+    std::atomic<bool> start{false};
+    std::array<ConcurrentTilingResult, kThreadCount> results;
+    std::array<std::thread, kThreadCount> threads;
+
+    for (uint32_t threadIdx = 0U; threadIdx < kThreadCount; ++threadIdx) {
+        threads[threadIdx] = std::thread([threadIdx, &cases, &results, &start]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            for (uint32_t iter = 0U; iter < kIterations; ++iter) {
+                const size_t caseIdx = (static_cast<size_t>(threadIdx) + iter) % cases.size();
+                const auto &item = cases[caseIdx];
+                auto input =
+                    BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
+                input.aicNum = item.aicNum;
+                ContractTiling tiling;
+                const ContractStatus status = ValidateAndBuildTiling(input, tiling);
+                if (!MatchesConcurrentTilingCase(item, status, tiling)) {
+                    results[threadIdx].ok = false;
+                    results[threadIdx].failedCase = caseIdx;
+                    results[threadIdx].failedIteration = iter;
+                    results[threadIdx].status = status;
+                    results[threadIdx].tiling = tiling;
+                    return;
+                }
+            }
+        });
+    }
+
+    start.store(true, std::memory_order_release);
+    for (auto &thread : threads) {
+        thread.join();
+    }
+
+    for (uint32_t threadIdx = 0U; threadIdx < kThreadCount; ++threadIdx) {
+        EXPECT_TRUE(results[threadIdx].ok)
+            << "threadIdx=" << threadIdx << " failedCase=" << results[threadIdx].failedCase
+            << " failedIteration=" << results[threadIdx].failedIteration
+            << " status=" << static_cast<uint32_t>(results[threadIdx].status)
+            << " tokenTile=" << results[threadIdx].tiling.tokenTile
+            << " tokenTilePerAiv=" << results[threadIdx].tiling.tokenTilePerAiv
+            << " coreTokenTile=" << results[threadIdx].tiling.coreTokenTile
+            << " coreGroupNum=" << results[threadIdx].tiling.coreGroupNum;
+    }
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInputs)
