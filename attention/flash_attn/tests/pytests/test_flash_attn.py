@@ -96,7 +96,7 @@ if __name__ == "__main__":
         for idx_ord, (case_idx, mode) in enumerate(ordered):
             tag = f"{mode}{idx_ord}"
             info = perf_log.get(tag, {})
-            case_dir = out / f"case_{case_idx:04d}"
+            case_dir = out / run_cases[case_idx].replace("/", "_")
             case_dir.mkdir(parents=True, exist_ok=True)
             sub_csv = case_dir / "op_summary.csv"
             is_crashed = not info.get("ok", False)

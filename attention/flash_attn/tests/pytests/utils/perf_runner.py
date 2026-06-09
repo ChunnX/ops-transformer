@@ -170,7 +170,7 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
 
     for i, (c, name) in enumerate(zip(cases, names)):
         tag = f"{'hot' if c.get('S1',9999)>cold_thr else 'cold'}{i}"
-        case_dir_name = f"case_{i:04d}"
+        case_dir_name = name.replace("/", "_")
         case_dir = output_dir / case_dir_name
         case_dir.mkdir(parents=True, exist_ok=True)
 
