@@ -128,13 +128,15 @@ static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3TilingData &info, gert::TilingContext *context)
+static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3TilingData &info,
+                                              gert::TilingContext *context)
 {
     OP_TILING_CHECK(ptr == nullptr,
         OP_LOGE(K_INNER_DEBUG, "cclBufferSize is null."), return GRAPH_FAILED);
     const char *nodeName = K_INNER_DEBUG;
     int64_t cclBufferSize = *ptr;
-    OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).", cclBufferSize, ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
+    OP_LOGD(nodeName, "cclBufferSize = %ld Bytes (%ld MB).", cclBufferSize,
+            ops::CeilDiv(cclBufferSize, static_cast<int64_t>(MB_SIZE)));
     OP_TILING_CHECK(cclBufferSize == 0, OP_LOGW(nodeName, "cclBufferSize is 0, skip validation."),
                     return ge::GRAPH_SUCCESS);
 
