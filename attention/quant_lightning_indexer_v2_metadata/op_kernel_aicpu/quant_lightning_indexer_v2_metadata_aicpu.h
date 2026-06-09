@@ -295,6 +295,7 @@ private:
     int64_t  nextToken_ = INT64_MAX;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 256;
+    uint32_t s1BaseSize_ = 4;
     uint32_t s2BaseSize_ = 128;
     bool isS1G_ = true;
     
