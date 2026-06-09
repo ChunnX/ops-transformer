@@ -46,7 +46,8 @@ public:
 
 private:
     __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
-    __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
+    __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen,
+                                        int32_t roundId, int32_t tileId);
     __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
                                                 int32_t tileId, uint64_t curTileLen);
@@ -347,12 +348,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                     BSA_TOPK_PRINTF("[DUMP440] after CopyIn/Negate, xBuf int16[tileLen_] first 64:\n");
                     BSA_TOPK_DUMP_TENSOR(rawInt16[tileLen_], 440, 64);
                 }
-                TwiddleInB16(curBuf, curTileLen);
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<int16_t> twiddleInt16 = curBuf.Get<int16_t>();
-                    BSA_TOPK_PRINTF("[DUMP441] after TwiddleInB16, xBuf int16[tileLen_] first 64:\n");
-                    BSA_TOPK_DUMP_TENSOR(twiddleInt16[tileLen_], 441, 64);
-                }
+                TwiddleInB16(curBuf, curTileLen, roundId, tileId);
                 DoAndMask(curBuf, curTileLen);
                 if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
                     PipeBarrier<PIPE_V>();
@@ -454,7 +450,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
+__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(
+    TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen, int32_t roundId, int32_t tileId)
 {
     LocalTensor<IN_T> xLocalB16 = xBuf.Get<IN_T>();
     LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();
@@ -465,15 +462,143 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::V
     uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
     uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(UB_BLOCK_SIZE / sizeof(int16_t)));
     LocalTensor<int16_t> temp1 = tempTensor[curTileLenAlign];
+    bool debugFirstTile = (GetBlockIdx() == 0 &&
+        roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && curTileLen > 1023);
+
+    if (debugFirstTile) {
+        BSA_TOPK_PRINTF("[DUMP4410] Twiddle input xLocalInt16 first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(xLocalInt16, 4410, 64);
+        BSA_TOPK_PRINTF("[DUMP4410S] xLocalInt16 key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(xLocalInt16.GetValue(0)),
+            static_cast<int32_t>(xLocalInt16.GetValue(31)),
+            static_cast<int32_t>(xLocalInt16.GetValue(32)),
+            static_cast<int32_t>(xLocalInt16.GetValue(127)),
+            static_cast<int32_t>(xLocalInt16.GetValue(128)),
+            static_cast<int32_t>(xLocalInt16.GetValue(639)),
+            static_cast<int32_t>(xLocalInt16.GetValue(640)),
+            static_cast<int32_t>(xLocalInt16.GetValue(1023)));
+    }
 
     ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4411] after ShiftRight tempTensor first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(tempTensor, 4411, 64);
+        BSA_TOPK_PRINTF("[DUMP4411S] tempTensor key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(tempTensor.GetValue(0)),
+            static_cast<int32_t>(tempTensor.GetValue(31)),
+            static_cast<int32_t>(tempTensor.GetValue(32)),
+            static_cast<int32_t>(tempTensor.GetValue(127)),
+            static_cast<int32_t>(tempTensor.GetValue(128)),
+            static_cast<int32_t>(tempTensor.GetValue(639)),
+            static_cast<int32_t>(tempTensor.GetValue(640)),
+            static_cast<int32_t>(tempTensor.GetValue(1023)));
+        SToVSync();
+    }
     Duplicate<int16_t>(signMaskTensor, XOR_OP_VALUE_16, curTileLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4412] after Duplicate signMaskTensor first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(signMaskTensor, 4412, 64);
+        BSA_TOPK_PRINTF("[DUMP4412S] signMask key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(signMaskTensor.GetValue(0)),
+            static_cast<int32_t>(signMaskTensor.GetValue(31)),
+            static_cast<int32_t>(signMaskTensor.GetValue(32)),
+            static_cast<int32_t>(signMaskTensor.GetValue(127)),
+            static_cast<int32_t>(signMaskTensor.GetValue(128)),
+            static_cast<int32_t>(signMaskTensor.GetValue(639)),
+            static_cast<int32_t>(signMaskTensor.GetValue(640)),
+            static_cast<int32_t>(signMaskTensor.GetValue(1023)));
+        SToVSync();
+    }
     Or(tempTensor, tempTensor, signMaskTensor, calcLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4413] after Or tempTensor first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(tempTensor, 4413, 64);
+        BSA_TOPK_PRINTF("[DUMP4413S] tempTensor key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(tempTensor.GetValue(0)),
+            static_cast<int32_t>(tempTensor.GetValue(31)),
+            static_cast<int32_t>(tempTensor.GetValue(32)),
+            static_cast<int32_t>(tempTensor.GetValue(127)),
+            static_cast<int32_t>(tempTensor.GetValue(128)),
+            static_cast<int32_t>(tempTensor.GetValue(639)),
+            static_cast<int32_t>(tempTensor.GetValue(640)),
+            static_cast<int32_t>(tempTensor.GetValue(1023)));
+        SToVSync();
+    }
 
     And(temp1, xLocalInt16, tempTensor, calcLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4414] after And temp1 first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(temp1, 4414, 64);
+        BSA_TOPK_PRINTF("[DUMP4414S] temp1 key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(temp1.GetValue(0)),
+            static_cast<int32_t>(temp1.GetValue(31)),
+            static_cast<int32_t>(temp1.GetValue(32)),
+            static_cast<int32_t>(temp1.GetValue(127)),
+            static_cast<int32_t>(temp1.GetValue(128)),
+            static_cast<int32_t>(temp1.GetValue(639)),
+            static_cast<int32_t>(temp1.GetValue(640)),
+            static_cast<int32_t>(temp1.GetValue(1023)));
+        SToVSync();
+    }
     Or(xLocalInt16, xLocalInt16, tempTensor, calcLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4415] after Or xLocalInt16 first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(xLocalInt16, 4415, 64);
+        BSA_TOPK_PRINTF("[DUMP4415S] xLocalInt16 key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(xLocalInt16.GetValue(0)),
+            static_cast<int32_t>(xLocalInt16.GetValue(31)),
+            static_cast<int32_t>(xLocalInt16.GetValue(32)),
+            static_cast<int32_t>(xLocalInt16.GetValue(127)),
+            static_cast<int32_t>(xLocalInt16.GetValue(128)),
+            static_cast<int32_t>(xLocalInt16.GetValue(639)),
+            static_cast<int32_t>(xLocalInt16.GetValue(640)),
+            static_cast<int32_t>(xLocalInt16.GetValue(1023)));
+        SToVSync();
+    }
     Not(temp1, temp1, calcLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4416] after Not temp1 first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(temp1, 4416, 64);
+        BSA_TOPK_PRINTF("[DUMP4416S] temp1 key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(temp1.GetValue(0)),
+            static_cast<int32_t>(temp1.GetValue(31)),
+            static_cast<int32_t>(temp1.GetValue(32)),
+            static_cast<int32_t>(temp1.GetValue(127)),
+            static_cast<int32_t>(temp1.GetValue(128)),
+            static_cast<int32_t>(temp1.GetValue(639)),
+            static_cast<int32_t>(temp1.GetValue(640)),
+            static_cast<int32_t>(temp1.GetValue(1023)));
+        SToVSync();
+    }
     And(xLocalInt16, xLocalInt16, temp1, calcLen);
+    if (debugFirstTile) {
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+        BSA_TOPK_PRINTF("[DUMP4417] after final And xLocalInt16 first 64:\n");
+        BSA_TOPK_DUMP_TENSOR(xLocalInt16, 4417, 64);
+        BSA_TOPK_PRINTF("[DUMP4417S] xLocalInt16 key points: idx0=%d idx31=%d idx32=%d idx127=%d idx128=%d idx639=%d idx640=%d idx1023=%d\n",
+            static_cast<int32_t>(xLocalInt16.GetValue(0)),
+            static_cast<int32_t>(xLocalInt16.GetValue(31)),
+            static_cast<int32_t>(xLocalInt16.GetValue(32)),
+            static_cast<int32_t>(xLocalInt16.GetValue(127)),
+            static_cast<int32_t>(xLocalInt16.GetValue(128)),
+            static_cast<int32_t>(xLocalInt16.GetValue(639)),
+            static_cast<int32_t>(xLocalInt16.GetValue(640)),
+            static_cast<int32_t>(xLocalInt16.GetValue(1023)));
+        SToVSync();
+    }
 }
 
 template <typename BSAT>
@@ -496,58 +621,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     LocalTensor<int32_t> xLocalInt32 = xLocalInt16.ReinterpretCast<int32_t>();
     LocalTensor<float> xLocalFp32 = xLocalInt16.ReinterpretCast<float>();
 
-    if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-        BSA_TOPK_PRINTF("[DUMP450] before Cast, source int16[tileLen_] first 64:\n");
-        BSA_TOPK_DUMP_TENSOR(xLocalInt16[tileLen_], 450, 64);
-        if (curTileLen > 1023) {
-            BSA_TOPK_PRINTF("[DUMP450S] source int16 key points: idx0=%d idx31=%d idx32=%d idx639=%d idx640=%d idx895=%d idx896=%d idx1023=%d\n",
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(0)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(31)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(32)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(639)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(640)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(895)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(896)),
-                static_cast<int32_t>(xLocalInt16[tileLen_].GetValue(1023)));
-        }
-    }
-
     Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
-    if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-        PipeBarrier<PIPE_V>();
-        VToSSync();
-        BSA_TOPK_PRINTF("[DUMP450F] after int16->fp32 Cast, xLocalFp32 first 64:\n");
-        BSA_TOPK_DUMP_TENSOR(xLocalFp32, 4501, 64);
-        if (curTileLen > 1023) {
-            BSA_TOPK_PRINTF("[DUMP450FS] fp32 key points: idx0=%f idx31=%f idx32=%f idx639=%f idx640=%f idx895=%f idx896=%f idx1023=%f\n",
-                static_cast<float>(xLocalFp32.GetValue(0)),
-                static_cast<float>(xLocalFp32.GetValue(31)),
-                static_cast<float>(xLocalFp32.GetValue(32)),
-                static_cast<float>(xLocalFp32.GetValue(639)),
-                static_cast<float>(xLocalFp32.GetValue(640)),
-                static_cast<float>(xLocalFp32.GetValue(895)),
-                static_cast<float>(xLocalFp32.GetValue(896)),
-                static_cast<float>(xLocalFp32.GetValue(1023)));
-        }
-    }
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
-    if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-        PipeBarrier<PIPE_V>();
-        VToSSync();
-        BSA_TOPK_PRINTF("[DUMP450I] after fp32->int32 Cast, xLocalInt32 first 64:\n");
-        BSA_TOPK_DUMP_TENSOR(xLocalInt32, 4502, 64);
-        if (curTileLen > 1023) {
-            BSA_TOPK_PRINTF("[DUMP450IS] int32 key points: idx0=%d idx31=%d idx32=%d idx639=%d idx640=%d idx895=%d idx896=%d idx1023=%d\n",
-                xLocalInt32.GetValue(0),
-                xLocalInt32.GetValue(31),
-                xLocalInt32.GetValue(32),
-                xLocalInt32.GetValue(639),
-                xLocalInt32.GetValue(640),
-                xLocalInt32.GetValue(895),
-                xLocalInt32.GetValue(896),
-                xLocalInt32.GetValue(1023));
-        }
-    }
 
     // === DUMP 451: Cast chain results (first round, first tile) ===
     if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
