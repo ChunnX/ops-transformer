@@ -13,14 +13,11 @@
  * \brief ascendc scatter nd update tiling cpp
  */
 
-#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
-#include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "platform/platform_info.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
 #include "log/log.h"
-#include "op_common/op_host/util/platform_util.h"
-#include "op_common/op_host/util/math_util.h"
 
 using namespace AscendC;
 namespace optiling {
@@ -47,6 +44,8 @@ constexpr uint8_t N_DIM_IDX = 2;
 constexpr uint8_t C_DIM_IDX = 3;
 constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t ITER_COUNT_IDX = 0;
+constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr uint8_t BF16_BYTE_SIZE = 2;
 
 bool MhcPreSinkhornBackwardArch35Tiling::IsCapable()
 {
@@ -391,16 +390,15 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
         return ge::GRAPH_FAILED;
     }
 
-    tilingData->n = n;
-    tilingData->batchSize = batchSize;
-    tilingData->seqLength = seqLength;
-    tilingData->c = c;
-    tilingData->n = n;
-    tilingData->c0 = c0;
-    tilingData->c1 = c1;
-    tilingData->aivNum = aivNum;
-    tilingData->skIterCount = skIterCount;
-    tilingData->tileSize = tile;
+    tilingData->batchSize = batchSize_;
+    tilingData->seqLength = seqLength_;
+    tilingData->c = c_;
+    tilingData->n = n_;
+    tilingData->c0 = c0_;
+    tilingData->c1 = c1_;
+    tilingData->aivNum = core_numAiv;
+    tilingData->skIterCount = skIterCount_;
+    tilingData->tileSize = tile_;
 
     return ge::GRAPH_SUCCESS;  
 }
@@ -408,20 +406,20 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 void MhcPreSinkhornBackwardArch35Tiling::DoUbTiling()
 {
     c0_ = 64;
-    c1_ = c / c0;
-    coreTaskCount_ = (batchSize * seqLength + aivNum - 1) / aivNum;
-    tile_ = min(coreTaskCount, (int64_t) 64);
-    tileUB_ = (ubSize * 0.95 - (n * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c) /
-        ((n * n * 4 + n * 9 + 3) * sizeof(float));
-    tile_ = min(tile, tileUB);
+    c1_ = c_ / c0_;
+    coreTaskCount_ = (batchSize_ * seqLength_ + core_numAiv_ - 1) / core_numAiv_;
+    tile_ = min(coreTaskCount_, (int64_t) 64);
+    tileUB_ = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
+        ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
+    tile_ = min(tile_, tileUB_);
 
-    mm1K_ = n * n + 2 * n;
-    mm1M_ = tile * 2;
-    mm1N_ = n * c;
+    mm1K_ = n_ * n_ + 2 * n_;
+    mm1M_ = tile_ * 2;
+    mm1N_ = n_ * c_;
 
-    mm2K_ = tile * 2;
-    mm2M_ = n * n + 2 * n;
-    mm2N_ = n * c;
+    mm2K_ = tile_ * 2;
+    mm2M_ = n_ * n_ + 2 * n_;
+    mm2N_ = n_ * c_;
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
