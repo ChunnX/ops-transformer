@@ -212,13 +212,15 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dk);
+        std::string dMsg = std::to_string(shapeInfo.axes.d) + " and " + std::to_string(shapeInfo.axes.dk);
+        std::string reason = "The values of the D dim of input query and key must be the same";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query and key", dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dv);
+        std::string dMsg = std::to_string(shapeInfo.axes.d) + " and " + std::to_string(shapeInfo.axes.dv);
+        std::string reason = "The value of D dim of input key must be greater than or equal to the value of D dim of input value";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "key and value", dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -547,7 +549,8 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
         AnalysisAxis(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (shapeInfo.axes.d > HEAD_DIM_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Head dim must <= 768, but got %ld", shapeInfo.axes.d);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "D dim",
+            std::to_string(shapeInfo.axes.d).c_str(), "The value of D dim can only be in the range of (0, 768]");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -971,8 +974,10 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     Shape qRopeShape = queryRope->GetViewShape();
     Shape kRopeShape = keyRope->GetViewShape();
     if (qRopeShape[DIM_NUM_2] > faShape.axes.d || kRopeShape[DIM_NUM_2] > faShape.axes.d) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope when"
-                " the head-dim of query_rope or key_rope is larger than the head-dim of query.");
+        std::string dMsg = std::to_string(qRopeShape[DIM_NUM_2]) + " and " + std::to_string(kRopeShape[DIM_NUM_2]);
+        std::string reason = "The value of D dim of input query_rope and key_rope must be greater than the value of D dim of input query";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query_rope and key_rope",
+            dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (qDtype !=  ge::DataType::DT_BF16 || kDtype != ge::DataType::DT_BF16 || vDtype != ge::DataType::DT_BF16
@@ -1015,7 +1020,8 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
         }
 
         if (faShape.needPad || faShape.needTranspose || faShape.needReshape || faShape.needPadValue) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope as input when shape is not aligned with 128 or other corner cases.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "shape",
+                "unaligned shape", "The value of the shape must be aligned with 128 when query_rope and key_rope are provided as input");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
