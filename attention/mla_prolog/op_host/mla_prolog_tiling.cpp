@@ -550,7 +550,7 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isQcQrScaleEnable = 0U;
         baseParams_->isKcScaleEnable = 0U;
     }
-    FillTilingCoreParams() // 分核相关baseParams
+    FillTilingCoreParams(); // 分核相关baseParams
     return ge::GRAPH_SUCCESS;
 }
 
