@@ -397,8 +397,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     if (dstRankId != epRankId_) {
-       sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t));
-       sendFlagHandleGMTensor_(curExpertCnt) = 1;
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t));
+        sendFlagHandleGMTensor_(curExpertCnt) = 1;
     }
 }
 
