@@ -21,38 +21,6 @@
 #include "opdev/op_executor.h"
 #include "op_common/log/log.h"
 
-#undef OpLogErrSub
-#undef OpLogSub
-#undef D_OP_LOGE
-#undef D_OP_LOGD
-#undef D_OP_LOGW
-#undef D_OP_LOGI
-#undef OP_LOGE_WITHOUT_REPORT
-#undef OP_LOGE
-#undef OP_LOGD
-#undef OP_LOGW
-#undef OP_LOGI
-
-#define OpLogErrSub(moduleId, level, op_info, errno, fmt, ...)                                                  \
-    DOplogSub(static_cast<int32_t>(moduleId), OPAPI_SUBMOD_NAME, level, "[%s][%lu] errno[%d] %s" fmt,           \
-            __FUNCTION__, op::OpLog::GetTid(), errno, op_info, ##__VA_ARGS__)
-#define OpLogSub(moduleId, level, opname, fmt, ...)                                                             \
-    DOplogSub(static_cast<int32_t>(moduleId), OPAPI_SUBMOD_NAME, level, "[%s][%lu] OpName:[%s] " fmt,           \
-            __FUNCTION__, op::OpLog::GetTid(), opname, ##__VA_ARGS__)
-#define D_OP_LOGE(opname, errno, fmt, ...) OpLogErrSub(OP_ID, OP_LOG_ERROR, opname, errno, fmt, ##__VA_ARGS__)
-#define D_OP_LOGD(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_DEBUG, opname, fmt, ##__VA_ARGS__)
-#define D_OP_LOGW(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_WARN, opname, fmt, ##__VA_ARGS__)
-#define D_OP_LOGI(opname, fmt, ...) OpLogSub(OP_ID, OP_LOG_INFO, opname, fmt, ##__VA_ARGS__)
-#define OP_LOGE_WITHOUT_REPORT(errno, ...) D_OP_LOGE(GetOpName().c_str(), errno, __VA_ARGS__)
-#define OP_LOGE(errno, ...)                                                                                     \
-    do {                                                                                                         \
-        OP_LOGE_WITHOUT_REPORT(errno, __VA_ARGS__);                                                             \
-        REPORT_ERROR_MESSAGE(errno, __VA_ARGS__);                                                               \
-    } while (false)
-#define OP_LOGD(...) D_OP_LOGD(GetOpName().c_str(), __VA_ARGS__)
-#define OP_LOGW(...) D_OP_LOGW(GetOpName().c_str(), __VA_ARGS__)
-#define OP_LOGI(...) D_OP_LOGI(GetOpName().c_str(), __VA_ARGS__)
-
 using namespace op;
 
 #ifdef __cplusplus
