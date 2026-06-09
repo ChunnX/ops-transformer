@@ -542,7 +542,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
-    if
     // // 发送token到目标rank的窗口
     // // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
@@ -559,7 +558,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
 
     for (uint32_t i = startExpert; i < endExpert; ++i) {
         for (uint32_t j = 0; j < axisBS_; ++j) {
-            SyncFunc<AscendC::HardEvent::S_V>();
             uint32_t dstRankId = expertIdsTensor_(j);// expert_id 直接作为目标rank_id
             if (dstRankId != i) {
                 continue;
