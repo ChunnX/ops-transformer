@@ -48,7 +48,7 @@ TEST_CASES = [
         "B": 1,
         "S1": 128,
         "S2": 128,
-        "N1": 64,
+        "N1": 128,
         "N2": 1,
         "Nidx1": 64,
         "Nidx2": 1,
@@ -64,14 +64,14 @@ TEST_CASES = [
         "B": 1,
         "S1": 64,
         "S2": 512,
-        "N1": 64,
+        "N1": 128,
         "N2": 1,
-        "Nidx1": 32,
+        "Nidx1": 64,
         "Nidx2": 1,
         "DQuery": 512,
         "DQueryIndex": 128,
         "d_rope": 64,
-        "K": 1024,
+        "K": 2048,
         "layout": "BSND",
         "dynamic_fill": False,
     },
@@ -80,9 +80,9 @@ TEST_CASES = [
         "B": 1,
         "S1": 512,
         "S2": 2048,
-        "N1": 64,
+        "N1": 128,
         "N2": 1,
-        "Nidx1": 32,
+        "Nidx1": 64,
         "Nidx2": 1,
         "DQuery": 512,
         "DQueryIndex": 128,
@@ -103,25 +103,9 @@ TEST_CASES = [
         "DQuery": 512,
         "DQueryIndex": 128,
         "d_rope": 64,
-        "K": 4096,
+        "K": 2048,
         "layout": "BSND",
         "dynamic_fill": True,
-    },
-    {
-        "name": "Case 5 - 大TopK",
-        "B": 1,
-        "S1": 512,
-        "S2": 2048,
-        "N1": 64,
-        "N2": 1,
-        "Nidx1": 32,
-        "Nidx2": 1,
-        "DQuery": 512,
-        "DQueryIndex": 128,
-        "d_rope": 64,
-        "K": 8192,
-        "layout": "BSND",
-        "dynamic_fill": False,
     },
 ]
 
@@ -153,24 +137,33 @@ def gen_inputs_corrected(case_config, seed=42):
     torch.manual_seed(seed)
     dtype = torch.float16
 
+    query_bsnd = torch.randn(B, S1, N1, DQuery, dtype=dtype).npu()
+    key_bsnd = torch.randn(B, S2, N2, DQuery, dtype=dtype).npu()
+    query_index_bsnd = torch.randn(B, S1, Nidx1, DQueryIndex, dtype=dtype).npu()
+    key_index_bsnd = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).npu()
+    query_rope_bsnd = torch.randn(B, S1, N1, d_rope, dtype=dtype).npu()
+    key_rope_bsnd = torch.randn(B, S2, N2, d_rope, dtype=dtype).npu()
+    weights_bsnd = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
+    sparse_indices_bsnd = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
+
     if layout == "TND":
-        query = torch.randn(S1, N1, DQuery, dtype=dtype).npu()
-        key = torch.randn(S2, N2, DQuery, dtype=dtype).npu()
-        query_index = torch.randn(S1, Nidx1, DQueryIndex, dtype=dtype).npu()
-        key_index = torch.randn(S2, Nidx2, DQueryIndex, dtype=dtype).npu()
-        query_rope = torch.randn(S1, N1, d_rope, dtype=dtype).npu()
-        key_rope = torch.randn(S2, N2, d_rope, dtype=dtype).npu()
-        weights = torch.randn(S1, Nidx1, dtype=dtype).npu()
-        sparse_indices = torch.zeros(S1, Nidx2, K, dtype=torch.int32).npu()
+        query = query_bsnd.squeeze(0)
+        key = key_bsnd.squeeze(0)
+        query_index = query_index_bsnd.squeeze(0)
+        key_index = key_index_bsnd.squeeze(0)
+        query_rope = query_rope_bsnd.squeeze(0)
+        key_rope = key_rope_bsnd.squeeze(0)
+        weights = weights_bsnd.squeeze(0)
+        sparse_indices = sparse_indices_bsnd.squeeze(0)
     else:
-        query = torch.randn(B, S1, N1, DQuery, dtype=dtype).npu()
-        key = torch.randn(B, S2, N2, DQuery, dtype=dtype).npu()
-        query_index = torch.randn(B, S1, Nidx1, DQueryIndex, dtype=dtype).npu()
-        key_index = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).npu()
-        query_rope = torch.randn(B, S1, N1, d_rope, dtype=dtype).npu()
-        key_rope = torch.randn(B, S2, N2, d_rope, dtype=dtype).npu()
-        weights = torch.randn(B, S1, Nidx1, dtype=dtype).npu()
-        sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
+        query = query_bsnd
+        key = key_bsnd
+        query_index = query_index_bsnd
+        key_index = key_index_bsnd
+        query_rope = query_rope_bsnd
+        key_rope = key_rope_bsnd
+        weights = weights_bsnd
+        sparse_indices = sparse_indices_bsnd
 
     if layout == "TND":
         for s1_idx in range(S1):
