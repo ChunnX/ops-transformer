@@ -201,22 +201,22 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     coreFlatStart_ = coreTokenStart_ * k_;
     coreEntries_ = coreTokenNum_ * k_;
 
-    // Derived constants
-    expertCountStride_ = OpsBaseCeilAlign(actualExpertNum_, static_cast<int64_t>(8));
-    colsAligned_ =
-        OpsBaseCeilAlign(cols_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) / static_cast<int64_t>(sizeof(T));
-    scaleSlotSize_ = BLOCK_BYTES / static_cast<int64_t>(sizeof(float)); // 8
-    smoothSlotSize_ = OpsBaseCeilAlign(cols_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES) /
-                      static_cast<int64_t>(sizeof(float));
-    chunkAligned_ = OpsBaseCeilAlign(filterChunkSize_, static_cast<int64_t>(8));
-    maxChunks_ = Ceil(coreEntries_, filterChunkSize_);
-
     // Cols loop params: when cols is too large for UB, split into multiple loops
     colsLoops_ = tiling->gatherOutComputeParamsOp.colsLoops;
     perLoopCols_ = tiling->gatherOutComputeParamsOp.perLoopCols;
     lastLoopCols_ = tiling->gatherOutComputeParamsOp.lastLoopCols;
     perLoopColsAligned_ =
         OpsBaseCeilAlign(perLoopCols_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) / static_cast<int64_t>(sizeof(T));
+
+    // Derived constants
+    expertCountStride_ = OpsBaseCeilAlign(actualExpertNum_, static_cast<int64_t>(8));
+    colsAligned_ =
+        OpsBaseCeilAlign(cols_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) / static_cast<int64_t>(sizeof(T));
+    scaleSlotSize_ = BLOCK_BYTES / static_cast<int64_t>(sizeof(float)); // 8
+    smoothSlotSize_ = OpsBaseCeilAlign(perLoopCols_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES) /
+                      static_cast<int64_t>(sizeof(float));
+    chunkAligned_ = OpsBaseCeilAlign(filterChunkSize_, static_cast<int64_t>(8));
+    maxChunks_ = Ceil(coreEntries_, filterChunkSize_);
 
     // Workspace stride: consistent across all cores (use max possible per-core entries)
     int64_t lastCoreTokens = n_ - (filterNeedCoreNum_ - 1) * filterPerCoreTokens;
