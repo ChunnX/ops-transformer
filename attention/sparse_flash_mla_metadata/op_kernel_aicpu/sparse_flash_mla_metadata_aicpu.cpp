@@ -434,7 +434,8 @@ int64_t SparseFlashMlaMetadataCpuKernel::CalcOriNextTokenLeftUp(uint32_t s1Size,
         case SparseMode::RIGHT_DOWN_CAUSAL:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + oriNextToken_;
+            return oriNextToken_ == INT64_MAX ?
+                INT64_MAX : static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + oriNextToken_;
         default:
             return oriNextToken_;
     }
@@ -461,7 +462,8 @@ int64_t SparseFlashMlaMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t s1Size,
         case SparseMode::RIGHT_DOWN_CAUSAL:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + cmpNextToken_;
+            return cmpNextToken_ == INT64_MAX ?
+                INT64_MAX : static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + cmpNextToken_;
         default:
             return cmpNextToken_;
     }
@@ -553,10 +555,17 @@ Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx
         }
     }
 
-    int64_t s2FirstToken = isCmpKv ? s1FirstToken - batchCache.cmpPreTokenLeftUp :
-        s1FirstToken - batchCache.oriPreTokenLeftUp;
-    int64_t s2LastToken = isCmpKv ? s1LastToken + batchCache.cmpNextTokenLeftUp :
-        s1LastToken + batchCache.oriNextTokenLeftUp;
+    int64_t s2FirstToken = 0;
+    int64_t s2LastToken = 0;
+    if (!isCmpKv) {
+        s2FirstToken = s1FirstToken - batchCache.oriPreTokenLeftUp;
+        s2LastToken = batchCache.oriNextTokenLeftUp == INT64_MAX ?
+            INT64_MAX : s1LastToken + batchCache.oriNextTokenLeftUp;
+    } else {
+        s2FirstToken = s1FirstToken - batchCache.cmpPreTokenLeftUp;
+        s2LastToken = batchCache.cmpNextTokenLeftUp == INT64_MAX ?
+            INT64_MAX : s1LastToken + batchCache.cmpNextTokenLeftUp;
+    }
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
