@@ -14,8 +14,8 @@
 #include <type_traits>
 #include <limits>
 #include "../../../attn_infra/fused_base_defs.hpp"
-#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"
+#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 #include "../../../attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
 #include "../../../attn_infra/epilogue/tile_common/fused_epilogue_tile_copy.hpp"
 #include "../../../attn_infra/fused_gemm_coord.hpp"
@@ -35,12 +35,12 @@ struct SinkLoopParam
     SinkLoopParam(
         uint32_t rowOffsetIoGm_,
         uint32_t rowNumCurLoop_,
-        uint32_t qSBlockSize_,
+        uint32_t qSeqBlockSize_,
         uint32_t rowOffsetThisSubBlock_
     ) :
         rowOffsetIoGm(rowOffsetIoGm_),
         rowNumCurLoop(rowNumCurLoop_),
-        qSBlockSize(qSBlockSize_),
+        qSBlockSize(qSeqBlockSize_),
         rowOffsetThisSubBlock(rowOffsetThisSubBlock_)
     {}
 };
@@ -109,9 +109,9 @@ public:
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
         constexpr uint32_t LP_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t FULL32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t FULL32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK_UB_PREMASK_TENSOR_OFFSET = 5 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t TV_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t LM_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE + 8 * UB_UINT8_VECTOR_SIZE;
@@ -123,8 +123,8 @@ public:
         constexpr uint32_t DM_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE + 13 * UB_UINT8_VECTOR_SIZE;
         constexpr uint32_t SEL_MASK_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET;
 
-        constexpr uint32_t MASK16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t FULL16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t MASK16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
         scaleValue = scaleValue_;
         lsUbTensor = resource.ubBuf.template GetBufferByByte<float>(LS_UB_TENSOR_OFFSET);
         lpUbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(LP_UB_TENSOR_OFFSET);
@@ -157,9 +157,9 @@ public:
     __aicore__ inline
     void SetVecMask(int32_t len)
     {
+        uint64_t temp = len % FLOAT_VECTOR_SIZE;
         uint64_t one = 1;
         uint64_t mask = 0;
-        uint64_t temp = len % FLOAT_VECTOR_SIZE;
         for (int64_t i = 0; i < temp; i++) {
             mask |= one << i;
         }
@@ -214,27 +214,27 @@ public:
 
     __aicore__ inline
     void RowsumSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTile256, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTile256 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound,
+            numRowsRoundTile256,
             0, 1, 1, 4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceSum<float, false>(
             rowsumUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+            NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTile256 * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -322,52 +322,52 @@ public:
 
     __aicore__ inline
     void RowmaxSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTail512, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound * numElemsAligned / FLOAT_BLOCK_SIZE / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_BLOCK_SIZE / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::BlockReduceMax<float, false>(
             rowmaxUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_VECTOR_SIZE / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline
     void RowmaxSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTile256, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTile256 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound,
+            numRowsRoundTile256,
             0, 1, 1, 4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceMax<float, false>(
             rowmaxUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+            NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTile256 * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -375,36 +375,36 @@ public:
 
     __aicore__ inline
     void RowmaxTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTailTile, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         if (numElems >= FLOAT_VECTOR_SIZE) {
             AscendC::BlockReduceMax<float, false>(
                 tvUbTensor,
                 srcUb,
-                numRowsRound,
+                numRowsRoundTailTile,
                 0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::BlockReduceMax<float, false>(
                 rowmaxUb,
                 tvUbTensor,
-                NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                 0, 1, 1, 8);
             AscendC::PipeBarrier<PIPE_V>();
             for (uint64_t rowmax_idx = 1; rowmax_idx < (uint64_t)numElems / FLOAT_VECTOR_SIZE; ++rowmax_idx) {
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor,
                     srcUb[rowmax_idx * FLOAT_VECTOR_SIZE],
-                    numRowsRound,
+                    numRowsRoundTailTile,
                     0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE],
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
-                SetVecMask(numRowsRound);
+                SetVecMask(numRowsRoundTailTile);
                 AscendC::Max<float, false>(rowmaxUb,
                     rowmaxUb,
                     tvUbTensor[REDUCE_UB_SIZE],
@@ -420,23 +420,23 @@ public:
             AscendC::BlockReduceMax<float, false>(
                 tvUbTensor,
                 srcUb[numElems / FLOAT_VECTOR_SIZE * FLOAT_VECTOR_SIZE],
-                numRowsRound,
+                numRowsRoundTailTile,
                 0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
             AscendC::PipeBarrier<PIPE_V>();
             SetBlockReduceMask(NpuArch::Detail::Alignment::CeilDiv(numElems % FLOAT_VECTOR_SIZE, FLOAT_BLOCK_SIZE));
             if (numElems < FLOAT_VECTOR_SIZE) {
                 AscendC::BlockReduceMax<float, false>(rowmaxUb,
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
             } else {
                 AscendC::BlockReduceMax<float, false>(tvUbTensor[REDUCE_UB_SIZE],
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
-                SetVecMask(numRowsRound);
+                SetVecMask(numRowsRoundTailTile);
                 AscendC::Max<float, false>(rowmaxUb,
                     rowmaxUb,
                     tvUbTensor[REDUCE_UB_SIZE],
@@ -453,16 +453,16 @@ public:
     void CopySGmToUb(
         AscendC::GlobalTensor<ElementInput> gInput,
         uint32_t sUbOffset,
-        uint32_t rowNumCurLoop,
-        uint32_t columnNumRound,
-        uint32_t columnNumPad)
+        uint32_t rowCurLoop,
+        uint32_t columnRound,
+        uint32_t columnPad)
     {
         AscendC::DataCopy(
             lsUbTensor[sUbOffset],
             gInput,
             AscendC::DataCopyParams(
-                rowNumCurLoop, columnNumRound / FLOAT_BLOCK_SIZE,
-                (columnNumPad - columnNumRound) / FLOAT_BLOCK_SIZE, 0));
+                rowCurLoop, columnRound / FLOAT_BLOCK_SIZE,
+                (columnPad - columnRound) / FLOAT_BLOCK_SIZE, 0));
     }
 
     __aicore__ inline void OperatePreMaskUb(uint32_t rowNumCurLoop, uint32_t columnNumRound)
