@@ -88,9 +88,19 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must not be null");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (sparseSeqLen->GetViewShape().GetDimNum() != 1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 1D tensor, but got %ld dims",
+    if (sparseSeqLen->GetViewShape().GetDimNum() != 2) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D tensor, but got %ld dims",
                 sparseSeqLen->GetViewShape().GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (batchSize > 0 && sparseSeqLen->GetViewShape().GetDim(0) != batchSize) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[0] must be batchSize, but got %ld, batchSize=%ld",
+                sparseSeqLen->GetViewShape().GetDim(0), batchSize);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (sparseSeqLen->GetViewShape().GetDim(1) <= 0) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[1] must be > 0, but got %ld",
+                sparseSeqLen->GetViewShape().GetDim(1));
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseSeqLen->GetDataType() != ACL_INT32) {
