@@ -379,8 +379,14 @@ def cpu_compressor(
         leftH = i * 128
         rightH = (i + 1) * 128
     # 算子实现是先将两个descale相乘
-    new_kv_state = np.matmul(hif8_to_fp32_numpy(x), hif8_to_fp32_numpy(wkv.T), dtype=matmul_dtype) * (x_descale * wkv_descale)
-    new_score_state = np.matmul(hif8_to_fp32_numpy(x), hif8_to_fp32_numpy(wgate.T), dtype=matmul_dtype) * (x_descale * wgate_descale)
+    new_kv_state = np.matmul(hif8_to_fp32_numpy(x), hif8_to_fp32_numpy(wkv.T), dtype=matmul_dtype)
+    new_score_state = np.matmul(hif8_to_fp32_numpy(x), hif8_to_fp32_numpy(wgate.T), dtype=matmul_dtype)
+
+    if quant_mode == 1:
+        new_kv_state = new_kv_state * (x_descale * wkv_descale)
+        new_score_state = new_score_state * (x_descale * wgate_descale)
+    else:
+        raise ValueError(f"Error: unsupport quantmode {quant_mode}")
 
     B = len(start_pos)
     head_dim = wkv.shape[0] // coff
@@ -676,9 +682,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
         rope_cos_shape = rope_sin_shape
 
-    x = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(x_datarange[0], x_datarange[1], x_shape))).to(torch.float32)
-    wkv = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size)))).to(torch.float32)
-    wgate = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size)))).to(torch.float32)
+    x = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)))
+    wkv = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))))
+    wgate = torch.tensor(fp32_to_hif8_numpy(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))))
 
     x_descale = torch.tensor(np.random.uniform(x_descale_datarange[0], x_descale_datarange[1], (1,))).to(torch.float32)
     wkv_descale = torch.tensor(np.random.uniform(wkv_descale_datarange[0], wkv_descale_datarange[1], (coff * head_dim,))).to(torch.float32)
@@ -710,6 +716,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
 
     # ======================== execute npu start =================================
     
+    x = x.to("npu:%s" % DEVICE_ID)
+    wkv = wkv.to("npu:%s" % DEVICE_ID)
+    wgate = wgate.to("npu:%s" % DEVICE_ID)
     x_descale = x_descale.to("npu:%s" % DEVICE_ID)
     wkv_descale = wkv_descale.to("npu:%s" % DEVICE_ID)
     wgate_descale = wgate_descale.to("npu:%s" % DEVICE_ID)
@@ -765,9 +774,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== execute npu finish ================================
     # start run custom ops
     # quant_compressor(, int quant_mode, int rope_head_dim, int cmp_ratio, *, Tensor? x_descale=None, Tensor? wkv_descale=None, Tensor? wgate_descale=None, Tensor? state_block_table=None, Tensor? cu_seqlens=None, Tensor? seqused=None, Tensor? start_pos=None, int coff=1, float norm_eps=9.9999999999999995e-07, int rotary_mode=1, int cache_mode=1)
-    print(f"x: shape {x_hif.shape}, dtype: {x_hif.dtype}")
-    print(f"wkv: shape {wkv_hif.shape}, dtype: {wkv_hif.dtype}")
-    print(f"wgate: shape {wgate_hif.shape}, dtype: {wgate_hif.dtype}")
+    print(f"x: shape {x.shape}, dtype: {x.dtype}")
+    print(f"wkv: shape {wkv.shape}, dtype: {wkv.dtype}")
+    print(f"wgate: shape {wgate.shape}, dtype: {wgate.dtype}")
     print(f"x_descale: shape {x_descale.shape}, dtype: {x_descale.dtype}")
     print(f"wkv_descale: shape {wkv_descale.shape}, dtype: {wkv_descale.dtype}")
     print(f"wgate_descale: shape {wgate_descale.shape}, dtype: {wgate_descale.dtype}")
@@ -781,9 +790,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     
     npu_out = (
         torch.ops.custom.quant_compressor(
-            x_hif,
-            wkv_hif,
-            wgate_hif,
+            x,
+            wkv,
+            wgate,
             state_cache,
             ape,
             norm_weight, 
