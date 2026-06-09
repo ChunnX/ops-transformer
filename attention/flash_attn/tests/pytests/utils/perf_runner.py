@@ -237,9 +237,6 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
         })
         csv_f.flush()
 
-        if one_by_one and i + 1 < len(cases):
-            input(f"  [{i+1}/{len(cases)}] 回车继续...")
-
     csv_f.close()
 
     # Write log

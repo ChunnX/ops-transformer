@@ -230,8 +230,6 @@ if __name__ == "__main__":
                                "total": -1, "fail_ratio": float('nan')}}
 
         reporter.record(name, result, error=err, dtype=dtype)
-        if args.one_by_one and i + 1 < len(run_cases):
-            input(f"  [{i+1}/{len(run_cases)}] 回车继续...")
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))
