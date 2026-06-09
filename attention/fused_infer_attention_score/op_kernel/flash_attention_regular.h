@@ -418,16 +418,17 @@ namespace SplitFuse {
                 CombineScale combineScale;
                 combineScale.init(resource);
                 combineScale(
-                    qHeads,                                         
-                    fATilingData->totalSplitNodeNum,                                  
-                    embedV,                                        
-                    &fATilingData->splitInfo,                       
-                    gLseFD,                                          
-                    gOFD,                                       
-                    gO,                                            
-                    gActualQseqlen,                                 
-                    true 
-                );
+                    qHeads,
+                    fATilingData->totalSplitNodeNum,
+                    embedV,
+                    &fATilingData->splitInfo,
+                    gLseFD,
+                    gOFD,
+                    gO,
+                    gActualQseqlen,
+                    true,
+                    (LSE_MODE == Epilogue::LseMode::OUT_ONLY),
+                    gLse);
 #endif
             }
         }
