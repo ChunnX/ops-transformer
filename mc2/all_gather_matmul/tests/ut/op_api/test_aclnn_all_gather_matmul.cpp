@@ -44,6 +44,9 @@ TEST_P(AclnnAllGatherMatmulTest, param)
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
+            (void)aclnnAllGatherMatmul(nullptr, workspace_size, executor, nullptr);
+        }
     } else {
         EXPECT_EQ(param.expectResult, aclnnRet);
     }
@@ -55,5 +58,21 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<AllGatherMatmulApiUtParam>
 );
+
+class AclnnAllGatherMatmulLaunchTest : public testing::Test {};
+
+TEST_F(AclnnAllGatherMatmulLaunchTest, LaunchApiCoverage)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    (void)aclnnAllGatherMatmul(nullptr, 0, nullptr, nullptr);
+}
+
+TEST_F(AclnnAllGatherMatmulLaunchTest, Ascend950LaunchCcuCommMode)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    (void)aclnnAllGatherMatmul(nullptr, 0, nullptr, nullptr);
+    op::SetPlatformNpuArch(NpuArch::DAV_3103);
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+}
 
 } // namespace AllGatherMatmulUT

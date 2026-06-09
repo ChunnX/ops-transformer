@@ -45,16 +45,7 @@ struct TempParams {
     int64_t ropeDim;
     bool ropeEnable = false;
     bool deterministic = false;
-};
-
-struct AiCoreParams {
-    uint64_t ubSize;
-    uint64_t blockDim;
-    uint64_t aicNum;
-    uint64_t l1Size;
-    uint64_t l0aSize;
-    uint64_t l0bSize;
-    uint64_t l0cSize;
+    bool kvMerge = false;
 };
 
 class SparseFlashAttentionGradBasicTiling : public Ops::Transformer::OpTiling::TilingBaseClass {

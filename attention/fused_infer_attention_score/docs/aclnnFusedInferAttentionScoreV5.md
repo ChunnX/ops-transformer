@@ -598,8 +598,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>
         <ul>
-            <li>内部生成pse场景生效（pseType为2或3），其他场景可传入nullptr。</li>
-            <li>当pseType为2、3时，不传入该参数按照0处理。</li>
+            <li>可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -614,8 +613,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>
         <ul>
-            <li>内部生成pse场景生效（pseType为2或3），其他场景可传入nullptr。</li>
-            <li>当pseType为2、3时，不传入该参数按照0处理。</li>
+            <li>可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -744,8 +742,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>innerPrecise为3时，代表高性能模式，且做行无效修正。</li>
             <li>sparse_mode为0或1，并传入用户自定义mask的情况下，建议开启行无效修正。</li>
             <li>BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。</li>
-            <li>当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。</li>
-            <li>如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。</li>
+            <li>当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。</li>
+            <li>如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。</li>
         </ul>
         </td>
         <td>INT64</td>
@@ -850,10 +848,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>pse的方式。</td>
         <td>
         <ul>
-            <li>支持配置值为0、2、3（pseType = 1推理场景不支持）。</li>
+            <li>支持配置值为0（pseType = 1推理场景不支持）。</li>
             <li>pseType为0时，外部传入pse，先mul再add。</li>
-            <li>pseType为2时，内部生成pse，计算公式：-alibi_slope * abs(i - j)。</li>
-            <li>pseType为3时，内部生成pse，计算公式：-alibi_slope * sqrt(abs(i - j))。</li>
         </ul>
         </td>
         <td>INT64</td>
@@ -1411,7 +1407,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>支持D轴小于等于512</li>
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
-                        <li>MxFP8场景下，HeadDim仅支持128</li>
+                        <li>MxFP8场景下，HeadDim仅支持64或128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
                         <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
@@ -1486,15 +1482,13 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 单参数约束
   - 公共
     - 入参 pseType 应满足以下条件：
-      - pseType 必须为0, 2 或者 3
+      - pseType 必须为0
       - pseType 为 1 不支持 FA 推理场景，仅支持 FA 训练场景
     - 入参 pseShift 应满足以下条件：
       - tensor 的数据类型应满足以下条件：
-        - pseType 为 2 或者 3 时，tensor 的数据类型必须为 FLOAT32
-        - pseType 为 0  时，且 query 的数据类型为 FLOAT16 或者 INT8 时，tensor 的数据类型必须为 FLOAT16
+        - pseType 为 0 时，且 query 的数据类型为 FLOAT16 或者 INT8 时，tensor 的数据类型必须为 FLOAT16
         - pseType 为 0 时，且 query 的数据类型为 BFLOAT16 时，tensor 的数据类型必须为 BFLOAT16
       - tensor shape 应满足以下条件：
-        - pseType 为 2 或者 3 时，tensor shape 应为 (Q_N)
         - pseType 为 0 时:
           - tensor shape 的维度必须为 4
           - P_S1(tensor shape 的第 3 维) > 1 时：
@@ -1508,17 +1502,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             - tensor shape 的第 2 维应等于 Q_N
             - 非 prefix 场景时，tensor shape 的第 4 维应大于等于 KV_S
             - prefix 场景时，tensor shape 的第 4 维应大于等于 KV_S + actualSharedPrefixLen
-- 存在性约束
-  - 公共
-    - 入参 pseShift 应满足以下条件：
-      - pseType 为 2 或者 3 时，必须传入 pseShift
-- 一致性约束
-  - 公共
-    - pseType 为 2 或者 3 时， 入参 qStartIdx 和 kvStartIdx 应满足以下条件：
-      - qStartIdx 的取值范围应满足 [-2147483648, 2147483647]
-      - kStartIdx 的取值范围应满足 [-2147483648, 2147483647]
-      - kvStartIdx - qStartIdx 的取值范围应满足 [-1048576, 1048576]
-      - 若 qStartIdxOptional 或 kvStartIdxOptional 非空，则取列表中的第一个数据作为 qStartIdx 或 kvStartIdx
 - 特性交叉约束
   - 公共
     - PagedAttention场景下，入参 pseShift 应满足以下条件：
@@ -1542,7 +1525,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 sparseMode 需要满足以下条件：
 
       - sparseMode 支持输入范围为 0-4，默认值为 0
-      - sparseMode 在不使能 mask 时，仅支持输入为0
+      - sparseMode 在不开启 mask 时，仅支持输入为0
       - sparseMode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
 
       | sparseMode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
@@ -1614,9 +1597,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 一致性约束
   - 无
 - 特性交叉约束
-  - 公共
-    - alibi pse (pseType 为 2 或 3)场景下，入参 actualSeqLengths 和 actualSeqLengthsKv 应满足以下条件：
-      - actualSeqLengths 和 actualSeqLengthsKv 在每个 batch 的数值需要相等
   - 全量化
     - Decode MLA 场景下，若传入 actualSeqLengths，query 的 layout 必须为 TND/NTD
 
@@ -1667,7 +1647,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
     - MxFP8 全量化
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT8_E8M0类型
-      - 入参 dequantScaleQuery 的shape为（Q_T, Q_N, D/64, 2）、keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2）、valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）
+      - 当Q_S * G > 80场景，入参 dequantScaleQuery 的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S * G <= 80场景，入参 dequantScaleQuery 的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale 的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale 的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale 的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale 的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
       - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group模式）
       - 入参 quantScale1 的shape为（1），dtype支持FLOAT32，复用 quantScale1 作为 pScale
 - 存在性约束
@@ -1732,7 +1712,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
       - Q_S、KV_S 仅支持64对齐
       - inputLayout 仅支持 TND
-      - 仅支持PagedAttention场景
+      - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
       - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
@@ -1782,15 +1762,15 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - MxFP8 全量化场景下，仅支持blockSize取值512
 - 存在性约束
   - 公共
-    - PagedAttention 使能情况下，必须传入 actualSeqLengthsKv
+    - PagedAttention 开启情况下，必须传入 actualSeqLengthsKv
     - PagedAttention 不支持tensorlist场景，不支持左padding场景，不支持公共前缀场景，不支持D不等长场景
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - PagedAttention的使能场景下，若同时使能attenMask，传入attenMask的最后一维需要大于等于 maxBlockNumPerSeq * blockSize
+    - PagedAttention的开启场景下，若同时开启attenMask，传入attenMask的最后一维需要大于等于 maxBlockNumPerSeq * blockSize
     - PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
-    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
+    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
   - 伪量化
     - PagedAttention场景下，kv cache 的 layout 为 4 维时，inputLayout 必须为 BNSD、BNSD_BSND 或 TND
   - 全量化
@@ -1800,7 +1780,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为 (blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope 最后一维D0是16
     - GQA全量化场景除开MxFP8均不支持PagedAttention
-    - MxFP8全量化仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
+    - MxFP8全量化支持非PagedAttention场景，kv cache排布支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
 
 #### 左padding参数组
 
@@ -1817,7 +1797,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 特性交叉约束
   - 公共
     - 左padding 场景下，不支持 PagedAttention
-    - 左padding 场景下，不支持 pseType = 2/3
     - 左padding 场景下，不支持 BSH_BNSD、BSND_BNSD、TND、NTD、NTD_TND、TND_NTD 场景
     - 左padding 场景下，必须传入 actualSeqLengths/actualSeqLengthsKv
 
@@ -1907,9 +1886,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 特性交叉约束
   - 公共
-    - LearnableSink 使能场景下，tensor dtype需要和query dtype保持一致
-    - LearnableSink 使能场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
-    - LearnableSink 使能场景下，innerPrecise 必须为高精度模式 (0)
+    - LearnableSink 开启场景下，tensor dtype需要和query dtype保持一致
+    - LearnableSink 开启场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
+    - LearnableSink 开启场景下，innerPrecise 必须为高精度模式 (0)
     - LearnableSink 不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持后量化场景
     - LearnableSink 不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景
 

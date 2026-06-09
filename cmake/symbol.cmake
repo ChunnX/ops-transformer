@@ -34,6 +34,7 @@ function(gen_ophost_symbol)
             runtime
             acl_rt
             -Wl,-Bsymbolic
+            mmpa
     )
 
   target_link_directories(${OPHOST_NAME}
@@ -281,7 +282,7 @@ function(gen_cust_proto_symbol)
 endfunction()
 
 # Collects AICPU_HOST_OBJ_TARGETS (registered by add_aicpu_host_kernel_modules in obj_func.cmake)
-# and links all host OBJECT files into one SHARED library libtransformer_constant_folding_ops.so.
+# and links all host OBJECT files into one SHARED library libopconstant_folding_transformer.so.
 function(gen_aicpu_const_symbol)
   get_property(AICPU_HOST_OBJ_TARGETS GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
   message(STATUS "All host targets: ${AICPU_HOST_OBJ_TARGETS}")
@@ -291,14 +292,14 @@ function(gen_aicpu_const_symbol)
     return()
   endif()
 
-  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libtransformer_constant_folding_ops.so)
+  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libopconstant_folding_transformer.so)
 
   set(ALL_OBJECTS "")
   foreach(tgt IN LISTS AICPU_HOST_OBJ_TARGETS)
     list(APPEND ALL_OBJECTS $<TARGET_OBJECTS:${tgt}>)
   endforeach()
 
-  message(STATUS "Linking libtransformer_constant_folding_ops.so with host compiler")
+  message(STATUS "Linking libopconstant_folding_transformer.so with host compiler")
   message(STATUS "Objects: ${ALL_OBJECTS}")
   message(STATUS "Output: ${CONST_SO_OUTPUT}")
 
@@ -327,11 +328,11 @@ function(gen_aicpu_const_symbol)
       ${AICPU_HOST_CONST_LIBS}
       -o ${CONST_SO_OUTPUT}
     DEPENDS ${AICPU_HOST_OBJ_TARGETS}
-    COMMENT "Linking libtransformer_constant_folding_ops.so using host compiler"
+    COMMENT "Linking libopconstant_folding_transformer.so using host compiler"
     COMMAND_EXPAND_LISTS
   )
 
-  add_custom_target(transformer_constant_folding_ops_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
+  add_custom_target(opconstant_folding_transformer_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
   install(
     FILES ${CONST_SO_OUTPUT}
     DESTINATION ${AICPU_HOST_KERNEL_IMPL}
@@ -339,21 +340,62 @@ function(gen_aicpu_const_symbol)
   )
 endfunction()
 
-function(gen_cust_aicpu_json_symbol)
-  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
-  if(NOT ALL_AICPU_JSON_FILES)
-    message(STATUS "No aicpu json files to merge, skipping.")
+function(gen_cust_aicpu_op_def_symbol)
+  get_property(ALL_AICPU_OP_DEF_FILES GLOBAL PROPERTY AICPU_OP_DEF_FILES)
+  if(NOT ALL_AICPU_OP_DEF_FILES)
+    message(STATUS "No aicpu opdef files found, skip opdef ini generation.")
     return()
   endif()
 
+  gen_aicpu_ini_from_opdef(
+    OPS_SRC ${ALL_AICPU_OP_DEF_FILES}
+    OUT_DIR ${ASCEND_AUTOGEN_PATH}
+  )
+endfunction()
+
+function(gen_cust_aicpu_json_symbol)
+  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
+  get_property(ALL_AICPU_OP_DEF_FILES GLOBAL PROPERTY AICPU_OP_DEF_FILES)
+  if(NOT ALL_AICPU_OP_DEF_FILES AND NOT ALL_AICPU_JSON_FILES)
+    message(STATUS "No aicpu opdef/json files to merge, skipping.")
+    return()
+  endif()
+
+  set(AICPU_PARSER_INI_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/kernel/binary_script/aicpu_parser_ini_to_json.py)
+  if(NOT EXISTS ${AICPU_PARSER_INI_SCRIPT})
+    message(FATAL_ERROR "AICPU parser script not found: ${AICPU_PARSER_INI_SCRIPT}")
+  endif()
+
   set(MERGED_JSON ${CMAKE_BINARY_DIR}/cust_aicpu_kernel.json)
+  set(INPUT_JSONS "")
+
+  if(ALL_AICPU_OP_DEF_FILES)
+    gen_cust_aicpu_op_def_symbol()
+    set(AICPU_INI ${ASCEND_AUTOGEN_PATH}/aicpu_kernel.ini)
+    set(OPDEF_JSON ${CMAKE_BINARY_DIR}/aicpu_opdef_kernel.json)
+    add_custom_command(
+      OUTPUT ${OPDEF_JSON}
+      COMMAND ${ASCEND_PYTHON_EXECUTABLE} ${AICPU_PARSER_INI_SCRIPT} ${AICPU_INI} ${OPDEF_JSON}
+      DEPENDS ${ALL_AICPU_OP_DEF_FILES} ${AICPU_INI} ${AICPU_PARSER_INI_SCRIPT}
+      COMMENT "Generating ${OPDEF_JSON} from ${AICPU_INI}"
+      VERBATIM
+    )
+    list(APPEND INPUT_JSONS ${OPDEF_JSON})
+  endif()
+
+  if(ALL_AICPU_JSON_FILES)
+    list(APPEND INPUT_JSONS ${ALL_AICPU_JSON_FILES})
+  endif()
+
   add_custom_command(
     OUTPUT ${MERGED_JSON}
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${ALL_AICPU_JSON_FILES}
-    DEPENDS ${ALL_AICPU_JSON_FILES}
-    COMMENT "Merging Json files into ${MERGED_JSON}"
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh
+            ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${INPUT_JSONS}
+    DEPENDS ${INPUT_JSONS}
+    COMMENT "Merging aicpu json inputs into ${MERGED_JSON}"
     VERBATIM
   )
+  add_custom_target(gen_aicpu_json_from_opdef DEPENDS ${MERGED_JSON})
   add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
   install(
     FILES ${MERGED_JSON}

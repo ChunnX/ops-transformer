@@ -23,8 +23,8 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
     int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t qQuantMode, int64_t kQuantMode,
-    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional,
+    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
+    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default")))

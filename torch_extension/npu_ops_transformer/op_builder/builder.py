@@ -46,7 +46,9 @@ class OpBuilder(ABC):
     def get_absolute_paths(self, paths):
         return [os.path.join(self._package_path, path) for path in paths]
 
-    def register_schema(self, op_schema: Union[str, List[str]]):
+    def register_schema(self, op_schema: Union[str, List[str], None]):
+        if op_schema is None:
+            return
         if isinstance(op_schema, str):
             op_schema = [op_schema]
         for schema in op_schema:

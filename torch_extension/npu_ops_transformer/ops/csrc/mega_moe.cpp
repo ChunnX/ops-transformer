@@ -15,36 +15,6 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
-typedef struct {
-    const at::Tensor& tensor_;
-    aclDataType dtype;
-} TensorWrapper;
-
-typedef struct {
-    const at::TensorList& tensor_list_;
-    aclDataType dtype;
-} TensorListWrapper;
-
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
-#define DEFINE_ENUM(_1, n) n,
-    AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
-#undef DEFINE_ENUM
-};
-
-aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
-{
-    int64_t dtype_index = static_cast<int64_t>(data_type);
-    TORCH_CHECK(dtype_index >= 0 && dtype_index < static_cast<int64_t>(at::ScalarType::NumOptions) + 1,
-                "data_type enum value (",
-                dtype_index,
-                ") is out of range: [0, ",
-                static_cast<int64_t>(at::ScalarType::NumOptions),
-                "]")
-    auto acl_dtype = kATenScalarTypeToAclDataTypeTable[dtype_index];
-    TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
-                std::string(c10::toString(data_type)) + " has not been supported")
-    return acl_dtype;
-}
 // const std::vector<at::Tensor> &weight1
 std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
@@ -83,12 +53,41 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     } else {
         weight_scales2_ref = at::TensorList();
     }
+
+    aclDataType weight1_ref_dtype = weight1_type.has_value() ? GetAclDataType(weight1_type.value())
+        : ConvertToAclDataType(weight1_ref[0].scalar_type());
+    aclDataType weight_scales1_dtype;
+    if (weight1_ref_dtype == aclDataType::ACL_FLOAT8_E5M2 ||
+        weight1_ref_dtype == aclDataType::ACL_FLOAT8_E4M3FN ||
+        weight1_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
+        weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    } else {
+        weight_scales1_dtype = aclDataType::ACL_FLOAT;
+    }
+
+    aclDataType weight2_ref_dtype = weight2_type.has_value() ? GetAclDataType(weight2_type.value())
+        : ConvertToAclDataType(weight2_ref[0].scalar_type());
+    aclDataType weight_scales2_dtype;
+    if (weight2_ref_dtype == aclDataType::ACL_FLOAT8_E5M2 ||
+        weight2_ref_dtype == aclDataType::ACL_FLOAT8_E4M3FN ||
+        weight2_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
+        weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    } else {
+        weight_scales2_dtype = aclDataType::ACL_FLOAT;
+    }
     
     auto x_size = x.sizes();
     auto topk_ids_size = topk_ids.sizes();
     int64_t bs = x_size[0];
     int64_t h = x_size[1];
     int64_t k = topk_ids_size[1];
+
+    if ((dispatch_quant_out_type.has_value()) &&
+        (dispatch_quant_out_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
+        TORCH_CHECK(h % 2 == 0,
+                    "The last dim input shape must be divisible by 2 if "
+                    "dispatch quant output type is torch_npu.float4_e2m1");
+    }
 
     int64_t local_moe_expert_num = 1;
     local_moe_expert_num = moe_expert_num / ep_world_size;
@@ -98,13 +97,19 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string comm_alg_str = std::string(comm_alg);
     char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_type.value_or(28);
+    int64_t dispatch_quant_result_type = dispatch_quant_out_type.has_value()
+        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_type.value()))
+        : 28;
 
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
-    ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_ref,
-        weight2_ref, weight_scales1_ref, weight_scales2_ref, x_active_mask, scales,
+    TensorListWrapper weight1_wrapper = {weight1_ref, weight1_ref_dtype};
+    TensorListWrapper weight2_wrapper = {weight2_ref, weight2_ref_dtype};
+    TensorListWrapper weight_scales1_wrapper = {weight_scales1_ref, weight_scales1_dtype};
+    TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};
+    ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
+        weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, x_active_mask, scales,
         moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
         comm_alg_ptr, global_bs, y, expert_token_nums);

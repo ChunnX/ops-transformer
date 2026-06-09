@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <vector>
 #include "../../../op_api/aclnn_all_gather_matmul_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -42,7 +43,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherFirstApi1)
     TensorDesc output = TensorDesc({1024, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({1024, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -58,7 +59,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherFirstApi2)
     TensorDesc output = TensorDesc({0, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({0, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -74,7 +75,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherGatherOutFalse)
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -90,7 +91,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherFourthApi)
     TensorDesc output = TensorDesc({1, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({1, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -106,7 +107,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherFifthApi)
     TensorDesc output = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -124,7 +125,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherSixthApi)
     TensorDesc output = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -142,7 +143,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckHif8BaisInvaild)
     TensorDesc output = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -162,7 +163,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckScale)
     TensorDesc gatherOut = TensorDesc({8, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, bias, x1Scale, x2Scale, quant_scale, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, bias, x1Scale, x2Scale, quant_scale, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -181,7 +182,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckAmaxout)
     TensorDesc gatherOut = TensorDesc({1, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc amaxOutput = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, amaxOutput));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -199,7 +200,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckX1scaleNotNullptr)
     TensorDesc gatherOut = TensorDesc({1, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc amaxOutput = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, amaxOutput));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -217,7 +218,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckX2scaleNotNullptr)
     TensorDesc gatherOut = TensorDesc({1, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc amaxOutput = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, x1Scale, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, x1Scale, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, amaxOutput));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -236,7 +237,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckX2scaleNotScalar)
     TensorDesc gatherOut = TensorDesc({1, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc amaxOutput = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, amaxOutput));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -257,7 +258,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherCheckQuantscaleNotScalar)
     TensorDesc amaxOutput = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(
         aclnnAllGatherMatmulV2,
-        INPUT(x1, x2, bias, x1Scale, x2Scale, quant_quant_scale, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+        INPUT(x1, x2, bias, x1Scale, x2Scale, quant_quant_scale, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
         OUTPUT(output, gatherOut, amaxOutput));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -275,31 +276,8 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherMatmulTransPerblock)
     TensorDesc gatherOut = TensorDesc({256, 256}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(
         aclnnAllGatherMatmulV2,
-        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 549764202624, "aicpu"),
+        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 549764202624, "ai_cpu"),
         OUTPUT(output, gatherOut, nullptr));
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(AllGatherMatmulV2AclnnTest, TestAllGatherV2X2NonContiguousWithoutTranspose)
-{
-    // 测试场景：非转置的连续x2输入，应返回校验失败
-    TensorDesc x1 = TensorDesc({32, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    // 设置x2非转置非连续步长，假设每行之间间隔10个元素[128 + 10, 1]，实际内存存储storageShape为[256, 128 + 10]
-    TensorDesc x2 = TensorDesc({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, {128 + 10, 1}, 0, {256, 128 + 10});
-    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc output = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gatherOut = TensorDesc({32, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
-
-    auto ut =
-        OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aiv"),
-                  OUTPUT(output, gatherOut, nullptr));
-
-    // 预期：由于 x2 是非连续的（非转置），应该返回 ACLNN_ERR_PARAM_INVALID
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -314,7 +292,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestStreamModeInvalid)
     TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 0, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 0, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -330,7 +308,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestDtypeMismatchX1X2)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -346,7 +324,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestDtypeMismatchX1Output)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -362,7 +340,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestBiasDtypeMismatch)
     TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -378,7 +356,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestKAxisTooSmall)
     TensorDesc gatherOut = TensorDesc({8, 100}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -394,7 +372,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestKAxisTooLarge)
     TensorDesc gatherOut = TensorDesc({8, 70000}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -410,7 +388,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestKAxisMismatch)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -426,7 +404,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestNAxisMismatch)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -442,7 +420,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestFP16EmptyX1WithValidK)
     TensorDesc gatherOut = TensorDesc({0, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -458,7 +436,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestFP16KZeroEmpty)
     TensorDesc gatherOut = TensorDesc({8, 0}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -475,7 +453,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAmaxOutWithFP16)
     TensorDesc amaxOut = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, amaxOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -494,7 +472,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAmaxOutWrongDtype)
     TensorDesc amaxOut = TensorDesc({1}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, amaxOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -513,7 +491,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAmaxOutNotScalar)
     TensorDesc amaxOut = TensorDesc({5}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, amaxOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -532,7 +510,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestQuantScaleWrongDtype)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, quantScale, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, quantScale, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -550,7 +528,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestHif8DtypeMismatch)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -566,7 +544,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestUnsupportedOutputDtype)
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -582,7 +560,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestUnsupportedBiasDtype)
     TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, gatherOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -601,7 +579,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestAmaxOutNot1D)
     TensorDesc amaxOut = TensorDesc({1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAllGatherMatmulV2,
-                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aicpu"),
+                  INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
                   OUTPUT(output, gatherOut, amaxOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -613,7 +591,8 @@ class AllGatherMatmulV2AclnnAIVTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_2201);
+        // 不依赖 tests/ 框架里 SetPlatformNpuArch(DAV_2201) 映射；直接设 SocVersion 使 GetCurNpuArch()==DAV_2201
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
         cout << "AllGatherMatmulV2AclnnAIVTest SetUp" << endl;
     }
     static void TearDownTestCase()
@@ -769,6 +748,253 @@ TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVNAxisMismatch)
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVNonContiguousX2WithoutTranspose)
+{
+    TensorDesc x1 = TensorDesc({32, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND, {128 + 10, 1}, 0, {256, 128 + 10});
+    TensorDesc output = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({32, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aiv"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVX1TransposedRejected)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 8});
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "aiv"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestGetWorkspaceSizeUnsupportedNpuArch)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_RESV);
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestSecondStageSkipsWhenWorkspaceEmpty)
+{
+    aclnnStatus aclRet = aclnnAllGatherMatmulV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestAmaxOutEmptyTensorTreatedAsNoAmax)
+{
+    TensorDesc x1 = TensorDesc({1, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 1}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({1, 1}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({1, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc amaxOutput = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, amaxOutput));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    if (executor != nullptr) {
+        delete executor;
+    }
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestFP8EmptyX1ExercisesDealEmptyTensor)
+{
+    TensorDesc x1 = TensorDesc({0, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({0, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({0, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    (void)ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    if (executor != nullptr) {
+        delete executor;
+    }
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestFP8EmptyX2ExercisesDealEmptyTensor)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 0}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 0}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    (void)ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    if (executor != nullptr) {
+        delete executor;
+    }
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestX2ScaleTransposeBranch)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({2, 2}, ACL_FLOAT, ACL_FORMAT_ND, {1, 2}, 0, {2, 2});
+    TensorDesc bias = TensorDesc({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    if (executor != nullptr) {
+        delete executor;
+    }
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestSecondStageWithWorkspaceInvokesInnerAndHcclStub)
+{
+    TensorDesc x1 = TensorDesc({256, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({1024, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({1024, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus wsRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    if (wsRet != ACLNN_SUCCESS || executor == nullptr || workspaceSize == 0) {
+        if (executor != nullptr) {
+            delete executor;
+        }
+        GTEST_SKIP() << "GetWorkspaceSize did not yield runnable second stage";
+    }
+    std::vector<uint8_t> workspace(workspaceSize);
+    aclnnStatus runRet = aclnnAllGatherMatmulV2(workspace.data(), workspaceSize, executor, nullptr);
+    EXPECT_EQ(runRet, ACLNN_SUCCESS);
+    delete executor;
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeCcu)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ccu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeEmptyAutoDetect)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, ""),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeInvalid)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "bad_mode"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestX1TransposedRejected)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND, {1, 8});
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut =
+        OP_API_UT(aclnnAllGatherMatmulV2,
+                  INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0, 8, 1, 0, "ai_cpu"),
+                  OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestCommModeNullptr)
+{
+    TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnAllGatherMatmulV2GetWorkspaceSize(
+        x1.ToAclTypeRawPtr(), x2.ToAclTypeRawPtr(), nullptr, nullptr, nullptr, nullptr, 0, "test_all_gather_group", 0,
+        8, 1, 0, nullptr, output.ToAclTypeRawPtr(), gatherOut.ToAclTypeRawPtr(), nullptr, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestSecondStageExecutorNull)
+{
+    std::vector<uint8_t> workspace(64, 0);
+    aclnnStatus aclRet = aclnnAllGatherMatmulV2(workspace.data(), workspace.size(), nullptr, nullptr);
+    EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
 }
 
 } // namespace

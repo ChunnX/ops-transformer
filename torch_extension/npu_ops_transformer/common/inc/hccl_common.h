@@ -13,6 +13,9 @@
  * \brief
  */
 
+#ifndef NPU_OPS_TRANSFORMER_HCCL_COMMON_H
+#define NPU_OPS_TRANSFORMER_HCCL_COMMON_H
+
 #include "aclnn_common.h"
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
@@ -189,3 +192,5 @@ inline void InitHcclEngineCtxFunctions()
     HcclGetRankSizeFunc = GetHcclFwkFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
     TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
 }
+
+#endif // NPU_OPS_TRANSFORMER_HCCL_COMMON_H

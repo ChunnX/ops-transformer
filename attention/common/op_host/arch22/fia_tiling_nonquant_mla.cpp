@@ -166,6 +166,7 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint64_t modeVal = fiaInfo_->sysPrefixFlag ? 2U : 1U;
     uint8_t kvLayoutVal = 0;
     uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
+    uint8_t enableTreeVal = (fiaInfo_->sparseMode == SPARSE_MODE_TREE) ? 2 : 0; // sparse_mode为 tree时为2，其他场景为0
 
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
         {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U},
@@ -200,7 +201,7 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint64_t baseOffset =
         modeVal * FIA_TILINGKEYOFFSET + (static_cast<uint64_t>(perfMode_)) * FIA_PERF_MODE_TILINGKEYOFFSET;
     tilingKey_ = baseOffset + FIA_GET_TILINGKEY(layoutVal, inputQVal, inputKvVal, outputVal, originVal,
-        (paVal + splitKvVal), antiquantModeVal, kvLayoutVal, cvRatioVal);
+        (paVal + splitKvVal), antiquantModeVal, kvLayoutVal, (cvRatioVal + enableTreeVal));
 
     OP_LOGI(fiaInfo_->opName, "FIA tilingKey_: %lu.", tilingKey_);
 }
@@ -327,7 +328,7 @@ void FiaTilingNonQuantMla::CreateSplitInput(BaseInfo &baseInfo, SplitParam &spli
     baseInfo.s2Size = static_cast<uint32_t>(fiaInfo_->s2Size);
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
@@ -433,7 +434,7 @@ void FiaTilingNonQuantMla::FillTilingBaseParams()
     tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
     tilingData_.baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0 : 1);
     tilingData_.baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
-    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
+    tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenKvDims);
     tilingData_.baseParams.set_accumQSeqFlag(fiaInfo_->isAccumQSeq ? 1 : 0);
     tilingData_.baseParams.set_accumKVSeqFlag(fiaInfo_->isAccumKVSeq ? 1 : 0);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(fiaInfo_->outputLayout));

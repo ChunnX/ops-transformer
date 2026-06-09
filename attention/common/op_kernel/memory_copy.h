@@ -158,18 +158,18 @@ __aicore__ inline constexpr UbFormat GetPseUbFormat() {
 }
 
 // ---------------------------------------Set attention Gm To Zero--------------------------------
-template <GmFormat FORMAT, typename OUT_T>
-__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalculator<FORMAT> &offsetCalculator,
+template <GmFormat FORMAT, typename OUT_T, typename OffsetCalcType>
+__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
                                            GlobalTensor<OUT_T>& attentionOutGm)
 {  
     if constexpr (FORMAT == GmFormat::TNGD) {
-        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(bIdx);
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetFullActualSeqLength(bIdx);
         for (int s1Idx = 0; s1Idx < s1Count; s1Idx++) {
             uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
         }
     }  else if constexpr (FORMAT == GmFormat::NGTD) {
-        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(bIdx);
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetFullActualSeqLength(bIdx);
         uint32_t gSize = offsetCalculator.GetDimG();
         for (int gIdx = 0; gIdx < gSize; gIdx++) {
             uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);

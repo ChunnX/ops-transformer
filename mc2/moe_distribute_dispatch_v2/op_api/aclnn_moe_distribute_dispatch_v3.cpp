@@ -14,7 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_dispatch_v3.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
 

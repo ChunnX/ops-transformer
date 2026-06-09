@@ -231,6 +231,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
                               deqScaleV, deqScaleDy, dq, dk, dv, sink, dsink, workspace);
+    if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
+        vecBlock.SetOldDeterFp32Param(constInfo);
+    }
  
     // pass params to cube block
     cubeBlock.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
@@ -286,17 +289,6 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
         dqWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
         dvWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
-        if constexpr ((DETER_SPARSE_TYPE) == DETER_OLD) {
-            constInfo.deterConstInfo.dqGmBaseAddr = (uint64_t)(dqWorkSpaceGm.GetPhyAddr());
-            constInfo.deterConstInfo.dkGmBaseAddr = (uint64_t)(dkWorkSpaceGm.GetPhyAddr());
-            constInfo.deterConstInfo.dvGmBaseAddr = (uint64_t)(dvWorkSpaceGm.GetPhyAddr());
-            uint64_t dqSizeByte = tilingData->s1s2BNGS1S2BaseParams.qSize * sizeof(CALC_TYPE);
-            uint64_t dkSizeByte = tilingData->s1s2BNGS1S2BaseParams.kSize * sizeof(CALC_TYPE);
-            uint64_t dvSizeByte = tilingData->s1s2BNGS1S2BaseParams.vSize * sizeof(CALC_TYPE);
-            constInfo.deterConstInfo.dqGmLimitOffset = constInfo.deterConstInfo.dqGmBaseAddr + dqSizeByte;
-            constInfo.deterConstInfo.dkGmLimitOffset = constInfo.deterConstInfo.dkGmBaseAddr + dkSizeByte;
-            constInfo.deterConstInfo.dvGmLimitOffset = constInfo.deterConstInfo.dvGmBaseAddr + dvSizeByte;
-        }
     }
 }
  
@@ -1906,8 +1898,8 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                 if (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum > constInfo.actualS1Outer) {
                     if (gDimTail < constInfo.s2FirstBlockNum) {
                         tmp = (constInfo.firstValidColBlockNum << 1) - 1;
-                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
-                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << NUM_THREE)) - tmp) >> 1;
+                        s1Idx = gDimTail - (((tmp + s2Idx) * s2Idx) >> 1);
                     } else if (constInfo.s2FirstBlockNum <= gDimTail &&
                                gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
                         gDimTail = gDimTail - constInfo.s2FirstBlockNum;
@@ -1916,16 +1908,16 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                     } else {
                         gDimTail = gDimTail - constInfo.s2FirstBlockNum - constInfo.s2SecondBlockNum;
                         tmp = (constInfo.actualS1Outer << 1) - 1;
-                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((constInfo.actualS1Outer - 1 - gDimTail) << 3))),
-                                              NUM_TWO);
-                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1);
+                        s2Idx = Ceil<int64_t>(
+                            (tmp - sqrt(tmp * tmp + ((constInfo.actualS1Outer - 1 - gDimTail) << NUM_THREE))), NUM_TWO);
+                        s1Idx = gDimTail - (((tmp - s2Idx) * s2Idx) >> 1);
                         s2Idx = s2Idx + constInfo.firstValidRowBlockNum - 1;
                     }
                 } else {
                     if (gDimTail < constInfo.s2FirstBlockNum) {
                         tmp = (constInfo.firstValidColBlockNum << 1) - 1;
-                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
-                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << NUM_THREE)) - tmp) >> 1;
+                        s1Idx = gDimTail - (((tmp + s2Idx) * s2Idx) >> 1);
                     } else if (constInfo.s2FirstBlockNum <= gDimTail &&
                                gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
                         gDimTail = gDimTail - constInfo.s2FirstBlockNum;
@@ -1938,8 +1930,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                         int64_t s1OuterTmp =
                             constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - NUM_TWO;
                         tmp = (s1OuterTmp << 1) - 1;
-                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((s1OuterTmp - 1 - gDimTail) << 3))), NUM_TWO);
-                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1) + constInfo.s2SecondWidth;
+                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((s1OuterTmp - 1 - gDimTail) << NUM_THREE))),
+                                              NUM_TWO);
+                        s1Idx = gDimTail - (((tmp - s2Idx) * s2Idx) >> 1) + constInfo.s2SecondWidth;
                         s2Idx = s2Idx + constInfo.s2FirstWidth + constInfo.s2SecondWidth;
                     }
                 }

@@ -21,37 +21,39 @@
 #include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"
 
 namespace optiling {
-// Run mode constants
-constexpr int64_t RUN_MODE_BSH = 0;
-constexpr int64_t RUN_MODE_BH = 1;
+// max_query_len threshold for BH template: 2D input with maxQueryLen <= 8 goes to BH
+constexpr int64_t MAX_BH_SEQ_LEN = 8;
 
 struct FusedCausalConv1dCompileInfo {
     uint64_t coreNum = 0;
     uint64_t ubSize = 0;
 };
 
-// Main tiling function that dispatches based on runMode attribute
-static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
+// Main tiling function that dispatches based on x shape and max_query_len
+static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1dTiling tiling start");
 
-    // Get runMode attribute to determine which tiling implementation to use
-    int64_t runMode = 0;  // Default to BSH mode
-    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX) != nullptr) {
-        runMode = *(context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX));
+    // Determine dispatch: BH if x is 3D, or x is 2D with max_query_len <= MAX_BH_SEQ_LEN; else BSH
+    auto xShape = context->GetInputShape(0);
+    OP_CHECK_IF(xShape == nullptr, OP_LOGE(context->GetNodeName(), "x shape is null"), return ge::GRAPH_FAILED);
+    int64_t xDimNum = static_cast<int64_t>(xShape->GetOriginShape().GetDimNum());
+
+    int64_t maxQueryLen = 0;
+    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX) != nullptr) {
+        maxQueryLen = *(context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX));
     }
 
-    OP_LOGD(context->GetNodeName(), "FusedCausalConv1d runMode=%ld (0=BSH, 1=BH)", runMode);
+    bool useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= MAX_BH_SEQ_LEN);
 
-    // Dispatch to the appropriate tiling implementation based on runMode
+    OP_LOGD(context->GetNodeName(), "FusedCausalConv1d xDimNum=%ld maxQueryLen=%ld useBH=%d", xDimNum, maxQueryLen,
+            static_cast<int>(useBH));
+
     ge::graphStatus status = ge::GRAPH_FAILED;
-
-    if (runMode == RUN_MODE_BH) {
-        // Use BH tiling logic
+    if (useBH) {
         FusedCausalConv1dCutBHTiling tilingImpl(context);
         status = tilingImpl.DoTiling();
-    } else if (runMode == RUN_MODE_BSH){
-        // Use BSH tiling logic
+    } else {
         FusedCausalConv1dCutBSHTiling tilingImpl(context);
         status = tilingImpl.DoTiling();
     }
@@ -60,15 +62,12 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
     return status;
 }
 
-static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE("FusedCausalConv1d", "context is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("FusedCausalConv1d", "context is null"), return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr,
-                OP_LOGE(context->GetNodeName(), "platformInfo is null"),
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfo is null"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
