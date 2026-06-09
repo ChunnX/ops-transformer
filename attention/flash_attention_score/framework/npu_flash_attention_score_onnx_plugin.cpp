@@ -39,23 +39,23 @@ static void UpdateFlashAttentionByNode(ge::Operator& op_dest, const NodeProto* n
 static Status GetAttrFromPre4(
   const ge::Operator& op, int& head_num, string& input_layout, float& scale, float& keep_prob) {
   if (op.GetAttr("head_num", head_num) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "head_num", "nullptr", "The value of head_num cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "head_num",
+                                         "nullptr", "The value of head_num cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("input_layout", input_layout) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "input_layout", "nullptr", "The value of input_layout cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "input_layout",
+                                         "nullptr", "The value of input_layout cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("scale", scale) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "scale", "nullptr", "The value of scale cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "scale",
+                                         "nullptr", "The value of scale cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("keep_prob", keep_prob) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "keep_prob", "nullptr", "The value of keep_prob cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "keep_prob",
+                                         "nullptr", "The value of keep_prob cannot be nullptr");
     return FAILED;
   }
   return SUCCESS;
@@ -64,23 +64,23 @@ static Status GetAttrFromPre4(
 static Status GetAttrFromLast4(
   const ge::Operator& op, int& pre_tockens, int& next_tockens, int& inner_precise, int& sparse_mode) {
   if (op.GetAttr("pre_tockens", pre_tockens) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "pre_tockens", "nullptr", "The value of pre_tockens cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "pre_tockens",
+                                         "nullptr", "The value of pre_tockens cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("next_tockens", next_tockens) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "next_tockens", "nullptr", "The value of next_tockens cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "next_tockens",
+                                         "nullptr", "The value of next_tockens cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("inner_precise", inner_precise) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "inner_precise", "nullptr", "The value of inner_precise cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "inner_precise",
+                                         "nullptr", "The value of inner_precise cannot be nullptr");
     return FAILED;
   }
   if (op.GetAttr("sparse_mode", sparse_mode) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "sparse_mode", "nullptr", "The value of sparse_mode cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "sparse_mode",
+                                         "nullptr", "The value of sparse_mode cannot be nullptr");
     return FAILED;
   }
   return SUCCESS;
@@ -95,8 +95,8 @@ static Status GetFinalDimsByOperator(
   } else if (input_layout == "SBH") {
     numels = dims[1] * dims[0] * dims[0] * head_num;
   } else {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "input_layout", input_layout, "The value of input_layout must be BSH or SBH");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "input_layout",
+                                         input_layout, "The value of input_layout must be BSH or SBH");
     return FAILED;
   }
   int64_t length = (numels + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM / ONE_BYTE_BITS;
@@ -107,8 +107,8 @@ static Status GetFinalDimsByOperator(
 
 static Status GetOriNameFromOperator(const ge::Operator& op, std::string& ori_name) {
   if (op.GetAttr("name", ori_name) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-      GetOpName(op).c_str(), "name", "nullptr", "The value of name cannot be nullptr");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "name",
+                                         "nullptr", "The value of name cannot be nullptr");
     return FAILED;
   }
   return SUCCESS;
