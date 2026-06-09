@@ -465,9 +465,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         CalTokenSendExpertCnt(i, axisBS_, curExpertCnt);
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
-    sendSumTensor_(epRankId_ - startExpert) = sendCntTensor_(epRankId_ - startExpert);
     PipeBarrier<PIPE_ALL>();
-    uint32_t processCnt = 0;
+    uint32_t processCnt = 1; // 包含epRankId_
     uint32_t cnt=0;
     while(true) {
         cnt += 1;
