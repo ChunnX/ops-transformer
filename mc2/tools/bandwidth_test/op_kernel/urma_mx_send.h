@@ -437,9 +437,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     PRINTF("CommProcess aivId_ = %d\n", aivId_);
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     SplitToCore(epWorldSize_, aivNumUsedComm_, startExpert, endExpert, processExpertNum);
+    PRINTF("CommProcess startExpert = %d, endExpert = %d, processExpertNum = %d\n", startExpert, endExpert, processExpertNum);
     if (startExpert >= epWorldSize_ || processExpertNum == 0) { 
         return; 
     }
+    PRINTF("CommProcess startExpert = %d, endExpert = %d\n", startExpert, endExpert);
     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t));
     uint32_t lenth = Ceil(processExpertNum * sizeof(uint32_t),UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sendCntBuf_, lenth);
