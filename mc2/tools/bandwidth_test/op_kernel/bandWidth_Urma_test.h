@@ -488,9 +488,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
         cnt += 1;
-        if (cnt > 100000000) {
-            break;
-        }
+        // if (cnt > 100000000) {
+        //     break;
+        // }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == (uint32_t)epRankId_) { // 本卡不处理
                 continue;
@@ -578,9 +578,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     // 设置状态：统计发送到各rank的token数量，并写入状态区通知对端
     // 状态区结构: [flag(1.0f), count, rank_id, world_size, ...]
     // ============ 计算当前核负责的rank范围 ============
+    SyncAll<true>(); // 等待所有核完成统计
     SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
      if (startExpertId_ >= epWorldSize_) {
-        SyncAll<true>(); // 等待所有核完成统计
         return; 
     }
     // ============ 统计发送到各rank的token数量 ============
@@ -593,7 +593,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     }
 
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>(); // 等待所有核完成统计
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
     GlobalTensor<int32_t> rankGMTensor;
