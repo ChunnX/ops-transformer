@@ -235,8 +235,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     auto keyRope = context_->GetOptionalInputShape(KEY_ROPE_INDEX);
     bool hasKeyRope = keyRope != nullptr && keyRope->GetStorageShape().GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "queryRope and keyRope",
-            "The value of queryRope and keyRope must be present or absent at the same time");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "queryRope and keyRope",
+            "inconsistent", "The value of queryRope and keyRope must be present or absent at the same time");
         return false;
     }
     dSizeRope = 0; // init dSizeRope
@@ -342,11 +342,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
     std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "actual_seq_qlen", "The value of actual_seq_qlen cannot be bullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "actual_seq_qlen", "nullptr", "The value of actual_seq_qlen cannot be bullptr");
         return false;
     }
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "actual_seq_kvlen", "The value of actual_seq_kvlen cannot be bullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "actual_seq_kvlen", "nullptr", "The value of actual_seq_kvlen cannot be bullptr");
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
@@ -867,8 +867,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
     auto dropMaskInput = context_->GetOptionalInputDesc(DROP_MASK_INPUT_INDEX);
     if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0) {
         if (!hasDropOut) {
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "dropMaskOptional",
-                "The value of dropMaskOptional must be nullptr when keepProb is 1.0.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "dropMaskOptional",
+                "not nullptr", "The value of dropMaskOptional must be nullptr when keepProb is 1.0.");
             return false;
         }
         auto dropMaskDtype = dropMaskInput->GetDataType();
