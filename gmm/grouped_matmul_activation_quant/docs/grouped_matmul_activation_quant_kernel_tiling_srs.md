@@ -282,7 +282,7 @@ GroupedMatmulActivationQuantTiling950.DoOpTiling():
 
 高阶 API 常用的 `TCubeTiling` 不能不经适配直接作为低阶 `BlockMmadMx` 的 tiling 输入。低阶 kernel 需要的是 `BlockMmadMx::Init(problemShape, l0TileShape, L1Params, isBias, dbL0C)`，其中 `L1Params` 明确包含 `kAL1/kBL1/scaleKL1/l1BufNum`。`GroupedMatmulSwigluQuantV2` 的 MXFP4 weight NZ 场景采用的是兼容写法：host 侧仍保存 `TCubeTiling`，kernel 侧通过 `BlockMmadMxToUbAdapter` 从 `TCubeTiling` 的 `base/step/mxTypePara/isBias/dbL0C` 推导低阶 `L1Params` 后再调用 `BlockMmadMx`。
 
-本算子没有使用上述适配层，而是直接在 tiling data 中保存低阶 BasicAPI 所需字段：`baseM/baseN/baseK`、`kAL1/kBL1`、`scaleKAL1/scaleKBL1`、`isBias` 和 `dbL0C`。因此当前代码不需要切换为 `TCubeTiling`；如果后续复用 swigluquantv2 的 adapter 方案，则需要同步把 tiling data 改为 `TCubeTiling`，并在 kernel 侧补齐 `TCubeTiling -> BlockMmadMx::L1Params` 的适配逻辑。
+本算子没有使用上述适配层，而是直接在 tiling data 中保存低阶 BasicAPI 所需字段：`baseM/baseN/baseK`、`kAL1/kBL1`、`scaleKAL1/scaleKBL1`、`isBias` 和 `dbL0C`。因此当前代码不需要切换为 `TCubeTiling`。
 
 #### 4.1.5 tiling key
 
@@ -403,7 +403,7 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 - `bias` 参与 GMM 主体计算，按 `[E, N]` 组织，每个 group 使用对应的 bias 向量。
 - kernel 会临时将 float overflow mode 控制位清 0，结束时恢复。
 
-#### 4.2.2 Kernel 参数装配
+#### 4.2.2 外层Kernel 参数介绍
 
 `GmmActivationMxQuant` 是 kernel dispatch 后的模板组装层，核心职责如下：
 
@@ -417,7 +417,7 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 | MMAD 地址 | 传入 `x`、`weight`、`weightScale`、`xScale`、`y`、`bias`、`groupList` |
 | Epilogue 地址和属性 | 传入 `y`、`yScale`、`baseM/baseN`、`roundMode`、`scaleAlg`、预留 `dstTypeMax`、内部枚举 `activationType` |
 
-当前 `bias` 进入 MMAD 参数装配，tiling 中 `isBias` 写为 1，使 BasicAPI 按带 bias 路径执行。
+当前 `bias` 有值时，tiling 中 `isBias` 写为 1，使 BasicAPI 按带 bias 路径执行。
 
 kernel 装配伪代码如下：
 
@@ -804,27 +804,27 @@ tensor 字段顺序如下：
 | --- | --- |
 | 加载用例 | 只加载 `socVersion=Ascend950` 且 `enable=true` 的 CSV 行 |
 | 构造上下文 | 按 CSV 字段构造 6 个输入 tensor、2 个输出 tensor、9 个 attr 和 `GMMCompileInfo` |
-| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `GRAPH_FAILED` |
+| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `错误日志` |
 | 执行成功用例 | `expectSuccess=true` 时，执行 tiling 并检查 `tilingKey` |
 | 定位失败 | 使用 `prefix/caseName` 标识失败用例，CSV 解析异常输出行号 |
 
 ### 6.5 当前 CSV 用例覆盖
 
-| case | 类型 | 关键输入 | 期望 |
-| --- | --- | --- | --- |
-| `valid_no_trans_e4m3` | 合法 | E4M3，`transposeWeight=false`，OCP scale | tiling 成功，key 0 |
-| `valid_trans_e5m2_cublas` | 合法 | E5M2，`transposeWeight=true`，cuBLAS scale | tiling 成功，key 1 |
-| `valid_grouplist_count` | 合法 | `group_list_type=1`，多 group count 模式 | tiling 成功，key 0 |
-| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` | `GRAPH_FAILED` |
-| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` | `GRAPH_FAILED` |
-| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 | `GRAPH_SUCCESS` |
-| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 | `GRAPH_FAILED` |
-| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` | `GRAPH_FAILED` |
-| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` | `GRAPH_FAILED` |
-| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` | `GRAPH_FAILED` |
-| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 | `GRAPH_FAILED` |
+| case | 类型 | 关键输入 |
+| --- | --- | --- |
+| `valid_no_trans_e4m3` | 合法 | E4M3，`transposeWeight=false`，OCP scale |
+| `valid_trans_e5m2_cublas` | 合法 | E5M2，`transposeWeight=true`，cuBLAS scale |
+| `valid_grouplist_count` | 合法 | `group_list_type=1`，多 group count 模式 |
+| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` |
+| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` |
+| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` |
+| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` |
+| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 |
+| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 |
+| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` |
+| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` |
+| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` |
+| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 |
 
 ## 7. 外部依赖
 
