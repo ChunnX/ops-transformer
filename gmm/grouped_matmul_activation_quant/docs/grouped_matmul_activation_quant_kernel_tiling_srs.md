@@ -770,7 +770,7 @@ scalar 字段顺序如下：
 | 2 | `caseName` | 原始用例名，便于解析失败定位 |
 | 3 | `enable` | 用例开关 |
 | 4 | `prefix` | gtest 参数名来源 |
-| 5 | `expectSuccess` | true 走成功 tiling；false 期望 `GRAPH_FAILED` |
+| 5 | `expectSuccess` | true 走成功 tiling；false 期望 `ge::GRAPH_FAILED` |
 | 6 | `expectTilingKey` | 成功 case 校验 tiling key |
 | 7 | `aicNum` | compileInfo AIC 数 |
 | 8 | `aivNum` | compileInfo AIV 数 |
@@ -804,7 +804,7 @@ tensor 字段顺序如下：
 | --- | --- |
 | 加载用例 | 只加载 `socVersion=Ascend950` 且 `enable=true` 的 CSV 行 |
 | 构造上下文 | 按 CSV 字段构造 6 个输入 tensor、2 个输出 tensor、9 个 attr 和 `GMMCompileInfo` |
-| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `GRAPH_FAILED` |
+| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `ge::GRAPH_FAILED` |
 | 执行成功用例 | `expectSuccess=true` 时，执行 tiling 并检查 `tilingKey` |
 | 定位失败 | 使用 `prefix/caseName` 标识失败用例，CSV 解析异常输出行号 |
 
@@ -815,16 +815,16 @@ tensor 字段顺序如下：
 | `valid_no_trans_e4m3` | 合法 | E4M3，`transposeWeight=false`，OCP scale | tiling 成功，key 0 |
 | `valid_trans_e5m2_cublas` | 合法 | E5M2，`transposeWeight=true`，cuBLAS scale | tiling 成功，key 1 |
 | `valid_grouplist_count` | 合法 | `group_list_type=1`，多 group count 模式 | tiling 成功，key 0 |
-| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` | `GRAPH_FAILED` |
-| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` | `GRAPH_FAILED` |
-| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 | `GRAPH_SUCCESS` |
-| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 | `GRAPH_FAILED` |
-| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` | `GRAPH_FAILED` |
-| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` | `GRAPH_FAILED` |
-| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` | `GRAPH_FAILED` |
-| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 | `GRAPH_FAILED` |
+| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` | `ge::GRAPH_FAILED`（`activation_type only supports gelu_tanh.`） |
+| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` | `ge::GRAPH_FAILED`（`group_list_type must be 0 or 1, actual is X.`） |
+| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` | `ge::GRAPH_FAILED`（`mxfp8 only supports round_mode rint.`） |
+| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` | `ge::GRAPH_FAILED`（`mxfp8 only supports scale_alg 0 or 1.`） |
+| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 | `ge::GRAPH_SUCCESS` |
+| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 | `ge::GRAPH_FAILED`（`quant_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2.`） |
+| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` | `ge::GRAPH_FAILED`（`y dtype and quant_dtype must be the same.`） |
+| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` | `ge::GRAPH_FAILED`（`FP8 NZ weight storage tail dims must be 16 and 32.`） |
+| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` | `ge::GRAPH_FAILED`（`x_scale shape must be (M, ceil(K/64), 2).`） |
+| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 | `ge::GRAPH_FAILED`（`aicNum:aivNum should be 1:2, actual X:Y.`） |
 
 ## 7. 外部依赖
 
