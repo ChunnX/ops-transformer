@@ -112,7 +112,8 @@ public:
         allToAllSizePerCore = allToAllSizeAllRanksPerLoop / allToAllSendCoreNum; // 每个core搬运的数据量
         coreNumPerRank = allToAllSendCoreNum / rankSize; // 每个rank的用来搬运的core数量
 
-        commCount = DivCeil(x1DataSize, allToAllSizeAllRanksPerLoop); // 总共需要计算的次数
+        commCount = static_cast<int32_t>((x1DataSize + allToAllSizeAllRanksPerLoop - 1) /
+ 	                                     allToAllSizeAllRanksPerLoop);
         usedCoreNum = allToAllSendCoreNum + allToAllRecvCoreNum; // 总共的core数量
 
         if ASCEND_IS_AIV {
@@ -270,7 +271,7 @@ public:
 
     uint64_t allToAllSizePerRank;
     uint32_t allToAllSizePerCore;
-    int32_t pingPongBlockSize;
+    uint32_t pingPongBlockSize;
     int32_t mPerLoop;
     int32_t allToAllSizePerRankPerLoop;
     int32_t allToAllSizeAllRanksPerLoop;

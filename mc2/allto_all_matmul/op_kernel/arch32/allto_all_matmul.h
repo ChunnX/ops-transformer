@@ -748,8 +748,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 int32_t coreOffset = dstLoc * allToAllSizePerCore;
                 int32_t dataLen = coreOffset + allToAllSizePerCore > allToAllSizePerRankPerLoop ?
                         allToAllSizePerRankPerLoop - coreOffset : allToAllSizePerCore;
-                int64_t dataSrc = dstRank * allToAllSizePerRank + src_offset + coreOffset;
-                int64_t dataDst = flagIdx * pingPongBlockSize + coreOffset * rankSize + rank * k;
+                uint64_t dataSrc = dstRank * allToAllSizePerRank + src_offset + coreOffset;
+                uint64_t dataDst = flagIdx * pingPongBlockSize + coreOffset * rankSize + rank * k;
                 uint32_t copyBytes = Catlass::BitsToBytes(dataLen * Catlass::SizeOfBits<AType>::value);
 
                 if (dataLen > 0) {
@@ -760,13 +760,13 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 src_offset += allToAllSizePerRankPerLoop;
             }
             else if (isAlltoallOut && aivIdx == 1 && commIdx > 0 && aicIdx >= allToAllSendCoreNum && aicIdx < usedCoreNum) {
-                int32_t blockDst = ((commIdx - 1) % MAX_BLOCK_COUNT) * pingPongBlockSize;
+                uint64_t blockDst = ((commIdx - 1) % MAX_BLOCK_COUNT) * pingPongBlockSize;
                 int32_t mThisLoop = commIdx == commCount ? m / rankSize - (commIdx - 1) * mPerLoop : mPerLoop;
                 int32_t mThisLoopPerCore = DivCeil(mThisLoop, allToAllRecvCoreNum);
                 int32_t mSt = (aicIdx - allToAllSendCoreNum) * mThisLoopPerCore;
                 int32_t mThisCoreThisLoop = mSt + mThisLoopPerCore > mThisLoop ? mThisLoop - mSt : mThisLoopPerCore;
-                int64_t srcSt = blockDst + mSt * tokenSize;
-                int64_t dstSt = ((commIdx - 1) * mPerLoop + mSt) * tokenSize;
+                uint64_t srcSt = blockDst + mSt * tokenSize;
+                uint64_t dstSt = (static_cast<uint64_t>(commIdx - 1) * mPerLoop + mSt) * tokenSize;
                 if (mThisCoreThisLoop > 0) {
                     CopyTokensFromGMToGM((__gm__ int8_t*)buff[rank] + ElemNumToBytes<AType>(srcSt),
                                         reinterpret_cast<__gm__ int8_t*>(allToAllResultGM_) + ElemNumToBytes<AType>(dstSt),
