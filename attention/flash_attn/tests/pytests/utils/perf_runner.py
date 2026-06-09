@@ -321,7 +321,7 @@ def build_batch_script(cases: List[Dict], runs: int, cold_thr: int,
         f"_cold_cases = {case_dicts['cold']}",
         f"_hot_names = {hot_names}",
         f"_cold_names = {cold_names}",
-        f"_perf_log = open({repr(str(Path(output_dir)) + '/_perf_log.jsonl')}, 'w')",
+        f"_perf_log = open({repr(str(Path(output_dir) / '_perf_log.jsonl'))}, 'w')",
         f"print(f'PERF total={len(cases)} hot={len(hot)} cold={len(cold)} runs={runs}')",
         "",
     ]
