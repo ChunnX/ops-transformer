@@ -366,7 +366,7 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "shareInput first dim should less than or equal to outputBS %lld, but actual is %lld."
                 "shareInput last dim should equal to weight NDim %lld, but actual is %lld.",
-                outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim, 
+                outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim,
                 params.shareInput->GetViewShape().GetDim(1));
         return false;
     }
