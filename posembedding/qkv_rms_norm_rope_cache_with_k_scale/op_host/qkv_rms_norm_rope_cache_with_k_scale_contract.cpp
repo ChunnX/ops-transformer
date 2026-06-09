@@ -11,6 +11,7 @@
 #include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 
 #include <algorithm>
+#include <string>
 
 #include "log/log.h"
 
@@ -66,35 +67,24 @@ uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numK
     return AlignUp(tokenTile * numQHeads, 16) + AlignUp(tokenTile * numKHeads, 16);
 }
 
-bool ShouldLog(const char *opName)
+void LogContractInputSummary(const std::string &opName, const ContractInput &input, uint64_t hqk, uint64_t htot)
 {
-    return opName != nullptr && opName[0] != '\0';
-}
-
-void LogContractInputSummary(const char *opName, const ContractInput &input, uint64_t hqk, uint64_t htot)
-{
-    if (!ShouldLog(opName)) {
-        return;
-    }
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale contract input: T=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu hqk=%lu htot=%lu "
             "headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
             input.totalTokens, input.batch, input.numQHeads, input.numKHeads, input.numVHeads, hqk, htot,
             input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, input.aicNum);
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
             "ubOutputRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
             kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kL0aMaxRows, kL0cMaxRows, kAivPerAic);
 }
 
-void LogTokenTileCandidate(const char *opName, uint64_t tokenTilePerAiv, uint64_t tokenTile, uint64_t rowTile,
+void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, uint64_t tokenTile, uint64_t rowTile,
                            uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb, bool fitsL0a, bool fitsL0c,
                            bool accepted)
 {
-    if (!ShouldLog(opName)) {
-        return;
-    }
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
             "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsL0a=%u fitsL0c=%u accepted=%u.",
             tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U,
@@ -129,82 +119,58 @@ uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize)
     return CalcCubeTokenSize(tokenSize) / kAivPerAic;
 }
 
-ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling, const char *opName)
+ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling, const std::string &opName)
 {
     tiling = {};
-    if (ShouldLog(opName)) {
-        OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract validation start.");
-    }
+    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
     if (input.totalTokens == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0.");
         return ContractStatus::kInvalidTotalTokens;
     }
     if (input.batch == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: batch is 0.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: batch is 0.");
         return ContractStatus::kInvalidBatch;
     }
     if (input.numQHeads == 0 || input.numKHeads == 0 || input.numVHeads == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: invalid head nums Nq=%lu Nk=%lu Nv=%lu.",
-                    input.numQHeads, input.numKHeads, input.numVHeads);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: invalid head nums Nq=%lu Nk=%lu Nv=%lu.",
+                input.numQHeads, input.numKHeads, input.numVHeads);
         return ContractStatus::kInvalidHeadNums;
     }
     if (input.numVHeads != input.numKHeads) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: numVHeads[%lu] != numKHeads[%lu].",
-                    input.numVHeads, input.numKHeads);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: numVHeads[%lu] != numKHeads[%lu].",
+                input.numVHeads, input.numKHeads);
         return ContractStatus::kUnsupportedNvNotEqualNk;
     }
     if (input.headDim != kHeadDimFast) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: unsupported headDim=%lu.",
-                    input.headDim);
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: unsupported headDim=%lu.",
+                input.headDim);
         return ContractStatus::kUnsupportedHeadDim;
     }
     if (input.maxSeqLen == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: maxSeqLen is 0.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: maxSeqLen is 0.");
         return ContractStatus::kInvalidMaxSeqLen;
     }
     if (input.blockNum == 0 || input.blockSize == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: blockNum=%lu blockSize=%lu.",
-                    input.blockNum, input.blockSize);
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: blockNum=%lu blockSize=%lu.",
+                input.blockNum, input.blockSize);
         return ContractStatus::kInvalidBlockShape;
     }
     if (input.aicNum == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: aicNum is 0.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: aicNum is 0.");
         return ContractStatus::kUnsupportedResource;
     }
     if (!input.qRotation.shape.present) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: qRotation is missing.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: qRotation is missing.");
         return ContractStatus::kMissingQRotation;
     }
     if (!input.kRotation.shape.present) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: kRotation is missing.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: kRotation is missing.");
         return ContractStatus::kMissingKRotation;
     }
     if (!input.vScale.shape.present) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: vScale is missing.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale is missing.");
         return ContractStatus::kMissingVScale;
     }
 
@@ -212,10 +178,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     const uint64_t htot = input.numQHeads + input.numKHeads + input.numVHeads;
     LogContractInputSummary(opName, input, hqk, htot);
     if (hqk == 0 || htot == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: derived hqk=%lu htot=%lu.", hqk,
-                    htot);
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: derived hqk=%lu htot=%lu.", hqk,
+                htot);
         return ContractStatus::kInvalidHeadNums;
     }
 
@@ -225,152 +189,120 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         !HasDtype(input.vCache, ContractDtype::kFloat8E4M3fn) || !HasDtype(input.kScaleCache, ContractDtype::kFloat) ||
         !HasDtype(input.cuSeqLen, ContractDtype::kInt32) || !HasDtype(input.qRotation, ContractDtype::kBf16) ||
         !HasDtype(input.kRotation, ContractDtype::kBf16) || !HasDtype(input.vScale, ContractDtype::kFloat)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: dtype check failed qkv=%u qGamma=%u kGamma=%u "
-                    "cosSin=%u slotMapping=%u kCache=%u vCache=%u kScaleCache=%u cuSeqLen=%u qRotation=%u "
-                    "kRotation=%u vScale=%u.",
-                    static_cast<uint32_t>(input.qkv.dtype), static_cast<uint32_t>(input.qGamma.dtype),
-                    static_cast<uint32_t>(input.kGamma.dtype), static_cast<uint32_t>(input.cosSin.dtype),
-                    static_cast<uint32_t>(input.slotMapping.dtype), static_cast<uint32_t>(input.kCache.dtype),
-                    static_cast<uint32_t>(input.vCache.dtype), static_cast<uint32_t>(input.kScaleCache.dtype),
-                    static_cast<uint32_t>(input.cuSeqLen.dtype), static_cast<uint32_t>(input.qRotation.dtype),
-                    static_cast<uint32_t>(input.kRotation.dtype), static_cast<uint32_t>(input.vScale.dtype));
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: dtype check failed qkv=%u qGamma=%u kGamma=%u "
+                "cosSin=%u slotMapping=%u kCache=%u vCache=%u kScaleCache=%u cuSeqLen=%u qRotation=%u "
+                "kRotation=%u vScale=%u.",
+                static_cast<uint32_t>(input.qkv.dtype), static_cast<uint32_t>(input.qGamma.dtype),
+                static_cast<uint32_t>(input.kGamma.dtype), static_cast<uint32_t>(input.cosSin.dtype),
+                static_cast<uint32_t>(input.slotMapping.dtype), static_cast<uint32_t>(input.kCache.dtype),
+                static_cast<uint32_t>(input.vCache.dtype), static_cast<uint32_t>(input.kScaleCache.dtype),
+                static_cast<uint32_t>(input.cuSeqLen.dtype), static_cast<uint32_t>(input.qRotation.dtype),
+                static_cast<uint32_t>(input.kRotation.dtype), static_cast<uint32_t>(input.vScale.dtype));
         return ContractStatus::kInvalidDtype;
     }
 
     if (!IsShape3D(input.qkv.shape, input.totalTokens, htot, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: qkv shape rank=%u dims={%lu,%lu,%lu,%lu}.",
-                    input.qkv.shape.rank, input.qkv.shape.dim0, input.qkv.shape.dim1, input.qkv.shape.dim2,
-                    input.qkv.shape.dim3);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: qkv shape rank=%u dims={%lu,%lu,%lu,%lu}.",
+                input.qkv.shape.rank, input.qkv.shape.dim0, input.qkv.shape.dim1, input.qkv.shape.dim2,
+                input.qkv.shape.dim3);
         return ContractStatus::kInvalidQkvShape;
     }
     if (!IsShape1D(input.qGamma.shape, input.headDim) || !IsShape1D(input.kGamma.shape, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: gamma shape qGamma rank=%u dim0=%lu, "
-                    "kGamma rank=%u dim0=%lu.",
-                    input.qGamma.shape.rank, input.qGamma.shape.dim0, input.kGamma.shape.rank,
-                    input.kGamma.shape.dim0);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: gamma shape qGamma rank=%u dim0=%lu, "
+                "kGamma rank=%u dim0=%lu.",
+                input.qGamma.shape.rank, input.qGamma.shape.dim0, input.kGamma.shape.rank, input.kGamma.shape.dim0);
         return ContractStatus::kInvalidGammaShape;
     }
     if (!IsShape2D(input.cosSin.shape, input.maxSeqLen, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: cosSin shape rank=%u dims={%lu,%lu}.",
-                    input.cosSin.shape.rank, input.cosSin.shape.dim0, input.cosSin.shape.dim1);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: cosSin shape rank=%u dims={%lu,%lu}.",
+                input.cosSin.shape.rank, input.cosSin.shape.dim0, input.cosSin.shape.dim1);
         return ContractStatus::kInvalidCosSinShape;
     }
     if (!IsShape1D(input.slotMapping.shape, input.totalTokens)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: slotMapping shape rank=%u dim0=%lu.",
-                    input.slotMapping.shape.rank, input.slotMapping.shape.dim0);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: slotMapping shape rank=%u dim0=%lu.",
+                input.slotMapping.shape.rank, input.slotMapping.shape.dim0);
         return ContractStatus::kInvalidSlotMappingShape;
     }
     if (!IsShape1D(input.cuSeqLen.shape, static_cast<uint64_t>(input.batch) + 1)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen shape rank=%u dim0=%lu.",
-                    input.cuSeqLen.shape.rank, input.cuSeqLen.shape.dim0);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen shape rank=%u dim0=%lu.",
+                input.cuSeqLen.shape.rank, input.cuSeqLen.shape.dim0);
         return ContractStatus::kInvalidCuSeqLenShape;
     }
     if (!IsShape2D(input.qRotation.shape, input.headDim, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: qRotation shape rank=%u dims={%lu,%lu}.",
-                    input.qRotation.shape.rank, input.qRotation.shape.dim0, input.qRotation.shape.dim1);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: qRotation shape rank=%u dims={%lu,%lu}.",
+                input.qRotation.shape.rank, input.qRotation.shape.dim0, input.qRotation.shape.dim1);
         return ContractStatus::kInvalidQRotationShape;
     }
     if (!IsShape2D(input.kRotation.shape, input.headDim, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: kRotation shape rank=%u dims={%lu,%lu}.",
-                    input.kRotation.shape.rank, input.kRotation.shape.dim0, input.kRotation.shape.dim1);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: kRotation shape rank=%u dims={%lu,%lu}.",
+                input.kRotation.shape.rank, input.kRotation.shape.dim0, input.kRotation.shape.dim1);
         return ContractStatus::kInvalidKRotationShape;
     }
     if (!IsShape1D(input.vScale.shape, input.numVHeads)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: vScale shape rank=%u dim0=%lu.",
-                    input.vScale.shape.rank, input.vScale.shape.dim0);
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale shape rank=%u dim0=%lu.",
+                input.vScale.shape.rank, input.vScale.shape.dim0);
         return ContractStatus::kInvalidVScaleShape;
     }
     if (!IsShape4D(input.kCache.shape, input.blockNum, input.numKHeads, input.blockSize, input.headDim) ||
         !IsShape4D(input.vCache.shape, input.blockNum, input.numVHeads, input.blockSize, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: cache shape kCache rank=%u dims={%lu,%lu,%lu,%lu}, "
-                    "vCache rank=%u dims={%lu,%lu,%lu,%lu}.",
-                    input.kCache.shape.rank, input.kCache.shape.dim0, input.kCache.shape.dim1,
-                    input.kCache.shape.dim2, input.kCache.shape.dim3, input.vCache.shape.rank,
-                    input.vCache.shape.dim0, input.vCache.shape.dim1, input.vCache.shape.dim2,
-                    input.vCache.shape.dim3);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: cache shape kCache rank=%u dims={%lu,%lu,%lu,%lu}, "
+                "vCache rank=%u dims={%lu,%lu,%lu,%lu}.",
+                input.kCache.shape.rank, input.kCache.shape.dim0, input.kCache.shape.dim1, input.kCache.shape.dim2,
+                input.kCache.shape.dim3, input.vCache.shape.rank, input.vCache.shape.dim0, input.vCache.shape.dim1,
+                input.vCache.shape.dim2, input.vCache.shape.dim3);
         return ContractStatus::kInvalidCacheShape;
     }
     if (!IsShape4D(input.kScaleCache.shape, input.blockNum, input.numKHeads, input.blockSize, 1)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache shape rank=%u dims={%lu,%lu,%lu,%lu}.",
-                    input.kScaleCache.shape.rank, input.kScaleCache.shape.dim0, input.kScaleCache.shape.dim1,
-                    input.kScaleCache.shape.dim2, input.kScaleCache.shape.dim3);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache shape rank=%u dims={%lu,%lu,%lu,%lu}.",
+                input.kScaleCache.shape.rank, input.kScaleCache.shape.dim0, input.kScaleCache.shape.dim1,
+                input.kScaleCache.shape.dim2, input.kScaleCache.shape.dim3);
         return ContractStatus::kInvalidScaleShape;
     }
     if (!IsCacheStrideValid(input.kCache.stride, input.headDim) ||
         !IsCacheStrideValid(input.vCache.stride, input.headDim)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: cache stride kCache present=%u rank=%u "
-                    "strides={%lu,%lu,%lu,%lu}, vCache present=%u rank=%u strides={%lu,%lu,%lu,%lu}.",
-                    input.kCache.stride.present ? 1U : 0U, input.kCache.stride.rank,
-                    input.kCache.stride.stride0, input.kCache.stride.stride1, input.kCache.stride.stride2,
-                    input.kCache.stride.stride3, input.vCache.stride.present ? 1U : 0U, input.vCache.stride.rank,
-                    input.vCache.stride.stride0, input.vCache.stride.stride1, input.vCache.stride.stride2,
-                    input.vCache.stride.stride3);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: cache stride kCache present=%u rank=%u "
+                "strides={%lu,%lu,%lu,%lu}, vCache present=%u rank=%u strides={%lu,%lu,%lu,%lu}.",
+                input.kCache.stride.present ? 1U : 0U, input.kCache.stride.rank, input.kCache.stride.stride0,
+                input.kCache.stride.stride1, input.kCache.stride.stride2, input.kCache.stride.stride3,
+                input.vCache.stride.present ? 1U : 0U, input.vCache.stride.rank, input.vCache.stride.stride0,
+                input.vCache.stride.stride1, input.vCache.stride.stride2, input.vCache.stride.stride3);
         return ContractStatus::kInvalidCacheStride;
     }
     if (!CacheNonInnermostStridesMatch(input.kCache.stride, input.vCache.stride)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: k/v cache non-innermost strides mismatch "
-                    "k={%lu,%lu,%lu} v={%lu,%lu,%lu}.",
-                    input.kCache.stride.stride0, input.kCache.stride.stride1, input.kCache.stride.stride2,
-                    input.vCache.stride.stride0, input.vCache.stride.stride1, input.vCache.stride.stride2);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: k/v cache non-innermost strides mismatch "
+                "k={%lu,%lu,%lu} v={%lu,%lu,%lu}.",
+                input.kCache.stride.stride0, input.kCache.stride.stride1, input.kCache.stride.stride2,
+                input.vCache.stride.stride0, input.vCache.stride.stride1, input.vCache.stride.stride2);
         return ContractStatus::kInvalidCacheStride;
     }
     if (!IsScaleStrideValid(input.kScaleCache.stride)) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName,
-                    "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache stride present=%u rank=%u "
-                    "strides={%lu,%lu,%lu,%lu}.",
-                    input.kScaleCache.stride.present ? 1U : 0U, input.kScaleCache.stride.rank,
-                    input.kScaleCache.stride.stride0, input.kScaleCache.stride.stride1,
-                    input.kScaleCache.stride.stride2, input.kScaleCache.stride.stride3);
-        }
+        OP_LOGD(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache stride present=%u rank=%u "
+                "strides={%lu,%lu,%lu,%lu}.",
+                input.kScaleCache.stride.present ? 1U : 0U, input.kScaleCache.stride.rank,
+                input.kScaleCache.stride.stride0, input.kScaleCache.stride.stride1,
+                input.kScaleCache.stride.stride2, input.kScaleCache.stride.stride3);
         return ContractStatus::kInvalidScaleStride;
     }
 
     const uint64_t initialTokenTilePerAiv =
         std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
-    if (ShouldLog(opName)) {
-        OP_LOGD(opName,
-                "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
-                "ubOutputLimit=%lu ubInputLimit=%lu.",
-                initialTokenTilePerAiv, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot);
-    }
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
+            "ubOutputLimit=%lu ubInputLimit=%lu.",
+            initialTokenTilePerAiv, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot);
     uint64_t selectedTokenTile = 0;
     uint64_t selectedTokenTilePerAiv = 0;
     const auto trySelectTokenTile = [&](uint64_t tokenTile) {
@@ -404,9 +336,7 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         (void)trySelectTokenTile(1);
     }
     if (selectedTokenTile == 0) {
-        if (ShouldLog(opName)) {
-            OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale contract reject: no token tile candidate fits.");
-        }
+        OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: no token tile candidate fits.");
         return ContractStatus::kUnsupportedResource;
     }
 
@@ -429,20 +359,18 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride1;
     tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride2;
 
-    if (ShouldLog(opName)) {
-        OP_LOGD(opName,
-                "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
-                "tokenTile=%lu tokenTilePerAiv=%lu qkHeadTile=%lu vHeadTile=%lu rowTile=%lu rowTileAligned=%lu "
-                "dimTile=%lu.",
-                tiling.coreTokenTile, tiling.coreGroupNum, tiling.tokenTile, tiling.tokenTilePerAiv,
-                tiling.qkHeadTile, tiling.vHeadTile, tiling.rowTile, tiling.rowTileAligned, tiling.dimTile);
-        OP_LOGD(opName,
-                "QkvRmsNormRopeCacheWithKScale contract stride result: kCache={%lu,%lu,%lu} "
-                "vCache={%lu,%lu,%lu} kScaleCache={%lu,%lu,%lu}.",
-                tiling.kCacheStrideBlock, tiling.kCacheStrideHead, tiling.kCacheStrideToken,
-                tiling.vCacheStrideBlock, tiling.vCacheStrideHead, tiling.vCacheStrideToken,
-                tiling.kScaleCacheStrideBlock, tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
-    }
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
+            "tokenTile=%lu tokenTilePerAiv=%lu qkHeadTile=%lu vHeadTile=%lu rowTile=%lu rowTileAligned=%lu "
+            "dimTile=%lu.",
+            tiling.coreTokenTile, tiling.coreGroupNum, tiling.tokenTile, tiling.tokenTilePerAiv, tiling.qkHeadTile,
+            tiling.vHeadTile, tiling.rowTile, tiling.rowTileAligned, tiling.dimTile);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale contract stride result: kCache={%lu,%lu,%lu} "
+            "vCache={%lu,%lu,%lu} kScaleCache={%lu,%lu,%lu}.",
+            tiling.kCacheStrideBlock, tiling.kCacheStrideHead, tiling.kCacheStrideToken, tiling.vCacheStrideBlock,
+            tiling.vCacheStrideHead, tiling.vCacheStrideToken, tiling.kScaleCacheStrideBlock,
+            tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
     return ContractStatus::kSuccess;
 }
 

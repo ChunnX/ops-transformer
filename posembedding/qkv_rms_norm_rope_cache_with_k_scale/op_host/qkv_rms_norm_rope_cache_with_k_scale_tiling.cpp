@@ -10,6 +10,8 @@
 
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
+#include <string>
+
 #include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 #include "log/log.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
@@ -197,9 +199,9 @@ TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t ind
     return info;
 }
 
-void LogTensorInfo(const char *opName, const char *tensorName, const TensorContractInfo &info)
+void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info)
 {
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale input tensor %s: dtype=%s(%u) shapePresent=%u shapeRank=%u "
             "shape={%lu,%lu,%lu,%lu} stridePresent=%u strideRank=%u stride={%lu,%lu,%lu,%lu}.",
             tensorName, ContractDtypeName(info.dtype), static_cast<uint32_t>(info.dtype),
@@ -208,9 +210,9 @@ void LogTensorInfo(const char *opName, const char *tensorName, const TensorContr
             info.stride.stride1, info.stride.stride2, info.stride.stride3);
 }
 
-void LogContractInput(const char *opName, const ContractInput &input, float epsilon)
+void LogContractInput(const std::string &opName, const ContractInput &input, float epsilon)
 {
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale parsed attrs/input summary: head_nums={%lu,%lu,%lu} epsilon=%f "
             "T=%lu batch=%lu headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
             input.numQHeads, input.numKHeads, input.numVHeads, epsilon, input.totalTokens, input.batch, input.headDim,
@@ -239,38 +241,37 @@ size_t CalcWorkspaceSize(size_t opWorkspaceSize)
     return opWorkspaceSize + kReservedWorkspaceSize;
 }
 
-ge::graphStatus SetWorkspace(gert::TilingContext *context, const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
-                             size_t &workspaceSize)
+ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
+                             const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo, size_t &workspaceSize)
 {
     size_t *workspaces = context->GetWorkspaceSizes(kWorkspaceCount);
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context->GetNodeName(), "get workspace failed."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(opName.c_str(), "get workspace failed."), return ge::GRAPH_FAILED);
     const size_t opWorkspaceSize = CalcOpWorkspaceSize(compileInfo);
     workspaceSize = CalcWorkspaceSize(opWorkspaceSize);
     workspaces[0] = workspaceSize;
-    OP_LOGD(context->GetNodeName(),
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale workspace: opWorkspaceSize=%zu reservedWorkspaceSize=%zu total=%zu.",
             opWorkspaceSize, kReservedWorkspaceSize, workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
-void LogTilingData(const char *opName, const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
+void LogTilingData(const std::string &opName, const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
                    const ContractTiling &contractTiling, uint64_t tilingKey, uint64_t blockDim, size_t dataSize,
                    size_t workspaceSize)
 {
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu "
             "headDim=%lu blockSize=%lu coreTokenTile=%lu coreGroupNum=%lu tokenTile=%lu epsilon=%f.",
             tilingData.totalTokens, tilingData.batch, tilingData.numQHeads, tilingData.numKHeads,
             tilingData.numVHeads, tilingData.headDim, tilingData.blockSize, tilingData.coreTokenTile,
             tilingData.coreGroupNum, tilingData.tokenTile, tilingData.epsilon);
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final strides: kCache={%lu,%lu,%lu} vCache={%lu,%lu,%lu} "
             "kScaleCache={%lu,%lu,%lu}.",
             tilingData.kCacheStrideBlock, tilingData.kCacheStrideHead, tilingData.kCacheStrideToken,
             tilingData.vCacheStrideBlock, tilingData.vCacheStrideHead, tilingData.vCacheStrideToken,
             tilingData.kScaleCacheStrideBlock, tilingData.kScaleCacheStrideHead, tilingData.kScaleCacheStrideToken);
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final launch: tilingKey=%lu blockDim=%lu tilingDataSize=%zu workspaceSize=%zu "
             "qkHeadTile=%lu vHeadTile=%lu rowTile=%lu rowTileAligned=%lu tokenTilePerAiv=%lu dimTile=%lu.",
             tilingKey, blockDim, dataSize, workspaceSize, contractTiling.qkHeadTile, contractTiling.vHeadTile,
@@ -278,17 +279,18 @@ void LogTilingData(const char *opName, const QkvRmsNormRopeCacheWithKScaleTiling
             contractTiling.dimTile);
 }
 
-ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &input, float &epsilon)
+ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::string &opName, ContractInput &input,
+                                   float &epsilon)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto headNums = attrs->GetListInt(kHeadNumsAttrIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
-    OP_CHECK_IF(headNums->GetSize() != 3, OP_LOGE(context->GetNodeName(), "head_nums must have exactly 3 values."),
+    OP_CHECK_IF(headNums->GetSize() != 3, OP_LOGE(opName.c_str(), "head_nums must have exactly 3 values."),
                 return ge::GRAPH_FAILED);
     const auto *headNumsData = headNums->GetData();
     for (size_t i = 0; i < 3; ++i) {
-        OP_CHECK_IF(headNumsData[i] <= 0, OP_LOGE(context->GetNodeName(), "head_nums[%zu] must be positive.", i),
+        OP_CHECK_IF(headNumsData[i] <= 0, OP_LOGE(opName.c_str(), "head_nums[%zu] must be positive.", i),
                     return ge::GRAPH_FAILED);
     }
 
@@ -367,23 +369,22 @@ void FillTilingData(const ContractInput &input, const ContractTiling &contractTi
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    const char *opName = context->GetNodeName();
-    OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale tiling start.");
+    const std::string opName = context->GetNodeName();
+    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale tiling start.");
     auto compileInfo = context->GetCompileInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
-    OP_LOGD(opName,
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu l0cSize=%lu "
             "opWorkspaceSize=%lu.",
             compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size,
             compileInfo->l0cSize, compileInfo->opWorkspaceSize);
-    OP_CHECK_IF(compileInfo->aicNum == 0,
-                OP_LOGE(context->GetNodeName(), "aicNum in compile info must be greater than 0."),
+    OP_CHECK_IF(compileInfo->aicNum == 0, OP_LOGE(opName.c_str(), "aicNum in compile info must be greater than 0."),
                 return ge::GRAPH_FAILED);
 
     ContractInput input;
     float epsilon = kDefaultEpsilon;
-    OP_CHECK_IF(BuildContractInput(context, input, epsilon) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
+    OP_CHECK_IF(BuildContractInput(context, opName, input, epsilon) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
                 return ge::GRAPH_FAILED);
     input.aicNum = compileInfo->aicNum;
     LogContractInput(opName, input, epsilon);
@@ -391,7 +392,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     ContractTiling contractTiling;
     const ContractStatus status = ValidateAndBuildTiling(input, contractTiling, opName);
     OP_CHECK_IF(status != ContractStatus::kSuccess,
-                OP_LOGE(context->GetNodeName(), "QkvRmsNormRopeCacheWithKScale contract failed: %s",
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract failed: %s",
                         ContractStatusName(status)),
                 return ge::GRAPH_FAILED);
 
@@ -401,30 +402,31 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData()->GetData());
     const size_t tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(context->GetNodeName(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
+                OP_LOGE(opName.c_str(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
                 return ge::GRAPH_FAILED);
     const auto ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
                               reinterpret_cast<const void *>(&tilingData), tilingDataSize);
     OP_CHECK_IF(ret != EOK,
-                OP_LOGE(context->GetNodeName(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
+                OP_LOGE(opName.c_str(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
                 return ge::GRAPH_FAILED);
     context->GetRawTilingData()->SetDataSize(tilingDataSize);
     const uint64_t tilingKey = GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128);
     context->SetTilingKey(tilingKey);
     context->SetBlockDim(contractTiling.coreGroupNum);
     size_t workspaceSize = 0;
-    OP_CHECK_IF(SetWorkspace(context, *compileInfo, workspaceSize) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "set QkvRmsNormRopeCacheWithKScale workspace failed."),
+    OP_CHECK_IF(SetWorkspace(context, opName, *compileInfo, workspaceSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "set QkvRmsNormRopeCacheWithKScale workspace failed."),
                 return ge::GRAPH_FAILED);
     LogTilingData(opName, tilingData, contractTiling, tilingKey, contractTiling.coreGroupNum, tilingDataSize,
                   workspaceSize);
-    OP_LOGD(opName, "QkvRmsNormRopeCacheWithKScale tiling success.");
+    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale tiling success.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    const std::string opName = context->GetNodeName();
     auto compileInfo = context->GetCompiledInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();
@@ -437,14 +439,14 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfo->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo->l0cSize);
     compileInfo->opWorkspaceSize = static_cast<uint64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
-    OP_LOGD(context->GetNodeName(),
+    OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu "
             "l0cSize=%lu opWorkspaceSize=%lu.",
             compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size,
             compileInfo->l0cSize, compileInfo->opWorkspaceSize);
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
-                OP_LOGE(context->GetNodeName(), "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),
+                OP_LOGE(opName.c_str(), "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -12,6 +12,7 @@
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CONTRACT_H_
 
 #include <cstdint>
+#include <string>
 
 namespace optiling {
 namespace qkv_rms_norm_rope_cache_with_k_scale {
@@ -157,7 +158,7 @@ uint64_t CeilDiv(uint64_t value, uint64_t divisor);
 uint64_t CalcCubeTokenSize(uint64_t tokenSize);
 uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize);
 ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling,
-                                      const char *opName = nullptr);
+                                      const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
 uint64_t CalcTileNum(uint64_t totalTokens, uint64_t tokenTile);
 uint64_t CalcCoreTokenTile(uint64_t totalTokens, uint64_t aicNum);
 uint64_t CalcCoreGroupNum(uint64_t totalTokens, uint64_t aicNum);
