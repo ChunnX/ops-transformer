@@ -501,7 +501,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             }
             for (uint32_t j = 0; j < curSendCnt; ++j) {
                 uint32_t index = (i - startExpert) * axisBS_ + j;
-                 DataCacheCleanAndInvalid<int32_t,CacheLine::ENTRE_DATA_CACHE>(sendFlagHandleGMTensor_[index]);
+                 DataCacheCleanAndInvalid<int32_t,CacheLine::ENTIRE_DATA_CACHE>(sendFlagHandleGMTensor_[index]);
                 if (sendFlagHandleGMTensor_.GetValue(index) == 1) {
                     uint32_t dstRankId = i;
                     GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
