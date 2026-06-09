@@ -98,7 +98,9 @@ private:
                            int64_t partNum) const;
     bool BuildBalancedSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
                                      std::vector<int64_t> &sparseStartIdx) const;
-    int64_t GetS2RealSize(int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
+    int64_t GetCmpResidualKey(int64_t bIdx) const;
+    int64_t GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const;
+    int64_t GetS2RealSize(int64_t bIdx, int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
     int64_t GetS1Load(int64_t s2RealSize) const;
     int64_t GetActualSeqLen(Tensor *tensor, int64_t bIdx) const;
     int64_t CalcTotalSize() const;

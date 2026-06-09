@@ -153,6 +153,11 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least batch_size + 1.");
         return false;
     }
+    if (IsTensorValid(cmpResidualKey_) && cmpResidualKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("cmp_residual_k length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
     return true;
 }
 
@@ -174,14 +179,28 @@ int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::CalcTotalSize() const
     return bSize_ * s1Size_;
 }
 
-int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t s1Size, int64_t s2Size,
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetCmpResidualKey(int64_t bIdx) const
+{
+    if (!IsTensorValid(cmpResidualKey_)) {
+        return 0;
+    }
+    auto *data = reinterpret_cast<const int32_t *>(cmpResidualKey_->GetData());
+    return static_cast<int64_t>(data[bIdx]);
+}
+
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const
+{
+    return std::max<int64_t>(0, s2Size * cmpRatio_ + GetCmpResidualKey(bIdx));
+}
+
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t bIdx, int64_t s1Size, int64_t s2Size,
                                                                          int64_t s1Idx) const
 {
     int64_t s2SparseLen = 0;
     if (sparseMode_ == static_cast<int64_t>(SliSparseMode::NO_MASK)) {
         s2SparseLen = s2Size;
     } else if (sparseMode_ == static_cast<int64_t>(SliSparseMode::RIGHT_DOWN_CAUSAL)) {
-        s2SparseLen = (s2Size * cmpRatio_ - s1Size + s1Idx + 1) / cmpRatio_;
+        s2SparseLen = (GetPreCompressS2Len(bIdx, s2Size) - s1Size + s1Idx + 1) / cmpRatio_;
     }
 
     return std::max<int64_t>(0, std::min(s2SparseLen, kSize_));
@@ -209,14 +228,14 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(st
             int64_t actualS2 = GetActualSeqLen(cuSeqLensKey_, bIdx);
             for (int64_t s1Idx = 0; s1Idx < actualS1 && accumS1 < static_cast<int64_t>(sparseValidArray.size());
                  ++s1Idx, ++accumS1) {
-                sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(actualS1, actualS2, s1Idx));
+                sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(bIdx, actualS1, actualS2, s1Idx));
             }
         }
     } else {
         int64_t accum = 0;
         for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
             for (int64_t s1Idx = 0; s1Idx < s1Size_; ++s1Idx, ++accum) {
-                sparseValidArray[accum] = GetS1Load(GetS2RealSize(s1Size_, s2Size_, s1Idx));
+                sparseValidArray[accum] = GetS1Load(GetS2RealSize(bIdx, s1Size_, s2Size_, s1Idx));
             }
         }
     }

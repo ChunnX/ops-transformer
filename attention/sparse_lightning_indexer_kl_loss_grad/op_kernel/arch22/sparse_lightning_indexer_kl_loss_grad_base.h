@@ -76,8 +76,11 @@ public:
 private:
     __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
         GlobalTensor<int32_t> &actualSeqLensGm, SLILayout layout, int64_t &accumLen);
-    __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
-    __aicore__ inline int64_t GetInvalidS1Size(int64_t actualSeqLensQ, int64_t actualSeqLensK);
+    __aicore__ inline int32_t GetCmpResidualK(int32_t bIdx);
+    __aicore__ inline int64_t GetPreCompressS2Len(int32_t bIdx, int32_t actualSeqLensK);
+    __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
+        int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
+    __aicore__ inline int64_t GetInvalidS1Size(int64_t bIdx, int64_t actualSeqLensQ, int64_t actualSeqLensK);
     __aicore__ inline void CalcCoreClearRange(int64_t totalSize, int64_t totalCoreNum,
         int64_t &clearStart, int64_t &clearEnd);
     template <typename CLEAR_T>
@@ -114,6 +117,7 @@ private:
     GlobalTensor<T> attnSoftmaxL1NormGm;
     GlobalTensor<int32_t> topKIndexGm;
     GlobalTensor<int32_t> actualSeqLengthsQueryGm, actualSeqLengthsKeyGm;
+    GlobalTensor<int32_t> cmpResidualKeyGm;
     GlobalTensor<int32_t> metadataGm;
     // output GM
     GlobalTensor<OUT_T> dQueryIndexGm, dKeyIndexGm;
@@ -158,7 +162,6 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
     // init input global buffer
     (void)sequsedQ;
     (void)sequsedK;
-    (void)cmpResidualK;
     queryGm.SetGlobalBuffer((__gm__ Q_T *)q);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)k);
     queryIndexGm.SetGlobalBuffer((__gm__ Q_T *)q);
@@ -180,6 +183,11 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
     } else {
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensK, 0);
     }
+    if (cmpResidualK != nullptr) {
+        cmpResidualKeyGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK, constInfo.bSize);
+    } else {
+        cmpResidualKeyGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK, 0);
+    }
     hasMetadata = metadata != nullptr;
     if (hasMetadata) {
         metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata, optiling::SLI_METADATA_SIZE);
@@ -195,7 +203,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
 
     if ASCEND_IS_AIV {
         // InitVecOP
-        vectorService.InitParams(constInfo, tilingData, metadataGm, hasMetadata);
+        vectorService.InitParams(constInfo, tilingData, metadataGm, cmpResidualKeyGm, hasMetadata);
         vectorService.InitVector0GM(keyGm, keyRopeGm, keyIndexGm, topKIndexGm,
                                     actualSeqLengthsQueryGm, actualSeqLengthsKeyGm,
                                     gatherPRes, gatherSYRes);
@@ -334,12 +342,12 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
 
 template <typename SLIT>
 __aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::GetInvalidS1Size(
-    int64_t actualSeqLensQ, int64_t actualSeqLensK)
+    int64_t bIdx, int64_t actualSeqLensQ, int64_t actualSeqLensK)
 {
     int64_t invalidS1Size = 0;
     if (constInfo.sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio != 0) {
-            invalidS1Size = actualSeqLensQ - actualSeqLensK * constInfo.cmpRatio + constInfo.cmpRatio - 1;
+            invalidS1Size = actualSeqLensQ - GetPreCompressS2Len(bIdx, actualSeqLensK) + constInfo.cmpRatio - 1;
         } else {
             invalidS1Size = actualSeqLensQ - actualSeqLensK;
         }
@@ -397,10 +405,12 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                 } else {
                     actualSeqLensK = constInfo.s2Size;
                 }
-                totalInvalidS1Size += GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+                totalInvalidS1Size += GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
             }
         } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-            totalInvalidS1Size = GetInvalidS1Size(constInfo.s1Size, constInfo.s2Size) * constInfo.bSize;
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize; ++bIdx) {
+                totalInvalidS1Size += GetInvalidS1Size(bIdx, constInfo.s1Size, constInfo.s2Size);
+            }
         }
 
         int64_t dqClearStart = 0;
@@ -427,7 +437,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                 } else {
                     actualSeqLensK = constInfo.s2Size;
                 }
-                int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+                int64_t invalidS1Size = GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
                 ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
                                      invalidS1Base, invalidS1Size, accumS1Len, qRowSize);
                 ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
@@ -437,9 +447,9 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                 invalidS1Base += invalidS1Size;
             }
         } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-            int64_t invalidS1Size = GetInvalidS1Size(constInfo.s1Size, constInfo.s2Size);
             int64_t invalidS1Base = 0;
             for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
+                int64_t invalidS1Size = GetInvalidS1Size(bIdx, constInfo.s1Size, constInfo.s2Size);
                 int64_t batchS1Base = bIdx * constInfo.s1Size;
 
                 ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
@@ -599,7 +609,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Process()
             actualSeqLensQ = constInfo.s1Size;
             actualSeqLensK = constInfo.s2Size;
         }
-        int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+        int64_t invalidS1Size = GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
         s1StartIdxThisBatch = Min(Max(s1StartIdxThisBatch, invalidS1Size), s1EndIdxThisBatch);
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
@@ -712,12 +722,30 @@ __aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetActualS
 }
 
 template <typename SLIT>
-__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetS2SparseLen(int32_t s1Idx,
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetCmpResidualK(int32_t bIdx)
+{
+    if (cmpResidualKeyGm.GetSize() <= 0) {
+        return 0;
+    }
+    return cmpResidualKeyGm.GetValue(bIdx);
+}
+
+template <typename SLIT>
+__aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::GetPreCompressS2Len(int32_t bIdx,
+    int32_t actualSeqLensK)
+{
+    int64_t preCompressS2Len = static_cast<int64_t>(actualSeqLensK) * constInfo.cmpRatio + GetCmpResidualK(bIdx);
+    return Max(preCompressS2Len, static_cast<int64_t>(0));
+}
+
+template <typename SLIT>
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
     int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio != 0) {
-            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
+            int64_t preCompressS2Len = GetPreCompressS2Len(bIdx, actualSeqLensK);
+            return static_cast<int32_t>((preCompressS2Len - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio);
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -754,7 +782,8 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::GetRunInfo(in
         runInfo.accumS2Idx = bIdx * constInfo.s2Size;
     }
 
-    runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.sparseMode);
+    runInfo.s2SparseLen = GetS2SparseLen(runInfo.bIdx, runInfo.s1Idx, runInfo.actS1Size,
+        runInfo.actS2Size, constInfo.sparseMode);
     if (runInfo.s2SparseLen <= 0) {
         runInfo.isValid = false;
         return;

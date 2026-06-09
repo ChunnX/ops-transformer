@@ -51,7 +51,7 @@ public:
     __aicore__ inline SLIKLLossVectorService(){};
     __aicore__ inline void InitParams(const SLIKLLossGradConstInfo &vecConstInfo,
         const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData,
-        GlobalTensor<int32_t> metadataGm, bool hasMetadata);
+        GlobalTensor<int32_t> metadataGm, GlobalTensor<int32_t> cmpResidualKeyGm, bool hasMetadata);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -115,7 +115,10 @@ private:
     __aicore__ inline void ScatterAddCopyOutSingle(const LocalTensor<MM5_OUT_T> &srcUb, int64_t keyBNBOffset);
     __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens, GlobalTensor<int32_t> &actualSeqLensGm,
         SLILayout layout, int64_t &accumLen);
-    __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode);
+    __aicore__ inline int32_t GetCmpResidualK(int32_t bIdx);
+    __aicore__ inline int64_t GetPreCompressS2Len(int32_t bIdx, int32_t actualSeqLensK);
+    __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx, int32_t actualSeqLensQ,
+        int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode);
     __aicore__ inline void GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx, SLIKLLossGradRunInfo &runInfo);
     __aicore__ inline int64_t GetMetadataTotalSize();
     __aicore__ inline int64_t GetMetadataBS1Index(uint32_t coreIdx);
@@ -125,6 +128,7 @@ private:
     const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData;
     bool hasMetadata = false;
     GlobalTensor<int32_t> metadataGm;
+    GlobalTensor<int32_t> cmpResidualKeyGm;
 
     // global tensor
     GlobalTensor<KV_T> keyGm;
@@ -254,11 +258,12 @@ private:
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::InitParams(const SLIKLLossGradConstInfo &vecConstInfo,
     const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData,
-    GlobalTensor<int32_t> metadataGm, bool hasMetadata)
+    GlobalTensor<int32_t> metadataGm, GlobalTensor<int32_t> cmpResidualKeyGm, bool hasMetadata)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
     this->metadataGm = metadataGm;
+    this->cmpResidualKeyGm = cmpResidualKeyGm;
     this->hasMetadata = hasMetadata;
 }
 
@@ -711,12 +716,30 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetActualSeqLens(int32_t
 }
 
 template <typename SLIT>
-__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t s1Idx,
+__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetCmpResidualK(int32_t bIdx)
+{
+    if (cmpResidualKeyGm.GetSize() <= 0) {
+        return 0;
+    }
+    return cmpResidualKeyGm.GetValue(bIdx);
+}
+
+template <typename SLIT>
+__aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetPreCompressS2Len(int32_t bIdx,
+    int32_t actualSeqLensK)
+{
+    int64_t preCompressS2Len = static_cast<int64_t>(actualSeqLensK) * constInfo.cmpRatio + GetCmpResidualK(bIdx);
+    return Max(preCompressS2Len, static_cast<int64_t>(0));
+}
+
+template <typename SLIT>
+__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
     int32_t actualSeqLensQ, int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (cmpRatio != 0) {
-            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
+            int64_t preCompressS2Len = GetPreCompressS2Len(bIdx, actualSeqLensK);
+            return static_cast<int32_t>((preCompressS2Len - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio);
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -747,7 +770,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
         runInfo.accumS1Idx = bIdx * constInfo.s1Size + s1Idx;
         runInfo.accumS2Idx = bIdx * constInfo.s2Size;
     }
-    runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
+    runInfo.s2SparseLen = GetS2SparseLen(runInfo.bIdx, runInfo.s1Idx, runInfo.actS1Size,
+        runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
     if (runInfo.s2SparseLen <= 0) {
         runInfo.s2RealSize = 0;
         runInfo.kRealSize = 0;
@@ -828,10 +852,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIKLLo
         } else {
             bIdx = bS1Index / constInfo.s1Size;
             s1Idx = bS1Index - bIdx * constInfo.s1Size;
+            seqLenQ = constInfo.s1Size;
+            seqLenK = constInfo.s2Size;
         }
 
         if (constInfo.cmpRatio != 0) {
-            if (constInfo.cmpRatio * seqLenK - seqLenQ + s1Idx + 1 <= 0) {
+            if (GetS2SparseLen(bIdx, s1Idx, seqLenQ, seqLenK, constInfo.cmpRatio, constInfo.sparseMode) <= 0) {
                 continue;
             }
         }
