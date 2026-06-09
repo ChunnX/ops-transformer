@@ -32,7 +32,7 @@ V_DATA_RANGE = (-5.0, 5.0)
 ENABLE_PA = True
 ENABLE_LSE = True
 BLOCK_SIZE = 128
-SPARSE_MODE = 0
+SPARSE_MODE = 3
 SCALE_VALUE = None
 
 # Seed
@@ -250,7 +250,8 @@ def torch_broadcast_kv(num_heads, num_kv_heads, tensor):
 
 def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8, 
                             deq_q, deq_k, deq_v, p_scale,
-                            actual_seq_q, actual_seq_kv, softmax_scale):
+                            actual_seq_q, actual_seq_kv):
+    softmax_scale = get_softmax_scale(SCALE_VALUE, D)
     """CPU golden reference - 所有操作在CPU上执行"""
     # 确保所有输入都在CPU上且连续
     q_tensor = q_fp8.cpu().to(torch.float32).contiguous()
@@ -555,8 +556,8 @@ if __name__ == '__main__':
     print("\n[Step 2] CPU Golden")
     cpu_out, cpu_lse = cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
                                                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                                                    ACTUAL_SEQ_Q, ACTUAL_SEQ_KV, get_softmax_scale(SCALE_VALUE, D))
-    # print("cpu_out: ", cpu_out)
+                                                    ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+    print("cpu_out: ", cpu_out)
     print("cpu_out shape", cpu_out.shape)
     if ENABLE_LSE:
         print("cpu_lse_out shape", cpu_lse.shape)
@@ -568,12 +569,11 @@ if __name__ == '__main__':
     if ENABLE_LSE:
         print(f"npu_lse_out shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
-    print("\n[Step 4] atten_out精度对比")
+    print("\n[Step 4] 精度对比")
     cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, ACTUAL_SEQ_Q, "TND")
     result_compare_method.check_result(cpu_tnd_torch, npu_out[0])
-    print("#" * 60)
 
     if ENABLE_LSE:
         print("\n[Step 5] lse精度对比")
         result_compare_method.check_result(cpu_lse, npu_out[1])
-        print("#" * 60)
+    print("#" * 60)
