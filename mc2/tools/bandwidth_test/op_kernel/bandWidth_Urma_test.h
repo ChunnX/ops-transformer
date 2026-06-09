@@ -470,6 +470,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     uint32_t cnt=0;
     while(true) {
         cnt += 1;
+        if (cnt > 100000000) {
+            break;
+        }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == epRankId_) { // 本卡不处理
                 continue;
