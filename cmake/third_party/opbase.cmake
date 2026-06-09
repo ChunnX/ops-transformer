@@ -17,10 +17,6 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/opbase")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/opbase REALPATH)
   message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
-  execute_process(
-    COMMAND git checkout ${OPBASE_TAG_ID}
-    WORKING_DIRECTORY ${OPBASE_SOURCE_PATH}
-  )
 else()
   if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/opbase-subbuild")
     file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/build/_deps/opbase-subbuild)
