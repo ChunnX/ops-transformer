@@ -93,6 +93,10 @@ if __name__ == "__main__":
             all_rows = list(csv_mod.DictReader(f))
         flash_rows = [r for r in all_rows if r.get("OP Type") == "FlashAttn"]
 
+        perf_log = _read_perf_log(str(out))
+        if not perf_log:
+            print("  [WARN] _perf_log.jsonl 为空或不存在，跳过拆分")
+
         hot_idxs = [i for i, c in enumerate(cases_list) if c.get("S1", 9999) > args.perf_cold_thr]
         cold_idxs = [i for i, c in enumerate(cases_list) if c.get("S1", 9999) <= args.perf_cold_thr]
         ordered = [(i, "hot") for i in hot_idxs] + [(i, "cold") for i in cold_idxs]
@@ -105,29 +109,19 @@ if __name__ == "__main__":
             case_dir = out / run_cases[case_idx].replace("/", "_")
             case_dir.mkdir(parents=True, exist_ok=True)
             sub_csv = case_dir / "op_summary.csv"
-            is_crashed = not info.get("ok", False)
 
-            if is_crashed:
-                with open(case_dir / "ERROR", "w") as ef:
-                    ef.write(info.get("error", "case crashed"))
+            if pos + args.perf_runs <= len(flash_rows) and info.get("ok", False):
+                chunk = flash_rows[pos:pos + args.perf_runs]
+                pos += args.perf_runs
                 with open(sub_csv, "w", newline="") as f:
                     w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
-                continue
-
-            if pos + args.perf_runs > len(flash_rows):
-                print(f"  [WARN]  entry 不足，推荐 --one_by_one")
+                    for row in chunk:
+                        w.writerow(row)
+            else:
                 with open(case_dir / "ERROR", "w") as ef:
-                    ef.write("CRASH: expected entries exceed available")
+                    ef.write(info.get("error", "case crashed or missing entries"))
                 with open(sub_csv, "w", newline="") as f:
                     w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
-                continue
-
-            chunk = flash_rows[pos:pos + args.perf_runs]
-            pos += args.perf_runs
-            with open(sub_csv, "w", newline="") as f:
-                w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
-                for row in chunk:
-                    w.writerow(row)
 
         entries = parse_op_summary(str(csv_path))
         perf_log = _read_perf_log(str(out))
