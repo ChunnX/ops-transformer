@@ -400,7 +400,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     if (dstRankId != epRankId_) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t));
+        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t)));
         sendFlagHandleGMTensor_(curExpertCnt) = 1;
     }
 }
@@ -452,7 +452,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         return; 
     }
     PRINTF("CommProcess startExpert = %d, endExpert = %d\n", startExpert, endExpert);
-    sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t));
+    sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t)));
     uint32_t lenth = Ceil(processExpertNum * sizeof(uint32_t),UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sendCntBuf_, lenth);
     tpipe_->InitBuffer(sendSumBuf_, lenth);
