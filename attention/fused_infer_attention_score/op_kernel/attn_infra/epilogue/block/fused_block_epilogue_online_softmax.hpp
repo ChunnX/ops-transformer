@@ -1407,11 +1407,11 @@ public:
             (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ? (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
         uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
+        uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
         uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, FLOAT_BLOCK_SIZE);
         rowNumTile = AscendC::Std::min(rowNumTile, FLOAT_VECTOR_SIZE);
         uint32_t rowLoopNum = NpuArch::Detail::Alignment::CeilDiv(rowActualThisSubBlock, rowNumTile);
         uint32_t preLoad = 1;
-        uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
 
         for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoopNum + preLoad; rowLoopIdx++) {
             if (rowLoopIdx < rowLoopNum) {
@@ -1865,8 +1865,8 @@ public:
                 SubCoreCompute<true>(
                     gOutputCurLoop,
                     gSink,
-                    layoutOutputCurLoop,
                     layoutOutputCurLoopTemp,
+                    rowOffsetCurLoop,
                     isFirstStackTile,
                     0,
                     (delayedRowLoopIdx == 0),
