@@ -14351,7 +14351,9 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8_VSca
             {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    int64_t expectTilingKey = 34441796610;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 TEST_F(FusedInferAttentionScoreTiling, DISABLED_FusedInferAttentionScoreTiling_MXFP8_QscaleWarning)
