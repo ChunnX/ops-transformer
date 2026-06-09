@@ -21,6 +21,56 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
+
+const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
+    {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
+    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
+    {ge::DT_INT8, "DT_INT8"},                     // int8 type
+    {ge::DT_INT16, "DT_INT16"},                   // int16 type
+    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
+    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
+    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
+    {ge::DT_INT64, "DT_INT64"},                   // int64 type
+    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
+    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
+    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
+    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
+    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
+    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
+    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
+    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
+    {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
+    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
+    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
+    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
+    {ge::DT_STRING, "DT_STRING"},                 // string type
+    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
+    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
+    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
+    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+};
+
+static std::string LIDataTypeToSerialString(ge::DataType type)
+{
+    const auto liIt = DATATYPE_TO_STRING_MAP.find(type);
+    if (liIt != DATATYPE_TO_STRING_MAP.end()) {
+        return liIt->second;
+    } else {
+        OP_LOGE("LightningIndexer", "datatype %d not support", type);
+        return "UNDEFINED";
+    }
+}
+
 // --------------------------LIInfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 {
@@ -222,31 +272,43 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
 
     bool inDTypeAllEqual = (inputQType_ == inputKType_);
     OP_CHECK_IF(!inDTypeAllEqual,
-            OP_LOGE(opName_, "The data types of the input query and key must be the same."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key", LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_),
+                    "The dtype of query and key must be same."),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF(((inputQType_ != ge::DT_FLOAT16) && (inputQType_ != ge::DT_BF16)),
-               OP_LOGE(opName_, "The data types of the input query, key must be float16 or bfloat16."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key", LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_),
+                    "The dtype of query and key must be float16 or bfloat16."),
                return ge::GRAPH_FAILED);
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         OP_CHECK_IF((inputQType_ != weightsType_),
-                OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+                    LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) + "and " + LIDataTypeToSerialString(inputKType_),
+                    "The dtype of query, key, and weights must be same."),
                 return ge::GRAPH_FAILED);
     } else {
         if (weightsType_ != ge::DT_FLOAT) {
             OP_CHECK_IF((inputQType_ != weightsType_),
-                    OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+                        LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) + "and " + LIDataTypeToSerialString(inputKType_),
+                        "The dtype of query, key, and weights must be same."),
                     return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF((weightsType_ != ge::DT_FLOAT),
-                OP_LOGE(opName_, "The data types of the input weights must be float32."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                        LIDataTypeToSerialString(weightsType_).c_str(),
+                        "The dtype of weights must be float32."),
                 return ge::GRAPH_FAILED);
         }
     }
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
-               OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sparse_indices",
+                    LIDataTypeToSerialString(outputType_).c_str(),
+                    "The dtype of sparse_indices must be int32."),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(valuesOutType_ != inputQType_,
-               OP_LOGE(opName_, "The data types of the output sparse_values must be same as inputQType."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and sparse_values",
+                    LIDataTypeToSerialString(inputQType_) + "and " + LIDataTypeToSerialString(valuesOutType_),
+                    "The dtype of query and sparse_values must be same."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -287,7 +349,9 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
             OP_LOGE(opName_, "when layout_key is PA_BSND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
-                   OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "block_table",
+                        LIDataTypeToSerialString(opParamInfo_.blockTable.desc->GetDataType()).c_str(),
+                        "The dtype of block_table must be int32."), return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
                    OP_LOGE(opName_, "when layout_key is TND, input actual_seq_lengths_key must not be null"),
@@ -295,12 +359,10 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor != nullptr &&
                opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32,
-                   OP_LOGE(opName_, "input actual_seq_lengths_key data type only support int32"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actual_seq_lengths_key",
+                        LIDataTypeToSerialString(opParamInfo_.actualSeqLengths.desc->GetDataType()).c_str(),
+                        "The dtype of actual_seq_lengths_key must be int32."),
                    return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor != nullptr &&
-                   opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32,
-               OP_LOGE(opName_, "input actual_seq_lengths_key data type only support int32"),
-               return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
                    OP_LOGE(opName_, "when layout_query is TND, input actual_seq_lengths_query must not be null"),
@@ -308,7 +370,9 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                    opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
-               OP_LOGE(opName_, "input actual_seq_lengths_query data type only support int32"),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actual_seq_lengths_query",
+                    LIDataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+                    "The dtype of actual_seq_lengths_query must be int32."),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
                    OP_LOGE(opName_, "when key layout is not PA_BSND, input block_table must be null"),

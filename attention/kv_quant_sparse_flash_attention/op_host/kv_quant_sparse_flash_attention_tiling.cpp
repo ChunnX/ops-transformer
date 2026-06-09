@@ -577,8 +577,9 @@ void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expe
             qsfaOss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports dtype %s, but got %s",
-        name.c_str(), qsfaOss.str().c_str(), QSFADataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+        QSFADataTypeToSerialString(actualDtype).c_str(),
+        "The dtype of " + name + " must be " + qsfaOss.str());
 }
 
 ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
@@ -878,11 +879,11 @@ ge::graphStatus QSFATilingCheck::CheckDTypeConsistency(const ge::DataType &actua
     const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
-        OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            QSFADataTypeToSerialString(expectDtype).c_str(),
-            QSFADataTypeToSerialString(actualDtype).c_str());
-        return ge::GRAPH_FAILED;
-    }
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+            QSFADataTypeToSerialString(actualDtype).c_str(),
+            "The dtype of " + name + " must be " + QSFADataTypeToSerialString(expectDtype));
+            return ge::GRAPH_FAILED;
+        }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1003,8 +1004,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengthsQ's dtype is %s, it should be DT_INT32.",
-            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengthsQ",
+            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengthsQ must be DT_INT32.");
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1049,9 +1051,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengths's dtype is %s, it should be DT_INT32.",
-            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengths.desc->GetDataType()).c_str());
-            return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengths",
+            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengths must be DT_INT32.");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1171,24 +1173,23 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 {
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            QSFADataTypeToSerialString(ge::DT_BF16).c_str(), QSFADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            QSFADataTypeToSerialString(inputQType_).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query", QSFADataTypeToSerialString(inputQType_).c_str(),
+            "The dtype of query must be " + QSFADataTypeToSerialString(ge::DT_BF16) + " and " + QSFADataTypeToSerialString(ge::DT_FLOAT16)),
         return ge::GRAPH_FAILED);
     
     if (isA5_) {
         OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN &&
                     inputKvType_ != ge::DT_HIFLOAT8 &&
                     inputKvType_ != ge::DT_INT8,
-            OP_LOGE(opName_, "key and value dtype only support %s、 %s and %s, but got %s",
-                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN).c_str(), QSFADataTypeToSerialString(ge::DT_HIFLOAT8).c_str(),
-                QSFADataTypeToSerialString(ge::DT_INT8).c_str(), QSFADataTypeToSerialString(inputKvType_).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value", QSFADataTypeToSerialString(inputKvType_).c_str(),
+                "The dtype of key and value must be " + QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + ", " +
+                QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + ", " +
+                QSFADataTypeToSerialString(ge::DT_INT8)),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(inputKvType_ != ge::DT_INT8,
-            OP_LOGE(opName_, "key and value dtype only support %s, but got %s",
-                QSFADataTypeToSerialString(ge::DT_INT8).c_str(),
-                QSFADataTypeToSerialString(inputKvType_).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value", QSFADataTypeToSerialString(inputKvType_).c_str(),
+                "The dtype of key and value must be " + QSFADataTypeToSerialString(ge::DT_INT8)),
             return ge::GRAPH_FAILED);
     }
 
