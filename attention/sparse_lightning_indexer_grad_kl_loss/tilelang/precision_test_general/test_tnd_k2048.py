@@ -80,11 +80,38 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
 B, S1, S2 = 1, 1, 2048; N1, N2, Nidx1 = 128, 1, 64; D, DIndex, DR, K = 512, 128, 64, 2048; scale = 1.0 / math.sqrt(D)
 print(f"泛化精度测试 - TND K={K}\n  B={B}, S1={S1}, S2={S2}, N1={N1}, N2={N2}, Nidx1={Nidx1}, K={K}")
 q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum = gen_inputs(B, S1, S2, N1, Nidx1, N2, K, D, DIndex, DR, is_tnd=True)
-print("\n[1] TileLang...")
+
+# Warmup: run BSND once to force JIT recompilation with latest kernel code
+_q_b = q.unsqueeze(0); _k_b = k.unsqueeze(0); _qi_b = q_index.unsqueeze(0); _ki_b = k_index.unsqueeze(0)
+_w_b = weights.unsqueeze(0); _si_b = sparse_indices.unsqueeze(0)
+_sm_b = softmax_max.unsqueeze(0); _ss_b = softmax_sum.unsqueeze(0)
+_qr_b = q_rope.unsqueeze(0) if q_rope is not None else None
+_kr_b = k_rope.unsqueeze(0) if k_rope is not None else None
+try:
+    sparse_lightning_indexer_grad_kl_loss(_q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale, query_rope=_qr_b, key_rope=_kr_b, layout_query="BSND", sparse_mode=3)
+    torch.npu.synchronize()
+except:
+    pass
+
+print("\n[1] TileLang (TND)...")
 try:
     d_qi_tl, d_ki_tl, dw_tl, loss_tl = sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, layout_query="TND", sparse_mode=3)
     torch.npu.synchronize(); print("  OK"); tl_ok = True
 except Exception as e: print(f"  FAIL: {e}"); tl_ok = False
+
+# Also run BSND with same data (unsqueeze) to compare
+print("\n[1b] TileLang (BSND, same data)...")
+try:
+    d_qi_bsnd, d_ki_bsnd, dw_bsnd, loss_bsnd = sparse_lightning_indexer_grad_kl_loss(_q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale, query_rope=_qr_b, key_rope=_kr_b, layout_query="BSND", sparse_mode=3)
+    torch.npu.synchronize(); print("  OK"); bsnd_ok = True
+except Exception as e: print(f"  FAIL: {e}"); bsnd_ok = False
+
+# Compare TND vs BSND (our impl)
+if tl_ok and bsnd_ok:
+    for name, tnd_v, bsnd_v in [("dWeights", dw_tl, dw_bsnd.squeeze(0))]:
+        diff = (tnd_v.float() - bsnd_v.float()).abs()
+        print(f"  TND vs BSND {name}: max_diff={diff.max().item():.8f}")
+
 print("\n[2] 官方算子...")
 try:
     d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, actual_seq_qlen=[S1], actual_seq_klen=[S2], layout="TND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
