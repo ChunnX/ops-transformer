@@ -12,12 +12,12 @@
  * \file mhc_pre_sinkhorn_backward.cc
  * \brief MhcPreSinkhornBackward tiling file
  */
+
+#include "register/op_def_registry.h"
+#include "tiling/tiling_api.h"
+#include "tiling/platform/platform_ascendc.h"
 #include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
 #include "log/log.h"
-#include "platform/platform_info.h"
-#include "tiling/tiling_api.h"
-#include "register/op_impl_registry.h"
-
 
 namespace optiling {
 
@@ -38,8 +38,10 @@ static ge::graphStatus TilingPrepare4MhcPreSinkhornBackwardArch35(gert::TilingPa
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    ci->core_num = static_cast<int32_t>(ascendcPlatform.GetCoreNumAiv());
-    OP_CHECK_IF((ci->core_num <= 0), OP_LOGE(context->GetNodeName(), "Failed to core num."), return ge::GRAPH_FAILED);
+    ci->core_numAiv = static_cast<int32_t>(ascendcPlatform.GetCoreNumAiv());
+    OP_CHECK_IF((ci->core_numAiv <= 0), OP_LOGE(context->GetNodeName(), "Failed to coreAiv num."), return ge::GRAPH_FAILED);
+    ci->core_numAic = static_cast<int32_t>(ascendcPlatform.GetCoreNumAiv());
+    OP_CHECK_IF((ci->core_numAic <= 0), OP_LOGE(context->GetNodeName(), "Failed to coreAic num."), return ge::GRAPH_FAILED);
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     ci->ub_size = ubSize;
