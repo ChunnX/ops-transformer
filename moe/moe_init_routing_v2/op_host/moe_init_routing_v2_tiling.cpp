@@ -422,7 +422,7 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
     OP_LOGI(
         opName,
         "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld, gatherMode:%ld",
+        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld, scatterMode:%ld",
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
@@ -431,7 +431,7 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
         moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_gatherMode());
+        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_scatterMode());
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()
@@ -734,7 +734,7 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
     }
 }
 
-bool MoeInitRoutingV2TilingBase::CalculateGatherOutCoreAllocation(int64_t actualActivateRows,
+bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actualActivateRows,
                                                                   MoeV2GatherOutComputeTilingData *tilingData,
                                                                   int64_t &perCoreRows, int64_t &lastCoreRows)
 {
@@ -758,7 +758,7 @@ bool MoeInitRoutingV2TilingBase::CalculateGatherOutCoreAllocation(int64_t actual
     return true;
 }
 
-void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVal, int64_t cols, int64_t perCoreRows,
+void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols, int64_t perCoreRows,
                                                                 int64_t lastCoreRows,
                                                                 MoeV2GatherOutComputeTilingData *tilingData)
 {
@@ -802,7 +802,7 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutBufferParams(int64_t ubRowsVa
     tilingData->set_colLoops(1);
 }
 
-void MoeInitRoutingV2TilingBase::CalculateGatherOutBasicParams(MoeV2GatherOutComputeTilingData *tilingData,
+void MoeInitRoutingV2TilingBase::CalculateOutBasicParams(MoeV2GatherOutComputeTilingData *tilingData,
                                                                int64_t &perCoreRows, int64_t &lastCoreRows,
                                                                int64_t &cols)
 {
@@ -827,7 +827,7 @@ void MoeInitRoutingV2TilingBase::CalculateGatherOutSplitModeParams(int64_t ubSiz
                                                                    int64_t lastCoreRows,
                                                                    MoeV2GatherOutComputeTilingData *tilingData)
 {
-    tilingData->set_gatherMode(0);
+    tilingData->set_scatterMode(0);
     int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
     int64_t baseMaxColsSize = (baseMaxCols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
     int64_t basePerLoopMaxRows = (ubSize - baseMaxColsSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
@@ -856,7 +856,7 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     int64_t lastCoreRows = 0;
     int64_t cols = 0;
 
-    CalculateGatherOutBasicParams(tilingData, perCoreRows, lastCoreRows, cols);
+    CalculateOutBasicParams(tilingData, perCoreRows, lastCoreRows, cols);
     if (tilingData->get_needCoreNum() == 0) {
         return;
     }
@@ -870,17 +870,17 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     ubRowsVal = ubRowsVal / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
-    bool useGatherMode = colsAligned && (ubRowsVal >= NUM_TWO) &&
+    bool useScatterMode = colsAligned && (ubRowsVal >= NUM_TWO) &&
                          (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
-    if (useGatherMode) {
-        tilingData->set_gatherMode(1);
+    if (useScatterMode) {
+        tilingData->set_scatterMode(1);
         int64_t actualActivateRows = tilingData->get_activateRows();
-        if (!CalculateGatherOutCoreAllocation(actualActivateRows, tilingData, perCoreRows, lastCoreRows)) {
+        if (!CalculateScatterOutCoreAllocation(actualActivateRows, tilingData, perCoreRows, lastCoreRows)) {
             return;
         }
-        CalculateGatherOutBufferParams(ubRowsVal, cols, perCoreRows, lastCoreRows, tilingData);
+        CalculateScatterOutBufferParams(ubRowsVal, cols, perCoreRows, lastCoreRows, tilingData);
     } else if (rowSize + colSize < ubSize) {
-        tilingData->set_gatherMode(0);
+        tilingData->set_scatterMode(0);
         tilingData->set_perCorePerLoopRows(perCoreRows);
         tilingData->set_perCoreLastLoopRows(perCoreRows);
         tilingData->set_lastCorePerLoopRows(lastCoreRows);
@@ -928,7 +928,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingForMoeInitRoutingV2(gert::TilingContext *
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingParseContext *context)
 {
     OP_LOGD(context, "TilingPrepareForMoeInitRountingV2 enter.");
-    
+
     auto compileInfo = context->GetCompiledInfo<MoeInitRoutingV2CompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();

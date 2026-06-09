@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file moe_v2_gather_out_batch_row.h
- * \brief 按输出位置批量Gather输出模板，用于token数多、hiddenSize、k小的场景优化
+ * \file moe_v2_scatter_out_batch_row.h
+ * \brief 按输出位置批量Scatter输出模板，用于token数多、hiddenSize、k小的场景优化
  *        利用dst_to_src索引（输出位置连续），批量写出，减少搬出次数，提升性能
  */
-#ifndef MOE_V2_GATHER_OUT_BATCH_ROW_H
-#define MOE_V2_GATHER_OUT_BATCH_ROW_H
+#ifndef MOE_V2_SCATTER_OUT_BATCH_ROW_H
+#define MOE_V2_SCATTER_OUT_BATCH_ROW_H
 
 #include "moe_v2_common.h"
 #include "kernel_operator.h"
@@ -25,18 +25,18 @@ namespace MoeInitRoutingV2 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV2GatherOutBatchRow {
+class MoeV2ScatterOutBatchRow {
 public:
-    __aicore__ inline MoeV2GatherOutBatchRow(){};
+    __aicore__ inline MoeV2ScatterOutBatchRow(){};
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
                                 const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void CopyInDstToSrcIndices(int64_t progress, int64_t loopRows);
-    __aicore__ inline void GatherOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum, int64_t indexOffsetVal,
+    __aicore__ inline void ScatterOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum, int64_t indexOffsetVal,
                                              LocalTensor<int32_t> &dstToSrcLocal);
-    __aicore__ inline void GatherOutCompute(int64_t progress, int64_t loopRows);
+    __aicore__ inline void ScatterOutCompute(int64_t progress, int64_t loopRows);
 
 private:
     TPipe *pipe;
@@ -68,7 +68,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t progress, int64_t loopRows)
+__aicore__ inline void MoeV2ScatterOutBatchRow<T>::CopyInDstToSrcIndices(int64_t progress, int64_t loopRows)
 {
     LocalTensor<int32_t> indicesLocal = dstToSrcIndexQueue.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(loopRows * sizeof(int32_t)), 0, 0, 0};
@@ -78,7 +78,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t 
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum,
+__aicore__ inline void MoeV2ScatterOutBatchRow<T>::ScatterOutOneBlock(int64_t outPosStartIdx, int64_t outPosRowsNum,
                                                                     int64_t indexOffsetVal,
                                                                     LocalTensor<int32_t> &dstToSrcLocal)
 {
@@ -127,7 +127,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutCompute(int64_t progress, int64_t loopRows)
+__aicore__ inline void MoeV2ScatterOutBatchRow<T>::ScatterOutCompute(int64_t progress, int64_t loopRows)
 {
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
 
@@ -150,14 +150,14 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutCompute(int64_t progr
 
         int64_t blockOutPosStartIdx = outPosStartIdx + ubBlockIdx * this->ubRowsPerLoop;
         int64_t blockIndexOffsetVal = ubBlockIdx * this->ubRowsPerLoop;
-        GatherOutOneBlock(blockOutPosStartIdx, currentUbRows, blockIndexOffsetVal, dstToSrcLocal);
+        ScatterOutOneBlock(blockOutPosStartIdx, currentUbRows, blockIndexOffsetVal, dstToSrcLocal);
     }
 
     dstToSrcIndexQueue.FreeTensor(dstToSrcLocal);
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+__aicore__ inline void MoeV2ScatterOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                                        GM_ADDR workspace, const MoeInitRoutingV2TilingData *tilingData,
                                                        TPipe *tPipe)
 {
@@ -199,7 +199,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherOutBatchRow<T>::Process()
+__aicore__ inline void MoeV2ScatterOutBatchRow<T>::Process()
 {
     if (this->blockIdx >= this->needCoreNum) {
         return;
@@ -214,7 +214,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Process()
     for (int64_t loop = 0; loop < this->rowLoops; loop++) {
         int64_t currentRows = (loop == this->rowLoops - 1) ? this->lastLoopRows : this->perLoopRows;
 
-        GatherOutCompute(loop, currentRows);
+        ScatterOutCompute(loop, currentRows);
 
         if (loop < this->rowLoops - 1) {
             int64_t nextRows = (loop + 1 == this->rowLoops - 1) ? this->lastLoopRows : this->perLoopRows;
@@ -224,4 +224,4 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Process()
 }
 
 } // namespace MoeInitRoutingV2
-#endif // MOE_V2_GATHER_OUT_BATCH_ROW_H
+#endif // MOE_V2_SCATTER_OUT_BATCH_ROW_H

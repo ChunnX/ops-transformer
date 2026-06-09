@@ -24,7 +24,7 @@
 #include "arch35/moe_v2_src_to_dst_op_simt.h"
 #include "arch35/moe_v2_src_to_dst_with_capacity_simt.h"
 #include "arch35/moe_v2_gather_out_for_simt.h"
-#include "arch35/moe_v2_gather_out_batch_row.h"
+#include "arch35/moe_v2_scatter_out_batch_row.h"
 #else
 #include "moe_v2_mrgsort_out.h"
 #include "moe_v2_mrgsort.h"
@@ -119,7 +119,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
 
     TPipe gatherPipe;
     bool isDroplessMode = TILING_KEY_IS(10001) || TILING_KEY_IS(11001) || TILING_KEY_IS(10002) || TILING_KEY_IS(11002);
-    bool canParallel = t->gatherOutComputeParamsOp.gatherMode == 1;
+    bool canParallel = t->gatherOutComputeParamsOp.scatterMode == 1;
 
     if (isDroplessMode) {
         MoeV2SrcToDstOpSimt srcToDstOpSimt;
@@ -140,9 +140,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
     }
 
     if (canParallel) {
-        MoeV2GatherOutBatchRow<DTYPE_X> gatherOpBatchRow;
-        gatherOpBatchRow.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
-        gatherOpBatchRow.Process();
+        MoeV2ScatterOutBatchRow<DTYPE_X> scatterOpBatchRow;
+        scatterOpBatchRow.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
+        scatterOpBatchRow.Process();
         AscendC::SyncAll();
     } else {
         MoeV2GatherOutSimt<DTYPE_X> gatherOpSimt;
