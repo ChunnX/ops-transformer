@@ -17,6 +17,7 @@
 
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
+using AscendC::Reg::StoreDist;
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #else
