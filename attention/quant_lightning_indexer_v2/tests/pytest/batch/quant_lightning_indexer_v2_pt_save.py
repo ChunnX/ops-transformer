@@ -12,7 +12,7 @@
 
 import os
 from functools import partial
-from quant_lightning_indexer_golden import GeneralizedQLIV2
+from quant_lightning_indexer_v2_golden import GeneralizedQLIV2
 import pandas as pd
 import numpy as np
 import torch

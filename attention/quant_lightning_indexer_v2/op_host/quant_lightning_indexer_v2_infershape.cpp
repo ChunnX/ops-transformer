@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_lightning_indexer_infershape.cpp
+ * \file quant_lightning_indexer_v2_infershape.cpp
  * \brief
  */
 #include <graph/utils/type_utils.h>
@@ -30,10 +30,10 @@ constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 9;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
 
-static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("QuantLightningIndexer", "context is nullptr!");
+        OP_LOGE("QuantLightningIndexerV2", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
@@ -82,25 +82,25 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
         sparseValuesShape->SetDim(0, 0);
     }
 
-    OP_LOGD(context->GetNodeName(), "QuantLightningIndexer InferShape end.");
+    OP_LOGD(context->GetNodeName(), "QuantLightningIndexerV2 InferShape end.");
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeQuantLightningIndexerV2(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("QuantLightningIndexer", "InferDataTypeContext context is nullptr!");
+        OP_LOGE("QuantLightningIndexerV2", "InferDataTypeContext context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context->GetNodeName(), "Enter QuantLightningIndexer InferDataType impl.");
+    OP_LOGD(context->GetNodeName(), "Enter QuantLightningIndexerV2 InferDataType impl.");
     // default index data type is int32
     ge::DataType outputType = ge::DT_INT32;
     context->SetOutputDataType(0, outputType);
-    OP_LOGD(context->GetNodeName(), "QuantLightningIndexer InferDataType end.");
+    OP_LOGD(context->GetNodeName(), "QuantLightningIndexerV2 InferDataType end.");
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(QuantLightningIndexer)
-    .InferShape(InferShapeQuantLightningIndexer)
-    .InferDataType(InferDataTypeQuantLightningIndexer);
+IMPL_OP_INFERSHAPE(QuantLightningIndexerV2)
+    .InferShape(InferShapeQuantLightningIndexerV2)
+    .InferDataType(InferDataTypeQuantLightningIndexerV2);
 }  // namespace ops

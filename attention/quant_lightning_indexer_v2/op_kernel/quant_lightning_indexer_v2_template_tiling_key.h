@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_lightning_indexer_template_tiling_key.h
+ * \file quant_lightning_indexer_v2_template_tiling_key.h
  * \brief
  */
 
-#ifndef QUANT_LIGHTNING_INDEXER_TEMPLATE_TILING_KEY_H
-#define QUANT_LIGHTNING_INDEXER_TEMPLATE_TILING_KEY_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H
+#define QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -30,7 +30,7 @@
 
 // 模板参数支持的范围定义
 #if (__CCE_AICORE__ == 310)
-    ASCENDC_TPL_ARGS_DECL(QuantLightningIndexer,  // 算子OpType
+    ASCENDC_TPL_ARGS_DECL(QuantLightningIndexerV2,  // 算子OpType
                         ASCENDC_TPL_DTYPE_DECL(DT_Q, QLIV2_TPL_FLOAT32_E4M3FN, QLIV2_TPL_HIFLOAT8),
                         ASCENDC_TPL_DTYPE_DECL(DT_K, QLIV2_TPL_FLOAT32_E4M3FN, QLIV2_TPL_HIFLOAT8),
                         ASCENDC_TPL_DTYPE_DECL(DT_OUT, QLIV2_TPL_INT32), ASCENDC_TPL_BOOL_DECL(PAGE_ATTENTION, 1, 0),
@@ -70,7 +70,7 @@
                             ASCENDC_TPL_UINT_SEL(Q_LAYOUT_T, ASCENDC_TPL_UI_LIST, QLIV2_LAYOUT_TND),
                             ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, QLIV2_LAYOUT_TND), ), );
 #else
-    ASCENDC_TPL_ARGS_DECL(QuantLightningIndexer,  // 算子OpType
+    ASCENDC_TPL_ARGS_DECL(QuantLightningIndexerV2,  // 算子OpType
                         ASCENDC_TPL_DTYPE_DECL(DT_Q, QLIV2_TPL_INT8), ASCENDC_TPL_DTYPE_DECL(DT_K, QLIV2_TPL_INT8),
                         ASCENDC_TPL_DTYPE_DECL(DT_OUT, QLIV2_TPL_INT32), ASCENDC_TPL_BOOL_DECL(PAGE_ATTENTION, 1, 0),
                         ASCENDC_TPL_UINT_DECL(Q_LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, QLIV2_LAYOUT_BSND,
@@ -94,4 +94,4 @@
                             ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, QLIV2_LAYOUT_TND), ), );
 #endif
 
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H

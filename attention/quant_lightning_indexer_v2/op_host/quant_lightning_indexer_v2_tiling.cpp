@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_lightning_indexer_tiling.cpp
+ * \file quant_lightning_indexer_v2_tiling.cpp
  * \brief
  */
 
@@ -83,7 +83,7 @@ ge::graphStatus QLIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QLIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("QuantLightningIndexer", "opName got from TilingContext is nullptr");
+        OP_LOGE("QuantLightningIndexerV2", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -846,13 +846,13 @@ ge::graphStatus QLIV2InfoParser::ParseAndCheck(QLIV2TilingInfo &QLIV2Info)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForQuantLightningIndexerV2(gert::TilingParseContext * /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-// --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
-ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLIV2TilingInfo *tilingInfo)
+// --------------------------QuantLightningIndexerV2Tiling类成员函数定义-----------------------
+ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -935,22 +935,22 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLIV2TilingInfo *tilingInf
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForQuantLightningIndexerV2(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexer", "Tiling context is null."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexerV2", "Tiling context is null."),
                return ge::GRAPH_FAILED);
     QLIV2TilingInfo QLIV2Info;
     QLIV2InfoParser QLIV2InfoParser(context);
     if (QLIV2InfoParser.ParseAndCheck(QLIV2Info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    QuantLightningIndexerTiling QLIV2Tiling(context);
+    QuantLightningIndexerV2Tiling QLIV2Tiling(context);
     return QLIV2Tiling.DoTiling(&QLIV2Info);
 }
 
 // --------------------------Tiling及函数TilingPrepare函数注册--------
-IMPL_OP_OPTILING(QuantLightningIndexer)
-    .Tiling(TilingForQuantLightningIndexer)
-    .TilingParse<QLIV2CompileInfo>(TilingPrepareForQuantLightningIndexer);
+IMPL_OP_OPTILING(QuantLightningIndexerV2)
+    .Tiling(TilingForQuantLightningIndexerV2)
+    .TilingParse<QLIV2CompileInfo>(TilingPrepareForQuantLightningIndexerV2);
 
 }  // namespace optiling

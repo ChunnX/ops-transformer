@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_vector1.h
+ * \file quant_lightning_indexer_v2_vector1.h
  * \brief
  */
-#ifndef quant_lightning_indexer_VECTOR1_H
-#define quant_lightning_indexer_VECTOR1_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_VECTOR1_H
+#define QUANT_LIGHTNING_INDEXER_V2_VECTOR1_H
 
 #include "kernel_operator.h"
 
@@ -611,4 +611,4 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
 
 }
 
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_VECTOR1_H

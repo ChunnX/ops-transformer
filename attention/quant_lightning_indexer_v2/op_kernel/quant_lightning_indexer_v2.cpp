@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_lightning_indexer.cpp
+ * \file quant_lightning_indexer_v2.cpp
  * \brief
  */
 
