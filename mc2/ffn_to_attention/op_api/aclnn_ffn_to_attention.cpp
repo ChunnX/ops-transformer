@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "aclnnInner_ffn_to_attention.h"
@@ -37,12 +37,12 @@ static bool CheckNullStatus(const aclTensor* x, const aclTensor* sessionIds,
                             const aclTensor* actualTokenNum, const char* group)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(sessionIds, return false);
-    OP_CHECK_NULL(microBatchIds, return false);
-    OP_CHECK_NULL(tokenIds, return false);
-    OP_CHECK_NULL(expertOffsets, return false);
-    OP_CHECK_NULL(actualTokenNum, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", x, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", sessionIds, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", microBatchIds, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", tokenIds, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", expertOffsets, return false);
+    OP_CHECK_NULL("aclnnFFNToAttention", actualTokenNum, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnFFNToAttention", "group");
         return false;

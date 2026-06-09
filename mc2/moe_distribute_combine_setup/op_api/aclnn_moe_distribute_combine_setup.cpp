@@ -17,7 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
@@ -76,11 +76,11 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
                          const char *groupEp, aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut)
 {
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckNotNull start");
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(quantExpandXOut, return false);
-    OP_CHECK_NULL(commCmdInfoOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", assistInfoForCombine, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", quantExpandXOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", commCmdInfoOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineSetup", "groupEp");
         return false;
@@ -180,7 +180,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     (void)commQuantMode;
     (void)commType;
     (void)commAlg;
-    OP_CHECK_NULL(expandX, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineSetup", expandX, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     if (expandX->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",

@@ -17,7 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/utils/matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -40,13 +40,13 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *quantExpandX
                          const char *groupEp, aclTensor *xOut)
 {
     OP_LOGD("aclnn_moe_distribute_combine_teardown CheckNotNull start");
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(quantExpandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandIdx, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(commCmdInfo, return false);
-    OP_CHECK_NULL(xOut, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", quantExpandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", expandIdx, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", expertScales, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", commCmdInfo, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineTeardown", xOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineTeardown", "groupEp");
         return false;

@@ -18,7 +18,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -106,9 +106,9 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, const char*
 // 检查入参是否为nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
-    OP_CHECK_NULL(output, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(x1, return false);
+    OP_CHECK_NULL("aclnnInnerMatmulReduceScatterV2", output, return false);
+    OP_CHECK_NULL("aclnnInnerMatmulReduceScatterV2", x2, return false);
+    OP_CHECK_NULL("aclnnInnerMatmulReduceScatterV2", x1, return false);
     return true;
 }
 
@@ -134,12 +134,12 @@ static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_LOW_ACCURACY
 static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output)
 {
     // 检查x1、x2、bias、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, BIAS_OUTPUT_SUPPORT_TYPE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", x1, DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", x2, DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", output, BIAS_OUTPUT_SUPPORT_TYPE, return false);
     // 检查bias的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, BIAS_OUTPUT_SUPPORT_TYPE, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", bias, BIAS_OUTPUT_SUPPORT_TYPE, return false);
     }
     return true;
 }
@@ -154,12 +154,12 @@ static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2,
     const aclTensor* bias, const aclTensor* output)
 {
     // 检查x1、x2、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnInnerMatmulReduceScatterV2", output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
     return true;
 }
 
@@ -221,8 +221,8 @@ static aclnnStatus CheckCommMode(const char* commMode)
 
 static bool CheckShape(const aclTensor* x1, const aclTensor* x2, bool isTransA)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnMatmulReduceScatterV2GetWorkspaceSize", x1, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnMatmulReduceScatterV2GetWorkspaceSize", x2, TWO_DIMS, return false);
     int64_t kVal1 = 0, kVal2 = 0;
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1", "transposed",
@@ -273,10 +273,10 @@ static enum CaseOption CheckHighAccuracyCase(const aclTensor* x1, const aclTenso
                                              const aclTensor* y)
 {
     // 高精度场景须数据类型相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
-    OP_CHECK_DTYPE_NOT_SAME(x1, y, return CaseOption::INVALID);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnInnerMatmulReduceScatterV2", x1, x2, return CaseOption::INVALID);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnInnerMatmulReduceScatterV2", x1, y, return CaseOption::INVALID);
     if (CheckEmptyOptionalTensor(bias, "bias")) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, bias, return CaseOption::INVALID);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnInnerMatmulReduceScatterV2", x1, bias, return CaseOption::INVALID);
     }
     return CaseOption::HIGH_ACCURACY;
 }
@@ -290,7 +290,7 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
     }
     // 矩阵入参为Hifloat8时，x1x2必须类型相同。
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnInnerMatmulReduceScatterV2", x1, x2, return CaseOption::INVALID);
     }
     
     if (!CheckEmptyTensor(x1Scale, "x1Scale") || !CheckEmptyTensor(x2Scale, "x2Scale")) {

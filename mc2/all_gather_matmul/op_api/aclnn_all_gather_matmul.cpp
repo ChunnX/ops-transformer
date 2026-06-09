@@ -14,7 +14,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -49,9 +49,9 @@ extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *
 
 // check nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
-  OP_CHECK_NULL(x1, return false);
-  OP_CHECK_NULL(x2, return false);
-  OP_CHECK_NULL(output, return false);
+  OP_CHECK_NULL("NnopbaseMsprofSysTime", x1, return false);
+  OP_CHECK_NULL("NnopbaseMsprofSysTime", x2, return false);
+  OP_CHECK_NULL("NnopbaseMsprofSysTime", output, return false);
   return true;
 }
 static inline bool IsAscend910A5(void)
@@ -63,17 +63,17 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
   op::DataType::DT_FLOAT16, op::DataType::DT_BF16
 };
 static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output) {
-  OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(output, DTYPE_SUPPORT_LIST, return false);
+  OP_CHECK_DTYPE_NOT_SUPPORT("aclnnAllGatherMatmul", x1, DTYPE_SUPPORT_LIST, return false);
+  OP_CHECK_DTYPE_NOT_SUPPORT("aclnnAllGatherMatmul", x2, DTYPE_SUPPORT_LIST, return false);
+  OP_CHECK_DTYPE_NOT_SUPPORT("aclnnAllGatherMatmul", output, DTYPE_SUPPORT_LIST, return false);
   if (bias != nullptr) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnAllGatherMatmul", bias, DTYPE_SUPPORT_LIST, return false);
   }
 
-  OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-  OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+  OP_CHECK_DTYPE_NOT_SAME("aclnnAllGatherMatmul", x1, x2, return false);
+  OP_CHECK_DTYPE_NOT_SAME("aclnnAllGatherMatmul", x1, output, return false);
   if (bias != nullptr) {
-    OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnAllGatherMatmul", bias, x1, return false);
   }
   return true;
 }
@@ -87,7 +87,7 @@ static bool CheckAttr(int64_t streamMode) {
 }
 
 static bool IsGatherOut(const aclTensor *gatherOut) {
-  OP_CHECK_NULL(gatherOut, return false);
+  OP_CHECK_NULL("aclnnAllGatherMatmul", gatherOut, return false);
   if (gatherOut->IsEmpty()) {
     OP_LOGD("AllGatherMatmul, get gather out is false.");
     return false;
@@ -97,8 +97,8 @@ static bool IsGatherOut(const aclTensor *gatherOut) {
 
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
   bool isTransA) {
-  OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-  OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+  OP_CHECK_WRONG_DIMENSION("aclnnAllGatherMatmulGetWorkspaceSize", x1, TWO_DIMS, return false);
+  OP_CHECK_WRONG_DIMENSION("aclnnAllGatherMatmulGetWorkspaceSize", x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
         "The value of x1 must not be transposed.");

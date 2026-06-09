@@ -61,10 +61,10 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_FLOAT = {
 static bool CheckNotNull(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* x2Scale, const aclTensor* output, const char* reduceOp)
 {
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(x2Scale, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV4", x1, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV4", x2, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV4", x2Scale, return false);
+    OP_CHECK_NULL("aclnnQuantMatmulAllReduceV4", output, return false);
     if (reduceOp == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV4", "reduceOp");
         return false;
@@ -78,43 +78,43 @@ static bool CheckDtypeValid(
     const aclTensor* output)
 {
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, DTYPE_SUPPORT_LIST_DEQUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", x1, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", x2, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", x2Scale, DTYPE_SUPPORT_LIST_DEQUANT, return false);
     // hif8/fp8/mxfp4 支持fp32的输出
     const auto outputDtypeSupport = (CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) ||
                                      CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4)) ?
                                         DTYPE_SUPPORT_LIST_FLOAT :
                                         DTYPE_SUPPORT_LIST_WITHOUT_FLOAT;
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outputDtypeSupport, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", output, outputDtypeSupport, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outputDtypeSupport, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", x3, outputDtypeSupport, return false);
         // 检查x3和output的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV4", x3, output, return false);
     }
 
     // BF16场景，x2Scale的dtype与output一致，为BF16。fp8/fp4场景不检查
     if (((output->GetDataType() == op::DataType::DT_BF16) || (x2Scale->GetDataType() == op::DataType::DT_BF16)) &&
         (!CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) &&
          !CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4))) {
-        OP_CHECK_DTYPE_NOT_SAME(x2Scale, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV4", x2Scale, output, return false);
     }
 
     if (x1Scale != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", x1Scale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
     }
 
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
         // 检查commQuantScale1 commQuantScale2的数据类型是否在算子的支持列表内
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale1Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale2Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", commQuantScale1Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnQuantMatmulAllReduceV4", commQuantScale2Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
         // 检查commQuantScale1Optional commQuantScale2Optional和output的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(commQuantScale1Optional, output, return false);
-        OP_CHECK_DTYPE_NOT_SAME(commQuantScale2Optional, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV4", commQuantScale1Optional, output, return false);
+        OP_CHECK_DTYPE_NOT_SAME("aclnnQuantMatmulAllReduceV4", commQuantScale2Optional, output, return false);
     }
     return true;
 }
@@ -136,13 +136,13 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode)
 static bool CheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3, const aclTensor* output)
 {
-    OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
-    OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
+    OP_CHECK_MIN_DIM("aclnnQuantMatmulAllReduceV4", x1, TWO_DIMS, return false);
+    OP_CHECK_MAX_DIM("aclnnQuantMatmulAllReduceV4", x1, THREE_DIMS, return false);
     if (MatmulAllReduceIsWeightNZFormat(x2)) {
         return true;
     }
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnQuantMatmulAllReduceV4", x2, TWO_DIMS, return false);
 
     uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -160,7 +160,7 @@ static bool CheckShape(
     // output的最后一维与x2的最后一维相同
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE("aclnnQuantMatmulAllReduceV4", output, outShape, return false);
 
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
@@ -171,15 +171,15 @@ static bool CheckShape(
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        OP_CHECK_WRONG_DIMENSION("aclnnQuantMatmulAllReduceV4", bias, ONE_DIM, return false);
         op::Shape biasShapeExpected;
         biasShapeExpected.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShapeExpected, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE("aclnnQuantMatmulAllReduceV4", bias, biasShapeExpected, return false);
     }
 
     // x3 shape [s,m,n]
     if (x3 != nullptr) {
-        OP_CHECK_SHAPE_NOT_EQUAL(x3, output, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL("aclnnQuantMatmulAllReduceV4", x3, output, return false);
     }
 
     return true;

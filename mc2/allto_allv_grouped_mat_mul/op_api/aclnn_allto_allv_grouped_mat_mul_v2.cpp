@@ -10,7 +10,7 @@
 #include "aclnn_allto_allv_grouped_mat_mul_v2.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
@@ -78,9 +78,9 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(gmmY, return false);
+    OP_CHECK_NULL("aclnnAlltoAllvGroupedMatMulV2", gmmX, return false);
+    OP_CHECK_NULL("aclnnAlltoAllvGroupedMatMulV2", gmmWeight, return false);
+    OP_CHECK_NULL("aclnnAlltoAllvGroupedMatMulV2", gmmY, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
         return false;

@@ -10,7 +10,7 @@
 
 #include "aclnn_moe_update_expert.h"
 #include <algorithm>
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_update_expert.h"
@@ -28,10 +28,10 @@ aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(expertIds, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(eplbTable, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(balancedExpertIds, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(balancedActiveMask, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMoeUpdateExpert", expertIds, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMoeUpdateExpert", eplbTable, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMoeUpdateExpert", balancedExpertIds, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMoeUpdateExpert", balancedActiveMask, return ACLNN_ERR_PARAM_NULLPTR);
 
     aclnnStatus ret = aclnnInnerMoeUpdateExpertGetWorkspaceSize(
         expertIds, eplbTable, expertScalesOptional, pruningThresholdOptional, activeMaskOptional, localRankId,

@@ -14,7 +14,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
@@ -45,7 +45,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
         "aclnnWeightQuantMatmulAllReduceGetWorkspaceSize",
         "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(antiquantScale, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", antiquantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
     // 处理空tensor,x1,x2不为空，scale为空也报错，offset、bias、可选不做判断
     if (x1->IsEmpty() || x2->IsEmpty() || antiquantScale->IsEmpty() || residual->IsEmpty() || gamma->IsEmpty()) {

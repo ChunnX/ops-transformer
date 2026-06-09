@@ -16,7 +16,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"
@@ -45,12 +45,12 @@ bool CombineArnCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds
     const aclTensor* epSendCounts, [[maybe_unused]] const aclTensor* tpSendCounts, const aclTensor* expertScales,
     const char* groupEp, [[maybe_unused]] const char* groupTp, aclTensor* x)
 {
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(epSendCounts, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(x, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", assistInfoForCombine, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", epSendCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", expertScales, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombineAddRmsNorm", x, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineAddRmsNorm", "groupEp");
         return false;

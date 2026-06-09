@@ -20,7 +20,7 @@
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "aclnnInner_mega_moe.h"
 
 using namespace Ops::Transformer;
@@ -71,14 +71,14 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
-    OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(weight1, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(weight2, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", context, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", x, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", topkIds, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", weight1, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", weight2, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", yOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL("aclnnMegaMoe", expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {

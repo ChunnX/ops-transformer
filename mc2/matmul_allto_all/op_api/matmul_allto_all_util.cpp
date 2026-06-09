@@ -13,7 +13,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -109,11 +109,11 @@ bool CheckGroupLength(const char *group)
 bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
                           const aclTensor* alltoAllOutOptional = nullptr)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("matmul_allto_all", x1, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("matmul_allto_all", x2, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("matmul_allto_all", output, TWO_DIMS, return false);
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+        OP_CHECK_WRONG_DIMENSION("matmul_allto_all", alltoAllOutOptional, TWO_DIMS, return false);
     }
     return true;
 }
@@ -122,7 +122,7 @@ bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTen
 bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
 {
     if (biasOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        OP_CHECK_WRONG_DIMENSION("matmul_allto_all", biasOptional, ONE_DIM, return false);
         auto biasDim = biasOptional->GetViewShape().GetDim(0);
         if (biasDim != nVal) {
             OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "group.length()",
@@ -206,7 +206,7 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
     	OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "x2", "empty tensor", "non-empty tensor");
     	return ACLNN_ERR_PARAM_INVALID;
   	}
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_WRONG_DIMENSION("matmul_allto_all", x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 

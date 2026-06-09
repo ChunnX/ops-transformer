@@ -11,7 +11,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -41,13 +41,13 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
                          aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull start");
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expandIdx, return false);
-    OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
-    OP_CHECK_NULL(epRecvCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", x, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", expandIdx, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", expertTokensNums, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", tpRecvCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeDispatch", epRecvCounts, return false);
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull success");
     if ((groupEp == nullptr)||(strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatch", "groupEp");

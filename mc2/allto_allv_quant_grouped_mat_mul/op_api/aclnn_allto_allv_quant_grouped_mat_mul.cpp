@@ -14,7 +14,7 @@
 #include "common/utils/op_mc2.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/platform.h"
@@ -111,7 +111,7 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", "gmmWeight");
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize", gmmWeight, THREE_DIMS, return false);
     return true;
 }
 
@@ -119,7 +119,7 @@ static bool CheckMmWeightValid(const aclTensor *mmWeightOptional) {
     if (mmWeightOptional == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnInnerAlltoAllvQuantGroupedMatMul", mmWeightOptional, TWO_DIMS, return false);
     return true;
 }
 

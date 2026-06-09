@@ -13,7 +13,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "external/aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "log/log.h"
@@ -30,9 +30,9 @@ extern "C" {
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
                          aclTensor* y1Out)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(weight, return false);
-    OP_CHECK_NULL(y1Out, return false);
+    OP_CHECK_NULL("AlltoAllAllGatherBatchMatMul", x, return false);
+    OP_CHECK_NULL("AlltoAllAllGatherBatchMatMul", weight, return false);
+    OP_CHECK_NULL("AlltoAllAllGatherBatchMatMul", y1Out, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("AlltoAllAllGatherBatchMatMul", "groupEp");
         return false;
@@ -48,17 +48,17 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
 static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, const aclTensor* y1Out,
                             const aclTensor* y2OutOptional, const aclTensor* y3OutOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x, MOE_X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(y1Out, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", x, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", y1Out, MOE_X_DTYPE_SUPPORT_LIST, return false);
 
-    OP_CHECK_DTYPE_NOT_SAME(x, weight, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x, y1Out, return false);
+    OP_CHECK_DTYPE_NOT_SAME("AlltoAllAllGatherBatchMatMul", x, weight, return false);
+    OP_CHECK_DTYPE_NOT_SAME("AlltoAllAllGatherBatchMatMul", x, y1Out, return false);
     
     if (bias != nullptr) { // x和bias支持同时为fp16，或x为bf16和bias为fp32
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, MOE_BIAS_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", bias, MOE_BIAS_DTYPE_SUPPORT_LIST, return false);
         if (x->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(bias, x, return false);
+            OP_CHECK_DTYPE_NOT_SAME("AlltoAllAllGatherBatchMatMul", bias, x, return false);
         }
         if (x->GetDataType() == op::DataType::DT_BF16) {
             if (bias->GetDataType() != op::DataType::DT_FLOAT) {
@@ -69,12 +69,12 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
         }
     }
     if (y2OutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(y2OutOptional, MOE_X_DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SAME(y2OutOptional, x, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", y2OutOptional, MOE_X_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SAME("AlltoAllAllGatherBatchMatMul", y2OutOptional, x, return false);
     }
     if (y3OutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(y3OutOptional, MOE_X_DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SAME(y3OutOptional, x, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("AlltoAllAllGatherBatchMatMul", y3OutOptional, MOE_X_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SAME("AlltoAllAllGatherBatchMatMul", y3OutOptional, x, return false);
     }
     return true;
 }
@@ -83,9 +83,9 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
                                   const aclTensor* y1Out, const aclTensor* y2OutOptional, const aclTensor* y3OutOptional)
 {
-    OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(y1Out, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("AlltoAllAllGatherBatchMatMul", x, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("AlltoAllAllGatherBatchMatMul", weight, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("AlltoAllAllGatherBatchMatMul", y1Out, SUPPORTED_DIMENSIONAL, return false);
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {
@@ -95,10 +95,10 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
         }
     }
     if (y2OutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(y2OutOptional, SUPPORTED_DIMENSIONAL, return false);
+        OP_CHECK_WRONG_DIMENSION("AlltoAllAllGatherBatchMatMul", y2OutOptional, SUPPORTED_DIMENSIONAL, return false);
     }
     if (y3OutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(y3OutOptional, SUPPORTED_DIMENSIONAL, return false);
+        OP_CHECK_WRONG_DIMENSION("AlltoAllAllGatherBatchMatMul", y3OutOptional, SUPPORTED_DIMENSIONAL, return false);
     }
     return true;
 }

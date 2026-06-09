@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
 #include "log/log.h"
@@ -27,9 +27,9 @@ extern "C" {
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
                          aclTensor* out)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(weight, return false);
-    OP_CHECK_NULL(out, return false);
+    OP_CHECK_NULL("aclnnBatchMatMulReduceScatterAlltoAll", x, return false);
+    OP_CHECK_NULL("aclnnBatchMatMulReduceScatterAlltoAll", weight, return false);
+    OP_CHECK_NULL("aclnnBatchMatMulReduceScatterAlltoAll", out, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_FOR_INVALID_VALUE(BMM_ACLNN_OP_NAME, "groupEp", "empty", "non-empty");
         return false;
@@ -44,17 +44,17 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
 // check dtype
 static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, const aclTensor* out)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x, MOE_X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnBatchMatMulReduceScatterAlltoAll", x, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnBatchMatMulReduceScatterAlltoAll", weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT("aclnnBatchMatMulReduceScatterAlltoAll", out, MOE_X_DTYPE_SUPPORT_LIST, return false);
 
-    OP_CHECK_DTYPE_NOT_SAME(x, weight, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x, out, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnBatchMatMulReduceScatterAlltoAll", x, weight, return false);
+    OP_CHECK_DTYPE_NOT_SAME("aclnnBatchMatMulReduceScatterAlltoAll", x, out, return false);
 
     if (bias != nullptr) { // x和bias支持同时为fp16，或x为bf16和bias为fp32
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, MOE_BIAS_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("aclnnBatchMatMulReduceScatterAlltoAll", bias, MOE_BIAS_DTYPE_SUPPORT_LIST, return false);
         if (x->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(bias, x, return false);
+            OP_CHECK_DTYPE_NOT_SAME("aclnnBatchMatMulReduceScatterAlltoAll", bias, x, return false);
         }
         if (x->GetDataType() == op::DataType::DT_BF16) {
             if (bias->GetDataType() != op::DataType::DT_FLOAT) {
@@ -71,9 +71,9 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
                                   const aclTensor* out)
 {
-    OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(out, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnBatchMatMulReduceScatterAlltoAll", x, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnBatchMatMulReduceScatterAlltoAll", weight, SUPPORTED_DIMENSIONAL, return false);
+    OP_CHECK_WRONG_DIMENSION("aclnnBatchMatMulReduceScatterAlltoAll", out, SUPPORTED_DIMENSIONAL, return false);
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {

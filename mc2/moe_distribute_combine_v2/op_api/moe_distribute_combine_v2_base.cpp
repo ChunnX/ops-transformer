@@ -15,7 +15,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -72,12 +72,12 @@ bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
                          const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
                          aclTensor *x)
 {
-    OP_CHECK_NULL(epSendCounts, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", epSendCounts, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", expertScales, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", x, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", expandX, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", expertIds, return false);
+    OP_CHECK_NULL("aclnnMoeDistributeCombine", assistInfoForCombine, return false);
 
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombine", "groupEp");

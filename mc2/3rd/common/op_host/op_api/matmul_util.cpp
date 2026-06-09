@@ -10,7 +10,7 @@
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 
 #include "aclnn_kernels/cast.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "mc2_log.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transdata.h"
@@ -107,16 +107,16 @@ static bool CheckDtypeValid(
 {
     bool bf16flag = CheckSocVersionIsSupportBf16();
     if (bf16flag) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(self, DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(mat2, DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", self, DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", mat2, DTYPE_SUPPORT_LIST, return false);
         if (bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", bias, DTYPE_SUPPORT_LIST, return false);
         }
     } else {
-        OP_CHECK_DTYPE_NOT_SUPPORT(self, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(mat2, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", self, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", mat2, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
         if (bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT("Matmul", bias, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
         }
     }
 
@@ -147,8 +147,8 @@ static bool CheckDtypeValid(
 
 static bool CheckShapeValid(const aclTensor* self, const aclTensor* mat2, bool transposeX2 = false)
 {
-    OP_CHECK_WRONG_DIMENSION(mat2, DIMS_TWO, return false);
-    OP_CHECK_WRONG_DIMENSION(self, DIMS_TWO, return false);
+    OP_CHECK_WRONG_DIMENSION("Matmul", mat2, DIMS_TWO, return false);
+    OP_CHECK_WRONG_DIMENSION("Matmul", self, DIMS_TWO, return false);
     op::Shape mat2Shape = mat2->GetViewShape();
     op::Shape selfShape = self->GetViewShape();
     int64_t mat2KDim = transposeX2 ? mat2Shape.GetDim(K_DIM_SELF_IDX) : mat2Shape.GetDim(M_DIM_SELF_IDX);
