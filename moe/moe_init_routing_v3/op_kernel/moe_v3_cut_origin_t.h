@@ -759,7 +759,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::LoadAndCastToFloat(
         // T=float: DMA directly into dst, no intermediate xBuf needed
         DataCopyPad(dst, xGm_[gmOffset], copyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-    } else {
+    } else if constexpr (!IsSameType<T, int8_t>::value){
         // T=half/bf16: DMA into xBuf, wait MTE2 complete, then Cast to float
         DataCopyPad(xBuf, xGm_[gmOffset], copyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
