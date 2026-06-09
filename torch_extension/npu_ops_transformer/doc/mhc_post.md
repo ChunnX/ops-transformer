@@ -72,7 +72,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>当前层的输入token特征，对应公式中的$x_{l}$</td>
+        <td>当前层的输入token特征，对应公式中的x_l</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -85,7 +85,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>残差连接矩阵，对应公式中的$H_{l}^{res}$</td>
+        <td>残差连接矩阵，对应公式中的H_l^res</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -98,7 +98,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>上一层的输出状态，对应公式中的$h_{l}^{out}$</td>
+        <td>上一层的输出状态，对应公式中的H_l^out</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -111,7 +111,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_post</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>后处理权重矩阵，对应公式中的$H_{t}^{post}$</td>
+        <td>后处理权重矩阵，对应公式中的H_t^post</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -148,7 +148,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>y</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>MHC Post计算输出，对应公式中的$x_{l+1}$，数据类型与输入`x`保持一致，shape与输入`x`保持一致</td>
+        <td>MHC Post计算输出，对应公式中的x_l+1，数据类型与输入`x`保持一致，shape与输入`x`保持一致</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -166,7 +166,6 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 - 该接口支持单算子模式和TorchAir图模式调用。
 - 数据类型约束：
     - `x`和`h_out`的数据类型必须相同。
-    - `h_res`和`h_post`的数据类型必须为FLOAT32。
     - 输出`y`的数据类型与`x`保持一致。
 
 - 维度约束：

@@ -72,7 +72,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>grad_output</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>前向输出的梯度，对应公式中的$\frac{\partial L}{\partial x_{l+1}}$</td>
+        <td>前向输出的梯度，对应公式中的partial L/partial x_l+1$</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -85,7 +85,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>前向计算的输入token特征（保存用于反向计算），对应公式中的$x_{l}$</td>
+        <td>前向计算的输入token特征（保存用于反向计算），对应公式中的x_l</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -98,7 +98,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>前向计算的残差连接矩阵（保存用于反向计算），对应公式中的$H_{l}^{res}$</td>
+        <td>前向计算的残差连接矩阵（保存用于反向计算），对应公式中的H_l^res</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -111,7 +111,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>前向计算的输出状态（保存用于反向计算），对应公式中的$h_{l}^{out}$</td>
+        <td>前向计算的输出状态（保存用于反向计算），对应公式中的H_l^out</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -124,7 +124,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>h_post</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>前向计算的后处理权重矩阵（保存用于反向计算），对应公式中的$H_{t}^{post}$</td>
+        <td>前向计算的后处理权重矩阵（保存用于反向计算），对应公式中的H_t^post</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -161,7 +161,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>grad_x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>对输入`x`的梯度，对应公式中的$\frac{\partial L}{\partial x_{l}}$，数据类型与`x`保持一致，shape与`x`保持一致</td>
+        <td>对输入`x`的梯度，对应公式中的partial L/partial x_l，数据类型与`x`保持一致，shape与`x`保持一致</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -174,7 +174,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>grad_h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>对输入`h_res`的梯度，对应公式中的$\frac{\partial L}{\partial H_{l}^{res}}$，数据类型为FLOAT32，shape与`h_res`保持一致</td>
+        <td>对输入`h_res`的梯度，对应公式中的partial L/partial H_l^res$，数据类型为FLOAT32，shape与`h_res`保持一致</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -187,7 +187,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>grad_h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>对输入`h_out`的梯度，对应公式中的$\frac{\partial L}{\partial h_{l}^{out}}$，数据类型与`h_out`保持一致，shape与`h_out`保持一致</td>
+        <td>对输入`h_out`的梯度，对应公式中的partial L/partial H_l^out，数据类型与`h_out`保持一致，shape与`h_out`保持一致</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -200,7 +200,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
         <td>grad_h_post</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>对输入`h_post`的梯度，对应公式中的$\frac{\partial L}{\partial H_{t}^{post}}$，数据类型为FLOAT32，shape与`h_post`保持一致</td>
+        <td>对输入`h_post`的梯度，对应公式中的$partial L/partial H_t^post，数据类型为FLOAT32，shape与`h_post`保持一致</td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -218,9 +218,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 - 该接口支持单算子模式和TorchAir图模式调用。
 - 数据类型约束：
     - `grad_output`、`x`和`h_out`的数据类型必须相同。
-    - `h_res`和`h_post`的数据类型必须为FLOAT32。
     - 输出`grad_x`和`grad_h_out`的数据类型与`grad_output`保持一致。
-    - 输出`grad_h_res`和`grad_h_post`的数据类型为FLOAT32。
 
 - 维度约束：
     - `h_res`的维度需与`grad_output`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
