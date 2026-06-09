@@ -19,6 +19,7 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"

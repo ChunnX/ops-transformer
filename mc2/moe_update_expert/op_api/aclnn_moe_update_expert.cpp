@@ -11,6 +11,7 @@
 #include "aclnn_moe_update_expert.h"
 #include <algorithm>
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_update_expert.h"

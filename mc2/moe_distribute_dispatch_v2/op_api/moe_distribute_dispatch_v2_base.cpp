@@ -19,6 +19,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "log/log.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"

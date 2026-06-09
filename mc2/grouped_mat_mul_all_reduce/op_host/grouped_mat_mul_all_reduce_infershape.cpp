@@ -13,6 +13,7 @@
  * \brief
  */
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "register/op_impl_registry.h"
 #include "exe_graph/runtime/infer_shape_context.h"
 #include "exe_graph/runtime/infer_datatype_context.h"

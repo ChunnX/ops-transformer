@@ -17,6 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"

@@ -14,6 +14,7 @@
  */
 
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "register/op_impl_registry.h"
 #include "platform/platform_info.h"
 using namespace ge;

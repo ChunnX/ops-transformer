@@ -14,6 +14,7 @@
  */
 
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "register/op_impl_registry.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_moe_utils.h"

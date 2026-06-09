@@ -15,6 +15,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2_def.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"

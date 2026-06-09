@@ -14,6 +14,7 @@
 #include "acl/acl.h"
 #include "aclnnInner_allto_all_matmul.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "common/utils/hccl_util.h"

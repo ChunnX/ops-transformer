@@ -17,6 +17,7 @@
 #include "aclnnInner_matmul_all_reduce.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "matmul_all_reduce_util.h"
+#include "mc2_op_error_check.h"
 #include "mc2_comm_utils.h"
 #include "log/log.h"
 

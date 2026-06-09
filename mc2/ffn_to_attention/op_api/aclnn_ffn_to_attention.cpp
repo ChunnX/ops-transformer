@@ -13,6 +13,7 @@
 #include <algorithm>
 #include "opdev/common_types.h"
 #include "mc2_log.h"
+#include "mc2_op_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "aclnnInner_ffn_to_attention.h"
