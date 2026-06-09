@@ -1147,6 +1147,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+    MTE3ToMTE2Sync();
 
     LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
@@ -1203,6 +1204,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     SToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskLocal,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+    MTE3ToMTE2Sync();
 
     curTileK -= static_cast<int32_t>(writeCnt);
 }
