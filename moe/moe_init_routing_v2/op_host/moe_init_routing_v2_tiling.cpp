@@ -735,8 +735,8 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
 }
 
 bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actualActivateRows,
-                                                                  MoeV2GatherOutComputeTilingData *tilingData,
-                                                                  int64_t &perCoreRows, int64_t &lastCoreRows)
+                                                                   MoeV2GatherOutComputeTilingData *tilingData,
+                                                                   int64_t &perCoreRows, int64_t &lastCoreRows)
 {
     if (actualActivateRows <= 0) {
         tilingData->set_needCoreNum(0);
@@ -759,8 +759,8 @@ bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actua
 }
 
 void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols, int64_t perCoreRows,
-                                                                int64_t lastCoreRows,
-                                                                MoeV2GatherOutComputeTilingData *tilingData)
+                                                                 int64_t lastCoreRows,
+                                                                 MoeV2GatherOutComputeTilingData *tilingData)
 {
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
     int64_t outputBufferSizePerBuffer =
@@ -803,8 +803,8 @@ void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsV
 }
 
 void MoeInitRoutingV2TilingBase::CalculateOutBasicParams(MoeV2GatherOutComputeTilingData *tilingData,
-                                                               int64_t &perCoreRows, int64_t &lastCoreRows,
-                                                               int64_t &cols)
+                                                         int64_t &perCoreRows, int64_t &lastCoreRows,
+                                                         int64_t &cols)
 {
     tilingData->set_activateRows(totalLength);
     if (dropPadMode == 0) {

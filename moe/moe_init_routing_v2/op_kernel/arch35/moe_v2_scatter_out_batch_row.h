@@ -195,7 +195,8 @@ __aicore__ inline void MoeV2ScatterOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR 
                                     Align(this->coreRows, sizeof(int32_t)));
 
     pipe->InitBuffer(outputRowsQueue, BUFFER_NUM_BATCH, AlignBytes(this->ubRowsPerLoop * this->cols, sizeof(T)));
-    pipe->InitBuffer(dstToSrcIndexQueue, BUFFER_NUM_BATCH, AlignBytes(this->gatherOutTilingData->perCorePerLoopRows, sizeof(int32_t)));
+    pipe->InitBuffer(dstToSrcIndexQueue, BUFFER_NUM_BATCH,
+                    AlignBytes(this->gatherOutTilingData->perCorePerLoopRows, sizeof(int32_t)));
 }
 
 template <typename T>
