@@ -13,8 +13,8 @@
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/arch/fused_arch.hpp"
-#include "../../../attn_infra/layout/fused_layout.hpp"
 #include "../../../attn_infra/gemm/fused_gemm_type.hpp"
+#include "../../../attn_infra/layout/fused_layout.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {
@@ -158,26 +158,26 @@ struct CopyGm2UbAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
         layout::RowMajor const &layoutDst,
         layout::RowMajor const &layoutSrc)
     {
-        uint32_t rows = layoutSrc.shape(0);
-        uint32_t cols = layoutSrc.shape(1);
         uint32_t srcStride = (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_BLK;
         uint32_t dstStride = (layoutDst.stride(0) - layoutDst.shape(1)) / ELE_NUM_PER_BLK;
 
+        uint32_t rowNum = layoutSrc.shape(0);
+        uint32_t colNum = layoutSrc.shape(1);
         if ((layoutSrc.shape(1) == layoutSrc.stride(0)) && (layoutDst.shape(1) == layoutDst.stride(0))) {
-            DataCopy(dstTensor, srcTensor, rows * cols);
-        } else if (srcStride < STRIDE_LIMIT && dstStride < STRIDE_LIMIT && (cols / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
-            uint32_t rLoops = NpuArch::Detail::Alignment::CeilDiv(rows, MAX_REPEAT);
+            DataCopy(dstTensor, srcTensor, rowNum * colNum);
+        } else if (srcStride < STRIDE_LIMIT && dstStride < STRIDE_LIMIT && (colNum / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
+            uint32_t rLoops = NpuArch::Detail::Alignment::CeilDiv(rowNum, MAX_REPEAT);
             for (uint32_t i = 0; i < rLoops; ++i) {
-                uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rows - i * MAX_REPEAT;
+                uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rowNum - i * MAX_REPEAT;
                 AscendC::DataCopyParams dataCopyParams(
-                    rActual, cols / ELE_NUM_PER_BLK, srcStride, dstStride
+                    rActual, colNum / ELE_NUM_PER_BLK, srcStride, dstStride
                 );
                 DataCopy(dstTensor[i * MAX_REPEAT * layoutDst.stride(0)],
                          srcTensor[i * MAX_REPEAT * layoutSrc.stride(0)], dataCopyParams);
             }
         } else {
-            for (uint32_t i = 0; i < rows; ++i) {
-                DataCopy(dstTensor[i * layoutDst.stride(0)], srcTensor[i * layoutSrc.stride(0)], cols);
+            for (uint32_t i = 0; i < rowNum; ++i) {
+                DataCopy(dstTensor[i * layoutDst.stride(0)], srcTensor[i * layoutSrc.stride(0)], colNum);
             }
         }
     };
