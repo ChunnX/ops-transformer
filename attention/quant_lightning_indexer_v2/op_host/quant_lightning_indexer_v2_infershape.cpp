@@ -76,7 +76,7 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
     const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
     if (returnValueFlag) {
-        *sparseValuesShape = *sparseIndicesShape;
+        * sparseValuesShape = *sparseIndicesShape;
     } else {
         sparseValuesShape->SetDimNum(1);
         sparseValuesShape->SetDim(0, 0);
