@@ -474,7 +474,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     flagIpcGt.SetGlobalBuffer((__gm__ uint64_t*)(shareIPCAddrsGM_[localRankId] + IPC_FLAG_OFFSET) +
         destRankIdx * B64_PER_BLOCK);
     PipeBarrier<PIPE_ALL>();
-    constexpr int64_t WAIT_IPC_TIMEOUT_CYCLES = 5000000000;  // 10秒, 50 cycles ≈ 1μs
+    constexpr int64_t WAIT_IPC_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
     int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
         DataCopy(localWait, flagIpcGt, B64_PER_BLOCK);
@@ -728,7 +728,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     LocalTensor<int32_t> tokenTopKInfoI32Lt = tokenTopKInfoU8Lt.template ReinterpretCast<int32_t>();
 
     uint32_t tokenIdx = 0;
-    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 5000000000;  // 10秒, 50 cycles ≈ 1μs
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
     int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (serverId_ == serverIdx) {
@@ -1293,13 +1293,21 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
     // 维测：16个uint32已用完，轮询readFlagRdmaAddr处读回的值直到RDMA Read完成，写入selfDataStatus 48核后面的扩展区域
     uint64_t readFlagValue = 0;
-    constexpr int64_t WAIT_RDMA_READ_TIMEOUT_CYCLES = 5000000000;
+    constexpr int64_t WAIT_RDMA_READ_TIMEOUT_CYCLES = 500000000;
+    constexpr int64_t THREE_SECONS_CYCLE = 150000000;
     int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
         AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
-        DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        int64_t startCycleThree = AscendC::GetSystemCycle();
+        while (true) {
+            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
-        readFlagValue = readFlagValueGt.GetValue(0);
+            readFlagValue = readFlagValueGt.GetValue(0);
+            if (AscendC::GetSystemCycle() - startCycleThree >= THREE_SECONS_CYCLE) {
+                break;
+            }
+        }
+        
         if (readFlagValue == END_OF_WRITE_FLAG_VALUE) {
             break;
         }
@@ -1476,7 +1484,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     Duplicate<int32_t>(tokenNumPerExp_, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
-    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 5000000000;  // 10秒, 50 cycles ≈ 1μs
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
     int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (formServerId == serverId_) {
