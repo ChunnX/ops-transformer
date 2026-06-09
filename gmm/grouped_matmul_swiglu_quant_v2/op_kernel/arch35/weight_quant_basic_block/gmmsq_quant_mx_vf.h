@@ -244,6 +244,29 @@ __simd_vf__ inline void TransMxScaleLayoutVf(__ubuf__ int8_t *srcAddr, __ubuf__ 
  * \param[in] elementAfterReduce  Element count after reduction.
  */
 template <typename DataTypeOut>
+__simd_vf__ inline void StoreFp8ResultPack4(__ubuf__ int8_t *&outLocalAddr,
+    AscendC::MicroAPI::RegTensor<DataTypeOut> &vdExp0FP8Zero,
+    AscendC::MicroAPI::RegTensor<DataTypeOut> &vdExp0FP8One,
+    AscendC::MicroAPI::RegTensor<DataTypeOut> &vdExp1FP8Zero,
+    AscendC::MicroAPI::RegTensor<DataTypeOut> &vdExp1FP8One,
+    AscendC::MicroAPI::MaskReg &dataMask3, AscendC::MicroAPI::MaskReg &dataMask4)
+{
+    // 64：使用DIST_PACK4_B32进行搬运4个float8拼成一个float32，256 / 4 = 64
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                  AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp0FP8Zero, static_cast<int64_t>(64), dataMask3);
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                  AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp0FP8One, static_cast<int64_t>(64), dataMask3);
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                  AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp1FP8Zero, static_cast<int64_t>(64), dataMask4);
+    AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                  AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+        outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp1FP8One, static_cast<int64_t>(64), dataMask4);
+}
+
+template <typename DataTypeOut>
 __simd_vf__ inline void
 ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
                                __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB, uint16_t loopNum,
@@ -298,19 +321,8 @@ ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *
         AscendC::MicroAPI::Cast<DataTypeOut, float, castTrait32to8>(vdExp1FP8Zero, vdExp1FP32Zero, dataMask4);
         AscendC::MicroAPI::Cast<DataTypeOut, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
 
-        // 64：使用DIST_PACK4_B32进行搬运4个float8拼成一个float32，256 / 4 = 64
-        AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-            outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp0FP8Zero, static_cast<int64_t>(64), dataMask3);
-        AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-            outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp0FP8One, static_cast<int64_t>(64), dataMask3);
-        AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-            outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp1FP8Zero, static_cast<int64_t>(64), dataMask4);
-        AscendC::MicroAPI::StoreAlign<int8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
-            outLocalAddr, (AscendC::MicroAPI::RegTensor<int8_t> &)vdExp1FP8One, static_cast<int64_t>(64), dataMask4);
+        StoreFp8ResultPack4<DataTypeOut>(outLocalAddr, vdExp0FP8Zero, vdExp0FP8One,
+                                          vdExp1FP8Zero, vdExp1FP8One, dataMask3, dataMask4);
     }
 }
 
