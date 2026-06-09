@@ -331,10 +331,9 @@ protected:
         }
 
         if (gmmDsqParams_.isMxA8W4 && gmmDsqParams_.dequantMode != QUNAT_MODE_MX) {
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "In MxA8W4, dequantMode must be 2, but actual value is %lu.",
-                     gmmDsqParams_.dequantMode);
-             return false;
+            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "dequantMode",
+                                      std::to_string(gmmDsqParams_.dequantMode), std::to_string(QUNAT_MODE_MX));
+            return false;
         }
         return true;
     }
@@ -349,7 +348,8 @@ protected:
 
         if (gmmDsqParams_.isMxA8W4) {
             if (!transposeWeight) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MxA8W4: transposeWeight must be true.");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "transposeWeight", "false",
+                                                      "in MxA8W4, the transposition of weight must be true");
                 return false;
             }
             gmmDsqParams_.transposeWeight = true;
@@ -591,9 +591,8 @@ protected:
 
         DataType outputDtype = output->GetDataType();
         if (outputDtype != DataType::DT_FLOAT8_E4M3FN) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "MxA8W4: output dtype must be FLOAT8_E4M3FN, but got %s.",
-                    op::ToString(outputDtype).GetString());
+            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, "output", op::ToString(outputDtype).GetString(),
+                                      "{FLOAT8_E4M3FN}");
             return false;
         }
         OP_CHECK_DTYPE_NOT_SUPPORT(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
@@ -686,13 +685,17 @@ protected:
         int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
 
         if (k % MXA8W4_K_ALIGN != 0 || k < MXA8W4_K_MIN) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "MxA8W4: K(%ld) must align to %ld and >= %ld.", k, MXA8W4_K_ALIGN, MXA8W4_K_MIN);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
+                                                  "MxA8W4: K(" + std::to_string(k) + ") must align to " +
+                                                      std::to_string(MXA8W4_K_ALIGN) +
+                                                      " and >= " + std::to_string(MXA8W4_K_MIN));
             return false;
         }
         if (n % MXA8W4_N_ALIGN != 0 || n < MXA8W4_N_MIN) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "MxA8W4: N(%ld) must align to %ld and >= %ld.", n, MXA8W4_N_ALIGN, MXA8W4_N_MIN);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                GMM_SWIGLU_ACLNN_OP_NAME, "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                "MxA8W4: N(" + std::to_string(n) + ") must align to " + std::to_string(MXA8W4_N_ALIGN) +
+                    " and >= " + std::to_string(MXA8W4_N_MIN));
             return false;
         }
 
@@ -961,8 +964,9 @@ protected:
             if (gmmDsqParams_.isMxA8W4) {
                 if (weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
                     weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
-                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MxA8W4: weight format must be NZ or NZ_C0_32, but got %s.",
-                            op::ToString(weight->GetStorageFormat()).GetString());
+                    OP_LOGE_FOR_INVALID_FORMAT(GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                                               op::ToString(weight->GetStorageFormat()).GetString(),
+                                               "{FORMAT_FRACTAL_NZ, FORMAT_FRACTAL_NZ_C0_32}");
                     return false;
                 }
             }
