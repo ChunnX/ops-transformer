@@ -1201,15 +1201,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     }
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<int32_t> maskInt32 = maskHalf.ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> maskInt32 = outIndexBuf_.Get<int32_t>();
     Cast<int32_t, half>(maskInt32, maskHalf, RoundMode::CAST_RINT, alignLen);
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<int16_t> maskInt16 = maskInt32.ReinterpretCast<int16_t>();
+    LocalTensor<int16_t> maskInt16 = outValueBuf_.Get<int16_t>();
     Cast<int16_t, int32_t>(maskInt16, maskInt32, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<uint8_t> maskU8 = maskInt16.ReinterpretCast<uint8_t>();
+    LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
     Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
 
