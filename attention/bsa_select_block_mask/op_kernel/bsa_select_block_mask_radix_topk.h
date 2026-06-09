@@ -538,17 +538,16 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
+        PipeBarrier<PIPE_V>();
 
         // === DUMP 466: cmpMaskTensor after Compares for bin 2 ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
-            PipeBarrier<PIPE_V>();
             BSA_TOPK_PRINTF("[DUMP466] cmpMaskTensor after bin2 Compares first 64:\n");
             BSA_TOPK_DUMP_TENSOR(cmpMaskTensor, 466, 64);
         }
 
         // === DUMP 470: cmpMaskTensor after Compares (first round, first tile, bin 1 only) ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 1) {
-            PipeBarrier<PIPE_V>();
             BSA_TOPK_DUMP_TENSOR(cmpMaskTensor, 470, 32);
         }
 
