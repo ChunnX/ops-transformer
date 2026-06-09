@@ -465,11 +465,15 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         CalTokenSendExpertCnt(i, axisBS_, curExpertCnt);
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
+    sendSumTensor_(epRankId_ - startExpert) = sendCntTensor_(epRankId_ - startExpert);
     PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
     uint32_t cnt=0;
     while(true) {
         cnt += 1;
+        if (cnt > 100000000) {
+            break;
+        }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == epRankId_) { // 本卡不处理
                 continue;
