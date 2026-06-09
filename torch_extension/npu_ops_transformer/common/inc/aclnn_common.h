@@ -343,7 +343,6 @@ inline void *GetOpApiFuncAddr(const char *apiName)
         }
     }
 
-
     static auto transformerHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
     if (transformerHandler != nullptr) {
         auto funcAddr = GetOpApiFuncAddrInLib(transformerHandler, GetTransformerOpApiLibName(), apiName);

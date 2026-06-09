@@ -34,11 +34,9 @@ namespace op_api {
  *
  * @return tuple(key_cache_out, value_cache_out, key_scale_cache_out)
  */
-std::tuple<at::Tensor, at::Tensor, at::Tensor>
-npu_scatter_pa_kv_cache_with_k_scale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &key_cache,
-                                  const at::Tensor &value_cache, const at::Tensor &slot_mapping,
-                                  const at::Tensor &key_scale, const at::Tensor &key_scale_cache,
-                                  std::string cache_layout)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_scatter_pa_kv_cache_with_k_scale(const at::Tensor &key,
+    const at::Tensor &value, const at::Tensor &key_cache, const at::Tensor &value_cache, const at::Tensor &slot_mapping,
+    const at::Tensor &key_scale, const at::Tensor &key_scale_cache, std::string cache_layout)
 {
     // 检查输入tensor维度
     TORCH_CHECK(key.dim() == 3, "key must be 3D tensor [num_tokens, num_head, k_head_size]");

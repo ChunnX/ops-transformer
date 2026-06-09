@@ -17,13 +17,11 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnScatterPaKvCacheWithKScaleGetWorkspaceSize(const aclTensor *key, const aclTensor *value,
-                                                          aclTensor *keyCacheRef, aclTensor *valueCacheRef,
-                                                          const aclTensor *slotMapping, aclTensor *keyScale,
-                                                          aclTensor *keyScaleCacheRef, char *cacheLayoutOptional,
-                                                          uint64_t *workspaceSize, aclOpExecutor **executor);
+    aclTensor *keyCacheRef, aclTensor *valueCacheRef, const aclTensor *slotMapping, aclTensor *keyScale,
+    aclTensor *keyScaleCacheRef, char *cacheLayoutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-aclnnStatus aclnnScatterPaKvCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                          aclrtStream stream);
+aclnnStatus aclnnScatterPaKvCacheWithKScale(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

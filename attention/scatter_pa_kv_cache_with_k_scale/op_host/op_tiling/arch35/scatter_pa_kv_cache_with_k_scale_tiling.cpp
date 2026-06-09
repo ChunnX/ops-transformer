@@ -241,8 +241,10 @@ static ge::graphStatus ValidateShape(gert::TilingContext *context, int64_t numTo
         return ge::GRAPH_FAILED;
     }
     if (kcShape.GetDim(DIM_CACHE_HEAD_SIZE) == 0) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-            "ScatterPaKvCacheWithKScale", "key_cache", std::to_string(kcShape.GetDim(DIM_CACHE_HEAD_SIZE)).c_str(), "shape[3] cannot be 0");
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("ScatterPaKvCacheWithKScale",
+            "key_cache",
+            std::to_string(kcShape.GetDim(DIM_CACHE_HEAD_SIZE)).c_str(),
+            "shape[3] cannot be 0");
         return ge::GRAPH_FAILED;
     }
     if (kcShape.GetDim(DIM_CACHE_HEAD) != numHead) {
