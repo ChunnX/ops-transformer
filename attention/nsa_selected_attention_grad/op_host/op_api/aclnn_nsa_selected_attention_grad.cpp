@@ -76,6 +76,112 @@ static aclnnStatus CheckParams(const NsaSelectedAttentionGradParams &params)
     return ACLNN_SUCCESS;
 }
 
+static bool CheckViewShape(const aclTensor *input1, const aclTensor *input2)
+{
+    int64_t *viewDims1 = nullptr;
+    uint64_t viewDimsNum1 = 0;
+    auto ret = aclGetViewShape(input1, &viewDims1, &viewDimsNum1);
+
+    int64_t *viewDims2 = nullptr;
+    uint64_t viewDimsNum2 = 0;
+    ret = aclGetViewShape(input2, &viewDims2, &viewDimsNum2);
+
+    if (viewDimsNum1 != viewDimsNum2) {
+        return false;
+    }
+
+    for (uint64_t i = 0; i < viewDimsNum1; i++) {
+        if (viewDims1[i] != viewDims2[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+static void CheckFormatValid(const NsaSelectedAttentionGradParams &params)
+{
+    // 检查输入张量的格式是否为 ND 格式
+    if (params.query != nullptr) {
+        op::Format format = params.query->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of query gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.key != nullptr) {
+        op::Format format = params.key->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of key gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.value != nullptr) {
+        op::Format format = params.value->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of value gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.attentionOut != nullptr) {
+        op::Format format = params.attentionOut->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of attentionOut gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.softmaxMax != nullptr) {
+        op::Format format = params.softmaxMax->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of softmaxMax gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.softmaxSum != nullptr) {
+        op::Format format = params.softmaxSum->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of softmaxSum gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.topkIndices != nullptr) {
+        op::Format format = params.topkIndices->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of topkIndices gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.softmaxMax != nullptr) {
+        op::Format format = params.softmaxMax->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of softmaxMax gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.softmaxSum != nullptr) {
+        op::Format format = params.softmaxSum->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of softmaxSum gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+
+    if (params.topkIndices != nullptr) {
+        op::Format format = params.topkIndices->GetStorageFormat();
+        if (format != ge::FORMAT_ND) {
+            OP_LOGW("Format of topkIndices gets [%s], this format may lead to precision failure.",
+                    op::ToString(format).GetString());
+        }
+    }
+}
+
 aclnnStatus ContiguousAndNsaSelectedAttentionGrad(const NsaSelectedAttentionGradParams &params, aclOpExecutor *executor,
                                                   const aclTensor *dqOut, const aclTensor *dkOut,
                                                   const aclTensor *dvOut)
@@ -112,6 +218,9 @@ aclnnStatus ContiguousAndNsaSelectedAttentionGrad(const NsaSelectedAttentionGrad
         params.selectedBlockSize, params.headNum, inputLayoutStr.c_str(), params.sparseMode, executor);
     // convert output tensor to contiguous tensor
     CHECK_RET(result[0] != nullptr && result[1] != nullptr && result[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_COND(CheckViewShape(result[0], dqOut) != false, ACLNN_ERR_PARAM_INVALID, "The dq Tensor is Invaild");
+    CHECK_COND(CheckViewShape(result[1], dkOut) != false, ACLNN_ERR_PARAM_INVALID, "The dk Tensor is Invaild");
+    CHECK_COND(CheckViewShape(result[2], dvOut) != false, ACLNN_ERR_PARAM_INVALID, "The dv Tensor is Invaild");
 
     auto viewCopyResult = l0op::ViewCopy(result[0], dqOut, executor);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -159,6 +268,7 @@ aclnnStatus aclnnNsaSelectedAttentionGradGetWorkspaceSize(
     // check params
     aclnnStatus ret = CheckParams(params);
     CHECK_COND(ret == ACLNN_SUCCESS, ret, "aclnnNsaSelectedAttentionGradGetWorkspaceSize checkParams failed.");
+    CheckFormatValid(params);
     // create OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
