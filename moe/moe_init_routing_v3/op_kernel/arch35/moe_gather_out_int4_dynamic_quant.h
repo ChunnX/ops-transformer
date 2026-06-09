@@ -45,6 +45,9 @@ private:
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                        int64_t j);
     __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float quantFactor, int64_t dstIndex, int64_t j);
+    template <bool IS_INPUT_SCALE>
+    __aicore__ inline void VecComputeTileMax(__local_mem__ float *inUbAddr, __local_mem__ float *scaleUbAddr,
+                                             __local_mem__ T *inUbAddrCastT, __local_mem__ float *smoothUbAddr);
 
 private:
     TPipe *pipe_;
@@ -92,8 +95,6 @@ private:
 
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
-
-    TBuf<AscendC::TPosition::VECCALC> tempCalcBuf_;
 
     constexpr static MicroAPI::CastTrait castTraitF32ToI16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -262,6 +263,45 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutXQuantEH(int64_t 
 
 template <typename T>
 template <bool IS_INPUT_SCALE>
+__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::VecComputeTileMax(__local_mem__ float *inUbAddr,
+                                                                          __local_mem__ float *scaleUbAddr,
+                                                                          __local_mem__ T *inUbAddrCastT,
+                                                                          __local_mem__ float *smoothUbAddr)
+{
+    uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
+    uint32_t sreg;
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<float> inReg, scaleReg, smoothReg;
+        MicroAPI::Duplicate(scaleReg, 0.0f);
+
+        MicroAPI::MaskReg maskRegLoop;
+        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegVL2 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL2>();
+
+        sreg = static_cast<uint32_t>(colsTileLength_);
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
+            if constexpr (!IsSameType<T, float>::value) {
+                ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegLoop, i * FLOAT_REG_TENSOR_LENGTH);
+            } else {
+                MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            }
+            if constexpr (IS_INPUT_SCALE) {
+                MicroAPI::DataCopy(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::Mul(inReg, inReg, smoothReg, maskRegLoop);
+            }
+            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegLoop);
+            MicroAPI::Abs(inReg, inReg, maskRegLoop);
+            MicroAPI::Max(scaleReg, scaleReg, inReg, maskRegAll);
+        }
+        MicroAPI::ReduceMax(scaleReg, scaleReg, maskRegAll);
+        MicroAPI::DataCopy(scaleUbAddr + 8, scaleReg, maskRegVL2);
+    }
+}
+
+template <typename T>
+template <bool IS_INPUT_SCALE>
 __aicore__ inline float MoeGatherOutInt4DynamicQuant<T>::ComputeMax(LocalTensor<float> &inLocal,
                                                                     LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                                                     int64_t j)
@@ -299,36 +339,7 @@ __aicore__ inline float MoeGatherOutInt4DynamicQuant<T>::ComputeMax(LocalTensor<
         smoothUbAddr = (__local_mem__ float *)smoothLocal.GetPhyAddr();
     }
 
-    uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
-    uint32_t sreg;
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<float> inReg, scaleReg, smoothReg;
-        MicroAPI::Duplicate(scaleReg, 0.0f);
-
-        MicroAPI::MaskReg maskRegLoop;
-        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg maskRegVL2 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL2>();
-
-        sreg = static_cast<uint32_t>(colsTileLength_);
-        for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
-            if constexpr (!IsSameType<T, float>::value) {
-                ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegLoop, i * FLOAT_REG_TENSOR_LENGTH);
-            } else {
-                MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            }
-            if constexpr (IS_INPUT_SCALE) {
-                MicroAPI::DataCopy(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-                MicroAPI::Mul(inReg, inReg, smoothReg, maskRegLoop);
-            }
-            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegLoop);
-            MicroAPI::Abs(inReg, inReg, maskRegLoop);
-            MicroAPI::Max(scaleReg, scaleReg, inReg, maskRegAll);
-        }
-        MicroAPI::ReduceMax(scaleReg, scaleReg, maskRegAll);
-        MicroAPI::DataCopy(scaleUbAddr + 8, scaleReg, maskRegVL2);
-    }
+    VecComputeTileMax<IS_INPUT_SCALE>(inUbAddr, scaleUbAddr, inUbAddrCastT, smoothUbAddr);
 
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
     DataCopyPad(quantTempGm_[j * perLoopCols_], inLocal, intriParamsFp32);

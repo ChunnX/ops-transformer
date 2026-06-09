@@ -435,6 +435,35 @@ static ge::graphStatus CheckScaleShapeForHif8PerTensor(const gert::InferShapeCon
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckScaleShapeForInt4DynamicQuant(const gert::InferShapeContext *context,
+                                                          const gert::Shape *xShape,
+                                                          const gert::Shape *scaleShape)
+{
+    if (scaleShape->GetDimNum() != DIM_TWO) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "2");
+        return ge::GRAPH_FAILED;
+    }
+    if (scaleShape->GetDim(0) > 0) {
+        OP_CHECK_IF(!isSameDim(scaleShape->GetDim(0), DIM_ONE),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
+                                              std::to_string(scaleShape->GetDim(0)), "1"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
+                                              std::to_string(scaleShape->GetDim(1)),
+                                              std::to_string(xShape->GetDim(1))),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(scaleShape->GetDim(0) != NEG_ONE ||
+                        (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                                              ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *context, const gert::Shape *xShape,
                                             const gert::Shape *scaleShape, const int64_t expertStart,
                                             const int64_t expertEnd, const int64_t quantMode)
@@ -459,28 +488,7 @@ static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *conte
     } else if (QuantMode::DYNAMIC_QUANT == quantMode) {
         return CheckScaleShapeForDynamicQuant(context, xShape, scaleShape, expertStart, expertEnd);
     } else if (QuantMode::INT4_DYNAMIC_QUANT == quantMode) {
-        if (scaleShape->GetDimNum() != DIM_TWO) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
-                                         "2");
-            return ge::GRAPH_FAILED;
-        }
-        if (scaleShape->GetDim(0) > 0) {
-            OP_CHECK_IF(!isSameDim(scaleShape->GetDim(0), DIM_ONE),
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
-                                                  std::to_string(scaleShape->GetDim(0)), "1"),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(!isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
-                                                  std::to_string(scaleShape->GetDim(1)),
-                                                  std::to_string(xShape->GetDim(1))),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF(scaleShape->GetDim(0) != NEG_ONE ||
-                            (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                                  ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
-                        return ge::GRAPH_FAILED);
-        }
+        return CheckScaleShapeForInt4DynamicQuant(context, xShape, scaleShape);
     } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
         return CheckScaleShapeForHif8PerTensor(context, scaleShape);
     }
