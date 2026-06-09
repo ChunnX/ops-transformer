@@ -93,7 +93,7 @@ public:
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                uint32_t loopBasicIdx = topk < trunkLen ? loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256) : (loopIdx - 1) * trunkLen;
+                uint32_t loopBasicIdx = topK < trunkLen ? loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256) : (loopIdx - 1) * trunkLen;
                 liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal,
                                                   mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2],
                                                   topK, loopBasicIdx,
