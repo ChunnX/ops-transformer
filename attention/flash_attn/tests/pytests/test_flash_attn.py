@@ -140,6 +140,8 @@ if __name__ == "__main__":
 
     # ── 逐 case 执行 ──
     reporter = Reporter()
+    if args.result_csv:
+        reporter.set_csv(Path(args.result_csv))
     for i, name in enumerate(run_cases):
         params = normalize_params(all_cases[name])
         layout = params.get("input_layout", "BNSD")
@@ -210,6 +212,5 @@ if __name__ == "__main__":
 
     fail_cnt = reporter.print_final()
     if args.result_csv:
-        reporter.save_csv(Path(args.result_csv))
         print(f"[result] {args.result_csv}")
     sys.exit(0 if fail_cnt == 0 else 1)
