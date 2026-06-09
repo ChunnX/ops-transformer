@@ -369,16 +369,17 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor
             aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
             bool isDeterministic = (aclRet == ACL_SUCCESS && deterministicValue == 1);
             const auto outDtype = unpermutedTokensOut->GetDataType();
-            const bool platformOk = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
-                                     GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93 ||
-                                     GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+            const bool isA2A3 = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
+                                 GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93);
+            const bool platformOk = isA2A3 ||
+                                    (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
             const bool shapeOk = unpermutedTokens->GetViewShape().GetDim(0) < MAX_SORT_SHAPE_DIM;
-            const bool dtypeOk = (outDtype == op::DataType::DT_BF16 || outDtype == op::DataType::DT_FLOAT16 ||
-                                  outDtype == op::DataType::DT_FLOAT);
-            // 确定性场景下统一走 MoeInplaceIndexAddWithSorted，避免 moe_inplace_index_add 确定性慢路径
-            bool useNewOp = platformOk && shapeOk && dtypeOk &&
-                            ((outDtype == op::DataType::DT_BF16 || outDtype == op::DataType::DT_FLOAT16) ||
-                             isDeterministic);
+            const bool isBf16OrFp16 = (outDtype == op::DataType::DT_BF16 || outDtype == op::DataType::DT_FLOAT16);
+            const bool dtypeOkForDeterministic = isBf16OrFp16 || outDtype == op::DataType::DT_FLOAT;
+            // A2/A3 确定性场景下走 MoeInplaceIndexAddWithSorted，避免 moe_inplace_index_add 确定性慢路径；A5 保持原逻辑
+            bool useNewOp = shapeOk &&
+                            ((platformOk && isBf16OrFp16) ||
+                             (isA2A3 && isDeterministic && dtypeOkForDeterministic));
             #ifdef BUILD_OPEN_PROJECT_API
                 if (useNewOp) {
                     indexAddRes =
