@@ -1069,12 +1069,12 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     OP_CHECK_IF(dSize > HEAD_DIM_MAX_VALUE,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                    std::to_string(dSize).c_str(),
-                   "The value of dSize must be in range (0, 768]"),
+                   "The value of dSize must be within range (0, 768]"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(dSizeV > HEAD_DIM_MAX_VALUE,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
                    std::to_string(dSizeV).c_str(),
-                   "The value of dSizeV must be in range (0, 768]"),
+                   "The value of dSizeV must be within range (0, 768]"),
                return ge::GRAPH_FAILED);
     CalcDBasicBlock();
     CalcDVBasicBlock();
