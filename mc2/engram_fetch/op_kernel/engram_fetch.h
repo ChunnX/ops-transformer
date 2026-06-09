@@ -28,6 +28,7 @@ namespace EngramFetchImpl {
 constexpr uint32_t UB_ALIGN = 32U;
 constexpr uint32_t TILE_BYTES = 32U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512UL;
+constexpr uint32_t INDICES_CHUNK_SIZE = 256U;
 
 using namespace AscendC;
 using namespace Mc2Aclnn;

@@ -9,111 +9,23 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch.h"
+
 namespace EngramFetchImpl {
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
-template <typename FetchType>
 class EngramFetchArch35 {
 public:
     __aicore__ inline EngramFetchArch35() = default;
 
-    __aicore__ inline void Init(GM_ADDR bufferhandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
-                                TPipe *pipe, const EngramFetchTilingData *tilingData)
-    {
-        tpipe_ = pipe;
-        indicesGM_ = indices;
-        fetchedGM_ = fetched;
-        tilingData_ = tilingData;
-        aivId_ = GetBlockIdx();
+    __aicore__ inline void Init(GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+                                TPipe *pipe, const EngramFetchTilingData *tilingData);
 
-        bhPtr_ = (__gm__ EngramBufferHandle *)bufferhandle;
-        rankId_ = bhPtr_->rankId;
-        numRanks_ = bhPtr_->rankSize;
-
-        numEntriesPerRank_ = tilingData_->engramFetchInfo.numEntriesPerRank;
-        numTokens_ = tilingData_->engramFetchInfo.numTokens;
-        hiddenDim_ = tilingData_->engramFetchInfo.hiddenDim;
-        hiddenBytes_ = tilingData_->engramFetchInfo.hiddenBytes;
-        aivNum_ = tilingData_->engramFetchInfo.aivNum;
-
-        tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
-        hcommTensor_ = hcommBuf_.Get<uint8_t>();
-        hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
-
-        // for (uint32_t i = 0; i < numRanks_ - 1; i++) {
-        //     urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity *>(bhPtr_->hcommHandle_[i]);
-        // }
-
-        tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
-        uint32_t indicesBufSize = Ceil(numTokens_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-        tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
-
-        GlobalTensor<int32_t> indicesGlobal;
-        indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_);
-        LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
-        DataCopyExtParams indicesParams{1U, static_cast<uint32_t>(numTokens_ * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPadExtParams<int32_t> indicesPad{false, 0, 0, 0};
-        DataCopyPad(indicesLocal, indicesGlobal, indicesParams, indicesPad);
-        PipeBarrier<PIPE_ALL>();
-    }
-
-    __aicore__ inline void Process()
-    {
-        if ASCEND_IS_AIV {
-            LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
-
-            for (uint32_t rank = aivId_; rank < numRanks_; rank += aivNum_) {
-                uint32_t rankStart = rank * numEntriesPerRank_;
-                uint32_t rankEnd = rankStart + numEntriesPerRank_;
-                uint32_t currRankId = rank > rankId_ ? rank - 1 : rank;
-
-                for (uint32_t i = 0; i < numTokens_; i++) {
-                    int32_t globalIdx = indicesLocal(i);
-                    if (static_cast<uint32_t>(globalIdx) < rankStart || static_cast<uint32_t>(globalIdx) >= rankEnd)
-                        continue;
-
-                    uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - rankStart;
-                    GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
-
-                    if (rank == rankId_) {
-                        GM_ADDR src =
-                            (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                        LocalCopySlice(dst, src, hiddenBytes_);
-                    } else {
-                        // __gm__ ChannelEntity *handle = urmaCommHandle_[currRankId];
-                        GM_ADDR remoteSrcAddr =
-                            (GM_ADDR)bhPtr_->commBuffer[rank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                        hcomm_.ReadNbi(bhPtr_->hcommHandle_[currRankId], dst, remoteSrcAddr, hiddenBytes_);
-                        hcomm_.Drain(bhPtr_->hcommHandle_[currRankId]);
-                    }
-                }
-            }
-        }
-        SyncAll<true>();
-    }
+    __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
-    {
-        LocalTensor<uint8_t> tmp = dataBuf_.Get<uint8_t>();
-        GlobalTensor<uint8_t> srcGm;
-        GlobalTensor<uint8_t> dstGm;
-        srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
-        dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
-        DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
-        uint64_t off = 0;
-        while (off < len) {
-            uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
-            DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
-            DataCopyPad(tmp, srcGm[off], cp, pad);
-            PipeBarrier<PIPE_MTE3>();
-            DataCopyPad(dstGm[off], tmp, cp);
-            PipeBarrier<PIPE_MTE3>();
-            off += thisLen;
-        }
-    }
+    __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
 
     TPipe *tpipe_{nullptr};
     GM_ADDR indicesGM_{nullptr};
@@ -122,12 +34,11 @@ private:
     __gm__ EngramBufferHandle *bhPtr_{nullptr};
 
     uint32_t aivId_{0};
+    uint32_t rankId_{0};
     uint32_t numRanks_{0};
     uint32_t numEntriesPerRank_{0};
     uint32_t numTokens_{0};
-    uint32_t hiddenDim_{0};
     uint32_t hiddenBytes_{0};
-    uint32_t rankId_{0};
     uint32_t aivNum_{0};
 
     TBuf<> dataBuf_;
@@ -136,8 +47,124 @@ private:
     LocalTensor<uint8_t> hcommTensor_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
-    // __gm__ ChannelEntity *urmaCommHandle_[MAX_QP_SIZE];
 };
+
+__aicore__ inline void EngramFetchArch35::Init(
+    GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+    TPipe *pipe, const EngramFetchTilingData *tilingData)
+{
+    tpipe_ = pipe;
+    indicesGM_ = indices;
+    fetchedGM_ = fetched;
+    tilingData_ = tilingData;
+    aivId_ = GetBlockIdx();
+
+    bhPtr_ = (__gm__ EngramBufferHandle *)bufferHandle;
+    rankId_ = bhPtr_->rankId;
+    numRanks_ = bhPtr_->rankSize;
+
+    numEntriesPerRank_ = tilingData_->engramFetchInfo.numEntriesPerRank;
+    numTokens_ = tilingData_->engramFetchInfo.numTokens;
+    hiddenBytes_ = tilingData_->engramFetchInfo.hiddenBytes;
+    aivNum_ = tilingData_->engramFetchInfo.aivNum;
+
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
+
+    tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
+    uint32_t indicesBufSize = INDICES_CHUNK_SIZE * sizeof(int32_t);
+    tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
+}
+
+__aicore__ inline void EngramFetchArch35::Process()
+{
+    if ASCEND_IS_AIV {
+        // 按 token 数量分核：将 numTokens_ 均匀分配到 aivNum_ 个 AIV 核
+        uint32_t tokensPerCore = numTokens_ / aivNum_;
+        uint32_t tailTokens = numTokens_ % aivNum_;
+        uint32_t myStart, myCount;
+        if (aivId_ < tailTokens) {
+            myCount = tokensPerCore + 1;
+            myStart = aivId_ * myCount;
+        } else {
+            myCount = tokensPerCore;
+            myStart = aivId_ * tokensPerCore + tailTokens;
+        }
+
+        if (myCount == 0) {
+            return;
+        }
+
+        // 分批搬运 indices（每批 ≤ INDICES_CHUNK_SIZE 个）
+        uint32_t processed = 0;
+        while (processed < myCount) {
+            uint32_t batchCount = myCount - processed;
+            if (batchCount > INDICES_CHUNK_SIZE) {
+                batchCount = INDICES_CHUNK_SIZE;
+            }
+
+            // DMA: 当前 batch 的 indices 从 GM 搬入 UB
+            GlobalTensor<int32_t> indicesGlobal;
+            indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_ + myStart + processed);
+            LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+            DataCopyExtParams params{1U, batchCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
+            DataCopyPad(indicesLocal, indicesGlobal, params, pad);
+            PipeBarrier<PIPE_MTE2>();
+
+            for (uint32_t j = 0; j < batchCount; j++) {
+                int32_t globalIdx = indicesLocal(j);
+                if (globalIdx < 0) {
+                    continue;
+                }
+                uint32_t targetRank = static_cast<uint32_t>(globalIdx) / numEntriesPerRank_;
+                if (targetRank >= numRanks_) {
+                    continue;
+                }
+
+                uint32_t i = myStart + processed + j;
+                uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) -
+                                         targetRank * numEntriesPerRank_;
+                GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
+
+                if (targetRank == rankId_) {
+                    GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
+                                  static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                    LocalCopySlice(dst, src, hiddenBytes_);
+                } else {
+                    uint32_t channelIdx = targetRank > rankId_ ? targetRank - 1 : targetRank;
+                    GM_ADDR remoteSrcAddr = (GM_ADDR)bhPtr_->commBuffer[targetRank] +
+                                            static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                    hcomm_.ReadNbi(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
+                    hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
+                }
+            }
+            processed += batchCount;
+        }
+    }
+    SyncAll<true>();
+}
+
+__aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
+{
+    LocalTensor<uint8_t> tmp = dataBuf_.Get<uint8_t>();
+    GlobalTensor<uint8_t> srcGm;
+    GlobalTensor<uint8_t> dstGm;
+    srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
+    dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
+    DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
+    uint64_t off = 0;
+    while (off < len) {
+        uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
+        DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
+        DataCopyPad(tmp, srcGm[off], cp, pad);
+        PipeBarrier<PIPE_MTE2>();
+        DataCopyPad(dstGm[off], tmp, cp);
+        PipeBarrier<PIPE_MTE3>();
+        off += thisLen;
+    }
+}
 
 } // namespace EngramFetchImpl
 
