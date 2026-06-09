@@ -243,7 +243,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     l1BufferManager.Init(pipe, 524288);
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     if constexpr (bmm2Write2Ub) {
-        ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+        ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         if ASCEND_IS_AIV {
             bmm2Buffers.Get().SetCrossCore();

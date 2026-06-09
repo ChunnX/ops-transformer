@@ -263,29 +263,6 @@ __aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T>& sumTensor, const L
     SoftmaxSumUpdateVF<T>(sumUb, maxUb, m, minValue, maxValue);
 }
 
-template <typename T>
-__simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float *out_ub, __ubuf__ float *ori_ub, const uint16_t loopM)
-{
-    RegTensor<float> broadcast_reg;
-    MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
-    for (uint16_t i = 0; i < loopM; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_E2B_B32>(broadcast_reg, ori_ub + i * 8);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)out_ub + i * 64, broadcast_reg, preg_all);
-    }
-}
-
-template <typename T>
-__aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const LocalTensor<T> &oriTensor,
-                                       uint32_t vecS1RealSize)
-{
-    __ubuf__ float *out_ub = (__ubuf__ T*)outTensor.GetPhyAddr();
-    __ubuf__ float *ori_ub = (__ubuf__ T*)oriTensor.GetPhyAddr();
-
-    // Align8, broadcast one element to 8 elements, one register can store 64 elements,
-    // so we can handle 64 / 8 = 8 elements per loop.
-    uint16_t loopM = (vecS1RealSize + 7) >> 3;
-    BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
-}
 } // namespace
 
 #endif // MY_MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_INTERFACE_H

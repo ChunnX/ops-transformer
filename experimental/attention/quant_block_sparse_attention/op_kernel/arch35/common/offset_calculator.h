@@ -30,8 +30,10 @@ enum class GmFormat {
     TNGD = 1,
     PA_BnBsND = 2,
     PA_BnNBsD = 3,
-    PA_BnNBs = 4
+    PA_BnNBs = 4,
+    BNGSD = 5
 };
+
 
 template <GmFormat FORMAT>
 struct GmLayout {
