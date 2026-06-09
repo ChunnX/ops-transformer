@@ -239,7 +239,6 @@ __aicore__ inline void LIGVector<LIGT>::GatherTopk(GlobalTensor<int32_t> sparseI
             AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
         }
         DataCopy(gatherPingPongUb[pingPongOffset], keyTensor[keyOffset], copyLen);
-        // 新增：连续时跳过已合并的下一个索引
         if (isDualPrefetch) {
             i++;
             cnt++;
@@ -250,7 +249,6 @@ __aicore__ inline void LIGVector<LIGT>::GatherTopk(GlobalTensor<int32_t> sparseI
             if (splitNum > 0) {
                 AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
                 AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-                // [BW-Opt] 批量 MTE3 写回：一次大 DataCopy 合并 splitDataCopyLen 行
                 DataCopy(gatherKTensor[gatherKOffset], gatherPingPongUb, constInfo.headDim * splitNum);
                 AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
             }
@@ -291,7 +289,7 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
 
     uint64_t batch = 0;  // 批次计数，每处理一个批次（可能含1或2个索引）递增1
-    for (uint64_t i = loopBegin; i < loopEnd; ) {
+    for (uint64_t i = loopBegin; i < loopEnd;) {
         bool canMerge = (i + 1 < loopEnd) && (indiceUb.GetValue(i + 1) == indiceUb.GetValue(i) + 1);
         uint64_t copyLen = canMerge ? (2 * constInfo.headDim) : constInfo.headDim;
         uint64_t step = canMerge ? 2 : 1;
@@ -324,7 +322,6 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
             }
         }
 
-        // 写回目标端（原子加）
         AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
         AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
         AscendC::SetAtomicAdd<float>();
