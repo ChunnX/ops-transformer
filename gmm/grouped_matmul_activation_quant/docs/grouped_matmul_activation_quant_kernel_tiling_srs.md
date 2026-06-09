@@ -15,6 +15,24 @@
 - 当前 activation 仅支持 `GMM_ACT_TYPE_GELU_TANH = 2`。
 - quant 逻辑参考 `dynamic_mx_quant_tail_axis_fp8.h` 的 tail axis FP8 MX quant 思路，并在 epilogue 中完成。
 
+算子整体数据流如下：
+
+```mermaid
+flowchart LR
+    X["x: FP8 ND"] --> GMM["Grouped Matmul BasicAPI"]
+    XS["x_scale: E8M0 ND"] --> GMM
+    W["weight0: FP8 FRACTAL_NZ"] --> GMM
+    WS["weight_scale0: E8M0 ND"] --> GMM
+    GL["group_list: INT64 ND"] --> SCH["Group scheduler"]
+    SCH --> GMM
+    GMM --> ACC["fp32 accumulator tile"]
+    ACC --> ACT["GeluTanh"]
+    ACT --> Q["MX dynamic quant"]
+    Q --> Y["y: FP8 ND"]
+    Q --> YS["y_scale: E8M0 ND"]
+    BIAS["bias: reserved"] -. "not used" .-> GMM
+```
+
 ## 2. 输入输出规格
 
 ### 2.1 Host 字段顺序
