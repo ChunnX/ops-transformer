@@ -124,9 +124,30 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
                          l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
+    auto kCacheView = l0Executor->CreateView(params.kCache,
+                                             params.kCache->GetViewShape(),
+                                             params.kCache->GetStorageShape(),
+                                             params.kCache->GetViewStrides(),
+                                             params.kCache->GetViewOffset());
+    CHECK_RET(kCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto vCacheView = l0Executor->CreateView(params.vCache,
+                                             params.vCache->GetViewShape(),
+                                             params.vCache->GetStorageShape(),
+                                             params.vCache->GetViewStrides(),
+                                             params.vCache->GetViewOffset());
+    CHECK_RET(vCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto kScaleCacheView = l0Executor->CreateView(params.kScaleCache,
+                                                  params.kScaleCache->GetViewShape(),
+                                                  params.kScaleCache->GetStorageShape(),
+                                                  params.kScaleCache->GetViewStrides(),
+                                                  params.kScaleCache->GetViewOffset());
+    CHECK_RET(kScaleCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping,
-        params.kCache, params.vCache, params.kScaleCache, params.cuSeqLen,
+        kCacheView, vCacheView, kScaleCacheView, params.cuSeqLen,
         params.optionalQRotation, params.optionalKRotation, params.optionalVScale,
         params.headNums, params.epsilon, params.qOut, params.qScale, l0Executor);
 
