@@ -261,15 +261,33 @@ SoftmaxFP32Perf(mxies02ReduceLocal, ...);
 在反向算子的 `SinkhornGrad` 函数末尾，对 softmax 梯度计算完成后，执行 clamp 反向：
 
 ```mermaid
-graph TD
-    A[gradHRes after softmax bwd] --> B[Load reduceOut]
-    B --> C[Dup minVal scalar]
-    C --> D[Compare < min]
-    D --> E[Dup maxVal scalar]
-    E --> F[Compare > max]
-    F --> G[Or masks]
-    G --> H[Cast uint8 to float]
-    H --> I[Mul grad * mask]
+sequenceDiagram
+    participant SinkhornGrad
+    participant GM as Global Memory
+    participant LM as Local Memory
+
+    Note over SinkhornGrad: Softmax 梯度计算完成
+
+    SinkhornGrad->>GM: DataCopyPad: Load reduceOut (hResLogits)
+    Note right of SinkhornGrad: reduceOut = clamp 前的原始 logits
+
+    SinkhornGrad->>LM: Duplicate(minScalar, minVal)
+    SinkhornGrad->>LM: Duplicate(maxScalar, maxVal)
+
+    SinkhornGrad->>LM: Compare(reduceOut, minScalar, CMPMODE::GE)
+    Note right of SinkhornGrad: maskGe[i] = 1 当 reduceOut[i] >= min
+
+    SinkhornGrad->>LM: Compare(reduceOut, maxScalar, CMPMODE::LE)
+    Note right of SinkhornGrad: maskLe[i] = 1 当 reduceOut[i] <= max
+
+    SinkhornGrad->>LM: And(mask, maskGe, maskLe)
+    Note right of SinkhornGrad: mask[i] = 1 当 min <= reduceOut[i] <= max
+
+    SinkhornGrad->>LM: Select(gradHRes, mask, 0)
+    Note right of SinkhornGrad: gradHRes[i] = 0 当 mask[i] == 0<br/>(越界位置梯度置零)
+
+    SinkhornGrad->>LM: Layout transform
+    SinkhornGrad->>GM: 写回 grad_h_res (处理后)
 ```
 
 **数学原理**：
