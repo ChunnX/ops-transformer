@@ -8,7 +8,7 @@
 #include "bsa_select_block_mask_tiling_data.h"
 
 #ifndef BSA_TOPK_DEBUG
-#define BSA_TOPK_DEBUG 1
+#define BSA_TOPK_DEBUG 0
 #endif
 
 #define BSA_TOPK_PRINTF(...) do { \
@@ -265,7 +265,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.8: main flow assembled\n");
     }
 
@@ -344,7 +344,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
                 // Core processing
                 NegateDataForLargest(curBuf, curTileLen);
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
                     LocalTensor<int16_t> rawInt16 = curBuf.Get<int16_t>();
                     BSA_TOPK_PRINTF("[DUMP440] after CopyIn/Negate, xBuf int16[tileLen_] first 64:\n");
                     BSA_TOPK_DUMP_TENSOR(rawInt16[tileLen_], 440, 64);
@@ -353,7 +353,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 PipeBarrier<PIPE_V>();
                 DoAndMask(curBuf, curTileLen);
                 PipeBarrier<PIPE_V>();
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
                     VToSSync();
                     LocalTensor<int16_t> maskedInt16 = curBuf.Get<int16_t>();
                     BSA_TOPK_PRINTF("[DUMP442] after DoAndMask, xBuf int16[tileLen_] first 64:\n");
@@ -373,7 +373,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
 
                 // === DUMP 400: tileHist after CalcCumsumHistogram (first round, first tile) ===
-                if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
                     LocalTensor<int32_t> tileHistDump = tileHistAndTopKBuf_.Get<int32_t>();
                     // bin 1, 2, 3 each have 1 entry for tile 0
                     // layout: [bin1_tile0, bin1_tile1, ..., bin2_tile0, ..., bin3_tile0, ...]
@@ -415,7 +415,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         earlyExit = Update(roundId);
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
-        if (GetBlockIdx() == 0) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP500] round=%d boundaryBin=%d boundaryBinPrev=%d involvedMask16_=%d remainK_=%lu totalDefinitelyInTopK_=%lu\n",
                 roundId, boundaryBin, boundaryBinPrev, static_cast<int32_t>(involvedMask16_), remainK_, totalDefinitelyInTopK_);
         }
@@ -505,7 +505,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
 
     // === DUMP 451: Cast chain results (first round, first tile) ===
-    if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
         BSA_TOPK_PRINTF("[DUMP451] After Cast chain (xLocalInt32):\n");
         BSA_TOPK_DUMP_TENSOR(xLocalInt32, 451, 32);
     }
@@ -524,13 +524,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
             involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
         // === DUMP 460: involvedMaskTemp (first round, first tile, first 3 bins) ===
-        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask >= 1) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask >= 1) {
             BSA_TOPK_PRINTF("[DUMP460] binMask=%d involvedMaskTemp=%d (0x%x)\n",
                 binMask, involvedMaskTemp, involvedMaskTemp);
         }
 
         // === DUMP 465: xLocalInt32 before Compares (first round, first tile, bin 2 only) ===
-        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
             BSA_TOPK_PRINTF("[DUMP465] xLocalInt32 before Compares (first 32):\n");
             BSA_TOPK_DUMP_TENSOR(xLocalInt32, 465, 32);
         }
@@ -540,14 +540,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
 
         // === DUMP 466: cmpMaskTensor after Compares for bin 2 ===
-        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 2) {
             PipeBarrier<PIPE_V>();
             BSA_TOPK_PRINTF("[DUMP466] cmpMaskTensor after bin2 Compares first 64:\n");
             BSA_TOPK_DUMP_TENSOR(cmpMaskTensor, 466, 64);
         }
 
         // === DUMP 470: cmpMaskTensor after Compares (first round, first tile, bin 1 only) ===
-        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 1) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0 && binMask == 1) {
             PipeBarrier<PIPE_V>();
             BSA_TOPK_DUMP_TENSOR(cmpMaskTensor, 470, 32);
         }
@@ -558,7 +558,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         VToSSync();
 
         // === DUMP 480: rsvdCnt after GatherMask (first round, first tile) ===
-        if (GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
             BSA_TOPK_PRINTF("[DUMP480] binMask=%d rsvdCnt=%lu cumSumOne=%d\n",
                 binMask, rsvdCnt, cumSumOne + static_cast<int32_t>(rsvdCnt));
         }
@@ -903,7 +903,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
     }
 
     // === DUMP 520: Reduced globalHist (core 0 only) ===
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP520] ReduceGlobalHist: coresInBlock=%d remain=%d aivNum=%u\n",
             coresInBlock, remain, constInfo.aivNum);
         BSA_TOPK_PRINTF("[DUMP520] globalHist[0]=%d [1]=%d [2]=%d [3]=%d sum=%d\n",
@@ -935,7 +935,7 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTensor<int32_t>& globalHist)
 {
     // === DUMP 510: AddTileHistToTileTopK decision ===
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP510] AddTileHistToTileTopK: boundaryBin=%d boundaryBinPrev=%d globalHist[boundaryBin]=%d globalHist[boundaryBinPrev]=%d remainK_=%lu\n",
             boundaryBin, boundaryBinPrev,
             globalHist.GetValue(boundaryBin),
@@ -946,17 +946,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTen
     if (globalHist.GetValue(boundaryBin) == static_cast<int32_t>(remainK_)) {
         AddTileHist2TileTopKInWs(boundaryBin * tileNum_);
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBin);
-        if (GetBlockIdx() == 0) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP511] Branch 1: added boundaryBin, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
         }
     } else if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
         AddTileHist2TileTopKInWs(boundaryBinPrev * tileNum_);
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBinPrev);
-        if (GetBlockIdx() == 0) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP511] Branch 2: added boundaryBinPrev, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
         }
     } else {
-        if (GetBlockIdx() == 0) {
+        if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP511] Branch 3: nothing added\n");
         }
     }
@@ -1048,7 +1048,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
     // === DUMP 550: HandleLastRoundBoundary key values ===
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP550] HandleLastRoundBoundary: reduceSumValue=%u cumSumValuePrev=%d remainCoreBoundaryNum=%d remainK_=%lu\n",
             reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_);
     }
@@ -1081,7 +1081,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 }
 
                 // === DUMP 560: Per-tile boundary allocation (core 0, first tile only) ===
-                if (GetBlockIdx() == 0 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP560] tileId=%d curTileBoundaryNum=%d remainCoreBoundaryNum=%d tileTopK_before=%d\n",
                         tileId, curTileBoundaryNum, remainCoreBoundaryNum,
                         tileTopK.GetValue(tileId - static_cast<int32_t>(startTileId)));
@@ -1136,7 +1136,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
     }
 
     // === DUMP 570: WriteCoreTopKFromWs totalTileTopKInCore ===
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP570] WriteCoreTopKFromWs: totalTileTopKInCore=%d\n", totalTileTopKInCore);
     }
 
@@ -1226,7 +1226,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     VToSSync();
 
     // === DUMP 730: rsvdCnt after GatherMask ===
-    if (GetBlockIdx() == 0 && tileGmOffset == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
         BSA_TOPK_PRINTF("[DUMP730] GT rsvdCnt=%lu curTileK=%d->%d\n",
             rsvdCnt, curTileK, curTileK - static_cast<int32_t>(rsvdCnt));
     }
@@ -1282,7 +1282,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
 {
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.6b: TileTopK implemented\n");
     }
 
@@ -1296,7 +1296,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
     }
 
     // === DUMP 600: TileTopK entry - boundaryHalf ===
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP600] TileTopK: involvedMask16_=0x%04x boundaryInt16=0x%04x boundaryHalf=%f\n",
             involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
     }
@@ -1343,7 +1343,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             // === DUMP 700: Before GT phase ===
             int32_t curTileKBeforeGT = curTileK;
-            if (GetBlockIdx() == 0 && tileId == 0) {
+            if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP700] Before GT: tileId=%lu curTileK=%d curTileLen=%lu tileGmOffset=%lu\n",
                     tileId, curTileK, curTileLen, tileGmOffset);
             }
@@ -1351,7 +1351,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
             // === DUMP 701: After GT phase ===
-            if (GetBlockIdx() == 0 && tileId == 0) {
+            if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP701] After GT: curTileK=%d (was %d, selected %d)\n",
                     curTileK, curTileKBeforeGT, curTileKBeforeGT - curTileK);
             }
@@ -1359,14 +1359,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             if (curTileK > 0) {
                 // === DUMP 800: Before EQ phase ===
                 int32_t curTileKBeforeEQ = curTileK;
-                if (GetBlockIdx() == 0 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP800] Before EQ: curTileK=%d\n", curTileK);
                 }
 
                 SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
                 // === DUMP 801: After EQ phase ===
-                if (GetBlockIdx() == 0 && tileId == 0) {
+                if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP801] After EQ: curTileK=%d (was %d, selected %d)\n",
                         curTileK, curTileKBeforeEQ, curTileKBeforeEQ - curTileK);
                 }
@@ -1384,7 +1384,7 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batchIdx, uint32_t headIdx,
                                                                      GlobalTensor<OUT_T> &maskOutGm)
 {
-    if (GetBlockIdx() == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.7: CopyMaskToOutput implemented\n");
     }
 
