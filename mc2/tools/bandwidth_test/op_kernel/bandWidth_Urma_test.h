@@ -402,6 +402,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t)));
         sendFlagHandleGMTensor_(curExpertCnt) = 1;
+        PRINTF("ProcessToken dstRankId = %d, curExpertCnt = %d\n", dstRankId, curExpertCnt);
     }
 }
 
