@@ -526,6 +526,12 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                 SetAicSync(flag_idx);
             }
         }
+
+        // 即将对0号flag进行清0操作，必须用1号位保证全卡同步
+        SetAndWaitAivSync(0);
+        CrossRankSyncV2(FLAG_ONE_IDX, (cal_count > MAX_BLOCK_COUNT) ? (cal_count - MAX_BLOCK_COUNT) : 0);
+        SetAndWaitAivSync(0);
+
         ResetIpcFlags(1);
         if (aiv_idx == 1 && core_idx < rank_size) {
             CheckBuffFlag((__gm__ int32_t *)buff[other_rank] + FLAG_OFFSET + FLAG_ZERO_IDX, 0);
