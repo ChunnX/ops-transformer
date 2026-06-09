@@ -745,7 +745,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, u
         DataCopyExtParams xcp{static_cast<uint16_t>(curBS), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES),
                               xSkip * ALIGN_BYTES, 0, 0};
         DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-        DataCopyPad(xLocal, xGM_[(uint64_t)curBsStart * xStride_ + dimStart], xcp, padParams);
+        uint64_t xGmOffset = curBsStart * xStride_ + dimStart;
+        DataCopyPad(xLocal, xGM_[xGmOffset], xcp, padParams);
     }
     xQueue_.EnQue(xLocal);
 
