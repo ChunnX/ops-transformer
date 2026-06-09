@@ -77,7 +77,6 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    bool CheckBiasShape(const gert::Shape &biasShape) const;
     bool CheckCoreNum() const override;
     bool CheckDtype() const;
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;

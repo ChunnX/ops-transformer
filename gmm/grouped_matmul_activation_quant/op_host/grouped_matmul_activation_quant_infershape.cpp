@@ -10,7 +10,6 @@
 
 #include "graph/utils/type_utils.h"
 #include "register/op_impl_registry.h"
-#include "util/math_util.h"
 
 using namespace ge;
 namespace ops {
@@ -65,7 +64,10 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
     if (n == DYNAMIC_DIM) {
         outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, DYNAMIC_DIM);
     } else {
-        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE)));
+        OP_CHECK_IF(n % MX_GROUP_SIZE != 0,
+                    OP_LOGE(context->GetNodeName(), "N must be a multiple of %ld, actual is %ld.", MX_GROUP_SIZE, n),
+                    return GRAPH_FAILED);
+        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, n / MX_GROUP_SIZE);
     }
     outScaleShape->SetDim(OUT_SCALE_PAIR_DIM_INDEX, MX_SCALE_PAIR);
     return GRAPH_SUCCESS;

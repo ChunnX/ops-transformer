@@ -19,11 +19,11 @@
 | REQUIRED_INPUT | `x` | 0 | FP8 ND，形状 `[M, K]` |
 | REQUIRED_INPUT | `group_list` | 1 | INT64 ND，形状 `[E]` |
 | OPTIONAL_INPUT | `x_scale` | 2 | 当前 MX FP8 kernel/tiling 实际必传，E8M0 ND，形状 `[M, ceil(K/64), 2]` |
-| DYNAMIC_INPUT | `weight` | 3 | FP8 FRACTAL_NZ，动态 tensor list |
+| DYNAMIC_INPUT | `weight` | 3 | 仅支持 `FLOAT8_E4M3FN` FRACTAL_NZ，动态 tensor list |
 | DYNAMIC_INPUT | `weight_scale` | 4 | E8M0 ND，动态 tensor list |
-| DYNAMIC_INPUT | `bias` | 5 | 偏移量，FLOAT32 ND，动态 tensor list，逻辑 shape 为 `[E, N]` |
+| DYNAMIC_INPUT | `bias` | 5 | 预留输入，当前融合算子暂不支持 bias，不参与 tiling/kernel 计算 |
 | OUTPUT | `y` | 0 | FP8 ND，形状 `[M, N]` |
-| OUTPUT | `y_scale` | 1 | E8M0 ND，形状 `[M, ceil(N/64), 2]` |
+| OUTPUT | `y_scale` | 1 | E8M0 ND，形状 `[M, N/64, 2]`，其中 `N` 必须为 64 的倍数 |
 | REQUIRED_ATTR | `activation_type` | 0 | string, 当前仅支持 `"gelu_tanh"` |
 | OPTIONAL_ATTR | `dequant_dtype` | 1 | 默认且当前只支持0，即当前仅支持 `ge::DT_FLOAT` |
 | OPTIONAL_ATTR | `transpose_weight` | 2 | `false` 或 `true` |
@@ -39,16 +39,16 @@
 | 输入项 | 说明 |
 | --- | --- |
 | 量化场景 | MX FP8，GMM 输入、weight 和输出均为 FP8，scale 均为 MX `FLOAT8_E8M0`。 |
-| dtype | `x`：`FLOAT8_E4M3FN` / `FLOAT8_E5M2`；`weight`：`FLOAT8_E4M3FN` / `FLOAT8_E5M2`；`x_scale` / `weight_scale`：`FLOAT8_E8M0`；`group_list`：`INT64`；`bias`：`FLOAT` |
-| shape | `x` 为 `[M, K]`；`group_list` 为 `[E]`；`x_scale` 为 `[M, ceil(K / 64), 2]`；`bias` 为 `[E, N]`；`weight` 逻辑 shape 和 `weight_scale` shape 由 `transpose_weight` 决定，详见 2.3。 |
-| format | `x`、`x_scale`、`group_list`、`weight_scale`、`bias` 均为 `ND`；`weight` 仅支持 `FRACTAL_NZ`。 |
+| dtype | `x`：`FLOAT8_E4M3FN` / `FLOAT8_E5M2`；`weight`：仅 `FLOAT8_E4M3FN`；`x_scale` / `weight_scale`：`FLOAT8_E8M0`；`group_list`：`INT64`；`bias` 为预留输入，当前不参与计算。 |
+| shape | `x` 为 `[M, K]`；`group_list` 为 `[E]`；`x_scale` 为 `[M, ceil(K / 64), 2]`；`N` 必须为 64 的倍数；`weight` 逻辑 shape 和 `weight_scale` shape 由 `transpose_weight` 决定，详见 2.3。 |
+| format | `x`、`x_scale`、`group_list`、`weight_scale` 均为 `ND`；`weight` 仅支持 `FRACTAL_NZ`；`bias` 为预留输入，当前不校验 format。 |
 | activation | `activation_type` 为必选 string 属性，当前仅支持 `"gelu_tanh"`；tiling data 内部映射为 kernel 使用的 GELU_TANH 枚举值 `2`。 |
 | quant 属性 | `quant_dtype` 仅支持 `FLOAT8_E4M3FN` / `FLOAT8_E5M2`，且必须与 `y.dtype` 一致；`round_mode` 仅支持 `"rint"`；`scale_alg` 支持 `0` OCP 和 `1` cuBLAS；`dst_type_max` 为预留属性，默认 `0.0`，FP8 场景不使用。 |
 | 分组语义 | `group_list_type=0` 表示累加 offsets；`group_list_type=1` 表示每组 token count |
 
 ### 2.3 转置与 shape 组合
 
-设 `M` 为所有 group token 总数，`E` 为 group 数，`K` 为输入 hidden size，`N` 为输出 hidden size，`KBlocks = ceil(K / 64)`，`NBlocks = ceil(N / 64)`。
+设 `M` 为所有 group token 总数，`E` 为 group 数，`K` 为输入 hidden size，`N` 为输出 hidden size，`KBlocks = ceil(K / 64)`。当前实现要求 `N % 64 == 0`，因此 `NBlocks = N / 64`。
 
 MX FP8 weight NZ 场景下，`transpose_weight` 支持如下组合：
 
@@ -69,13 +69,13 @@ MX FP8 weight NZ 场景下，`transpose_weight` 支持如下组合：
 | `y` | `[M, N]` | `[M, N]` |
 | `y_scale` | `[M, NBlocks, 2]` | `[M, NBlocks, 2]` |
 
-其中 `x_scale.rank == 3`、`weight_scale.rank == 4`、`weight.storage.rank == 5`，且 `weight.storage` 尾两维固定为 `16` 和 `32`。
+其中 `x_scale.rank == 3`、`weight_scale.rank == 4`、`weight.storage.rank == 5`，且 `weight.storage` 尾两维固定为 `16` 和 `32`；`N` 不是 64 的倍数时直接返回 `GRAPH_FAILED`。
 
 ### 2.4 输出规格
 
 | 输出项 | 说明 |
 | --- | --- |
-| shape | `y` 为 `[M, N]`；`y_scale` 为 `[M, ceil(N / 64), 2]`。 |
+| shape | `y` 为 `[M, N]`；`y_scale` 为 `[M, N / 64, 2]`；`N` 必须为 64 的倍数。 |
 | dtype | `y` 为 `FLOAT8_E4M3FN` / `FLOAT8_E5M2`，且 `y.dtype == quant_dtype`；`y_scale` 为 `FLOAT8_E8M0`。 |
 | format | `y` 和 `y_scale` 均为 `ND`。 |
 | 计算语义 | kernel 内部完成 `GroupedMatmul(fp32 accum) -> GeluTanh -> MX dynamic quant`，最终输出量化后的 `y` 和对应的 `y_scale`。 |
@@ -84,7 +84,7 @@ MX FP8 weight NZ 场景下，`transpose_weight` 支持如下组合：
 
 | 条目 | 说明 |
 | --- | --- |
-| format / dtype | `x`/`weight`/`y`：`FLOAT8_E4M3FN` / `FLOAT8_E5M2`；`x_scale`/`weight_scale`/`y_scale`：`FLOAT8_E8M0`；`weight` 只支持 `FRACTAL_NZ`，其余张量只支持 `ND`。 |
+| format / dtype | `x`/`y`：`FLOAT8_E4M3FN` / `FLOAT8_E5M2`；`weight`：仅 `FLOAT8_E4M3FN`；`x_scale`/`weight_scale`/`y_scale`：`FLOAT8_E8M0`；`weight` 只支持 `FRACTAL_NZ`，其余参与计算张量只支持 `ND`。 |
 | 交付通路 | aclnn，torch单算子 |
 | 动静要求 | 动态、静态合一 |
 | 精度交付标准 | output和scale ulp_error大于1的比例小于千分之一 |
@@ -109,13 +109,13 @@ flowchart LR
         XS["x_scale: E8M0 ND"]
         W["weight0: FP8 FRACTAL_NZ"]
         WS["weight_scale0: E8M0 ND"]
-        BIAS["bias: FLOAT ND [E,N]"]
+        BIAS["bias: reserved, not supported"]
         GL["group_list: INT64 ND"]
     end
 
     subgraph CUBE["Cube / AIC"]
         SCH["group/tile scheduler"]
-        MMAD["BlockMmadMx<br/>MX scale + bias + MMAD"]
+        MMAD["BlockMmadMx<br/>MX scale + MMAD"]
         ACC["fp32 L0C accumulator tile"]
     end
 
@@ -135,7 +135,7 @@ flowchart LR
     XS --> MMAD
     W --> MMAD
     WS --> MMAD
-    BIAS --> MMAD
+    BIAS -. reserved .-> TILING
     SCH --> MMAD
     MMAD --> ACC
     ACC --> ACT
@@ -150,7 +150,7 @@ flowchart LR
 | --- | --- | --- |
 | 参数校验与 tiling | Host | 校验 dtype/format/shape/core ratio，生成 `GMMActivationQuantParams` 和 `QuantBasicApiMMTiling` |
 | group/tile 调度 | Cube / Vector 共同使用 | AIC/AIV 读取同一份 `group_list` 和 tiling，按 group 与 tile 保持同步 |
-| GMM 主体 | Cube / AIC | `BlockMmadMx` 完成 FP8 MX scale 加载、bias 加载和 MMAD，输出 fp32 L0C tile |
+| GMM 主体 | Cube / AIC | `BlockMmadMx` 完成 FP8 MX scale 加载和 MMAD，输出 fp32 L0C tile；当前固定 no-bias 路径 |
 | GeluTanh + quant | Vector / AIV | 从 L0C 取 fp32 tile，在 UB 内完成 GeluTanh、MX scale 生成和 FP8 cast |
 | 写回 | Vector / AIV | 写回 `y` 和 `y_scale` |
 
@@ -223,10 +223,10 @@ GroupedMatmulActivationQuantTiling950.AnalyzeAttrs():
     set groupType = SPLIT_M
 
 GroupedMatmulActivationQuantTiling950.AnalyzeDtype():
-    read x, weight, x_scale, weight_scale, bias, y, y_scale desc
-    check x/weight/y are FP8 E4M3 or E5M2
+    read x, weight, x_scale, weight_scale, y, y_scale desc
+    check x/y are FP8 E4M3 or E5M2
+    check weight is FP8 E4M3
     check x_scale/weight_scale/y_scale are E8M0
-    check bias is FLOAT ND
     check y.dtype == quant_dtype
     record weight storage format
 
@@ -234,8 +234,8 @@ GroupedMatmulActivationQuantTiling950.AnalyzeInputs():
     SetGroupNum(group_list)
     SetMKN(x.originShape, weight.originShape)
     check x_scale and weight_scale MX shape
+    check N is a multiple of 64
     check weight storage is FRACTAL_NZ 5D with tail dims 16/32
-    check bias shape is [E, N]
     check AIC:AIV core ratio is 1:2
 
 GroupedMatmulActivationQuantTiling950.DoLibApiTiling():
@@ -258,10 +258,12 @@ GroupedMatmulActivationQuantTiling950.DoOpTiling():
 | round | `round_mode == "rint"` |
 | scale algorithm | `scale_alg == 0` 表示 OCP，`scale_alg == 1` 表示 cuBLAS |
 | dst max | `dst_type_max` 为预留属性，默认 `0.0`，FP8 场景不参与校验和计算 |
-| x/weight/y dtype | 均为 FP8 E4M3/E5M2 组合 |
+| x/y dtype | 均为 FP8 E4M3/E5M2 组合 |
+| weight dtype | 仅支持 `FLOAT8_E4M3FN` |
 | scale dtype | `x_scale`、`weight_scale`、`y_scale` 均为 `FLOAT8_E8M0` |
 | weight format | 只支持 `FRACTAL_NZ`，storage rank 为 5，尾维为 `16/32` |
 | scale shape | `x_scale=[M, ceil(K/64), 2]`；`weight_scale` 按转置状态匹配 `[E, KBlocks, N, 2]` 或 `[E, N, KBlocks, 2]` |
+| N 对齐 | `N` 必须为 64 的倍数，不满足时返回 `GRAPH_FAILED` |
 | core ratio | AIC:AIV 必须为 1:2 |
 
 `tuning_config` 当前随 schema 保留，tiling 实现没有读取该字段；若后续需要指定 block shape 或策略开关，应在本流程中显式解析并写入 tiling data。
@@ -278,11 +280,11 @@ GroupedMatmulActivationQuantTiling950.DoOpTiling():
 | `GMMActivationQuantParams` | `roundMode/scaleAlg/dstTypeMax` | `roundMode/scaleAlg` 对应 quant attr；`dstTypeMax` 当前按预留默认值写入 |
 | `QuantBasicApiMMTiling` | `m/n/k/baseM/baseN/baseK` | BasicAPI tiling 结果 |
 | `QuantBasicApiMMTiling` | `kAL1/kBL1/scaleKAL1/scaleKBL1` | BasicAPI L1 tiling 和 MX scale K 方向切分 |
-| `QuantBasicApiMMTiling` | `isBias/dbL0C` | `bias` 有效时 `isBias=1`，`dbL0C` 来自 BasicAPI |
+| `QuantBasicApiMMTiling` | `isBias/dbL0C` | 当前暂不支持 bias，`isBias` 固定写 0；`dbL0C` 来自 BasicAPI |
 
 高阶 API 常用的 `TCubeTiling` 不能不经适配直接作为低阶 `BlockMmadMx` 的 tiling 输入。低阶 kernel 需要的是 `BlockMmadMx::Init(problemShape, l0TileShape, L1Params, isBias, dbL0C)`，其中 `L1Params` 明确包含 `kAL1/kBL1/scaleKL1/l1BufNum`。`GroupedMatmulSwigluQuantV2` 的 MXFP4 weight NZ 场景采用的是兼容写法：host 侧仍保存 `TCubeTiling`，kernel 侧通过 `BlockMmadMxToUbAdapter` 从 `TCubeTiling` 的 `base/step/mxTypePara/isBias/dbL0C` 推导低阶 `L1Params` 后再调用 `BlockMmadMx`。
 
-本算子没有使用上述适配层，而是直接在 tiling data 中保存低阶 BasicAPI 所需字段：`baseM/baseN/baseK`、`kAL1/kBL1`、`scaleKAL1/scaleKBL1`、`isBias` 和 `dbL0C`。因此当前代码不需要切换为 `TCubeTiling`；如果后续复用 swigluquantv2 的 adapter 方案，则需要同步把 tiling data 改为 `TCubeTiling`，并在 kernel 侧补齐 `TCubeTiling -> BlockMmadMx::L1Params` 的适配逻辑。
+本算子没有使用上述适配层，而是直接在 tiling data 中保存低阶 BasicAPI 所需字段：`baseM/baseN/baseK`、`kAL1/kBL1`、`scaleKAL1/scaleKBL1`、`isBias` 和 `dbL0C`。其中 `isBias` 当前固定为 0。因此当前代码不需要切换为 `TCubeTiling`。
 
 #### 4.1.5 tiling key
 
@@ -400,10 +402,10 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 说明：
 
 - 参数顺序与 def 文件输入输出顺序一致。
-- `bias` 参与 GMM 主体计算，按 `[E, N]` 组织，每个 group 使用对应的 bias 向量。
+- `bias` 为接口预留输入，当前融合算子暂不支持 bias；kernel 入口保留该参数但不传入 MMAD 计算。
 - kernel 会临时将 float overflow mode 控制位清 0，结束时恢复。
 
-#### 4.2.2 Kernel 参数装配
+#### 4.2.2 外层Kernel 参数介绍
 
 `GmmActivationMxQuant` 是 kernel dispatch 后的模板组装层，核心职责如下：
 
@@ -414,10 +416,10 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 | Epilogue block | 组装 `BlockEpilogueActivationQuant`，输出 dtype 为 FP8，scale dtype 为 E8M0 |
 | Scheduler | 使用 `GroupedMatmulAswtWithTailSplitScheduler` 做 group/tile 调度 |
 | GMM 参数 | 传入 `groupNum`、`m/n/k`、`baseM/baseN/baseK`、L1 切分、`groupListType` 等 |
-| MMAD 地址 | 传入 `x`、`weight`、`weightScale`、`xScale`、`y`、`bias`、`groupList` |
+| MMAD 地址 | 传入 `x`、`weight`、`weightScale`、`xScale`、`y`、`groupList`；`biasGmAddr` 当前传入 `nullptr` |
 | Epilogue 地址和属性 | 传入 `y`、`yScale`、`baseM/baseN`、`roundMode`、`scaleAlg`、预留 `dstTypeMax`、内部枚举 `activationType` |
 
-当前 `bias` 进入 MMAD 参数装配，tiling 中 `isBias` 写为 1，使 BasicAPI 按带 bias 路径执行。
+当前暂不支持 bias，tiling 中 `isBias` 固定写为 0，使 BasicAPI 按 no-bias 路径执行。
 
 kernel 装配伪代码如下：
 
@@ -445,7 +447,7 @@ GmmActivationMxQuant<LayoutA, LayoutB>(...):
     build GMMTiling from mmTilingData and group attrs
     build Params:
         problemShape = default placeholder
-        mmadParams = x, weight, weightScale, xScale, y, bias, groupList
+        mmadParams = x, weight, weightScale, xScale, y, nullptr, groupList
         epilogueParams = y, yScale, baseM, baseN, roundMode, scaleAlg, reserved dstTypeMax, activationType enum
         gmmParams = GMMTiling
 
@@ -624,7 +626,7 @@ group 间 offset 更新遵循“按上一组 M 推进 A/Y，按 group index 推�
 | `xScaleOffset` | 上一组 `M_i * ceil(K/64) * 2` |
 | `wScaleOffset` | 每组 `N * ceil(K/64) * 2` |
 | `yOffset` | 上一组 `M_i * N` |
-| `yScaleOffset` | 上一组 `M_i * ceil(N/64) * 2` |
+| `yScaleOffset` | 上一组 `M_i * (N/64) * 2` |
 
 #### 4.2.7 tile 内 AIC/AIV 协同
 
@@ -660,7 +662,7 @@ Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下
 | scale 生成 | 根据 `scale_alg` 选择 OCP 或 cuBLAS 分支，生成 E8M0 `mxScale` 和用于 FP8 cast 的 `halfScale` |
 | FP8 cast | 对 BF16 activation 结果乘 `halfScale`，执行 sat + rint cast 到目标 FP8 |
 | scale layout | 将紧凑 scale 重排成 GM 写回需要的布局 |
-| GM 写回 | 写回 `y` 和 `y_scale`，stride 由完整 `N` 和 `ceil(N/64)*2` 决定 |
+| GM 写回 | 写回 `y` 和 `y_scale`，stride 由完整 `N` 和 `(N/64)*2` 决定 |
 
 #### 4.2.10 GeluTanh 计算
 
@@ -697,7 +699,7 @@ flowchart LR
 | 特殊值 | INF/NaN、zero 和小 exponent 区间按照参考 dynamic MX quant 路径处理 |
 | FP8 cast | activation 结果乘 `halfScale` 后执行 sat + rint cast 到 `FLOAT8_E4M3FN` 或 `FLOAT8_E5M2` |
 | scale 写回 | E8M0 scale 先在 UB 中按紧凑布局生成，再转换成 `y_scale` 的 GM layout |
-| 输出 stride | `y` stride 按完整 `N`，`y_scale` stride 按完整 `ceil(N/64)*2` |
+| 输出 stride | `y` stride 按完整 `N`，`y_scale` stride 按完整 `(N/64)*2` |
 
 ## 5. 软件设计和接口定义
 
@@ -719,7 +721,7 @@ flowchart LR
 | 模块 | 修改要点 |
 | --- | --- |
 | def schema | 按第 2.1 节顺序声明字段；`activation_type` 为必选 string 属性；保留 `x_scale` optional 和 `bias` dynamic 的接口形态 |
-| InferShape | `y=[M,N]`；`y_scale=[M,ceil(N/64),2]`；`N` 根据 `transpose_weight` 从 `weight_scale` 对应维度推导 |
+| InferShape | `y=[M,N]`；`y_scale=[M,N/64,2]`；`N` 根据 `transpose_weight` 从 `weight_scale` 对应维度推导，infer/tiling 阶段要求 `N` 为 64 的倍数 |
 | Tiling | index 常量与 def 顺序一致；完成 attr/dtype/shape/core ratio 校验；写入 `GMMActivationQuantTilingDataParams` |
 | Kernel dispatch | 根据 tiling key 选择 `RowMajor/Nz` 或 `RowMajor/Zn`，并在入口保存/恢复 float overflow mode |
 | GMM 调度 | 使用 low-level BasicAPI 和 tail-split scheduler 处理 group/tile |
@@ -735,7 +737,7 @@ flowchart LR
 | --- | --- |
 | def 顺序对齐 | CSV scalar 字段和 tensor 字段按 def 顺序构造 `TilingContextPara` |
 | attr 准入 | 合法/非法 `activation_type`、`group_list_type`、`quant_dtype`、`round_mode`、`scale_alg`；`dst_type_max` 作为预留属性覆盖默认值和非默认值透传场景 |
-| dtype/format 准入 | FP8 x/weight/y，E8M0 scale，NZ weight |
+| dtype/format 准入 | FP8 x/y，E4M3 weight，E8M0 scale，NZ weight |
 | shape 准入 | `x_scale`、`weight_scale`、`weight.storage` rank/tail dim |
 | tiling key | no-trans 期望 key 0；trans weight 期望 key 1 |
 | compileInfo | Ascend950，AIC/AIV 必须满足 1:2 核比例 |
@@ -757,7 +759,7 @@ UT 章节不画类图或流程图，仅说明 CSV 字段、执行逻辑和覆盖
 CSV 采用“固定 scalar 字段 + 固定 tensor 字段”的方式，避免 C++ 侧为每类 case 写重复样板。
 
 - scalar 字段数：`18`。
-- 输入 tensor 数：`6`，顺序为 `x`、`group_list`、`x_scale`、`weight`、`weight_scale`、`bias`。
+- 输入 tensor 数：`6`，顺序为 `x`、`group_list`、`x_scale`、`weight`、`weight_scale`、`bias`；其中 `bias` 为接口预留输入，当前 tiling/kernel 不消费。
 - 输出 tensor 数：`2`，顺序为 `y`、`y_scale`。
 - 每个 tensor 固定 4 个字段：`origin`、`storage`、`dtype`、`format`。
 - 总列数：`18 + (6 + 2) * 4 = 50`。
@@ -794,7 +796,7 @@ tensor 字段顺序如下：
 | 3 | `x_scale` | `xscale_origin/xscale_storage/xscale_dtype/xscale_format` | OPTIONAL_INPUT 2，当前 MX path 需要有效 desc |
 | 4 | `weight` | `weight_origin/weight_storage/weight_dtype/weight_format` | DYNAMIC_INPUT 3，第 0 个 tensor |
 | 5 | `weight_scale` | `wscale_origin/wscale_storage/wscale_dtype/wscale_format` | DYNAMIC_INPUT 4，第 0 个 tensor |
-| 6 | `bias` | `bias_origin/bias_storage/bias_dtype/bias_format` | DYNAMIC_INPUT 5，当前要求有效 `[E, N]` FLOAT ND bias |
+| 6 | `bias` | `bias_origin/bias_storage/bias_dtype/bias_format` | DYNAMIC_INPUT 5，预留字段；当前用例可保留 desc，但 tiling/kernel 不校验、不参与计算 |
 | 7 | `y` | `y_origin/y_storage/y_dtype/y_format` | OUTPUT 0 |
 | 8 | `y_scale` | `yscale_origin/yscale_storage/yscale_dtype/yscale_format` | OUTPUT 1 |
 
@@ -804,27 +806,29 @@ tensor 字段顺序如下：
 | --- | --- |
 | 加载用例 | 只加载 `socVersion=Ascend950` 且 `enable=true` 的 CSV 行 |
 | 构造上下文 | 按 CSV 字段构造 6 个输入 tensor、2 个输出 tensor、9 个 attr 和 `GMMCompileInfo` |
-| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `GRAPH_FAILED` |
+| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `错误日志` |
 | 执行成功用例 | `expectSuccess=true` 时，执行 tiling 并检查 `tilingKey` |
 | 定位失败 | 使用 `prefix/caseName` 标识失败用例，CSV 解析异常输出行号 |
 
 ### 6.5 当前 CSV 用例覆盖
 
-| case | 类型 | 关键输入 | 期望 |
-| --- | --- | --- | --- |
-| `valid_no_trans_e4m3` | 合法 | E4M3，`transposeWeight=false`，OCP scale | tiling 成功，key 0 |
-| `valid_trans_e5m2_cublas` | 合法 | E5M2，`transposeWeight=true`，cuBLAS scale | tiling 成功，key 1 |
-| `valid_grouplist_count` | 合法 | `group_list_type=1`，多 group count 模式 | tiling 成功，key 0 |
-| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` | `GRAPH_FAILED` |
-| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` | `GRAPH_FAILED` |
-| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` | `GRAPH_FAILED` |
-| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 | `GRAPH_SUCCESS` |
-| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 | `GRAPH_FAILED` |
-| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` | `GRAPH_FAILED` |
-| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` | `GRAPH_FAILED` |
-| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` | `GRAPH_FAILED` |
-| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 | `GRAPH_FAILED` |
+| case | 类型 | 关键输入 |
+| --- | --- | --- |
+| `valid_no_trans_e4m3` | 合法 | E4M3，`transposeWeight=false`，OCP scale |
+| `valid_trans_e5m2_cublas` | 合法 | E5M2，`transposeWeight=true`，cuBLAS scale |
+| `valid_grouplist_count` | 合法 | `group_list_type=1`，多 group count 模式 |
+| `invalid_activation_type` | 非法 attr | `activation_type != "gelu_tanh"` |
+| `invalid_group_list_type` | 非法 attr | `group_list_type` 不在 `{0,1}` |
+| `invalid_round_mode` | 非法 attr | `round_mode != "rint"` |
+| `invalid_scale_alg` | 非法 attr | `scale_alg` 不在 `{0,1}` |
+| `valid_dst_type_max_reserved` | 预留 attr | `dst_type_max != 0.0`，FP8 场景不使用 |
+| `invalid_quant_dtype` | 非法 attr | `quant_dtype` 不是 FP8 |
+| `invalid_y_dtype_mismatch` | 非法 dtype | `y.dtype != quant_dtype` |
+| `invalid_weight_dtype_e5m2` | 非法 dtype | `weight.dtype == FLOAT8_E5M2` |
+| `invalid_weight_nz_tail` | 非法 storage | NZ tail dim 不是 `16/32` |
+| `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` |
+| `invalid_n_not_multiple64` | 非法 shape | `N` 不是 64 的倍数 |
+| `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 |
 
 ## 7. 外部依赖
 
