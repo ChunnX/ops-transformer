@@ -488,7 +488,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
         cnt += 1;
-        if (cnt > 100000000) {
+        if (cnt > 1000000) {
             break;
         }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
