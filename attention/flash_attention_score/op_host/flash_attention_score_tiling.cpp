@@ -109,7 +109,7 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                 if (queryShape.GetDim(1) != keyShape.GetDim(1)) {
                     std::string shapeMsg = Ops::Base::ToString(queryShape) + " and " +
                         Ops::Base::ToString(keyShape);
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), 
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(),
                         "query and key", shapeMsg.c_str(),
                         "The B dim of input query must be the same as the B dim of “
                         ”input key when the attr input_layout is SBH");
