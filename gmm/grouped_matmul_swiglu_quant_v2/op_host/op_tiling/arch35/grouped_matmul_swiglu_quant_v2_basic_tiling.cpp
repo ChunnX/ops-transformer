@@ -47,6 +47,7 @@ size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    isMxWeightNzMultiTensor_ = false;
     return;
 }
 
@@ -306,6 +307,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
     return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxWeightNzMultiTensor(const gert::Shape &wShape) const
+{
+    return wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
                                                                   const gert::Shape &wShape) const
 {
@@ -477,8 +483,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     auto scaleDimNum = wScaleShape.GetDimNum();
     size_t weightCount = GetDynamicInputCount(context_, WEIGHT_INDEX);
     size_t scaleCount = GetDynamicInputCount(context_, SCALE_INDEX);
-    bool isMultiWeightNz = wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM &&
-                            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    bool isMultiWeightNz = IsMxWeightNzMultiTensor(wShape);
+    isMxWeightNzMultiTensor_ = isMultiWeightNz;
     size_t expectedScaleDim = isMultiWeightNz ? MX_MULTI_WEIGHT_SCALE_DIM : MX_WEIGHT_SCALE_DIM;
     OP_CHECK_IF(scaleDimNum != expectedScaleDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum),
@@ -828,7 +834,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::PostTiling()
 
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(isMxWeightNzMultiTensor_),
+                              static_cast<uint64_t>(inputParams_.transB),
+                              static_cast<uint64_t>(inputParams_.transA));
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsB8(ge::DataType dtype)

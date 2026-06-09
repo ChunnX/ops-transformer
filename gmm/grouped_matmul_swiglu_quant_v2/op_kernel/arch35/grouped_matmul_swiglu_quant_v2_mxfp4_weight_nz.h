@@ -133,7 +133,7 @@ public:
 } // namespace Gemm
 } // namespace Cgmct
 
-template <typename layoutA, typename layoutB>
+template <typename layoutA, typename layoutB, bool IS_MX_WEIGHT_NZ_MULTI_TENSOR = false>
 __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
                                               GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
                                               GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
@@ -156,9 +156,10 @@ __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR
     using BlockEpilogue = Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType,
                                                           WeightScaleType, true>;
     using ProblemShape = MatmulShape;
-    using BlockMmad = Block::BlockMxLowLevelMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type,
-                                                              LayoutC, L1TileShape, L0TileShape, BlockScheduler,
-                                                              BlockMmadPolicy, void>;
+    using BlockMmadBase = Block::BlockMxLowLevelMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type,
+                                                                  LayoutC, L1TileShape, L0TileShape, BlockScheduler,
+                                                                  BlockMmadPolicy, void>;
+    using BlockMmad = GmmSwigluBlockMmadWithMultiWeightNzFlag<BlockMmadBase, IS_MX_WEIGHT_NZ_MULTI_TENSOR>;
     using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
