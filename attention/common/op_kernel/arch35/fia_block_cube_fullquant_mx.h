@@ -153,7 +153,6 @@ public:
     BufferManager<BufferType::L0C> l0cBufferManager;
 
     BuffersPolicyDB<BufferType::L1> l1QBuffers;
-    BuffersPolicySingleBuffer<BufferType::L1> PScaleBuffers;
     L1KvType l1KVBuffers;
     BuffersPolicyDB<BufferType::L1> l1VBuffers;
 
@@ -200,7 +199,6 @@ public:
             l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QScaleSize);
             l1KVBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize);
         }
-        PScaleBuffers.Init((*l1BufferManagerPtr), mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T));
 
         // L0A B C 当前写死，能否通过基础api获取
         l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
@@ -409,7 +407,6 @@ public:
     {
         l1QBuffers.Uninit((*l1BufferManagerPtr));
         l1KVBuffers.Uninit((*l1BufferManagerPtr));
-        PScaleBuffers.Uninit((*l1BufferManagerPtr));
         mmL0ABuffers.Uninit(l0aBufferManager);
         mmL0BBuffers.Uninit(l0bBufferManager);
         mmL0CBuffers.Uninit(l0cBufferManager);
