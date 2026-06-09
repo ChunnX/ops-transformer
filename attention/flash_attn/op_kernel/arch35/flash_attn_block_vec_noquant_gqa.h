@@ -15,7 +15,7 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 
-// PERF TEST: vec runtime keeps only cross-core / event sync; compute paths commented out.
+// PERF TEST: vec runtime keeps only cross-core sync; intra-core sync/compute paths commented out.
 
 #include "kernel_operator.h"
 
@@ -283,12 +283,12 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore();
             if (constInfo.isSoftmaxLseEnable) {
                 InitLseOutputSingleCore();
             }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             SyncAll();
         }
     }
@@ -311,7 +311,7 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             if constexpr (IsSameType<OUTPUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
@@ -320,7 +320,7 @@ public:
                 matmul::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                     0);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
@@ -337,10 +337,10 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
@@ -365,8 +365,8 @@ public:
         // }
         bmm1ResBuf.SetCrossCore();
 
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         // LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         // DataCopy(...);
         outputBuf.SetCrossCore();
@@ -405,8 +405,8 @@ public:
         // uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         // LocalTensor<float> &lseUb = this->lseBuf;
         // ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         // DataCopySoftmaxLse...(...);
     }
 
@@ -426,7 +426,7 @@ public:
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
     {
         // DataCopyPad(this->sinkBuf, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
-        SetFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
+        // SetFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
     }
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -528,8 +528,8 @@ public:
         bmm1ResBuf.SetCrossCore();
 
         // ===================DataCopy to L1 ====================
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         // LocalTensor<INPUT_T> mm2AL1Tensor;
         // mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
@@ -564,7 +564,7 @@ public:
 
         // LocalTensor<T> vec2ResUb = this->stage2OutBuf;
         // LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         // if (unlikely(runInfo.isFirstS2Loop)) {
         //     DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         // } else {
@@ -591,7 +591,7 @@ public:
         //     }
         //     CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         // }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -607,8 +607,8 @@ public:
 
         // RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         // Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
 
         // Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
@@ -619,7 +619,7 @@ public:
         uint32_t subMBase = 8192 / constInfo.dBasicBlock;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         // LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         // LocalTensor<T> bmm2Ub = mm2InBuf;
 
         constexpr uint32_t mte2ToV = FA_MTE2_TO_V_ID;
@@ -630,28 +630,28 @@ public:
             // int32_t mIdx = mOIdx * subMBase;
             // uint32_t subMRealsize = ...;
             // int64_t vec2CalcSize = ...;
-            SetFlag<HardEvent::V_MTE2>(vToMte2);
-            WaitFlag<HardEvent::V_MTE2>(vToMte2);
+            // SetFlag<HardEvent::V_MTE2>(vToMte2);
+            // WaitFlag<HardEvent::V_MTE2>(vToMte2);
             // DataCopy/DataCopyPad from GM to UB
 
             if (vec2LoopLimit > 1) {
-                SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
-                WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
+                // SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
+                // WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 // DataCopy vec2ResGm -> UB
             }
-            SetFlag<HardEvent::MTE2_V>(mte2ToV);
-            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+            // SetFlag<HardEvent::MTE2_V>(mte2ToV);
+            // WaitFlag<HardEvent::MTE2_V>(mte2ToV);
             // FlashUpdateNew / FlashUpdateLastNew / DataCopy
 
             if (unlikely(runInfo.isLastS2Loop)) {
                 // LastDivNew / CopyOutAttentionOut
             } else if (vec2LoopLimit > 1) {
-                SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-                WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 // DataCopy UB -> vec2ResGm
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -687,13 +687,13 @@ public:
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
     {
         // FaVectorApi::BroadcastMaxSum(...);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         // DataCopy(softmaxFDSumGm[gmOffset], this->sumBrdcstBuf, calculateSize);
 
         // FaVectorApi::BroadcastMaxSum(...);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         // DataCopy(softmaxFDMaxGm[gmOffset], this->maxBrdcstBuf, calculateSize);
     }
 
@@ -711,8 +711,8 @@ public:
     __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        // SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
         // DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
     }
 
@@ -745,7 +745,7 @@ public:
         uint32_t subMBase = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         // LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         // LocalTensor<T> bmm2Ub = mm2InBuf;
 
         constexpr uint32_t mte2ToV = FA_MTE2_TO_V_ID;
@@ -753,17 +753,17 @@ public:
 
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             // int32_t mIdx = mOIdx * subMBase;
-            SetFlag<HardEvent::V_MTE2>(vToMte2);
-            WaitFlag<HardEvent::V_MTE2>(vToMte2);
+            // SetFlag<HardEvent::V_MTE2>(vToMte2);
+            // WaitFlag<HardEvent::V_MTE2>(vToMte2);
             // DataCopy/DataCopyPad from GM to UB
-            SetFlag<HardEvent::MTE2_V>(mte2ToV);
-            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+            // SetFlag<HardEvent::MTE2_V>(mte2ToV);
+            // WaitFlag<HardEvent::MTE2_V>(mte2ToV);
             // FlashUpdateNew / FlashUpdateLastNew / DataCopy
             if (unlikely(runInfo.isLastS2Loop)) {
                 // LastDivNew / CopyOutAttentionOut
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
     __aicore__ inline void SoftmaxInitBuffer(uint32_t off_sm)
@@ -838,14 +838,13 @@ public:
         mte3ToVId[1] = FA_MTE3_TO_V_1;
         vToMte3Id[0] = FA_V_TO_MTE3_0;
         vToMte3Id[1] = FA_V_TO_MTE3_1;
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        // PERF TEST: intra-core WaitFlag disabled.
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
