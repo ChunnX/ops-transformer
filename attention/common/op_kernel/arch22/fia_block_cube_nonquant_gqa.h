@@ -230,7 +230,7 @@ private:
      * @pre alignment必须是2的幂，且s>=0
      */
     template <typename T1>
-    static __aicore__ inline constexpr T1 Align(T1 s, T1 alignment)
+    static __aicore__ inline constexpr T1 AlignToPowerOfTwo(T1 s, T1 alignment)
     {
         if constexpr (IsSameType<T1, uint64_t>::value || IsSameType<T1, uint32_t>::value || IsSameType<T1, uint16_t>::value || IsSameType<T1, uint8_t>::value) {
             return (s + alignment-1) & (~(alignment-1));
@@ -243,9 +243,9 @@ private:
     static __aicore__ inline constexpr size_t BlockAlign(size_t s)
     {
         if constexpr (IsSameType<T1, int4b_t>::value) {
-            return Align(s, 64);
+            return AlignToPowerOfTwo(s, 64);
         } else {
-            return Align(s, ONE_BLK_SIZE / sizeof(T1));
+            return AlignToPowerOfTwo(s, ONE_BLK_SIZE / sizeof(T1));
         }
     }
 
@@ -735,7 +735,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::CopyQToL1(
             uint32_t dstBufId, const RunInfo &info, uint32_t subMStart, uint32_t subMSize)
 {
     auto qL1Tensor = this->qL1Tensor[dstBufId];
-    auto subMSizeAlign = Align<uint32_t>(subMSize, (uint32_t)BLOCK_CUBE); // 目的矩阵z分形的高固定为16，行为C0_SIZE(字节数)。目的矩阵的“高”将对齐为z分形的整数倍，所以将srcN按16对齐即为Z型矩阵相邻行起始地址之间的偏移
+    auto subMSizeAlign = AlignToPowerOfTwo<uint32_t>(subMSize, (uint32_t)BLOCK_CUBE); // 目的矩阵z分形的高固定为16，行为C0_SIZE(字节数)。目的矩阵的“高”将对齐为z分形的整数倍，所以将srcN按16对齐即为Z型矩阵相邻行起始地址之间的偏移
     uint32_t nopeDealSize = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
 
     FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
@@ -770,7 +770,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::CopyKToL1(
             uint32_t dstBufId, const RunInfo &info, uint32_t subNStart, uint32_t subNSize)
 {
     auto kpL1Tensor = this->kpL1Tensor[dstBufId];
-    auto subNSizeAlign = Align(subNSize, (uint32_t)BLOCK_CUBE);
+    auto subNSizeAlign = AlignToPowerOfTwo(subNSize, (uint32_t)BLOCK_CUBE);
     uint32_t nopeDealSize = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
 
     FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
@@ -818,7 +818,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::CopyPToL1(
         DataCopy(dstL1, srcGm, intriParams);
     } else {
         auto srcGm = this->vec1ResGm[info.loop % CFG::PRELOAD_NUM][gmStride * subMStart + subKStart];
-        auto subMSizeAlign = Align(subMSize, (uint32_t)BLOCK_CUBE);
+        auto subMSizeAlign = AlignToPowerOfTwo(subMSize, (uint32_t)BLOCK_CUBE);
         CopySingleMatrixNDToNZ(dstL1, srcGm, subMSize, subKSize, gmStride, subMSizeAlign);
     }
 
@@ -832,7 +832,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::CopyVToL1(
             uint32_t dstBufId, const RunInfo &info, uint32_t subKStart, uint32_t subKSize)
 {
     auto vL1Tensor = this->vL1Tensor[dstBufId];
-    auto subKSizeAlign = Align(subKSize, (uint32_t)BLOCK_CUBE);
+    auto subKSizeAlign = AlignToPowerOfTwo(subKSize, (uint32_t)BLOCK_CUBE);
 
     FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
         .tensor = vL1Tensor,
@@ -899,10 +899,10 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::LoadBTransposeToL0
     auto srcTensor = l1Tensor[nL1Size * subKStart][GetC0Num<KV_T>() * subNStart];
     auto dstTensor = this->bL0Tensor[dstBufId];
     if (nL1Size == subNSize) {
-        mm1LoadDataBTransposeToL0Params.repeatTimes = CeilDiv(subKSize, (uint32_t)BLOCK_CUBE) * CeilDiv(subNSize, GetC0Num<KV_T>());
+        mm1LoadDataBTransposeToL0Params.repeatTimes = AttentionCommon::CeilDiv(subKSize, (uint32_t)BLOCK_CUBE) * AttentionCommon::CeilDiv(subNSize, GetC0Num<KV_T>());
         LoadData(dstTensor, srcTensor, mm1LoadDataBTransposeToL0Params);
     } else {
-        mm1LoadDataBTransposeToL0Params.repeatTimes = CeilDiv(subNSize, (uint32_t)BLOCK_CUBE);
+        mm1LoadDataBTransposeToL0Params.repeatTimes = AttentionCommon::CeilDiv(subNSize, (uint32_t)BLOCK_CUBE);
         uint32_t kLoops = subKSize / GetC0Num<KV_T>();
         for (uint32_t i = 0; i < kLoops; i++) {
             LoadData(dstTensor[subNSize * i * BLOCK_CUBE], srcTensor[nL1Size * i * GetC0Num<KV_T>()], mm1LoadDataBTransposeToL0Params);
@@ -936,7 +936,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::FixpipeCToGM(
     FixpipeParamsV220 fixParams;
     fixParams.nSize = subNSize;
     fixParams.mSize = subMSize;
-    fixParams.srcStride = Align(subMSize, (uint32_t)BLOCK_CUBE);
+    fixParams.srcStride = AlignToPowerOfTwo(subMSize, (uint32_t)BLOCK_CUBE);
     fixParams.ndNum = 1;
     if constexpr (CFG::ENABLE_UNIFLAG) {
         fixParams.unitFlag = 3;

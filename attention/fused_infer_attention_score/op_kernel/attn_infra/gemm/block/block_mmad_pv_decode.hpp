@@ -181,9 +181,9 @@ public:
 
         }
 
-        uint32_t mL1Loop = CeilDiv(rowNum, L1TileShape::M);
-        uint32_t kL1Loop = CeilDiv(stackSeqTile, l1KDynamic);
-        uint32_t nL1Loop = CeilDiv(embed, L0TileShape::N);
+        uint32_t mL1Loop = NpuArch::Detail::Alignment::CeilDiv(rowNum, L1TileShape::M);
+        uint32_t kL1Loop = NpuArch::Detail::Alignment::CeilDiv(stackSeqTile, l1KDynamic);
+        uint32_t nL1Loop = NpuArch::Detail::Alignment::CeilDiv(embed, L0TileShape::N);
 
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; nL1Idx++) {
             uint32_t nL1Actual = (nL1Idx < nL1Loop - 1U) ? L0TileShape::N : (embed - nL1Idx * L0TileShape::N);
@@ -201,7 +201,7 @@ public:
                     copyGmToL1A(l1ATensor[l1PPingPongFlag], gmTileA, layoutAInL1, layoutTileA);
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
 
-                    uint32_t kL0Loop = CeilDiv(kL1Actual, L0TileShape::K);
+                    uint32_t kL0Loop = NpuArch::Detail::Alignment::CeilDiv(kL1Actual, L0TileShape::K);
                     for (uint32_t kL0Idx = 0; kL0Idx < kL0Loop; kL0Idx++) {
                         uint32_t kL0Actual =
                             (kL0Idx < kL0Loop - 1U) ? L0TileShape::K : (kL1Actual - kL0Idx * L0TileShape::K);

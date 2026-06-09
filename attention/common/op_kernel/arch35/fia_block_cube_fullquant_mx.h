@@ -440,7 +440,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (runInfo.actMSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(runInfo.actMSize, blockNumDtype);
+            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
@@ -515,7 +515,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (s2RealSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(s2RealSize, blockNumDtype);
+            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(s2RealSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor =  {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
