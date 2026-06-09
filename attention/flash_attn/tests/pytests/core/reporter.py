@@ -17,13 +17,15 @@ class Reporter:
     def set_csv(self, path: Path):
         """设置增量 CSV 输出路径，每条 record 自动追加。"""
         self._csv_path = path
-        self._csv_file = open(path, "w", newline="")
+        exists = path.exists()
+        self._csv_file = open(path, "a", newline="")
         self._csv_writer = csv.DictWriter(
             self._csv_file,
             ["case", "dtype", "attn_pass", "attn_max_abs", "attn_fail_ratio",
              "lse_pass", "lse_max_abs", "lse_fail_ratio", "error"])
-        self._csv_writer.writeheader()
-        self._csv_file.flush()
+        if not exists:
+            self._csv_writer.writeheader()
+            self._csv_file.flush()
 
     def record(self, name: str, result: dict, error: str = None, dtype: str = ""):
         if error:
