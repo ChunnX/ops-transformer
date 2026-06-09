@@ -162,7 +162,7 @@ if __name__ == "__main__":
                                             "fail_cnt": 0, "total": 0, "fail_ratio": 0.0},
                                    "lse":  {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                                             "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}},
-                            error="skipped: N1<N2 or N1%N2!=0")
+                            error="skipped: N1<N2 or N1%N2!=0", dtype=dtype)
             if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                     and (i + 1) < len(run_cases):
                 reporter.print_interim(len(run_cases))
@@ -176,7 +176,7 @@ if __name__ == "__main__":
                                    "lse":  {"passed": False, "max_abs": float('nan'),
                                             "mean_abs": float('nan'), "fail_cnt": -1,
                                             "total": -1, "fail_ratio": float('nan')}},
-                            error=err)
+                             error=err, dtype=dtype)
             if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                     and (i + 1) < len(run_cases):
                 reporter.print_interim(len(run_cases))
@@ -203,7 +203,7 @@ if __name__ == "__main__":
                                "mean_abs": float('nan'), "fail_cnt": -1,
                                "total": -1, "fail_ratio": float('nan')}}
 
-        reporter.record(name, result, error=err)
+        reporter.record(name, result, error=err, dtype=dtype)
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))
