@@ -529,7 +529,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t)));
     for (uint32_t i = 0; i < axisBS_; ++i) {
-        DataCacheCleanAndInvalid<int32_t,CacheLine::SINGLE_CACHE_LINE,DcciDst::CACHELINE_OUT>(sendFlagHandleGMTensor_);
        PRINTF("CommProcess i = %d, epRankId_ = %d, sendFlagHandleGMTensor_(i) = %d\n", i, epRankId_, sendFlagHandleGMTensor_.GetValue(i));
     }
 }
@@ -584,6 +583,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_));
     DataCacheCleanAndInvalid<int32_t,CacheLine::ENTIRE_DATA_CACHE>(sendFlagHandleGMTensor_);
     for (uint32_t i = 0; i < axisBS_ * epWorldSize_; ++i) {
+        DataCacheCleanAndInvalid<int32_t,CacheLine::SINGLE_CACHE_LINE,DcciDst::CACHELINE_OUT>(sendFlagHandleGMTensor_);
        PRINTF("SendToMoeExpert i = %d, epRankId_ = %d, sendFlagHandleGMTensor_(i) = %d\n", i, epRankId_, sendFlagHandleGMTensor_.GetValue(i));
     }
     SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
