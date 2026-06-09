@@ -228,14 +228,16 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BSND")
         && (std::string(opParamInfo_.layOut) != std::string(opParamInfo_.layOutKey))),
-        OP_LOGE(opName_, "under non-PA conditions, layout_query and layout_key should be equal."),
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "query and key",
+            std::string(opParamInfo_.layOut) + " and " + std::string(opParamInfo_.layOutKey),
+            "When layOutKey is non-PA, layout_query and layout_key must be same."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BSND") && (std::string(opParamInfo_.layOutKey) != "BSND")
         && (std::string(opParamInfo_.layOutKey) != "TND")),
-        OP_LOGE(opName_, "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "key", std::string(opParamInfo_.layOutKey), "PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
-               OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", std::string(opParamInfo_.layOut), "BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
  	                *opParamInfo_.sparseCount % 1024 != 0),
  	                OP_LOGE(opName_, "input attr sparse_count must > 0 and <= 8192. And when sparse_count > 2048, sparse_count must be an interger multiple of 1024."),
@@ -247,7 +249,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
                OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.returnValue && std::string(opParamInfo_.layOutKey) == "PA_BSND",
-               OP_LOGE(opName_, "when return_value is true, key layout do not support PA_BSND."), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_FORMAT(opName_, "key", std::string(opParamInfo_.layOutKey), "PA_BSND"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
