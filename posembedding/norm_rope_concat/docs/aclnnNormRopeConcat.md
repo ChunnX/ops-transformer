@@ -534,6 +534,22 @@ aclnnStatus aclnnNormRopeConcat(
       <td rowspan="2">161002</td>
       <td>计算输入和输出的数据类型不在支持范围内。</td>
     </tr>
+    <tr>
+      <td>输入的shape不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td rowspan="2">561002</td>
+      <td>入参的NormType、NormAddedType不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>入参的tensor的shape相互不符合约束。</td>
+    </tr>
+     <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>361001</td>
+      <td>入参的ropeType和concatOrder取约束以外的值。</td>
+    </tr>
   </tbody>
   </table>
 
