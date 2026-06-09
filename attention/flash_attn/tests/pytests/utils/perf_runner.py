@@ -297,7 +297,8 @@ def _quick_avg(csv_path: Path, runs: int, op_name: str = "FlashAttn") -> float:
 # ══════════════════════════════════════════════════════════
 
 def build_batch_script(cases: List[Dict], runs: int, cold_thr: int,
-                       case_names: List[str] = None, device_id: int = 0) -> str:
+                       case_names: List[str] = None, device_id: int = 0,
+                       output_dir: str = ".") -> str:
     """Build a single script with all cases for batch msprof."""
     hot = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) > cold_thr]
     cold = [(i, c) for i, c in enumerate(cases) if c.get("S1", 9999) <= cold_thr]
@@ -320,7 +321,7 @@ def build_batch_script(cases: List[Dict], runs: int, cold_thr: int,
         f"_cold_cases = {case_dicts['cold']}",
         f"_hot_names = {hot_names}",
         f"_cold_names = {cold_names}",
-        f"_perf_log = open('_perf_log.jsonl', 'w')",
+        f"_perf_log = open({repr(str(Path(output_dir)) + '/_perf_log.jsonl')}, 'w')",
         f"print(f'PERF total={len(cases)} hot={len(hot)} cold={len(cold)} runs={runs}')",
         "",
     ]

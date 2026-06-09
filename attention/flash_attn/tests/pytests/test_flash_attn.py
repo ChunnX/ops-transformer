@@ -76,7 +76,7 @@ if __name__ == "__main__":
         else:
             from utils.perf_runner import build_batch_script, run_batch_msprof
             script = build_batch_script(cases_list, args.perf_runs, args.perf_cold_thr,
-                                        case_names=run_cases)
+                                        case_names=run_cases, output_dir=str(out))
             csv_path = run_batch_msprof(script, out)
 
         if csv_path is None or not csv_path.exists():
