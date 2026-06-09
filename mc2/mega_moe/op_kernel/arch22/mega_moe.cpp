@@ -15,7 +15,11 @@
  *        - A2 (910B):   INT8 (int8 weight), BF16/FP16 weight
  *        Note: W4A8 on A2 is reserved but not yet implemented.
  */
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "mega_moe_tiling_a2a3.h"
 #include "mega_moe_tiling_key.h"
