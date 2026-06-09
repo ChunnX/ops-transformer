@@ -258,9 +258,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
                valueShape.GetDimNum() != layoutLen,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
-                   "The value of layout string length must be equal to “
-                   ”dims of input query, key and value"),
-                   return false);
+                    "The value of layout string length must be equal to "
+                    "dims of input query, key and value"),
+                return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
                !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
@@ -403,8 +403,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
                     std::to_string(n1Size).c_str(),
-                    "The value of attr head_num must be equal to the 1st dim “
-                    ”of input query in TND layout"),
+                    "The value of attr head_num must be equal to the 1st dim "
+                    "of input query in TND layout"),
                 return false);
     n2Size = keyShape.GetDim(1);
     OP_CHECK_IF(n2Size == 0,
@@ -892,14 +892,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
     auto dropMaskInput = context_->GetOptionalInputDesc(DROP_MASK_INPUT_INDEX);
     if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0) {
         if (!hasDropOut) {
-            OP_LOGE_WITH_INVALID_INPUT(opName, "dropMaskOptional", 
+            OP_LOGE_WITH_INVALID_INPUT(opName, "dropMaskOptional",
                 "The value of dropMaskOptional must be nullptr when keepProb is 1.0.");
             return false;
         }
         auto dropMaskDtype = dropMaskInput->GetDataType();
         OP_CHECK_IF(dropMaskDtype != ge::DT_UINT8,
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, 
-                "drop_mask", Ops::Base::ToString(dropMaskDtype).c_str(), 
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "drop_mask", Ops::Base::ToString(dropMaskDtype).c_str(),
                 "The dtype of input drop_mask must be UINT8"),
             return false);
         int64_t dimNum = dropMaskShape->GetStorageShape().GetDimNum();
