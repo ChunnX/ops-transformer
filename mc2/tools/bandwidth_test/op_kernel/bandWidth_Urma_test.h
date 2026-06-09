@@ -455,7 +455,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
-    uint3_t cnt=0;
+    uint32_t cnt=0;
     while(true) {
         cnt += 1;
         for(uint32_t i = startExpert; i < endExpert; ++i) {
@@ -503,7 +503,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId_, endTokenId_, sendTokenNum_);
+    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
     
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
