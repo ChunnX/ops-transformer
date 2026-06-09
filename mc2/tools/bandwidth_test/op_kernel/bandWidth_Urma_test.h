@@ -519,7 +519,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
     }
-    PRINTF("CommProcess cnt = %d， epRankId_ = %d, processCnt = %d\n", cnt, epRankId_, processCnt);
+    PRINTF("CommProcess cnt = %d, epRankId_ = %d, processCnt = %d\n", cnt, epRankId_, processCnt);
+    for (uint32_t i = startExpert; i < endExpert; ++i) {
+        PRINTF("CommProcess i = %d, sendSumTensor_(i - startExpert) = %d\n", i, sendSumTensor_(i - startExpert));
+    }
 }
 
 template <TemplateBandwidthTestTypeClass>
