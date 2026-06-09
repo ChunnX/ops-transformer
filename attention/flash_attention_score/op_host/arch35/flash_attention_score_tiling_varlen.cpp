@@ -186,7 +186,8 @@ if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RI
                 }
             }
 if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
-                           inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
+                           inputParamsRegbase_->get_sparseType() !=
+                           static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
                         std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
                         "The value of sparse_type must be CAUSAL or RIGHT_DOWN_CAUSAL when pse alibi is used");

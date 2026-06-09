@@ -87,7 +87,8 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                     std::string shapeMsg = Ops::Base::ToString(queryShape) + " and " +
                         Ops::Base::ToString(keyShape);
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
-                        "The B dim of input query must be the same as the B dim of input key when the attr input_layout is BSH");
+                        "The B dim of input query must be the same as the B dim “
+                        ”of input key when the attr input_layout is BSH");
                     return ge::GRAPH_FAILED;
                 }
             } else {
@@ -96,8 +97,10 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                     if (queryShape.GetDim(2) != keyShape.GetDim(2)) {
                         std::string shapeMsg = Ops::Base::ToString(queryShape) + " and " +
                             Ops::Base::ToString(keyShape);
-                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
-                            "The D dim of input query must be the same as the D dim of input key when the attr input_layout is TND");
+                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(),
+                            "query and key", shapeMsg.c_str(),
+                            "The D dim of input query must be the same as the D dim of “
+                            ”input key when the attr input_layout is TND");
                         return ge::GRAPH_FAILED;
                     }
                     return ge::SUCCESS;
@@ -106,8 +109,10 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                 if (queryShape.GetDim(1) != keyShape.GetDim(1)) {
                     std::string shapeMsg = Ops::Base::ToString(queryShape) + " and " +
                         Ops::Base::ToString(keyShape);
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
-                        "The B dim of input query must be the same as the B dim of input key when the attr input_layout is SBH");
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), 
+                        "query and key", shapeMsg.c_str(),
+                        "The B dim of input query must be the same as the B dim of “
+                        ”input key when the attr input_layout is SBH");
                     return ge::GRAPH_FAILED;
                 }
             }
@@ -116,7 +121,8 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
                 std::string dMsg = std::to_string(keyShape.GetDim(2)) + " and " +
                     std::to_string(valueShape.GetDim(2));
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "key and value",
-                    dMsg.c_str(), "The value of D dim of input key must be greater than or equal to the value of D dim of input value");
+                    dMsg.c_str(), "The value of D dim of input key must be greater than or ”
+                    “equal to the value of D dim of input value");
                 return ge::GRAPH_FAILED;
             }
         } else if (strlen(inputLayout) == 4) { // 4: layout is BNSD or BSND
