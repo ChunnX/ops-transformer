@@ -28,14 +28,14 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, w_min=-0.05, w_max
         sparse_indices[0, 0, 0, i] = i
     sc = 1.0 / math.sqrt(D)
     with torch.no_grad():
-        q_full = torch.cat([q.float(), q_rope.float()], dim=-1) if q_rope is not None else q.float()
-        k_full = torch.cat([k.float().squeeze(2), k_rope.float().squeeze(2)], dim=-1) if k_rope is not None else k.float().squeeze(2)
+        q_full = torch.cat([q, q_rope], dim=-1) if q_rope is not None else q
+        k_full = torch.cat([k.squeeze(2), k_rope.squeeze(2)], dim=-1) if k_rope is not None else k.squeeze(2)
         bmm1_full = torch.matmul(q_full, k_full.transpose(-1, -2).unsqueeze(1))
-        bmm1_scaled = bmm1_full * sc
+        bmm1_scaled = bmm1_full.float() * sc
         sm_max_val = bmm1_scaled.max(dim=-1).values
         sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-        softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(device=torch.device('npu'))
-        softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().to(device=torch.device('npu'))
+        softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+        softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
     return q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum
 
 
