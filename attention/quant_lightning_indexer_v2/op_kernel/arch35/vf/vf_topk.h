@@ -9,12 +9,12 @@
  */
 
 /*!
-* \file vf_top_k.h
+* \file vf_topk.h
 * \brief
 */
 
-#ifndef VF_TOP_K_H
-#define VF_TOP_K_H
+#ifndef VF_TOPK_H
+#define VF_TOPK_H
 
 namespace topkb32 {
 template<typename T>
@@ -675,4 +675,4 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& outputIdxLocal,
     }
 }
 }
-#endif
+#endif  // VF_TOPK_H
