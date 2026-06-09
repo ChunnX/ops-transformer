@@ -1448,6 +1448,30 @@ bool CheckIsEnabledActive(const gmm::GroupedMatmulParams &gmmParams) {
     return allowActOnDavid;
 }
 
+bool IsQuantActivationSupportedByKernel(const gmm::GroupedMatmulParams &gmmParams, DataType weightDtype)
+{
+    if (!isActivationAllowed(gmmParams.activeType)) {
+        return false;
+    }
+    if (gmmParams.xDtype != DataType::DT_INT8 || weightDtype != DataType::DT_INT8) {
+        return false;
+    }
+    DataType yDtype = (*gmmParams.y)[0]->GetDataType();
+    return yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16;
+}
+
+void LogUnsupportedQuantActivationWarning(const gmm::GroupedMatmulParams &gmmParams, DataType weightDtype,
+                                          const char *opName)
+{
+    if (!isActivationAllowed(gmmParams.activeType) || IsQuantActivationSupportedByKernel(gmmParams, weightDtype)) {
+        return;
+    }
+    OP_LOGW("In op [%s], actType[%ld] is not supported in this quant scenario by the operator implementation. "
+            "It is not intercepted currently for compatibility. Set actType to 0 to avoid unsupported activation "
+            "behavior.",
+            opName, gmmParams.activeType);
+}
+
 static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
     DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
@@ -1478,11 +1502,13 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
     }
     if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
+        LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA8W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A8W4 weight quant, parameter check failed.", opName);
         return ACLNN_SUCCESS;
     }
     if (gmmParams.xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
+        LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA4W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A4W4 quant, parameter check failed.", opName);
         return ACLNN_SUCCESS;
@@ -1508,11 +1534,9 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         // quant
         DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-        CHECK_COND(isNoActivation || yDtype != DataType::DT_INT8 || yDtype != DataType::DT_INT32,
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when A8W8 quant with y dtype int8 or int32, [%s] is not supported, got [%ld]. "
-                   "Constraint:[activation is not supported].",
-                   opName, "activeType", gmmParams.activeType);
+        if (!isNoActivation && (yDtype == DataType::DT_INT8 || yDtype == DataType::DT_INT32)) {
+            LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
+        }
         CHECK_COND(CheckFunctionQuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A8W8 quant, function parameter check failed.", opName);
         return ACLNN_SUCCESS;
