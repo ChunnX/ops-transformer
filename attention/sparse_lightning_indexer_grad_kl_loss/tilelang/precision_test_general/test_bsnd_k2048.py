@@ -10,13 +10,6 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-import tilelang
-tilelang.disable_cache()
-import glob as _glob
-import shutil as _shutil
-for _cache_dir in _glob.glob(os.path.expanduser("~/.cache/tilelang*")) + _glob.glob("/tmp/tilelang_*"):
-    _shutil.rmtree(_cache_dir, ignore_errors=True)
-
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 
 

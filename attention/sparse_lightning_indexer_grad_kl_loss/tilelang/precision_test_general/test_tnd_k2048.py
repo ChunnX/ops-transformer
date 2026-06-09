@@ -8,15 +8,6 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
-# Force clear tilelang JIT cache before importing the kernel
-import tilelang
-tilelang.disable_cache()
-import glob as _glob
-import shutil as _shutil
-for _cache_dir in _glob.glob(os.path.expanduser("~/.cache/tilelang*")) + _glob.glob("/tmp/tilelang_*"):
-    _shutil.rmtree(_cache_dir, ignore_errors=True)
-
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 
 
@@ -80,62 +71,18 @@ def gen_inputs(B, S1, S2, N1, Nidx1, N2, topk, D, DIndex, DR, is_tnd=False, seed
 B, S1, S2 = 1, 1, 2048; N1, N2, Nidx1 = 128, 1, 64; D, DIndex, DR, K = 512, 128, 64, 2048; scale = 1.0 / math.sqrt(D)
 print(f"泛化精度测试 - TND K={K}\n  B={B}, S1={S1}, S2={S2}, N1={N1}, N2={N2}, Nidx1={Nidx1}, K={K}")
 q, k, q_index, k_index, q_rope, k_rope, weights, sparse_indices, softmax_max, softmax_sum = gen_inputs(B, S1, S2, N1, Nidx1, N2, K, D, DIndex, DR, is_tnd=True)
-
-# Warmup: run BSND once to force JIT recompilation with latest kernel code
-_q_b = q.unsqueeze(0); _k_b = k.unsqueeze(0); _qi_b = q_index.unsqueeze(0); _ki_b = k_index.unsqueeze(0)
-_w_b = weights.unsqueeze(0); _si_b = sparse_indices.unsqueeze(0)
-_sm_b = softmax_max.unsqueeze(0); _ss_b = softmax_sum.unsqueeze(0)
-_qr_b = q_rope.unsqueeze(0) if q_rope is not None else None
-_kr_b = k_rope.unsqueeze(0) if k_rope is not None else None
-try:
-    sparse_lightning_indexer_grad_kl_loss(_q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale, query_rope=_qr_b, key_rope=_kr_b, layout_query="BSND", sparse_mode=3)
-    torch.npu.synchronize()
-except:
-    pass
-
-print("\n[1] TileLang (TND)...")
+print("\n[1] TileLang...")
 try:
     d_qi_tl, d_ki_tl, dw_tl, loss_tl = sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, layout_query="TND", sparse_mode=3)
     torch.npu.synchronize(); print("  OK"); tl_ok = True
 except Exception as e: print(f"  FAIL: {e}"); tl_ok = False
-
-# Also run BSND with same data (unsqueeze) to compare
-print("\n[1b] TileLang (BSND, same data)...")
-try:
-    d_qi_bsnd, d_ki_bsnd, dw_bsnd, loss_bsnd = sparse_lightning_indexer_grad_kl_loss(_q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale, query_rope=_qr_b, key_rope=_kr_b, layout_query="BSND", sparse_mode=3)
-    torch.npu.synchronize(); print("  OK"); bsnd_ok = True
-except Exception as e: print(f"  FAIL: {e}"); bsnd_ok = False
-
-# Compare TND vs BSND (our impl)
-if tl_ok and bsnd_ok:
-    for name, tnd_v, bsnd_v in [("dWeights", dw_tl, dw_bsnd.squeeze(0))]:
-        diff = (tnd_v.float() - bsnd_v.float()).abs()
-        print(f"  TND vs BSND {name}: max_diff={diff.max().item():.8f}")
-    print(f"  BSND dWeights range: [{dw_bsnd.float().min().item():.6f}, {dw_bsnd.float().max().item():.6f}]")
-    # Compare BSND vs Official BSND
-    try:
-        d_qi_off_b, d_ki_off_b, dw_off_b, loss_off_b = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
-            _q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale,
-            query_rope=_qr_b, key_rope=_kr_b, actual_seq_qlen=[S1], actual_seq_klen=[S2],
-            layout="BSND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
-        torch.npu.synchronize()
-        dw_diff_b = (dw_bsnd.float() - dw_off_b.float()).abs()
-        print(f"  BSND vs Official BSND dWeights: max_diff={dw_diff_b.max().item():.6f}, rel_err={(dw_diff_b.max()/(dw_off_b.float().abs().max()+1e-8)).item():.6f}")
-    except Exception as e:
-        print(f"  Official BSND failed: {e}")
-
 print("\n[2] 官方算子...")
 try:
     d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(q, k, q_index, k_index, weights, sparse_indices, softmax_max, softmax_sum, scale, query_rope=q_rope, key_rope=k_rope, actual_seq_qlen=[S1], actual_seq_klen=[S2], layout="TND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
     torch.npu.synchronize(); print("  OK"); off_ok = True
 except Exception as e: print(f"  FAIL: {e}"); off_ok = False
 if tl_ok and off_ok:
-    # Debug: print shapes and first values
-    print(f"\n[DEBUG] TileLang dWeights: shape={dw_tl.shape}, dtype={dw_tl.dtype}, range=[{dw_tl.float().min().item():.6f}, {dw_tl.float().max().item():.6f}]")
-    print(f"[DEBUG] Official dWeights: shape={dw_off.shape}, dtype={dw_off.dtype}, range=[{dw_off.float().min().item():.6f}, {dw_off.float().max().item():.6f}]")
-    print(f"[DEBUG] TileLang Loss: {loss_tl.float().item():.6f}")
-    print(f"[DEBUG] Official Loss: {loss_off.float().item():.6f}")
-    print(f"\n[3] 精度对比:"); all_pass = True
+    print("\n[3] 精度对比:"); all_pass = True
     for name, tl_v, off_v in [("dQueryIndex", d_qi_tl, d_qi_off), ("dKeyIndex", d_ki_tl, d_ki_off), ("dWeights", dw_tl, dw_off)]:
         has_nan = torch.isnan(tl_v).any().item()
         if has_nan:
