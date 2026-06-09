@@ -22,6 +22,8 @@
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
 
+  其中 `topK_num` 表示每个token预留的最大专家槽位数。`paddedMode`为false时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
+
   $$
   numExperts = probs.size(1)
   $$
@@ -71,7 +73,8 @@
   $$
 
   $$
-  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
+  if sortedIndices[i] >= 0:
+      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]] * permuteProbs[i]
   $$
 
   （3）probs为None，paddedMode为true时：
@@ -87,7 +90,8 @@
   （4）probs为None，paddedMode为false时：
 
   $$
-  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
+  if sortedIndices[i] >= 0:
+      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
 ## 函数原型
@@ -218,7 +222,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>outIndex（aclTensor*）</td>
       <td>输出</td>
       <td>表示输出的索引值，计算公式中的outIndex。</td>
-      <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。<br>当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
+      <td>当paddedMode为false时，outIndex表示槽位索引，取值范围[0，tokens_num * topK_num - 1]。sortedIndices中的-1仅表示无效输入槽位，不改变outIndex的槽位索引范围。<br>当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>paddedMode为false：(tokens_num * topK_num)<br>paddedMode为true：(experts_num* capacity)</td>
@@ -352,7 +356,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithRoutingMap默认非确定性实现，支持通过alcrtCtxSetSysParamOpt开启确定性。
 
-- topK_num <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
+- topK_num <= 512。paddedMode为false时，每个token最多预留topK_num个专家槽位，routingMap中每行为1或true的个数小于等于topK_num；sortedIndices中允许使用-1表示无效槽位。
 
 - 以下场景后续版本会拦截，如果提示warning，建议整改：
   - paddedMode为true，且topK_num > experts_num。

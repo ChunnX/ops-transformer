@@ -324,7 +324,6 @@ transformer-5@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/memory_copy.h
                 - ops/ops-transformer/attention/common/op_kernel/CopyInL1.h
                 - ops/ops-transformer/attention/common/op_kernel/memcopy/
-                - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask_gs1.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_vec_flashdecode_fullquant.h
