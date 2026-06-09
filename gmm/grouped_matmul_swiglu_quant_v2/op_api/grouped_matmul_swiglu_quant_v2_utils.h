@@ -99,6 +99,8 @@ constexpr size_t MX_X_DIM = 2UL;
 constexpr size_t MX_X_SCALE_DIM = 3UL;
 constexpr size_t MX_WEIGHT_DIM = 3UL;
 constexpr size_t MX_WEIGHT_SCALE_DIM = 4UL;
+constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
+constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3UL;
 constexpr size_t MX_OUTPUT_DIM = 2UL;
 constexpr size_t MX_OUTPUT_SCALE_DIM = 3UL;
 constexpr size_t PERTOKEN_X_DIM = 2;
@@ -182,6 +184,15 @@ inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmul
 
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
+    bool IsMxWeightNzMultiTensorSupported() const
+    {
+        return gmmDsqParams_.quantMode == QUNAT_MODE_MX && !gmmDsqParams_.isMxA8W4 &&
+               gmmDsqParams_.weight != nullptr && gmmDsqParams_.weight->Size() > 0 &&
+               (*gmmDsqParams_.weight)[0] != nullptr &&
+               op::IsPrivateFormat((*gmmDsqParams_.weight)[0]->GetStorageFormat()) &&
+               ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
+    }
+
     bool IsTransposeForMxShape(const aclTensor *tensor) const
     {
         auto shape = tensor->GetViewShape();
@@ -357,6 +368,11 @@ protected:
             gmmDsqParams_.transposeWeight = true;
         }
 
+        if (IsMxWeightNzMultiTensorSupported() && (transposeWeight || transposeWeightScale)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MX weight NZ multi tensor does not support transposed weight.");
+            return false;
+        }
+
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 apiName_.c_str(), "weightScale and weight",
@@ -430,10 +446,15 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
+        bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensorSupported();
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
-        int64_t n = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
-        int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0); // 从weight的第0维获取e
+        int64_t n = isMxWeightNzMultiTensor ?
+                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                        (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                                                         ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
+        int64_t e = isMxWeightNzMultiTensor ?
+                        static_cast<int64_t>(gmmDsqParams_.weight->Size()) :
+                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0); // 从weight的第0维获取e
 
         // x的shape期望为[M, K]
         op::Shape xExpectShape = {m, k};
@@ -462,14 +483,25 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(output, "output", outputExpectShape, return false);
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
 
-        const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
-        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
-        if (gmmDsqParams_.transposeWeight) {
-            GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-            GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
+        if (isMxWeightNzMultiTensor) {
+            op::Shape multiWeightExpectShape = {k, n};
+            op::Shape multiWeightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n,
+                                                     SWIGLU_SPLIT_FACTOR};
+            for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
+                GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weight)[i], "weight", multiWeightExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weightScale)[i], "weightScale",
+                                       multiWeightScaleExpectShape, return false);
+            }
         } else {
-            GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-            GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
+            const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
+            const aclTensor *weight = (*gmmDsqParams_.weight)[0];
+            if (gmmDsqParams_.transposeWeight) {
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
+            } else {
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
+            }
         }
         // 进行swiglu操作需满足n为偶数
         if (n % SWIGLU_N_CONSTRAINT != 0) {
@@ -767,15 +799,30 @@ protected:
         auto outputScaleDimNumber = gmmDsqParams_.outputScale->GetViewShape().GetDimNum();
         GMM_SWIGLU_CHECK_DIM(xDimNumber, MX_X_DIM, "x", return false);
         GMM_SWIGLU_CHECK_DIM(xScaleDimNumber, MX_X_SCALE_DIM, "xScale", return false);
-        GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weight->Size(), SINGLE_TENSOR_SIZE, "weight", return false);
-        GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weightScale->Size(), SINGLE_TENSOR_SIZE, "weightScale",
-                                   return false);
         GMM_SWIGLU_CHECK_DIM(outputDimNumber, MX_OUTPUT_DIM, "output", return false);
         GMM_SWIGLU_CHECK_DIM(outputScaleDimNumber, MX_OUTPUT_SCALE_DIM, "outputScale", return false);
-        auto weightDimNumber = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-        auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum();
-        GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_WEIGHT_SCALE_DIM, "weightScale", return false);
-        GMM_SWIGLU_CHECK_DIM(weightDimNumber, MX_WEIGHT_DIM, "weight", return false);
+        if (IsMxWeightNzMultiTensorSupported()) {
+            if (gmmDsqParams_.weight->Size() != gmmDsqParams_.weightScale->Size()) {
+                OP_LOGE_FOR_INVALID_LISTSIZE(GMM_SWIGLU_ACLNN_OP_NAME, "weightScale",
+                                             std::to_string(gmmDsqParams_.weightScale->Size()),
+                                             std::to_string(gmmDsqParams_.weight->Size()));
+                return false;
+            }
+            for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
+                GMM_SWIGLU_CHECK_DIM(((*gmmDsqParams_.weight)[i])->GetViewShape().GetDimNum(), MX_MULTI_WEIGHT_DIM,
+                                     "weight", return false);
+                GMM_SWIGLU_CHECK_DIM(((*gmmDsqParams_.weightScale)[i])->GetViewShape().GetDimNum(),
+                                     MX_MULTI_WEIGHT_SCALE_DIM, "weightScale", return false);
+            }
+        } else {
+            GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weight->Size(), SINGLE_TENSOR_SIZE, "weight", return false);
+            GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weightScale->Size(), SINGLE_TENSOR_SIZE, "weightScale",
+                                       return false);
+            auto weightDimNumber = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+            auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum();
+            GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_WEIGHT_SCALE_DIM, "weightScale", return false);
+            GMM_SWIGLU_CHECK_DIM(weightDimNumber, MX_WEIGHT_DIM, "weight", return false);
+        }
         return true;
     }
     bool CheckInputOutDimsForPertoken()
@@ -814,8 +861,11 @@ protected:
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
         // 根据是否转置从weight中读取维度k
-        int64_t kInWeight = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
+        int64_t kInWeight = IsMxWeightNzMultiTensorSupported() ?
+                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
+                                (gmmDsqParams_.transposeWeight ?
+                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
+                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1));
         if (kInX != kInWeight) {
             std::ostringstream reason;
             reason << "K dim should be equal when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)

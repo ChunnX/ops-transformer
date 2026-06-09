@@ -189,6 +189,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
                        GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                        "storage shape dim num must be 4 when multi-weight NZ v2");
+            CHECK_RET(CheckMxfp4WeightNzViewShape(w, viewShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
             // weight的StorageFormat无条件视为NZ
             weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
