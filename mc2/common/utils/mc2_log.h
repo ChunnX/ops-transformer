@@ -31,6 +31,8 @@
 #include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 
+using namespace op;
+
 template <typename T>
 std::string ConcatString(const T &arg) {
   std::ostringstream oss;
