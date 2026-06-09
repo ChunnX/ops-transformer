@@ -127,21 +127,21 @@ if __name__ == "__main__":
                                         args.perf_cold_thr, log_dir=str(out))
 
         SEP = "─" * 110
+        max_name = max((len(n) for n in run_cases if n), default=55)
         print(f"\n┌{SEP}┐")
         print(f"│  性能测试  ({len(stats)} cases, {len(crashed)} crashed)")
         print(f"├{SEP}┤")
-        print(f"│  {'Case':<55}  {'Avg(us)':>9}  {'Min(us)':>9}  {'Max(us)':>9}  {'Mode':>6}  │")
+        print(f"│  {'Case':<{max_name}}  {'Avg(us)':>9}  {'Min(us)':>9}  {'Max(us)':>9}  {'Mode':>6}  │")
         print(f"├{SEP}┤")
         for idx, name in enumerate(run_cases):
             if idx >= len(stats):
                 continue
             s = stats[idx]
             is_crash = s["mode"] == "CRASH"
-            short = name[:55] if len(name) <= 55 else name[:52] + "..."
             if is_crash:
-                print(f"│  {short:<55}  {'-':>9}  {'-':>9}  {'-':>9}  {'CRASH':>6}  │")
+                print(f"│  {name:<{max_name}}  {'-':>9}  {'-':>9}  {'-':>9}  {'CRASH':>6}  │")
             else:
-                print(f"│  {short:<55}  {s['avg_us']:>9.2f}  {s['min_us']:>9.2f}  "
+                print(f"│  {name:<{max_name}}  {s['avg_us']:>9.2f}  {s['min_us']:>9.2f}  "
                       f"{s['max_us']:>9.2f}  {s['mode']:>6}  │")
         print(f"└{SEP}┘")
 
