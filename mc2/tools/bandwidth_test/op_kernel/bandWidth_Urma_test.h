@@ -466,7 +466,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
     PipeBarrier<PIPE_ALL>();
-    uint32_t processCnt = 1; // 包含epRankId_
+    uint32_t processCnt = 0;
+    if (epRankId_ >= startExpert && epRankId_ < endExpert) {
+        processCnt += 1; // 包含epRankId_
+    }
     uint32_t cnt=0;
     while(true) {
         cnt += 1;
