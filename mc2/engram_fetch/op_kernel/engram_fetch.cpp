@@ -13,12 +13,13 @@ __global__ __aicore__ void engram_fetch(GM_ADDR bufferHandle, GM_ADDR indices, G
 {
     REGISTER_TILING_DEFAULT(EngramFetchTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchTilingData, tilingData, tilingGM);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     printf("enter kernel\n");
     if (TILING_KEY_IS(0)) {
         printf("EngramFetch Tiling A5.\n");
         TPipe pipe;
-        EngramFetchArch35<bfloat16_t> op;
-        op.Init(bufferhandle, indices, fetched, workspaceGM, &pipe, &tilingData);
+        EngramFetchArch35 op;
+        op.Init(bufferHandle, indices, fetched, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
