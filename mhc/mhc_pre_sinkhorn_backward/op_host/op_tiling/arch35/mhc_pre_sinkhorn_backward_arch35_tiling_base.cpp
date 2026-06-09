@@ -8,22 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file mhc_pre_sinkhorn_backward_tiling.cpp
- * \brief MhcPreSinkhornBackward operator tiling implementation
+/* !
+ * \file scatter_nd_update_tiling.cc
+ * \brief ascendc scatter nd update tiling cpp
  */
+
+#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward_tiling.h"
+#include "platform/platform_info.h"
 #include "log/log.h"
+#include "op_common/op_host/util/platform_util.h"
+#include "op_common/op_host/util/math_util.h"
+#include "error_util.h"
 
-#define CHECK_NULLPTR(ptr)                                                                                             \
-    if (ptr == nullptr) {                                                                                              \
-        return ge::GRAPH_FAILED;                                                                                       \
-    }
+using namespace AscendC;
+namespace optiling {
 
-namespace {
 constexpr uint8_t GRAD_HIN_IDX = 0;
 constexpr uint8_t GRAD_H_POST_IDX = 1;
 constexpr uint8_t GRAD_H_RES_IDX = 2;
@@ -40,39 +42,83 @@ constexpr uint8_t GRAD_X_IDX = 0;
 constexpr uint8_t GRAD_PHI_IDX = 1;
 constexpr uint8_t GRAD_ALPHA_IDX = 2;
 constexpr uint8_t GRAD_BIAS_IDX = 3;
-constexpr uint8_t BF16_BYTE_SIZE = 2;
-constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t BATCH_SIZE_DIM_IDX = 0;
 constexpr uint8_t SEQ_LENGTH_DIM_IDX = 1;
 constexpr uint8_t N_DIM_IDX = 2;
 constexpr uint8_t C_DIM_IDX = 3;
+constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t ITER_COUNT_IDX = 0;
-constexpr uint32_t SOC_VER_950_CODE = 4;
-constexpr int64_t N_SIZE_4 = 4;
-constexpr int64_t ALPHA_SIZE_3 = 3;
-constexpr int64_t C_V_RATIO = 2;
-constexpr int64_t DEFAULT_KEY = 0;
-constexpr int64_t DETERMINISTIC_KEY = 1;
-constexpr int64_t ELEMENTS_SIZE_PER_BLOCK = 8;
-constexpr int64_t DOUBLE_BUFFER = 2;
-} // namespace
 
-#define ADD_TILING_DATA(context, tiling)                                                                     \
-    CHECK_NULLPTR(context->GetRawTilingData())                                                               \
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity()); \
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
-using namespace ge;
-using namespace std;
-using namespace AscendC;
-
-namespace optiling {
-
-ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int64_t seqLength, int64_t n, int64_t c)
+bool MhcPreSinkhornBackwardArch35Tiling::IsCapable()
 {
-    auto opName = context->GetNodeName();
+    return true;
+}
 
-    auto gradHinShapePtr = context->GetInputShape(GRAD_HIN_IDX);
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
+{
+    OP_LOGD(opName, "MhcPreSinkhornBackwardArch35Tiling GetPlatformInfo");
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    auto coreNumAiv = ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(
+        (aivNum <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAiv."), return ge::GRAPH_FAILED);
+    coreNumAiv_ = coreNumAiv;
+    auto coreNumAic = ascendcPlatform.GetCoreNumAic();
+    OP_CHECK_IF(
+        (aivNum <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fail to get coreNumAic."), return ge::GRAPH_FAILED);
+    coreNumAic_ = coreNumAic;
+    uint64_t ubSizePlatForm;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
+    ubSize_ = static_cast<int64_t>(ubSizePlatForm);
+    OP_CHECK_IF((ubSize_ <= 0), OP_LOGE(context_->GetNodeName(), "Failed to get ub size."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
+{
+    OP_LOGD(opName, "MhcPreSinkhornBackwardArch35Tiling GetShapeAttrsInfo");
+    const auto xShapePtr = context_->GetInputShape(INPUT_X_IDX);
+    if (xShapePtr == nullptr) {
+        OP_LOGE(context_, "input x shape is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    const auto skSumPtr = context->GetInputShape(SUM_OUT_IDX);
+    if (skSumPtr == nullptr) {
+        OP_LOGE(context_, "input sum_out shape is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    auto xShape = xShapePtr->GetStorageShape();
+    OP_CHECK_IF(xShape.GetDimNum() != 4,
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                            "xShape verify failed, x must be 4D, but got %lu dims", xShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    auto skSumShape = skSumPtr->GetStorageShape();
+
+    auto attrsPtr = context_->GetAttrs();
+    if (attrsPtr == nullptr) {
+        OP_LOGE(context_, "attrs is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    auto epsPtr = attrsPtr->GetAttrPointer<float>(0);
+    hcEps_ = (epsPtr != nullptr) ? static_cast<float>(*epsPtr) : DEFAULT_EPS;
+
+    batchSize_ = xShape.GetDim(BATCH_SIZE_DIM_IDX);
+    seqLength_ = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
+    n_ = xShape.GetDim(N_DIM_IDX);
+    c_ = xShape.GetDim(C_DIM_IDX);
+    OP_CHECK_IF(CheckShape(batchSize_, seqLength_, n_, c_) != ge::GRAPH_SUCCESS,
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "ShapeVerify failed"), return ge::GRAPH_FAILED);
+    skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c)
+{
+    auto opName = context_->GetNodeName();
+
+    auto gradHinShapePtr = context_->GetInputShape(GRAD_HIN_IDX);
     OP_CHECK_IF(gradHinShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHin shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -88,7 +134,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     batchSize, seqLength, c, gradHinShape.GetDim(0), gradHinShape.GetDim(1), gradHinShape.GetDim(2)),
                 return ge::GRAPH_FAILED);
 
-    auto gradHPostShapePtr = context->GetInputShape(GRAD_H_POST_IDX);
+    auto gradHPostShapePtr = context_->GetInputShape(GRAD_H_POST_IDX);
     OP_CHECK_IF(gradHPostShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHPost shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -104,38 +150,25 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
             seqLength, n, gradHPostShape.GetDim(0), gradHPostShape.GetDim(1), gradHPostShape.GetDim(2)),
         return ge::GRAPH_FAILED);
 
-    auto gradHResShapePtr = context->GetInputShape(GRAD_H_RES_IDX);
+    auto gradHResShapePtr = context_->GetInputShape(GRAD_H_RES_IDX);
     OP_CHECK_IF(gradHResShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes shape is nullptr"),
                 return ge::GRAPH_FAILED);
     auto gradHResShape = gradHResShapePtr->GetStorageShape();
-    auto gradHResDimNum = gradHResShape.GetDimNum();
-    OP_CHECK_IF((gradHResDimNum != 3 && gradHResDimNum != 4),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes must be 3D or 4D, but got %lu dims",
-                                            gradHResDimNum),
+    OP_CHECK_IF(gradHResShape.GetDimNum() != 4,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes must be 4D, but got %lu dims",
+                                            gradHResShape.GetDimNum()),
                 return ge::GRAPH_FAILED);
-    if (gradHResDimNum == 3) {
-        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                        gradHResShape.GetDim(2) != n * n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
-                        batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2)),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                        gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
-                        "but got (%ld, %ld, %ld, %ld)",
-                        batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                    gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
+                OPS_REPORT_VECTOR_INNER_ERR(
+                    opName,
+                    "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), but got (%ld, %ld, %ld, %ld)",
+                    batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
+                    gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
+                return ge::GRAPH_FAILED);
 
-    auto phiShapePtr = context->GetInputShape(PHI_IDX);
+    auto phiShapePtr = context_->GetInputShape(PHI_IDX);
     OP_CHECK_IF(phiShapePtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi shape is nullptr"),
                 return ge::GRAPH_FAILED);
     auto phiShape = phiShapePtr->GetStorageShape();
@@ -149,7 +182,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     n * c, phiShape.GetDim(0), phiShape.GetDim(1)),
                 return ge::GRAPH_FAILED);
 
-    auto alphaShapePtr = context->GetInputShape(ALPHA_IDX);
+    auto alphaShapePtr = context_->GetInputShape(ALPHA_IDX);
     OP_CHECK_IF(alphaShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, alpha shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -160,7 +193,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     alphaShape.GetDimNum(), alphaShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    auto biasShapePtr = context->GetInputShape(BIAS_IDX);
+    auto biasShapePtr = context_->GetInputShape(BIAS_IDX);
     OP_CHECK_IF(biasShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, bias shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -171,7 +204,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     n * n + 2 * n, biasShape.GetDimNum(), biasShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    auto hPreShapePtr = context->GetInputShape(H_PRE_IDX);
+    auto hPreShapePtr = context_->GetInputShape(H_PRE_IDX);
     OP_CHECK_IF(hPreShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, hPre shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -186,7 +219,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     batchSize, seqLength, n, hPreShape.GetDim(0), hPreShape.GetDim(1), hPreShape.GetDim(2)),
                 return ge::GRAPH_FAILED);
 
-    auto hcBeforeNormShapePtr = context->GetInputShape(HC_BEFORE_NORM_IDX);
+    auto hcBeforeNormShapePtr = context_->GetInputShape(HC_BEFORE_NORM_IDX);
     OP_CHECK_IF(hcBeforeNormShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, hcBeforeNorm shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -204,7 +237,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     hcBeforeNormShape.GetDim(2)),
                 return ge::GRAPH_FAILED);
 
-    auto invRmsShapePtr = context->GetInputShape(INV_RMS_IDX);
+    auto invRmsShapePtr = context_->GetInputShape(INV_RMS_IDX);
     OP_CHECK_IF(invRmsShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, invRms shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -219,7 +252,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     seqLength, invRmsShape.GetDim(0), invRmsShape.GetDim(1), invRmsShape.GetDim(2)),
                 return ge::GRAPH_FAILED);
 
-    auto sumOutShapePtr = context->GetInputShape(SUM_OUT_IDX);
+    auto sumOutShapePtr = context_->GetInputShape(SUM_OUT_IDX);
     OP_CHECK_IF(sumOutShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, sumOut shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -241,7 +274,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                                             sumOutShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    auto normOutShapePtr = context->GetInputShape(NORM_OUT_IDX);
+    auto normOutShapePtr = context_->GetInputShape(NORM_OUT_IDX);
     OP_CHECK_IF(normOutShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, normOut shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -263,7 +296,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                                             normOutShape.GetDim(0), sumOutShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    auto gradXShapePtr = context->GetOutputShape(GRAD_X_IDX);
+    auto gradXShapePtr = context_->GetOutputShape(GRAD_X_IDX);
     OP_CHECK_IF(gradXShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradX shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -281,7 +314,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     gradXShape.GetDim(3)),
                 return ge::GRAPH_FAILED);
 
-    auto gradPhiShapePtr = context->GetOutputShape(GRAD_PHI_IDX);
+    auto gradPhiShapePtr = context_->GetOutputShape(GRAD_PHI_IDX);
     OP_CHECK_IF(gradPhiShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradPhi shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -296,7 +329,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     n * n + 2 * n, n * c, gradPhiShape.GetDim(0), gradPhiShape.GetDim(1)),
                 return ge::GRAPH_FAILED);
 
-    auto gradAlphaShapePtr = context->GetOutputShape(GRAD_ALPHA_IDX);
+    auto gradAlphaShapePtr = context_->GetOutputShape(GRAD_ALPHA_IDX);
     OP_CHECK_IF(gradAlphaShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradAlpha shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -307,7 +340,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                     gradAlphaShape.GetDimNum(), gradAlphaShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    auto gradBiasShapePtr = context->GetOutputShape(GRAD_BIAS_IDX);
+    auto gradBiasShapePtr = context_->GetOutputShape(GRAD_BIAS_IDX);
     OP_CHECK_IF(gradBiasShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradBias shape is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -324,213 +357,11 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
-    if (context == nullptr) {
-        OP_LOGE(context, "context is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null!"),
-                return ge::GRAPH_FAILED);
-    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    uint64_t ubSize;
-    ascendPlatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    auto aicNum = ascendPlatformInfo.GetCoreNumAic();
-    auto aivNum = ascendPlatformInfo.GetCoreNumAiv();
-    if (aicNum == 0 || aivNum == 0) {
-        OP_LOGE(context, "aicNum=%lu or aivNum=%lu is invalid", aicNum, aivNum);
-        return ge::GRAPH_FAILED;
-    }
-    context->SetBlockDim(aicNum);
-    const auto xShapePtr = context->GetInputShape(INPUT_X_IDX);
-    if (xShapePtr == nullptr) {
-        OP_LOGE(context, "input x shape is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    auto xShape = xShapePtr->GetStorageShape();
-    OP_CHECK_IF(xShape.GetDimNum() != 4,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "xShape verify failed, x must be 4D, but got %lu dims", xShape.GetDimNum()),
-                return ge::GRAPH_FAILED);
-    auto attrsPtr = context->GetAttrs();
-    if (attrsPtr == nullptr) {
-        OP_LOGE(context, "attrs is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    auto epsPtr = attrsPtr->GetAttrPointer<float>(0);
-    float eps = (epsPtr != nullptr) ? static_cast<float>(*epsPtr) : DEFAULT_EPS;
+    MhcPreSinkhornBackwardTilingData* tilingData =
+    context_->GetTilingData<MhcPreSinkhornBackwardTilingData>();
 
-    int64_t batchSize = xShape.GetDim(BATCH_SIZE_DIM_IDX);
-    int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
-    int64_t n = xShape.GetDim(N_DIM_IDX);
-    int64_t c = xShape.GetDim(C_DIM_IDX);
-
-    OP_CHECK_IF(ShapeVerify(context, batchSize, seqLength, n, c) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "ShapeVerify failed"), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(n != N_SIZE_4,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
-                return ge::GRAPH_FAILED);
-
-    int64_t c0 = 256; // must be VL
-    int64_t c1 = c / c0;
-    int64_t cTail = c % c0;
-    int64_t cTailunaglin = cTail % 64 + 64 * cTail / (64 + 128);
-
-    int64_t tile = 32;
-    const auto sumOutPtr = context->GetInputShape(10);
-    CHECK_NULLPTR(sumOutPtr);
-    auto sumOutShape = sumOutPtr->GetStorageShape();
-    int64_t skIterCount = sumOutShape.GetDim(0) / C_V_RATIO;
-
-    OP_CHECK_IF(
-        skIterCount != 20,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
-                return ge::GRAPH_FAILED);
-
-    int64_t mm1K = n * n + 2 * n;
-    int64_t mm1M = tile * 2;
-    int64_t mm1N = n * c;
-
-    int64_t mm2K = tile * 2;
-    int64_t mm2M = n * n + 2 * n;
-    int64_t mm2N = n * c;
-
-    MhcPreSinkhornBackwardTilingData tilingData;
-    auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
-    matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
-    matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
-
-    mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
-    mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
-    mm1Tiling.SetOrgShape(mm1M, mm1N, mm1K);
-    mm1Tiling.SetShape(mm1M, mm1N, mm1K);
-    mm1Tiling.SetBias(false);
-    mm1Tiling.SetBufferSpace(-1, -1, -1);
-    if (mm1Tiling.GetTiling(tilingData.mm1TilingData) == -1) {
-        OP_LOGE(context, "mm1Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm1M, mm1N, mm1K);
-        return ge::GRAPH_FAILED;
-    }
-
-    mm2Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType, true);
-    mm2Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
-    mm2Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureDataType);
-    mm2Tiling.SetOrgShape(mm2M, mm2N, mm2K);
-    mm2Tiling.SetShape(mm2M, mm2N, mm2K);
-    mm2Tiling.SetBias(false);
-    mm2Tiling.SetBufferSpace(-1, -1, -1);
-    if (mm2Tiling.GetTiling(tilingData.mm2TilingData) == -1) {
-        OP_LOGE(context, "mm2Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm2M, mm2N, mm2K);
-        return ge::GRAPH_FAILED;
-    }
-
-    tilingData.set_n(n);
-    tilingData.set_batchSize(batchSize);
-    tilingData.set_seqLength(seqLength);
-    tilingData.set_c(c);
-    tilingData.set_cTail(cTail);
-    tilingData.set_n(n);
-    tilingData.set_c0(c0);
-    tilingData.set_c1(c1);
-    tilingData.set_aivNum(aivNum);
-    tilingData.set_ubSize(ubSize);
-    tilingData.set_skIterCount(skIterCount);
-    tilingData.set_eps(eps);
-
-    tilingData.set_tileSize(tile);
-
-    if (context->GetRawTilingData() == nullptr) {
-        OP_LOGE(context, "GetRawTilingData() is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
-
-    size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float) * 2;
-    size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
-
-    size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = xCastWorkspace + gradHat2Workspace;
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    if (currentWorkspace == nullptr) {
-        OP_LOGE(context, "GetWorkspaceSizes() returned nullptr");
-        return ge::GRAPH_FAILED;
-    }
-
-    auto isDeterministic = (context->GetDeterministic() == 1);
-    context->SetScheduleMode(1); // 1: batchmode模式
-    context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
-    if (isDeterministic) {
-        currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize +
-                              aicNum * (n * n + 2 * n) * (n * c) * sizeof(float) +
-                              aivNum * (n * n + 2 * n + ELEMENTS_SIZE_PER_BLOCK) * sizeof(float);
-    } else {
-        currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-
-ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
-{
-    CHECK_NULLPTR(context);
-    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint64_t ubSize;
-    ascendPlatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    auto aicNum = ascendPlatformInfo.GetCoreNumAic();
-    auto aivNum = ascendPlatformInfo.GetCoreNumAiv();
-    
-    ubSize = ubSize - 32 * 1024;
-    context->SetDynUBufSize(ubSize);
-
-    if (aicNum == 0 || aivNum == 0) {
-        return ge::GRAPH_FAILED;
-    }
-    context->SetBlockDim(aicNum);
-    const auto xShapePtr = context->GetInputShape(INPUT_X_IDX);
-    const auto skSumPtr = context->GetInputShape(SUM_OUT_IDX);
-    CHECK_NULLPTR(xShapePtr);
-    CHECK_NULLPTR(skSumPtr);
-
-    auto xShape = xShapePtr->GetStorageShape();
-    auto skSumShape = skSumPtr->GetStorageShape();
-    auto attrsPtr = context->GetAttrs();
-    CHECK_NULLPTR(attrsPtr);
-    auto hcEpsPtr = attrsPtr->GetAttrPointer<int32_t>(0);
-    CHECK_NULLPTR(hcEpsPtr);
-
-    int64_t batchSize = xShape.GetDim(BATCH_SIZE_DIM_IDX);
-    int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
-    int64_t n = xShape.GetDim(N_DIM_IDX);
-    int64_t c = xShape.GetDim(C_DIM_IDX);
-    int64_t c0 = 64;    // must be VL
-    int64_t c1 = c / c0;
-    int64_t coreTaskCount = (batchSize * seqLength + aivNum - 1) / aivNum;
-    int64_t tile = min(coreTaskCount, (int64_t) 64);
-    int64_t tileUB = (ubSize * 0.95 - (n * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c) /
-        ((n * n * 4 + n * 9 + 3) * sizeof(float));
-    tile = min(tile, tileUB);
-
-    int64_t skIterCount = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
-    float hcEps = *hcEpsPtr;
-
-    int64_t mm1K = n * n + 2 * n;
-    int64_t mm1M = tile * 2;
-    int64_t mm1N = n * c;
-
-    int64_t mm2K = tile * 2;
-    int64_t mm2M = n * n + 2 * n;
-    int64_t mm2N = n * c;
-
-    MhcPreSinkhornBackwardArch35TilingData tilingData;
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
@@ -561,48 +392,81 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch35(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    tilingData.set_n(n);
-    tilingData.set_batchSize(batchSize);
-    tilingData.set_seqLength(seqLength);
-    tilingData.set_c(c);
-    tilingData.set_n(n);
-    tilingData.set_c0(c0);
-    tilingData.set_c1(c1);
-    tilingData.set_aivNum(aivNum);
-    tilingData.set_skIterCount(skIterCount);
-    tilingData.set_hcEps(hcEps);
-    tilingData.set_tileSize(tile);
+    tilingData->n = n;
+    tilingData->batchSize = batchSize;
+    tilingData->seqLength = seqLength;
+    tilingData->c = c;
+    tilingData->n = n;
+    tilingData->c0 = c0;
+    tilingData->c1 = c1;
+    tilingData->aivNum = aivNum;
+    tilingData->skIterCount = skIterCount;
+    tilingData->tileSize = tile;
 
-    ADD_TILING_DATA(context, tilingData);
+    return ge::GRAPH_SUCCESS;  
+}
 
-    size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n + n * c) * sizeof(float);
+void MhcPreSinkhornBackwardArch35Tiling::DoUbTiling()
+{
+    c0_ = 64;
+    c1_ = c / c0;
+    coreTaskCount_ = (batchSize * seqLength + aivNum - 1) / aivNum;
+    tile_ = min(coreTaskCount, (int64_t) 64);
+    tileUB_ = (ubSize * 0.95 - (n * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c) /
+        ((n * n * 4 + n * 9 + 3) * sizeof(float));
+    tile_ = min(tile, tileUB);
 
+    mm1K_ = n * n + 2 * n;
+    mm1M_ = tile * 2;
+    mm1N_ = n * c;
+
+    mm2K_ = tile * 2;
+    mm2M_ = n * n + 2 * n;
+    mm2N_ = n * c;
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
+{
+    DoUbTiling()
+    return SetTilingData();
+}
+
+uint64_t MhcPreSinkhornBackwardArch35Tiling::GetTilingKey() const
+{
+    bool isDeterministic = false;
+    return GET_TPL_TILING_KEY(isDeterministic);
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::PostTiling()
+{
+    context_->SetDynUBufSize(ubSize_);
+    context->SetBlockDim(aicNum);
+    context_->SetScheduleMode(1);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
+{
+    size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     CHECK_NULLPTR(currentWorkspace);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
+void MhcPreSinkhornBackwardArch35Tiling::DumpTilingInfo()
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t socVer = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
-    if (socVer == SOC_VER_950_CODE) {
-        return TilingMhcPreSinkhornBackwardArch35(context);
-    } else {
-        return TilingMhcPreSinkhornBackwardArch32(context);
-    }
+
 }
 
-static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseContext *context)
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MhcPreSinkhornBackward)
-    .Tiling(TilingMhcPreSinkhornBackward)
-    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
-} // namespace optiling
+REGISTER_OPS_TILING_TEMPLATE(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35Tiling, 0);
+}
