@@ -69,7 +69,7 @@ def run_case(module, case):
             module.ACTUAL_SEQ_KV
         )
         compare_layout = "TND" if module.ENABLE_PA else module.INPUT_LAYOUT
-        cpu_cmp = module.convert_q_bnsd_to_layout(cpu_out, module.ACTUAL_SEQ_Q, compare_layout)
+        cpu_cmp = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
 
         compare_result = result_compare_method.check_result(cpu_cmp, npu_out[0])
         status = compare_result[0] if isinstance(compare_result, tuple) else compare_result
