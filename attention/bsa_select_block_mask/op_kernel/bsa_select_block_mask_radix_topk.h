@@ -1044,16 +1044,28 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
 {
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
     int32_t totalTileTopKInCore = 0;
+    int32_t int32Align = UB_BLOCK_SIZE / sizeof(int32_t);
+    int32_t safeSumTileNum = FLOAT32_SAFE_INT / static_cast<int32_t>(tileLen_);
+    safeSumTileNum = (safeSumTileNum / int32Align) * int32Align;
+    if (safeSumTileNum == 0) {
+        safeSumTileNum = int32Align;
+    }
     for (int32_t i = 0; i <= static_cast<int32_t>(tileNumRepeatTimes_); i++) {
         uint32_t dataNum = (i == static_cast<int32_t>(tileNumRepeatTimes_)) ?
             tileNumRemain_ : MAX_TILE_NUM_IN_UB;
         if (dataNum == 0) continue;
         CopyTileTopKWs2Ub(tileTopK, i * MAX_TILE_NUM_IN_UB, dataNum);
         MTE2ToVSync();
-        Cast(tileHistFp32, tileTopK, RoundMode::CAST_NONE, dataNum);
-        ReduceSum(tileHistFp32, tileHistFp32, tileHistFp32, dataNum);
-        VToSSync();
-        totalTileTopKInCore += static_cast<int32_t>(tileHistFp32.GetValue(0));
+        int32_t segSize = static_cast<int32_t>(dataNum) < safeSumTileNum ?
+            static_cast<int32_t>(dataNum) : safeSumTileNum;
+        for (int32_t segOff = 0; segOff < static_cast<int32_t>(dataNum); segOff += segSize) {
+            int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
+            SToVSync();
+            Cast(tileHistFp32, tileTopK[segOff], RoundMode::CAST_NONE, curSegLen);
+            ReduceSum(tileHistFp32, tileHistFp32, tileHistFp32, curSegLen);
+            VToSSync();
+            totalTileTopKInCore += static_cast<int32_t>(tileHistFp32.GetValue(0));
+        }
     }
 
     // === DUMP 570: WriteCoreTopKFromWs totalTileTopKInCore ===
