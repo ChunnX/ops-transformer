@@ -1,0 +1,16 @@
+[
+    {
+      "name": "PA_NZ_S256_Q128_G1_Nq16_Nkv16_B1",
+      "B": 1,
+      "N_q": 16,
+      "N_kv": 16,
+      "D": 128,
+      "actual_seq_q": [128],
+      "actual_seq_kv": [256],
+      "enable_pa": true,
+      "block_size": 128,
+      "sparse_mode": 3,
+      "kv_cache_layout": "BnNBsD",
+      "p_scale": 1.0
+    }
+]

@@ -113,7 +113,7 @@ public:
             ProcessAntiqPerChannelOrPerToken(dstTensor, srcTensor, antiqGmCoord);
         }
         // per token + PA
-        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs)) {
+        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs) || (GM_FORMAT == GmFormat::FP8_BnNBs_K_SCLAE)) {
             ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord);
         }
     }
@@ -160,6 +160,164 @@ private:
         }
     }
 };
+
+// ----------------------------------------------CopyScaleGmToUb--------------------------------
+template <typename T, GmFormat GM_FORMAT>
+class CopyQueryScaleGmToUb {
+public:
+    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    {
+        // if constexpr (GM_FORMAT == GmFormat::TNG) {
+        //     ProcessS1G(dstTensor, srcTensor, gmCoord);
+        // }
+        if constexpr (GM_FORMAT == GmFormat::NGT) {
+            ProcessGS1(dstTensor, srcTensor, gmCoord);
+        }
+    }
+
+private:
+__aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    {
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        uint64_t s1Size = 0;
+        s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
+        uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
+        uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
+        // uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
+        // uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
+
+        uint64_t queryGmbaseOffset =
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0);
+
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1; // 外部传入
+        dataCopyParams.blockLen = static_cast<uint16_t>(gmCoord.gS1DealSize) * sizeof(T);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0; // 外部传入
+
+        DataCopyPadExtParams<T> dataCopyPadParams;
+        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart], dataCopyParams, dataCopyPadParams);
+    }
+    // __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    // {
+    //     OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+    //     uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
+    //     uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
+    //     uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
+    //     uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % offsetCalculator.GetDimG();
+
+    //     uint64_t queryGmbaseOffset =
+    //         offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart);
+    //     // 处理第一个g
+    //     uint32_t headSize = 0;
+    //     if (s1IdxStart == s1IdxEnd) {
+    //         headSize = gIdxEnd - gIdxStart;
+    //     } else {
+    //         headSize = offsetCalculator.GetDimG() - gIdxStart;
+    //     }
+
+    //     CopySingleMatrixNDToND<T>(dstTensor.tensor,
+    //                               srcTensor.gmTensor[queryGmbaseOffset + gIdxStart],
+    //                               headSize, 1, offsetCalculator.GetStrideG(), dstTensor.colCount);
+    //     if (s1IdxEnd - s1IdxStart >= 1) {
+    //         uint64_t gmOffset = queryGmbaseOffset + offsetCalculator.GetStrideS1();
+    //         uint32_t ubOffset = headSize * dstTensor.colCount;
+    //         // 处理中间块
+    //         for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
+    //             CopySingleMatrixNDToND<T>(dstTensor.tensor[ubOffset], srcTensor.gmTensor[gmOffset],
+    //                                       offsetCalculator.GetDimG(), 1, offsetCalculator.GetStrideG(),
+    //                                       dstTensor.colCount);
+    //             gmOffset += offsetCalculator.GetStrideS1();
+    //             ubOffset += offsetCalculator.GetDimG() * dstTensor.colCount;
+    //         }
+
+    //         // 处理尾块
+    //         if (gIdxEnd > 0) {
+    //             CopySingleMatrixNDToND<T>(dstTensor.tensor[ubOffset], srcTensor.gmTensor[gmOffset], gIdxEnd,
+    //                                       1, offsetCalculator.GetStrideG(), dstTensor.colCount);
+    //         }
+    //     }
+    // }
+};
+
+template <typename T, GmFormat GM_FORMAT>
+class CopyKeyScaleGmToUb {
+public:
+    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      AntiqGmCoord &antiqGmCoord)
+    {
+        if constexpr (GM_FORMAT == GmFormat::FP8_BnNBs_K_SCLAE) {
+            ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord);
+        }
+    }
+
+private:
+    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                          AntiqGmCoord &antiqGmCoord)
+    {
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+
+        uint64_t dstOffset = 0;
+        uint32_t copyFinishElmeCnt = 0;
+        uint32_t curS2Idx = antiqGmCoord.s2Idx;
+
+        while (copyFinishElmeCnt < antiqGmCoord.s2DealSize) {
+            uint32_t copyElemCnt = offsetCalculator.GetDimBlockSize() -
+                                   curS2Idx % offsetCalculator.GetDimBlockSize(); // 一次只能处理一个block
+            if (copyFinishElmeCnt + copyElemCnt > antiqGmCoord.s2DealSize) {
+                copyElemCnt = antiqGmCoord.s2DealSize - copyFinishElmeCnt; // 一个block未拷满
+            }
+
+            uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
+            CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], 1, copyElemCnt,
+                                      copyElemCnt, copyElemCnt);
+
+            dstOffset += copyElemCnt;
+            copyFinishElmeCnt += copyElemCnt;
+            curS2Idx += copyElemCnt;
+        }
+    }
+    __aicore__ inline void CopyKeyScaleNDToND(LocalTensor<T> ubTensor, const GlobalTensor<T> gmTensor,
+                                              uint32_t dealRowCount, uint32_t actDataLen, uint64_t srcRowStride,
+                                              uint64_t dstRowStride)
+    {
+        constexpr uint64_t UINT16_MAX_VALUE = 65535u;
+        constexpr uint64_t UINT32_MAX_VALUE = 4294967295u;
+        uint32_t blockElemNum = 32UL / sizeof(T);
+        if constexpr (IsSameType<T, int4b_t>::value) {
+            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
+            blockElemNum = blockElemNum * HALF_SIZE_DIVISOR;
+            actDataLen = actDataLen / HALF_SIZE_DIVISOR;
+            srcRowStride = srcRowStride / HALF_SIZE_DIVISOR;
+        }
+        bool isPad = ((actDataLen % blockElemNum) != 0 || (srcRowStride % blockElemNum) != 0 ||
+                    (dstRowStride % blockElemNum) != 0); // 判断是否32字节对齐，确定是否走datacopypad
+        uint64_t srcStrideOfDataCopy = (srcRowStride - actDataLen) / blockElemNum;
+        // 在有pad或srcStrideOfDataCopy不符合datacopy范围时，使用datacopypad拷贝完成
+        if (unlikely(isPad || (srcStrideOfDataCopy > UINT16_MAX_VALUE))) {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = static_cast<uint16_t>(dealRowCount); // 外部传入
+            dataCopyParams.blockLen = actDataLen * sizeof(T);
+            dataCopyParams.srcStride = (srcRowStride - actDataLen) * sizeof(T);
+            dataCopyParams.dstStride = (dstRowStride - actDataLen) / blockElemNum; // 外部传入
+
+            DataCopyPadExtParams<T> dataCopyPadParams;
+            dataCopyPadParams.isPad = true;
+            dataCopyPadParams.leftPadding = 0;
+            dataCopyPadParams.rightPadding = (blockElemNum - (actDataLen % blockElemNum)) % blockElemNum;
+            dataCopyPadParams.paddingValue = 1;
+            DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
+        } else { // 其他情况使用datacopy拷贝完成
+            DataCopyParams repeatParams;
+            repeatParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            repeatParams.blockLen = actDataLen / blockElemNum;
+            repeatParams.srcStride = (srcRowStride - actDataLen) / blockElemNum;
+            repeatParams.dstStride = (dstRowStride - actDataLen) / blockElemNum;
+            DataCopy(ubTensor, gmTensor, repeatParams);
+        }
+    }
+};
+
 // ----------------------------------------------CopyQueryGmToUb--------------------------------
 
 template <typename T, GmFormat GM_FORMAT>
@@ -250,7 +408,7 @@ private:
 
     __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
