@@ -111,6 +111,18 @@ if tl_ok and bsnd_ok:
     for name, tnd_v, bsnd_v in [("dWeights", dw_tl, dw_bsnd.squeeze(0))]:
         diff = (tnd_v.float() - bsnd_v.float()).abs()
         print(f"  TND vs BSND {name}: max_diff={diff.max().item():.8f}")
+    print(f"  BSND dWeights range: [{dw_bsnd.float().min().item():.6f}, {dw_bsnd.float().max().item():.6f}]")
+    # Compare BSND vs Official BSND
+    try:
+        d_qi_off_b, d_ki_off_b, dw_off_b, loss_off_b = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
+            _q_b, _k_b, _qi_b, _ki_b, _w_b, _si_b, _sm_b, _ss_b, scale,
+            query_rope=_qr_b, key_rope=_kr_b, actual_seq_qlen=[S1], actual_seq_klen=[S2],
+            layout="BSND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
+        torch.npu.synchronize()
+        dw_diff_b = (dw_bsnd.float() - dw_off_b.float()).abs()
+        print(f"  BSND vs Official BSND dWeights: max_diff={dw_diff_b.max().item():.6f}, rel_err={(dw_diff_b.max()/(dw_off_b.float().abs().max()+1e-8)).item():.6f}")
+    except Exception as e:
+        print(f"  Official BSND failed: {e}")
 
 print("\n[2] 官方算子...")
 try:
