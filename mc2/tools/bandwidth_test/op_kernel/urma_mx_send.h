@@ -59,7 +59,7 @@
 
 namespace BandwidthTestImpl {
 #define HCOMM_INIT_SIZE 512UL
-#define ONE_MB 1024 * 1024 * 1024UL
+#define ONE_MB 1024 * 1024UL
 #define COMM_MAX_USE_AIV_NUM 8
 
 using namespace AscendC;
@@ -488,6 +488,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
     // ============ 计算当前核处理的token范围 ============
+    if (aivId_ >= aivNumUsedCompute_) {
+        return;
+    }
     uint32_t startTokenId, endTokenId, sendTokenNum; // 每个aiv发送时的起始rankid
     SplitToCore(axisBS_, aivNumUsedCompute_, startTokenId, endTokenId, sendTokenNum);
 
