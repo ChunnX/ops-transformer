@@ -61,8 +61,8 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
     }
     if (inputLayoutStr != "BSH" && inputLayoutStr != "BSND" && inputLayoutStr != "SBH" &&  inputLayoutStr != "BNSD" &&
         inputLayoutStr != "TND") {
-        OP_LOGE(context, "The inputLayout should be BSH/SBH/BSND/BNSD/TND(case-insensitive), but got %s.",
-                  inputLayoutStr.c_str());
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_layout",
+            inputLayoutStr.c_str(), "BSH, SBH, BSND, BNSD or TND");
         return GRAPH_FAILED;
     }
 
