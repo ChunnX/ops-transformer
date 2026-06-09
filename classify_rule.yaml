@@ -769,6 +769,7 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/tests/
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/examples/
                 - ops/ops-transformer/moe/moe_finalize_routing_v2_grad/docs/
+                - ops/ops-transformer/moe/moe_fused_topk/tests/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/tests/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/examples/
                 - ops/ops-transformer/moe/moe_gating_top_k_softmax/docs/
