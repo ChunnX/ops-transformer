@@ -30,7 +30,8 @@ ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetPlatformI
         socVersion_ = ascendcPlatform.GetSocVersion();
         aicoreParams_.ubSize = ubSizePlatForm;
     } else {
-        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo
+            *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
@@ -62,10 +63,18 @@ ge::graphStatus Tiling4InplacePartialRotaryMulDispatcher(gert::TilingContext *co
     auto socVersion = ascendcPlatform.GetSocVersion();
     if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
         std::vector<std::unique_ptr<InplacePartialRopeRegBaseTilingClass>> regBaseTilingCases;
-        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassAAndB(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassAB(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassABAAndBA(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassBAB(context)));
+        regBaseTilingCases.push_back(
+            std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
+                new InplacePartialRopeRegBaseTilingClassAAndB(context)));
+        regBaseTilingCases.push_back(
+            std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
+                new InplacePartialRopeRegBaseTilingClassAB(context)));
+        regBaseTilingCases.push_back(
+            std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
+                new InplacePartialRopeRegBaseTilingClassABAAndBA(context)));
+        regBaseTilingCases.push_back(
+            std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
+                new InplacePartialRopeRegBaseTilingClassBAB(context)));
         OP_LOGI(context, "Using arch35 tiling for ASCEND950");
         
         for (const auto& ptr : regBaseTilingCases) {

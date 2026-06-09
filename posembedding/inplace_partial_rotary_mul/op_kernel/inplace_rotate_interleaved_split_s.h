@@ -107,7 +107,8 @@ __aicore__ inline void InterleavedSplitS<T>::Init(GM_ADDR x, GM_ADDR cos, GM_ADD
         ubCalcSeqTail = ubCalcTailTail;
         ubCalcSeqLoop = ubCalcTailLoop;
         ioOffset = frontCoreNum * coreCalcNum * bufferNdSize + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSize;
-        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
+        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll
+            + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
         triOffset = frontCoreNum * coreCalcNum * headDim + (blockIdx - frontCoreNum) * coreCalcTail * headDim;
     }
 

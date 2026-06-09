@@ -110,7 +110,8 @@ __aicore__ inline void InterleavedSplitSPad<T>::Init(GM_ADDR x, GM_ADDR cos, GM_
         ubCalcSeqTail = ubCalcTailTail;
         ubCalcSeqLoop = ubCalcTailLoop;
         ioOffset = frontCoreNum * coreCalcNum * bufferNdSize + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSize;
-        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
+        ioOffsetAll = frontCoreNum * coreCalcNum * bufferNdSizeAll
+            + (blockIdx - frontCoreNum) * coreCalcTail * bufferNdSizeAll;
         triOffset = frontCoreNum * coreCalcNum * headDim + (blockIdx - frontCoreNum) * coreCalcTail * headDim;
     }
 
@@ -172,7 +173,8 @@ __aicore__ inline void InterleavedSplitSPad<T>::CopyInX(LocalTensor<T> &x, uint3
         dataCopyParams.srcStride = (allHeadDim -  headDim)* sizeof(T);
         dataCopyParams.dstStride = 0;
         DataCopyPad(x[batchIdx * calcLen * numHeads * headDimAlign],
-                    xGm[batchIdx * seqLen * bufferNdSizeAll + loopIdx * ubCalcSeq * bufferNdSizeAll + start], dataCopyParams,
+                    xGm[batchIdx * seqLen * bufferNdSizeAll + loopIdx * ubCalcSeq * bufferNdSizeAll + start],
+                        dataCopyParams,
                     {false, 0, 0, 0});
     }
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));

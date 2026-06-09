@@ -48,7 +48,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetPlatformInfo()
         aicoreParams_.ubSize = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     } else {
-        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo
+            *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -125,7 +126,9 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckShapeAllPositive() co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape)
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeLayoutByShape(
+    const gert::Shape &xShape,
+    const gert::Shape &cosShape)
 {
     uint64_t xShape0 = xShape.GetDim(DIM_0);
     uint64_t xShape1 = xShape.GetDim(DIM_1);
@@ -266,12 +269,14 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckRotaryModeShapeRelati
             ("D=" + std::to_string(d)).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF || rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::INTERLEAVE ||
+    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF ||
+        rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::INTERLEAVE ||
         rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         if (d % HALF_INTERLEAVE_MODE_COEF != 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
                 ("D=" + std::to_string(d)).c_str(),
-                "D must be multiples of 2 in half, interleave and interleave-half mode, where D refers to the last dim");
+                "D must be multiples of 2 in half, interleave and interleave-half mode, "
+                "where D refers to the last dim");
             return ge::GRAPH_FAILED;
         }
     } else if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::QUARTER) {
@@ -282,7 +287,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckRotaryModeShapeRelati
             return ge::GRAPH_FAILED;
         }
     }
-    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF || rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
+    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF
+        || rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
     } else if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::QUARTER) {
         dSplitCoef_ = QUARTER_MODE_COEF;
@@ -297,8 +303,10 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo()
     OP_LOGI(context_, "TEST LOG, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
     if (sliceStart_ < 0 || sliceEnd_ < 0 || sliceLength_ < 0 || sliceEnd_ > d_) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
-            ("slice=[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + "), D=" + std::to_string(d_)).c_str(),
-            "Slice range is invalid: sliceStart/sliceEnd must be >= 0, sliceLength must be >= 0, and sliceEnd must be <= D");
+            ("slice=[" + std::to_string(sliceStart_) + ", " +
+                std::to_string(sliceEnd_) + "), D=" + std::to_string(d_)).c_str(),
+            "Slice range is invalid: sliceStart/sliceEnd must be >= 0, "
+            "sliceLength must be >= 0, and sliceEnd must be <= D");
         return ge::GRAPH_FAILED;
     }
     if (sliceLength_ > 0 && (cosd_ != sind_ || cosd_ != sliceLength_)) {
@@ -318,7 +326,9 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
     const int32_t *mode = attrs->GetAttrPointer<int32_t>(0);
     int32_t modeValue = (mode == nullptr) ? 0 : static_cast<int32_t>(*mode);
     OP_CHECK_IF(modeValue != static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE),
-                OP_LOGE(context_->GetNodeName(), "InplacePartialRotaryMul only support interleave mode (mode=1), actual %d.", modeValue),
+                OP_LOGE(context_->GetNodeName(),
+                    "InplacePartialRotaryMul only support interleave mode (mode=1), actual %d.",
+                    modeValue),
                 return ge::GRAPH_FAILED);
     rotaryMode_ = static_cast<InplacePartialRotaryPosEmbeddingMode>(modeValue);
 

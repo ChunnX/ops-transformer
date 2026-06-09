@@ -25,7 +25,8 @@ class RotaryPositionEmbeddingAB {
 public:
     __aicore__ inline RotaryPositionEmbeddingAB(){};
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData* tilingData,
+        GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace,
+            const InplacePartialRopeRegbaseTilingData* tilingData,
         TPipe* pipe);
     __aicore__ inline void Process();
 
@@ -56,7 +57,8 @@ private:
 
 template <typename T>
 __aicore__ inline void RotaryPositionEmbeddingAB<T>::Init(
-    GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData* tilingData,
+    GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace,
+        const InplacePartialRopeRegbaseTilingData* tilingData,
     TPipe* pipe)
 {
     pipe_ = pipe;
@@ -69,7 +71,9 @@ __aicore__ inline void RotaryPositionEmbeddingAB<T>::Init(
 
     int64_t cosOffset = blockDimBS * tilingData_->blockFactorBS * tilingData_->sliceLength;
     int64_t offset = blockDimBS * tilingData_->blockFactorBS * tilingData_->D;
-    int64_t xOffset = offset * tilingData_->N + blockDimN * tilingData_->blockFactorN * tilingData_->D + tilingData_->sliceStart;
+    int64_t xOffset = offset * tilingData_->N
+        + blockDimN * tilingData_->blockFactorN * tilingData_->D
+        + tilingData_->sliceStart;
     this->cosGm_.SetGlobalBuffer((__gm__ T*)cos + cosOffset);
     this->sinGm_.SetGlobalBuffer((__gm__ T*)sin + cosOffset);
     this->xGm_.SetGlobalBuffer((__gm__ T*)x + xOffset);
@@ -98,10 +102,12 @@ __aicore__ inline void RotaryPositionEmbeddingAB<T>::Process()
 
         LocalTensor<T> cosBuffer = cosInQueue_.AllocTensor<T>();
         LocalTensor<T> sinBuffer = sinInQueue_.AllocTensor<T>();
-        DataCopyPad(cosBuffer, cosGm_[bsLoopIdx * tilingData_->ubFactorBS * tilingData_->sliceLength], cosParams, padParams_);
+        DataCopyPad(cosBuffer,
+            cosGm_[bsLoopIdx * tilingData_->ubFactorBS * tilingData_->sliceLength], cosParams, padParams_);
         cosInQueue_.EnQue(cosBuffer);
         cosBuffer = cosInQueue_.DeQue<T>();
-        DataCopyPad(sinBuffer, sinGm_[bsLoopIdx * tilingData_->ubFactorBS * tilingData_->sliceLength], cosParams, padParams_);
+        DataCopyPad(sinBuffer,
+            sinGm_[bsLoopIdx * tilingData_->ubFactorBS * tilingData_->sliceLength], cosParams, padParams_);
         sinInQueue_.EnQue(sinBuffer);
         sinBuffer = sinInQueue_.DeQue<T>();
 
@@ -122,10 +128,13 @@ __aicore__ inline void RotaryPositionEmbeddingAB<T>::ProcessLoop(
     int64_t nCount)
 {
     int64_t totalCount = bsCount * nCount;
-    DataCopyExtParams inParams = {static_cast<uint16_t>(totalCount * tilingData_->dSplitCoef), dSplitSize_, static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
-    DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount * tilingData_->dSplitCoef), dSplitSize_, 0, static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0};
+    DataCopyExtParams inParams = {static_cast<uint16_t>(totalCount * tilingData_->dSplitCoef), dSplitSize_,
+        static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
+    DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount * tilingData_->dSplitCoef), dSplitSize_, 0,
+        static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0};
     if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
-        inParams = {static_cast<uint16_t>(totalCount), tilingData_->D * sizeof(T), static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
+        inParams = {static_cast<uint16_t>(totalCount), tilingData_->D * sizeof(T),
+            static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
     }
 
     LocalTensor<T> inBuffer = xInQueue_.AllocTensor<T>();
@@ -141,9 +150,14 @@ __aicore__ inline void RotaryPositionEmbeddingAB<T>::ProcessLoop(
     } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
         InterleaveModeVF(sinBuffer, cosBuffer, inBuffer, outBuffer, tilingData_->sliceLength, bsCount, nCount);
     } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
-        QuarterAlignVF(sinBuffer, cosBuffer, inBuffer, outBuffer, tilingData_->sliceLength, sliceAlign_, bsCount, nCount);
+        QuarterAlignVF(sinBuffer,
+            cosBuffer,
+            inBuffer,
+            outBuffer,
+            tilingData_->sliceLength, sliceAlign_, bsCount, nCount);
     } else {
-        DeepSeekInterleaveModeVF<T>(sinBuffer, cosBuffer, inBuffer, outBuffer, tilingData_->sliceLength, bsCount, nCount);
+        DeepSeekInterleaveModeVF<T>(sinBuffer, cosBuffer, inBuffer, outBuffer, tilingData_->sliceLength, bsCount,
+            nCount);
     }
 
     yOutQueue_.EnQue(outBuffer);

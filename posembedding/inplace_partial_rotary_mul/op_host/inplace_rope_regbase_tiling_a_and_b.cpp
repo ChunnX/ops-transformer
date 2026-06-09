@@ -34,7 +34,8 @@ constexpr uint64_t TILING_KEY_B_FP16_FP32 = 20241;
 bool InplacePartialRopeRegBaseTilingClassAAndB::IsCapable()
 {
     // 处理全boardcast和不boardcast的情况
-    return (IsRegbaseSocVersion()) && (layout_ == InplacePartialRopeLayout::NO_BROADCAST || layout_ == InplacePartialRopeLayout::BROADCAST_BSN);
+    return (IsRegbaseSocVersion()) && (layout_ == InplacePartialRopeLayout::NO_BROADCAST || layout_ ==
+        InplacePartialRopeLayout::BROADCAST_BSN);
 }
 
 ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::MergeDim()
