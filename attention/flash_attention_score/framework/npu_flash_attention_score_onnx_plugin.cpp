@@ -154,7 +154,7 @@ static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_
   }
 
   if (required_attr_num != REQUIRED_ATTR) {
-    OP_LOGE_WITH_INVALID_INPUT(GetOpName(op_dest).c_str(), "Parameter required_attr_num has incorrect element nums %ld. Reason: attr num two is required.", required_attr_num);
+    OP_LOGE_WITH_INVALID_INPUT(GetOpName(op_dest).c_str(), required_attr_num,"Parameter required_attr_num has incorrect element nums. Reason: attr num two is required.");
     return FAILED;
   }
 
