@@ -163,7 +163,7 @@ static void UnpackB32ToB4(const aclTensorList *&tensorListB32, const std::string
 
         if (transposeTensor) {
             auto strideSize = newStride.size();
-            // 转置场景，B32承载B4时strides缩小了8倍，需要放大， 即（k*n/8, 1，k/8）->(k*n, 1, k)
+            // 转置场景，B32承载B4时strides缩小了8倍 ，需要放大， 即（k*n/8, 1，k/8）->(k*n, 1, k)
             newStride[strideSize - 1] *= B4_PER_B32;
             // 转置的轴大于等于3维，扩大0到strideSize-3维
             for (int64_t batchDim = strideSize - 3; batchDim >= 0; batchDim--) {
