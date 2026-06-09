@@ -86,7 +86,7 @@ private:
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
-    // __aicore__ inline void ProcessFlashDecode();
+    __aicore__ inline void ProcessFlashDecode();
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
                                                 int64_t s2StartPoint, int64_t s2EndPoint,
                                                 bool isFirstS2RangeTask, bool isLastS2RangeTask);
@@ -327,11 +327,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     }
 
-    constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
-    constexpr uint32_t STAGING_PER_CORE = regbaseutil::S2_SPLIT_STAGING_OUTPUT_BYTES * MAX_S2_SPLIT_NUM
-        + regbaseutil::S2_SPLIT_STAGING_FLOAT_BYTES * MAX_S2_SPLIT_NUM * 2;
     uint32_t v0RegionSize = IS_SPLIT_G ? (128U * 512U * 2U * 3U * (GetBlockNum() >> 1U)) : 0U;
-    s2SplitStagingBase = workspace + v0RegionSize + STAGING_PER_CORE * aicIdx;
+    s2SplitStagingBase = workspace + v0RegionSize;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -547,7 +544,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
-            // ProcessFlashDecode();
+            ProcessFlashDecode();
         }
     }
 }
@@ -624,39 +621,49 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
 }
 
-// template <typename CubeBlockType, typename VecBlockType>
-// __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ProcessFlashDecode()
-// {
-//     FdRunInfo fdRunInfo;
-//     ParseFdRunInfo(fdRunInfo);
-//     if (!fdRunInfo.coreEnable) {
-//         return;
-//     }
-//
-//     RunInfo runInfo;
-//     runInfo.halfMRealSize = fdRunInfo.mNum;
-//     runInfo.vec2MRealSize = fdRunInfo.mNum;
-//     runInfo.vec2S1BaseSize = fdRunInfo.mNum;
-//     runInfo.vec2MBaseSize = fdRunInfo.mNum;
-//     runInfo.multiCoreIdxMod2 = 0;
-//
-//     int64_t batchIdx = fdRunInfo.bn2Idx;
-//     int64_t seqOffset = 0;
-//     if (this->hasCuSeqlensQ) {
-//         seqOffset = this->cuSeqlensQGm.GetValue(batchIdx);
-//     } else {
-//         seqOffset = batchIdx * this->constInfo.s1Size;
-//     }
-//     int64_t attentionOutSeqOffset = seqOffset * this->constInfo.n2GDv;
-//     runInfo.attentionOutOffset = attentionOutSeqOffset +
-//         fdRunInfo.mIdx * this->constInfo.s1BaseSize * this->constInfo.n2GDv +
-//         fdRunInfo.mStartIdx * this->constInfo.dSizeV;
-//     if (this->constInfo.subBlockIdx == 1) {
-//         runInfo.attentionOutOffset += runInfo.halfMRealSize * this->constInfo.dSizeV;
-//     }
-//
-//     this->vecBlock.ProcessFlashDecode(fdRunInfo, runInfo, this->constInfo, this->bmm2Buffers.Get());
-// }
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ProcessFlashDecode()
+{
+    FdRunInfo fdRunInfo;
+    ParseFdRunInfo(fdRunInfo);
+    if (!fdRunInfo.coreEnable) {
+        return;
+    }
+
+    int64_t firstHalfMRealSize = (fdRunInfo.mNum + 1) >> 1;
+    int64_t subBlockMOffset = 0;
+    int64_t subBlockMRealSize = firstHalfMRealSize;
+    if (this->constInfo.subBlockIdx == 1) {
+        subBlockMOffset = firstHalfMRealSize;
+        subBlockMRealSize = fdRunInfo.mNum - firstHalfMRealSize;
+    }
+    if (subBlockMRealSize == 0) {
+        return;
+    }
+    fdRunInfo.mStartIdx += subBlockMOffset;
+    fdRunInfo.mNum = subBlockMRealSize;
+
+    RunInfo runInfo;
+    runInfo.halfMRealSize = subBlockMRealSize;
+    runInfo.vec2MRealSize = subBlockMRealSize;
+    runInfo.vec2S1BaseSize = subBlockMRealSize;
+    runInfo.vec2MBaseSize = subBlockMRealSize;
+    runInfo.multiCoreIdxMod2 = 0;
+
+    int64_t batchIdx = fdRunInfo.bn2Idx;
+    int64_t seqOffset = 0;
+    if (this->hasCuSeqlensQ) {
+        seqOffset = this->cuSeqlensQGm.GetValue(batchIdx);
+    } else {
+        seqOffset = batchIdx * this->constInfo.s1Size;
+    }
+    int64_t attentionOutSeqOffset = seqOffset * this->constInfo.n2GDv;
+    runInfo.attentionOutOffset = attentionOutSeqOffset +
+        fdRunInfo.mIdx * this->constInfo.s1BaseSize * this->constInfo.n2GDv +
+        fdRunInfo.mStartIdx * this->constInfo.dSizeV;
+
+    this->vecBlock.ProcessFlashDecode(fdRunInfo, runInfo, this->constInfo, this->bmm2Buffers.Get());
+}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
