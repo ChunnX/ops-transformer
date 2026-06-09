@@ -48,11 +48,13 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
                 return ge::GRAPH_FAILED;
             }
 
-            OP_CHECK_IF(learnableSinkDesc->GetDataType() != fiaInfo.inputQType,
-                OP_LOGE(fiaInfo.opName, "When learnable sink enable, the datatype(%s) of sink should be equal to query(%s).",
-                    DataTypeToSerialString(learnableSinkDesc->GetDataType()).c_str(), 
-                    DataTypeToSerialString(fiaInfo.inputQType).c_str()),
-            return ge::GRAPH_FAILED);
+            if (learnableSinkDesc->GetDataType() != fiaInfo.inputQType) {
+                std::string reason = "The dtype of learnable_sink must be the same as the dtype of query(" +
+                    ToString(fiaInfo.inputQType) + ") when learnable sink is enabled."
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
+                    ToString(learnableSinkDesc->GetDataType()).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
         } else {
             if (learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
@@ -85,6 +87,12 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
         OP_LOGE(fiaInfo.opName, "When learnable sink enable, pseType = 2/3 is not supported."),
         return ge::GRAPH_FAILED);
+    if (fiaInfo.enableAlibiPse) {
+        std::string reason = "The value of pse_type cannot be 2/3 when learnable sink is enabled.";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type",
+            "2/3", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
         OP_LOGE(fiaInfo.opName,
@@ -95,10 +103,13 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
         OP_LOGE(fiaInfo.opName, "When learnable sink enable, post quant is not supported."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fiaInfo.innerPrecise != HIGH_PRECISION,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, innerPrecise(%u) only support %u.", fiaInfo.innerPrecise, HIGH_PRECISION),
-        return ge::GRAPH_FAILED);
+    if (fiaInfo.innerPrecise != HIGH_PRECISION) {
+        std::string reason = "The value of inner_precise must be " + std::to_string(HIGH_PRECISION) +
+            " when learnable sink is enabled.";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "inner_precise",
+            std::to_string(fiaInfo.innerPrecise).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // 仅支持GQA 非量化
     OP_CHECK_IF(!(enableNonQuant_ && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512),

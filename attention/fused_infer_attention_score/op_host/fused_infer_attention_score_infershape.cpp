@@ -106,8 +106,11 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
         queryDim = it->second.qDim;
 
         if (queryShape->GetDimNum() != queryDim) {
-            OP_LOGE("FusedInferAttentionScore", "Layout %s, query's dim(%zu) must be %zu!",
-                queryLayout.c_str(), queryShape->GetDimNum(), queryDim);
+            std::string dimStr = std::to_string(queryShape->GetDimNum());
+            std::string reason = "The shape dim of query must be " + std::to_string(queryDim) +
+                " when layout is " + queryLayout + ".";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FusedInferAttentionScore", "query",
+                dimStr.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {

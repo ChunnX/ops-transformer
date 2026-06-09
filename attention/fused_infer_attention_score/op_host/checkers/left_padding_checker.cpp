@@ -120,24 +120,36 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
     // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are not supported.
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
-        OP_CHECK_IF(layoutStr == "BSH_BNSD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSH_BNSD!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "BSND_BNSD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSND_BNSD!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "TND",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "NTD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "NTD_TND",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD_TND!"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "TND_NTD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND_NTD!"),
-                    return ge::GRAPH_FAILED);
+        if (layoutStr == "BSH_BNSD") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSH_BNSD",
+                "The value of input_layout cannot be BSH_BNSD when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
+        if (layoutStr == "BSND_BNSD") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSND_BNSD",
+                "The value of input_layout cannot be BSND_BNSD when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
+        if (layoutStr == "TND") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND",
+                "The value of input_layout cannot be TND when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
+        if (layoutStr == "NTD") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD",
+                "The value of input_layout cannot be NTD when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
+        if (layoutStr == "NTD_TND") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD_TND",
+                "The value of input_layout cannot be NTD_TND when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
+        if (layoutStr == "TND_NTD") {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND_NTD",
+                "The value of input_layout cannot be TND_NTD when leftpadiing is enabled.");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;

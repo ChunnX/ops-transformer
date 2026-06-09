@@ -553,24 +553,30 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128),
-                OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Query headdim must smaller than 128 when query and key "
-                    "headdim is not equal to value headdim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.isQKVDDifferent && (fiaInfo.vHeadDim > 128),
-                OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Value headdim must smaller than 128 when query and key "
-                    "headdim is not equal to value headdim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0,
-                OP_LOGE(fiaInfo.opName,
-                "The axis T of query only support >=0 when input layout is TND/NTD, the current is %u",
-                        fiaInfo.qTSize),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0,
-                OP_LOGE(fiaInfo.opName,
-                "The axis T of key only support >=0 when input layout is TND/NTD, the current is %u.",
-                        fiaInfo.kTSize),
-                return ge::GRAPH_FAILED);
+    if (fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+            ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+            "D of query must be <= 128 when D of query and key is not equal to D of value.");
+        return ge::GRAPH_FAILED;
+    }
+    if (fiaInfo.isQKVDDifferent && (fiaInfo.vHeadDim > 128)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
+            ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(),
+            "D of value must be <= 128 when D of query and key is not equal to D of value.");
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0) {
+        std::string reason = "T of query must be greater than or equal to 0 when input_layout is TND/NTD.";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+            ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0) {
+        std::string reason = "T of key must be greater than or equal to 0 when input_layout is TND/NTD.";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
+            ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         if (fiaInfo.s1Size < 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
@@ -669,17 +675,22 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
             continue;
         }
         GetQueryDimAndOutDim(queryShape, attentionOutShape, layoutStr, tmpQueryDim, tmpOutDim, queryDimIdx);
-        OP_CHECK_IF(!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
-                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
-            return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
-                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
-            return ge::GRAPH_FAILED);
+        if (!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim)) {
+            std::string shapeMsg = ToString(queryShape->GetStorageShape()) + " and " + ToString(attentionOutShape->GetStorageShape());
+            std::string reason = std::to_string(queryDimIdx) +
+                "th axis of query must be equal to the corresponding axis of attention_out when input_layout is " + layoutStr + ".";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
+                shapeMsg.c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        if (fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim)) {
+            std::string shapeMsg = ToString(queryShape->GetStorageShape()) + " and " + ToString(attentionOutShape->GetStorageShape());
+            std::string reason = std::to_string(queryDimIdx) +
+                "th axis of query must be equal to the corresponding axis of attention_out when input_layout is " + layoutStr + ".";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
+                shapeMsg.c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -980,24 +991,37 @@ ge::graphStatus CommonChecker::CheckDimNum(const FiaTilingInfo &fiaInfo)
 {
     size_t queryDim = fiaInfo.opParamInfo.query.shape->GetStorageShape().GetDimNum();
     size_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num should be 4, it is  %u.",
-                        fiaInfo.opParamInfo.layOut, queryDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND ||
-                 fiaInfo.qLayout == FiaLayout::NTD) && queryDim != 3U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num should be 3, it is  %u.",
-                        fiaInfo.opParamInfo.layOut, queryDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num should be 4, it is  %u.",
-                        fiaInfo.opParamInfo.layOut, keyDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||
-                 fiaInfo.kvLayout == FiaLayout::NTD) && keyDim != 3U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num should be 3, it is  %u.",
-                        fiaInfo.opParamInfo.layOut, keyDim),
-                return ge::GRAPH_FAILED);
+    if ((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U) {
+        std::string reason = "The shape dim of query must be 4 when input_layout is " +
+            std::string(fiaInfo.opParamInfo.layOut) + ".";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "query",
+            std::to_string(queryDim).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND ||
+        fiaInfo.qLayout == FiaLayout::NTD) && queryDim != 3U) {
+        std::string reason = "The shape dim of query must be 3 when input_layout is " +
+            std::string(fiaInfo.opParamInfo.layOut) + ".";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "query",
+            std::to_string(queryDim).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U) {
+        std::string reason = "The shape dim of key must be 4 when input_layout is " +
+            std::string(fiaInfo.opParamInfo.layOut) + ".";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key",
+            std::to_string(keyDim).c_str(), reason.c_str());
+            "The shape dims of input key should be 4D when the attr input_layout is " + std::string(fiaInfo.opParamInfo.layOut));
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||
+        fiaInfo.kvLayout == FiaLayout::NTD) && keyDim != 3U) {
+        std::string reason = "The shape dim of key must be 3 when input_layout is " +
+            std::string(fiaInfo.opParamInfo.layOut) + ".";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key",
+            std::to_string(keyDim).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1041,8 +1065,9 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
                 "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
             };
             if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
-                OP_LOGE(fiaInfo.opName, "When gqa scenario is applied, the attr inputLayout only supports BSH, "
-                    "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", inputLayout.c_str(),
+                    "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BSND_BNSD, "
+                    "BSH_BNSD, NTD_TND, BNSD_BSND in the GQA scenario.");
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -1122,8 +1147,9 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             "BSH", "BSND", "BNSD", "TND", "BNSD_NBSD", "BSND_NBSD", "BSH_NBSD", "TND_NTD"
         };
         if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
-            OP_LOGE(fiaInfo.opName, "When decode mla scenario is applied, the attr inputLayout only supports BSH, BSND, BNSD, "
-                "TND ,BNSD_BSND, BSND_NBSD, BSH_NBSD, TND_NTD, but got %s", inputLayout.c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                inputLayout.c_str(), "The value of input_layout must be in BSH, BSND, BNSD, TND ,BNSD_BSND, "
+                    "BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario.");
             return ge::GRAPH_FAILED;
         }
     } else { // prefill mla
@@ -1131,8 +1157,9 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
         };
         if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
-            OP_LOGE(fiaInfo.opName, "When prefill mla scenario is applied, the attr inputLayout only supports BSH, "
-                "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                inputLayout.c_str(), "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, "
+                    "NTD_TND, BNSD_BSND in the Prefill MLA scenario.");
             return ge::GRAPH_FAILED;
         } else {
             OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&
@@ -1197,14 +1224,19 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
         !(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128);
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (isGqa) { // GQA
-        OP_CHECK_IF((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In GQA scenario, when layout is %s, d size of query must be 64 or 128, but got d = %d.",
-            layoutStr.c_str(), fiaInfo.qkHeadDim), return false);
+        if ((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128)) {
+            std::string reason = "D of query must be 64 or 128 in the GQA scenario, when layout is " + layoutStr + ".";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+                ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+            return false;
+        }
     }
     if (isGqa) { // GQA
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In GQA scenario, not support layout %s when query and key headdim is not equal to value headdim.",
-            layoutStr.c_str()), return false);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                layoutStr.c_str(), "The value of input_layout cannot be " + layoutStr +
+                " in the GQA scenario, when D of query and key is not equal to D of value."),
+            return false);
     }
     
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
@@ -1228,14 +1260,19 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
         !(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128);
     if (isGqa) { // GQA
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In GQA scenario, not support layout %s when query and key headdim is not equal to value headdim.",
-            layoutStr.c_str()), return false);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+                layoutStr.c_str(), "The value of input_layout cannot be " + layoutStr +
+                " in the GQA scenario, when D of query and key is not equal to D of value."),
+            return false);
     }
     if (layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD") {
         if (isGqa) { // GQA
-            OP_CHECK_IF((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128),
-                OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In GQA scenario, when layout is %s, d size of query must be 64 or 128, but got d = %d.",
-                layoutStr.c_str(), fiaInfo.qkHeadDim), return false);
+            if ((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128)) {
+                std::string reason = "D of query must be 64 or 128 in the GQA scenario, when layout is " + layoutStr + ".";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+                    ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+                return false;
+            }
         }
         
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
@@ -1248,15 +1285,18 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
     } else if (layoutStr == "BNSD_BSND") {
         if (isGqa) { // GQA
             if (fiaInfo.outputType == ge::DT_INT8 && fiaInfo.qkHeadDim % 32 != 0) {
-                std::string reason = "D of query must be multiple of 32 in the GQA scenario when layout is " +
+                std::string reason = "D of query must be a multiple of 32 in the GQA scenario when layout is " +
                     layoutStr + " and output dtype is INT8.";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                     ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
                 return false;
             }
-            OP_CHECK_IF((fiaInfo.qkHeadDim % 16 != 0),
-                OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In GQA scenario, when layout is %s, d size should be a multiple of %d, but got d = %d.",
-                layoutStr.c_str(), 16, fiaInfo.qkHeadDim), return false);
+            if (fiaInfo.qkHeadDim % 16 != 0) {
+                std::string reason = "D of query must be a multiple of 16 in the GQA scenario, when layout is " + layoutStr + ".";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+                    ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+                return false;
+            }
         }
     }
     return true;

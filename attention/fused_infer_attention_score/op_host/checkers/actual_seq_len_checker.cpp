@@ -370,13 +370,15 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
         for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
             actualSeqLengthsQData = GetActualSeqLengthsQData(fiaInfo, bIdx);
             actualSeqLengthsKvData = GetActualSeqLengthsKvData(fiaInfo, bIdx);
-            OP_CHECK_IF((actualSeqLengthsQData != actualSeqLengthsKvData),
-                OP_LOGE(fiaInfo.opName,
-                        "actualSeqLengthsQData(%ld) and actualSeqLengthsKvData(%ld) are "
-                        "different when batch = %u. actualSeqLengthsQData and "
-                        "actualSeqLengthsKvData must be equal in each batch when "
-                        "pseType is 2 or 3.", actualSeqLengthsQData, actualSeqLengthsKvData, bIdx),
-                return ge::GRAPH_FAILED);
+            if (actualSeqLengthsQData != actualSeqLengthsKvData) {
+                std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
+                    "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
+                std::string valueStr = std::to_string(actualSeqLengthsQData).c_str() + " and " +
+                    std::to_string(actualSeqLengthsKvData).c_str()
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
+                    valueStr.c_str(), (attrName + " must be the same when pseType is 2 or 3.").c_str());
+                return ge::GRAPH_FAILED;
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
