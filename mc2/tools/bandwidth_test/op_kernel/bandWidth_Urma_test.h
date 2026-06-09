@@ -345,9 +345,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     totalUsedUB_ += maxSize;
 
     // ============ 初始化数据队列 ============
-    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
-    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
-    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+    if (aivId_ < aivNumUsedCompute_) {
+         uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+        bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+        tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+    }
+    
 
     dstExpIdTensor_ = dstExpBuf_.Get<int32_t>();
     subExpIdTensor_ = subExpBuf_.Get<int32_t>();
@@ -440,8 +443,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (aivId_ < aivNumUsedCompute_) {
         return;
     }
-    PipeBarrier<PIPE_ALL>();
-    tpipe_->Reset();
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     processExpertNum = epWorldSize_  / aivNumUsedComm_;
     uint32_t remainderRankNum = epWorldSize_ % aivNumUsedComm_;
@@ -473,7 +474,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
     PipeBarrier<PIPE_ALL>();
-    uint32_t toltalTokenNum = (MAX_UB_SIZE - 2 *lenth) / UB_ALIGN; // 一次可以搬运进来的token数
+    uint32_t toltalTokenNum = (MAX_UB_SIZE - 2 *lenth - totalUsedUB_) / UB_ALIGN; // 一次可以搬运进来的token数
     uint32_t processCnt = 0;
     for(uint32_t i = startExpert; i < endExpert; ++i) {
         if (sendCntTensor_.GetValue(i - startExpert) == 0 || i == epRankId_) { // 无需发送的expert直接标记完成
