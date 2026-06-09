@@ -57,7 +57,7 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
 
 def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     """PA 格式 → BNSD 重建。"""
-    b   = params["B"]
+    b   = params.get("actual_b", params["B"])  # TND 时 B=1，用 actual_b
     n2  = params.get("N2", params["N1"])
     d   = params["D"]
     s2  = params["S2"]  # 用 S2，不是 max(seqused_kv)
