@@ -35,7 +35,7 @@ using namespace AscendC;
         BaseApi::QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType> op;                             \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
-        op.InitBaseAPI(query, key, value, /*dropMask*/nullptr, /*paddingMask*/nullptr,   \
+        op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen,                                      \
             attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \

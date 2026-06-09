@@ -249,6 +249,9 @@ struct RunInfo {
 
 
 #define INFER_CONST_INFO \
+    /* sparseIndices 相关*/ \
+    uint32_t maxQb;        \
+    uint32_t maxKb;        \
     /* 推理新增 */ \
     bool isRowInvalid; /* 是否使能行无效 */ \
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \

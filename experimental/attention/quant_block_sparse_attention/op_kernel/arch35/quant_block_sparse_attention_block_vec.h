@@ -100,7 +100,6 @@ public:
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
         ConstInfo &constInfo);
-    __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace) {}
     __aicore__ inline void InitGlobalBuffer(
         __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
         __gm__ uint8_t *pScale,
