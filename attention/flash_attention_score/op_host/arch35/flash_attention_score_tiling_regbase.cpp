@@ -256,11 +256,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
                valueShape.GetDimNum() != layoutLen,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
-                   "The value of layout string length must be dims of input query, key and value"), return false);
+                   "The value of layout string length must be equal to dims of input query, key and value"), return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
                !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
-                   "The value of input layout should be in BSH, SBH, BSND, BNSD or TND"), return false);
+                   "The value of input layout must be in BSH, SBH, BSND, BNSD or TND"), return false);
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " + std::to_string(s2Size), 
             "The value of s1Size and s2Size cannot be greater than max int value");
@@ -1526,7 +1526,7 @@ bool FlashAttentionScoreTilingRegbase::PartitionSparseData(const std::vector<int
 {
     OP_CHECK_IF(partitionResult.empty(),
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "partitionResult", "0",
-                   "The balue of size of partitionResult must be greater than 0"), return false);
+                   "The value of size of partitionResult must be greater than 0"), return false);
 
     OP_CHECK_IF(sparseRollingArraySum <= 0,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseRollingArraySum",

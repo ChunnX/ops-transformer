@@ -339,7 +339,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
             std::string paramMsg = "pre_tockens and next_tockens";
             std::string valMsg = std::to_string(preTokens) + " and " + std::to_string(nextTokens);
             std::string reasonMsg = "In RightDownCausal_Band mode, pre_tockens must not be smaller than last valid s2(" +
-                std::to_string(lastS2) + ") and next_tockens must not be larger than 0";
+                std::to_string(lastS2) + ") and next_tockens must not be greater than 0";
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, paramMsg.c_str(),
                 valMsg.c_str(), reasonMsg.c_str());
             return false;
@@ -351,7 +351,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
             if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                 std::string shapeMsg = std::to_string(actualSeqLenData[i]) + " and " + std::to_string(actualSeqLenKvData[i]);
                 std::string reasonMsg = "The value of actual_seq_qlen of batch " + std::to_string(i) +
-                    " must not be larger than actual_seq_kvlen";
+                    " must not be greater than actual_seq_kvlen";
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "actual_seq_qlen and actual_seq_kvlen",
                     shapeMsg.c_str(), reasonMsg.c_str());
                 return false;
@@ -387,7 +387,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                 if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                     std::string shapeMsg = std::to_string(actualSeqLenData[i]) + " and " + std::to_string(actualSeqLenKvData[i]);
                     std::string reasonMsg = "The value of actual_seq_qlen of batch " + std::to_string(i) +
-                        " must not be larger than actual_seq_kvlen";
+                        " must not be greater than actual_seq_kvlen";
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "actual_seq_qlen and actual_seq_kvlen",
                         shapeMsg.c_str(), reasonMsg.c_str());
                     return false;
@@ -653,7 +653,7 @@ if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
         (void)bIdx;
         OP_CHECK_IF(sparseValidArray.size() == 0,
                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
-                       "The value of size of sparseValidArray should be larger than 0"),
+                       "The value of size of sparseValidArray must be greater than 0"),
                    return false);
 
         // 特殊系数, 代表s2Size=[128, 256, 384, 512, 640, 768, 896, 1024] 对应的真实耗时膨胀值
@@ -764,7 +764,7 @@ if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
         int64_t *sparseStartIdx = multiCoreParamsRegbase.get_sparseStartIdxPtr();
 
         OP_CHECK_IF(totalSize <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "totalSize",
-                   std::to_string(totalSize).c_str(), "The value of totalSize should be larger than 0"),
+                   std::to_string(totalSize).c_str(), "The value of totalSize must be greater than 0"),
                    return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差

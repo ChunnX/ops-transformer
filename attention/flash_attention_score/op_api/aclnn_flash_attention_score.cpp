@@ -207,8 +207,7 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScore", "input_layout", 
-            std::to_string(shapeInfo.dimNum).c_str(), "The shape dim of input_layout must be dim_num");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,"not support inputLayout %s with dim_num %lu", input_layout, shapeInfo.dimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
@@ -1882,8 +1881,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The value of input_layout must be TND");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
