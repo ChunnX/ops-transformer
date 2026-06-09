@@ -103,12 +103,12 @@ TensorStrideInfo ToStrideInfo(const gert::Stride &stride)
 
 bool HasUsableBlockDims(const TensorShapeInfo &shape)
 {
-    return shape.rank >= 4 && shape.dim0 > 0 && shape.dim1 > 0;
+    return shape.rank >= 4 && shape.dim0 > 0 && shape.dim2 > 0;
 }
 
 bool BlockDimsMatch(const TensorShapeInfo &lhs, const TensorShapeInfo &rhs)
 {
-    return lhs.dim0 == rhs.dim0 && lhs.dim1 == rhs.dim1;
+    return lhs.dim0 == rhs.dim0 && lhs.dim2 == rhs.dim2;
 }
 
 struct HeadNumsAttr {
@@ -423,7 +423,7 @@ void DeriveBlockShape(const std::string &opName, ContractInput &input)
     }
     if (blockShape != nullptr) {
         input.blockNum = blockShape->dim0;
-        input.blockSize = blockShape->dim1;
+        input.blockSize = blockShape->dim2;
     }
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale derived block shape: source=%s blockNum=%lu blockSize=%lu "

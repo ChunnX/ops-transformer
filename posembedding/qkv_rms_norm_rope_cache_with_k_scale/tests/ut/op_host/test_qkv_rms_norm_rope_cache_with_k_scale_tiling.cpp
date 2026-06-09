@@ -76,14 +76,14 @@ void RefreshShapes(ContractInput &input)
     input.kGamma.shape = Shape({input.headDim});
     input.cosSin.shape = Shape({input.maxSeqLen, input.headDim});
     input.slotMapping.shape = Shape({input.totalTokens});
-    input.kCache.shape = Shape({input.blockNum, input.blockSize, input.numKHeads, input.headDim});
-    input.kCache.stride = Stride({input.blockSize * input.numKHeads * input.headDim,
-        input.numKHeads * input.headDim, input.headDim, 1});
-    input.vCache.shape = Shape({input.blockNum, input.blockSize, input.numVHeads, input.headDim});
-    input.vCache.stride = Stride({input.blockSize * input.numVHeads * input.headDim,
-        input.numVHeads * input.headDim, input.headDim, 1});
-    input.kScaleCache.shape = Shape({input.blockNum, input.blockSize, input.numKHeads, 1});
-    input.kScaleCache.stride = Stride({input.blockSize * input.numKHeads, input.numKHeads, 1, 1});
+    input.kCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, input.headDim});
+    input.kCache.stride = Stride({input.numKHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
+        input.headDim, 1});
+    input.vCache.shape = Shape({input.blockNum, input.numVHeads, input.blockSize, input.headDim});
+    input.vCache.stride = Stride({input.numVHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
+        input.headDim, 1});
+    input.kScaleCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, 1});
+    input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
     input.cuSeqLen.shape = Shape({static_cast<uint64_t>(input.batch) + 1});
     input.qRotation.shape = Shape({input.headDim, input.headDim});
     input.kRotation.shape = Shape({input.headDim, input.headDim});
@@ -272,26 +272,6 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesNtdQkvShape)
     EXPECT_EQ(input.qkv.shape.dim0, input.numQHeads + input.numKHeads + input.numVHeads);
     EXPECT_EQ(input.qkv.shape.dim1, input.totalTokens);
     EXPECT_EQ(input.qkv.shape.dim2, input.headDim);
-}
-
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesBlockTokenHeadCacheShape)
-{
-    auto input = BuildInput(512, 64, 8, 8);
-    EXPECT_EQ(input.kCache.shape.rank, 4U);
-    EXPECT_EQ(input.kCache.shape.dim0, input.blockNum);
-    EXPECT_EQ(input.kCache.shape.dim1, input.blockSize);
-    EXPECT_EQ(input.kCache.shape.dim2, input.numKHeads);
-    EXPECT_EQ(input.kCache.shape.dim3, input.headDim);
-    EXPECT_EQ(input.vCache.shape.rank, 4U);
-    EXPECT_EQ(input.vCache.shape.dim0, input.blockNum);
-    EXPECT_EQ(input.vCache.shape.dim1, input.blockSize);
-    EXPECT_EQ(input.vCache.shape.dim2, input.numVHeads);
-    EXPECT_EQ(input.vCache.shape.dim3, input.headDim);
-    EXPECT_EQ(input.kScaleCache.shape.rank, 4U);
-    EXPECT_EQ(input.kScaleCache.shape.dim0, input.blockNum);
-    EXPECT_EQ(input.kScaleCache.shape.dim1, input.blockSize);
-    EXPECT_EQ(input.kScaleCache.shape.dim2, input.numKHeads);
-    EXPECT_EQ(input.kScaleCache.shape.dim3, 1U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
@@ -498,15 +478,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQkvShape);
 
     input = BuildInput();
-    input.kCache.shape.dim2 += 1;
+    input.kCache.shape.dim1 += 1;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
 
     input = BuildInput();
-    input.vCache.shape.dim2 += 1;
+    input.vCache.shape.dim1 += 1;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
 
     input = BuildInput();
-    input.kCache.shape.dim1 += 1;
+    input.kCache.shape.dim2 += 1;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
 
     input = BuildInput();
@@ -514,7 +494,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
 
     input = BuildInput();
-    input.kScaleCache.shape.dim1 += 1;
+    input.kScaleCache.shape.dim2 += 1;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
 
     input = BuildInput();
@@ -547,24 +527,24 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, ContiguousCacheStridesAreReported)
     ContractTiling tiling;
     auto input = BuildInput();
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
-    EXPECT_EQ(tiling.kCacheStrideBlock, input.blockSize * input.numKHeads * input.headDim);
-    EXPECT_EQ(tiling.kCacheStrideHead, input.headDim);
-    EXPECT_EQ(tiling.kCacheStrideToken, input.numKHeads * input.headDim);
-    EXPECT_EQ(tiling.vCacheStrideBlock, input.blockSize * input.numVHeads * input.headDim);
-    EXPECT_EQ(tiling.vCacheStrideHead, input.headDim);
-    EXPECT_EQ(tiling.vCacheStrideToken, input.numVHeads * input.headDim);
-    EXPECT_EQ(tiling.kScaleCacheStrideBlock, input.blockSize * input.numKHeads);
-    EXPECT_EQ(tiling.kScaleCacheStrideHead, 1U);
-    EXPECT_EQ(tiling.kScaleCacheStrideToken, input.numKHeads);
+    EXPECT_EQ(tiling.kCacheStrideBlock, input.numKHeads * input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.kCacheStrideHead, input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.kCacheStrideToken, input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideBlock, input.numVHeads * input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideHead, input.blockSize * input.headDim);
+    EXPECT_EQ(tiling.vCacheStrideToken, input.headDim);
+    EXPECT_EQ(tiling.kScaleCacheStrideBlock, input.numKHeads * input.blockSize);
+    EXPECT_EQ(tiling.kScaleCacheStrideHead, input.blockSize);
+    EXPECT_EQ(tiling.kScaleCacheStrideToken, 1U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
 {
     ContractTiling tiling;
     auto input = BuildInput();
-    input.kCache.stride = Stride({45000, 160, 21000, 1});
-    input.vCache.stride = Stride({45000, 160, 21000, 1});
-    input.kScaleCache.stride = Stride({1024, 2, 256, 1});
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({45000, 21000, 160, 1});
+    input.kScaleCache.stride = Stride({1024, 256, 2, 1});
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
     EXPECT_EQ(tiling.kCacheStrideBlock, 45000U);
     EXPECT_EQ(tiling.kCacheStrideHead, 21000U);
@@ -581,13 +561,13 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
 {
     ContractTiling tiling;
     auto input = BuildInput();
-    input.kCache.stride = Stride({45000, 160, 21000, 1});
-    input.vCache.stride = Stride({45000, 192, 21000, 1});
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({45000, 21000, 192, 1});
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
 
     input = BuildInput();
-    input.kCache.stride = Stride({45000, 160, 21000, 1});
-    input.vCache.stride = Stride({52000, 160, 21000, 1});
+    input.kCache.stride = Stride({45000, 21000, 160, 1});
+    input.vCache.stride = Stride({52000, 21000, 160, 1});
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
 }
 
@@ -599,7 +579,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheStride);
 
     input = BuildInput();
-    input.vCache.stride.stride2 = input.headDim - 1;
+    input.vCache.stride.stride1 = input.headDim - 1;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheStride);
 
     input = BuildInput();
@@ -611,7 +591,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
 
     input = BuildInput();
-    input.kScaleCache.stride.stride2 = 0;
+    input.kScaleCache.stride.stride1 = 0;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
 }
 

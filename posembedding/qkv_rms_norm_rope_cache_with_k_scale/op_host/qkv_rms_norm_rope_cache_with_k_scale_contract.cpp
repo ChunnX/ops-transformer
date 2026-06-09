@@ -249,23 +249,23 @@ ContractStatus ValidateShapes(const ContractInput &input, const DerivedHeadNums 
                 input.vScale.shape.rank, input.vScale.shape.dim0);
         return ContractStatus::kInvalidVScaleShape;
     }
-    if (!IsShape4D(input.kCache.shape, input.blockNum, input.blockSize, input.numKHeads, input.headDim)) {
+    if (!IsShape4D(input.kCache.shape, input.blockNum, input.numKHeads, input.blockSize, input.headDim)) {
         OP_LOGD(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: kCache shape rank=%u dims={%lu,%lu,%lu,%lu}, "
                 "expected={%lu,%lu,%lu,%lu}.",
                 input.kCache.shape.rank, input.kCache.shape.dim0, input.kCache.shape.dim1, input.kCache.shape.dim2,
-                input.kCache.shape.dim3, input.blockNum, input.blockSize, input.numKHeads, input.headDim);
+                input.kCache.shape.dim3, input.blockNum, input.numKHeads, input.blockSize, input.headDim);
         return ContractStatus::kInvalidKCacheShape;
     }
-    if (!IsShape4D(input.vCache.shape, input.blockNum, input.blockSize, input.numVHeads, input.headDim)) {
+    if (!IsShape4D(input.vCache.shape, input.blockNum, input.numVHeads, input.blockSize, input.headDim)) {
         OP_LOGD(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: vCache shape rank=%u dims={%lu,%lu,%lu,%lu}, "
                 "expected={%lu,%lu,%lu,%lu}.",
                 input.vCache.shape.rank, input.vCache.shape.dim0, input.vCache.shape.dim1, input.vCache.shape.dim2,
-                input.vCache.shape.dim3, input.blockNum, input.blockSize, input.numVHeads, input.headDim);
+                input.vCache.shape.dim3, input.blockNum, input.numVHeads, input.blockSize, input.headDim);
         return ContractStatus::kInvalidVCacheShape;
     }
-    if (!IsShape4D(input.kScaleCache.shape, input.blockNum, input.blockSize, input.numKHeads, 1)) {
+    if (!IsShape4D(input.kScaleCache.shape, input.blockNum, input.numKHeads, input.blockSize, 1)) {
         OP_LOGD(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache shape rank=%u dims={%lu,%lu,%lu,%lu}.",
                 input.kScaleCache.shape.rank, input.kScaleCache.shape.dim0, input.kScaleCache.shape.dim1,
@@ -381,14 +381,14 @@ void FillContractTiling(const ContractInput &input, const DerivedHeadNums &nums,
     tiling.rowTile = tiling.tokenTile * nums.qkN;
     tiling.rowTileAligned = AlignUp(tiling.rowTile, 16);
     tiling.kCacheStrideBlock = input.kCache.stride.stride0;
-    tiling.kCacheStrideHead = input.kCache.stride.stride2;
-    tiling.kCacheStrideToken = input.kCache.stride.stride1;
+    tiling.kCacheStrideHead = input.kCache.stride.stride1;
+    tiling.kCacheStrideToken = input.kCache.stride.stride2;
     tiling.vCacheStrideBlock = input.vCache.stride.stride0;
-    tiling.vCacheStrideHead = input.vCache.stride.stride2;
-    tiling.vCacheStrideToken = input.vCache.stride.stride1;
+    tiling.vCacheStrideHead = input.vCache.stride.stride1;
+    tiling.vCacheStrideToken = input.vCache.stride.stride2;
     tiling.kScaleCacheStrideBlock = input.kScaleCache.stride.stride0;
-    tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride2;
-    tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride1;
+    tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride1;
+    tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride2;
 }
 
 void LogContractTilingResult(const std::string &opName, const ContractTiling &tiling)

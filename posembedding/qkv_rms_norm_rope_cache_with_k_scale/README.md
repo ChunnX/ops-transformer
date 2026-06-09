@@ -16,9 +16,8 @@ Current state:
    directly. Host tiling computes `coreTokenTile` with ceil division and writes
    `coreGroupNum`; AIC and paired AIV cores consume those values to derive the
    same contiguous cube-group token range. Host tiling writes cache stride
-   triplets for the block-token-head cache layout, requiring `k_cache` and
-   `v_cache` to share their non-innermost strides so the kernel can reuse the
-   `slot_mapping`-derived cache offsets.
+   triplets, requiring `k_cache` and `v_cache` to share their non-innermost
+   strides so the kernel can reuse the `slot_mapping`-derived cache offsets.
    The controller creates the contiguous core token range, expands it into
    token-size tiles, and derives per-tile tail parameters before calling the
    D=128 fast-path basic block.
