@@ -60,7 +60,7 @@ class Reporter:
     @staticmethod
     def _print_table(results: dict, total: int, is_final: bool) -> int:
         max_len = max((len(n) for n in results.keys()), default=28)
-        width = max_len + 80  # case_name + fixed columns
+        width = max_len + 100
         SEP = "─" * width
         title = "  汇总结果" if is_final else f"  中间统计  ({len(results)}/{total})"
         print(f"\n┌{SEP}┐")
