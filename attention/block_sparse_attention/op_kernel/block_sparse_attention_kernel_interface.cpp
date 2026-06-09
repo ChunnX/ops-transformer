@@ -185,7 +185,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
         ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, TileCopyRescaleO, Arch::PositionL0C>;
+        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, ElementK, TileCopyRescaleO, Arch::PositionL0C>;
 
     using BsaRegularKernelArch35 = BsaRegularKernelArch35<
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
@@ -263,7 +263,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
-                                                            TileCopyRescaleO, Arch::PositionL0C>;
+                                                            ElementK, TileCopyRescaleO, Arch::PositionL0C>;
     BsaFullQuantKernelParamsArch35 params{query,
                                           key,
                                           value,
