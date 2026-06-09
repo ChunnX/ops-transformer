@@ -33,7 +33,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace mc2tiling;
 
-namespace MegaMoeA2A3Tiling {
+namespace Mc2Tiling {
     const char *K_INNER_DEBUG = "MegaMoeA2A3 Tiling Debug";
 
     // 算子属性索引
