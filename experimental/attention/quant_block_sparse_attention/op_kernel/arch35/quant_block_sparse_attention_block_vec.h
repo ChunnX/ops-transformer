@@ -351,8 +351,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Nd(
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-                this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
+        AttenMaskCopyIn<hasAtten>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
     }
 
@@ -1071,8 +1070,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
     sharedParams.isActualSeqLengthsNull = inputParamsRegbase.isActualSeqLengthsNull;
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
-    sharedParams.isQHasLeftPadding = inputParamsRegbase.isQHasLeftPadding;
-    sharedParams.isKVHasLeftPadding = inputParamsRegbase.isKVHasLeftPadding;
     if constexpr (isPa) {
         sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
         sharedParams.blockSize = inputParamsRegbase.blockSize;
@@ -1084,8 +1081,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
     sharedParams.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
     sharedParams.coreNum = multiCoreParamsRegbase.coreNum;
-    sharedParams.multiCoreInnerOffset = multiCoreParamsRegbase.sparseStartIdx[aicIdx];
-    sharedParams.multiCoreInnerLimit = multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1];
     sharedParams.bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];
     sharedParams.bnEndIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx + 1];
     sharedParams.needInit = this->tilingData->initOutputParams.needInit;
@@ -1177,12 +1172,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetActualSeqLenKV(ConstInfo &
         actualSeqLen = s2InCurrentBatch;
     } else {
         actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
-    }
-    if (constInfo.isKVHasLeftPadding) {
-        int64_t kvLeftPaddingSize = constInfo.s2Size - actualSeqLen - constInfo.kvRightPaddingSize;
-        if (kvLeftPaddingSize < 0) {
-            actualSeqLen = 0;
-        }
     }
 }
 

@@ -87,7 +87,6 @@ enum class SparseType : uint8_t {
     int64_t attentionOutOffset;    /* attentionOut的offset souter层确定 */ \
     int64_t actualS1Size;      /* Q的actualSeqLength */ \
     int64_t actualS2Size;    /* KV的actualSeqLength */ \
-    uint64_t b1SSOffset; \
     uint64_t b1SSAttenMaskOffset; \
     uint64_t b1SSOffsetAlign16; \
     int64_t qRopeNBGOffset;             /* QueryRope 的 offset */ \
@@ -97,18 +96,15 @@ enum class SparseType : uint8_t {
 struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
-    int64_t s1LoopTimes;
-    int64_t gS1Idx;
+    int64_t s1LoopStart;
+    int64_t s1LoopEnd;
     // BN循环生产的数据
-    int64_t s2InCurrentBatch;                 // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
     int64_t nextTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
 
     // NBS1循环生产的数据
     int64_t sOuterOffset;               // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
     int64_t cubeSOuterOffset;           // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
-    int64_t keyCoreOffset;              // BN方向上，不同BN的Key的offset batch层确定
-    int64_t valueCoreOffset;            // BN方向上，不同BN的value的offset batch层确定
     int64_t keyOffset;              // mm1 Key 的offset,后续更名为KFinalOffset
 
     // q k v attenMask不同轴的offset
@@ -116,20 +112,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qBOffset;             // bIdx * seqSize * multiHeadQ，后续更名为qBOffset batch层确定
     int64_t qRopeBOffset;         // batch层确定 actualSeqLengths相关
 
-    // 左padding
-    int64_t queryLeftPaddingSize;       // batch层确定
-    int64_t kvLeftPaddingSize;          // batch层确定
-
     // lse 输出offset
     int64_t softmaxLseOffset;       // souter层确定
-
-    // IFA_MLA
-    int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
-    int64_t nextTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
-    int64_t preTokensOfMlaPerBatch = 0;   // 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效
-
-    // prefix
-    int64_t prefixCoreOffset = 0;       // 保存当前循环，prefix在bn维度的地址偏移
 };
 
 #define COMMON_RUN_INFO \
@@ -156,8 +140,6 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t queryOffset; /* mm1 Query的offset*/\
     int64_t keyOffset; /* mm1 Key的offset */ \
     int64_t valueOffset; /* mm2 Value的offset*/ \
-    int64_t qRopeOffset; \
-    int64_t kRopeOffset; \
     \
     int64_t taskId; \
     int64_t multiCoreInnerIdx = 0; \
@@ -171,13 +153,10 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
     int64_t nextTokensPerBatch; /* vector2 左上顶点的nexttoken */ \
-    int64_t b1SSOffset; /* 非TND = boIdx * s1 * s2; TND = 前面boIdx个batch的s1*S2之和 */ \
     /* 训练场景下等于b1SSOffset，推理场景下非TND mask支持大于s1 * s2；TND场景推理的mask是补过pad的 */ \
     int64_t b1SSAttenMaskOffset; \
     int64_t b1SSOffsetAlign; /* TND场景s2 16对齐之后，前面batch的s1*s2之和 */ \
     int64_t deScaleKvOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
-    int64_t nextTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
-    int64_t preTokensOfMlaPerBatch = 0; /* 在mla场景下左上顶点的nexttoken，用于计算BNSD的行无效 */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
@@ -186,19 +165,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 
 struct RunInfo {
     COMMON_RUN_INFO;
-    // 推理新增
-    int64_t gS1Idx;
-    int64_t queryLeftPaddingSize;
-    int64_t kvLeftPaddingSize;
-    int64_t actualSeqLengthOfMlaPerBatch = 0; // 在mla场景下Q的actualSeqLength
     // lse 输出offset
     int64_t softmaxLseOffset;
-
-    // tensorlist相关
-    int64_t s2InCurrentBatch;
-
-    // prefix相关
-    int64_t prefixOffset;                  //保存当前循环prefix的地址偏移
 };
 
 #define COMMON_CONST_INFO \
@@ -212,7 +180,7 @@ struct RunInfo {
     int64_t dSizeV; \
     int64_t dBasicBlock; \
     int64_t dSizeRope; \
-    int64_t n1size;     \
+    int64_t n1Size;     \
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
@@ -277,10 +245,7 @@ struct RunInfo {
     bool softMaxCheckRes; \
     float keepProb; \
     float scaleValue; \
-    int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
-    bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = 0.0f;
 
 
 #define INFER_CONST_INFO \
@@ -307,9 +272,6 @@ struct RunInfo {
     uint32_t headNumRatio; \
     bool rsvd1; \
     bool isSoftmaxLseEnable; \
-    /* 左padding */ \
-    bool isQHasLeftPadding; \
-    bool isKVHasLeftPadding; \
     int64_t queryRightPaddingSize; \
     int64_t kvRightPaddingSize; \
     /* 后量化 */ \
@@ -338,8 +300,6 @@ struct RunInfo {
     int64_t s1SparseValidSize;  \
     int64_t s2SparseValidSize;  \
     /* core params */ \
-    volatile int64_t multiCoreInnerOffset;  /* 二次赋值的变量需要volatile修饰 */ \
-    volatile int64_t multiCoreInnerLimit;  /* 二次赋值的变量需要volatile修饰 */ \
     uint32_t s1OuterSize;  \
     uint32_t bandIndex;  \
     uint32_t compressMode : 4;  \
@@ -371,8 +331,6 @@ struct CVSharedParams<false> {
     uint32_t isRowInvalid : 1;
     uint32_t isActualSeqLengthsNull : 1;
     uint32_t isActualSeqLengthsKVNull : 1;
-    uint32_t isQHasLeftPadding : 1;
-    uint32_t isKVHasLeftPadding : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
@@ -404,8 +362,6 @@ struct CVSharedParams<true> {
     uint32_t isRowInvalid : 1;
     uint32_t isActualSeqLengthsNull : 1;
     uint32_t isActualSeqLengthsKVNull : 1;
-    uint32_t isQHasLeftPadding : 1;
-    uint32_t isKVHasLeftPadding : 1;
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;

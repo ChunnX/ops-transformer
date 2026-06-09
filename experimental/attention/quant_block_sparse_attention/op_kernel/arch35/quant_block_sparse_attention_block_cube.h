@@ -320,7 +320,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo &runInfo
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
-    coordInfo[runInfo.taskIdMod3].s1Coord += runInfo.queryLeftPaddingSize;  // 左padding
     // 推理无效行场景，s1方向起始跳过无效行
     coordInfo[runInfo.taskIdMod3].s1Coord += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
 }
@@ -331,7 +330,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo
 {
     coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
-    coordInfo[runInfo.taskIdMod3].s2Coord += runInfo.kvLeftPaddingSize;  // 左padding
     if (constInfo.isKvContinuous == 0) {
         coordInfo[runInfo.taskIdMod3].curBIdx = 0;
     }
