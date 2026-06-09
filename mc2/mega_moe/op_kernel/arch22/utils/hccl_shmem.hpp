@@ -26,12 +26,7 @@
 #include "const_args.hpp"
 #include "mc2_moe_context.h"
 
-#ifdef HCCL_COMM
 #include "../../../../common/op_kernel/moe_distribute_base.h"
-
-#else
-#include "shmem_api.h"
-#endif
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__
 constexpr int32_t MAX_RANK_SIZE = 32;
@@ -303,8 +298,7 @@ public:
         } else {
             return (GM_ADDR)((rankId == m_rank) ?
                                  WinContext_->localWindowsIn :
-                                 ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) +
-                   offset;
+                                 ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
         }
 #else
         return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));

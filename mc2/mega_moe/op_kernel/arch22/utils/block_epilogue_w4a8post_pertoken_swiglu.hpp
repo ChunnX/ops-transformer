@@ -121,10 +121,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[i]);
         }
 
-#ifdef W4A8_DEBUG
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
-
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubCFp32ChunkNAbs = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubQuantS32 = ubCFp32ChunkNAbs.template ReinterpretCast<int32_t>();
@@ -153,9 +149,6 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[i]);
         }
-#ifdef W4A8_DEBUG
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
     }
     CATLASS_DEVICE
     ~BlockEpilogue()
@@ -228,9 +221,6 @@ public:
             auto &sharedUbTmpBuffer = ubReduceMax;
 
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
-#ifdef W4A8_DEBUG
-            auto gmTileGMM1 = gmGMM1[loopIdx * blockN];
-#endif
             LayoutC layoutUbC{2, blockN};
 
             // Copy data from GM workspace to UB
@@ -278,9 +268,6 @@ public:
 
             // Cast C to FP32 in UB
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
-#ifdef W4A8_DEBUG
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, blockN * 2);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
             PipeBarrier<PIPE_V>();
@@ -311,13 +298,6 @@ public:
                 AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit,
                                   ChunkTileLen);
             }
-
-#ifdef W4A8_DEBUG
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
-            DataCopy(gmTileGMM1, ubCFp32, blockN);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-#endif
 
             // SwiGLU computation process
             AscendC::PipeBarrier<PIPE_V>();
