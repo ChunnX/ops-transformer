@@ -361,6 +361,18 @@ protected:
         return ACLNN_SUCCESS;
     }
 
+    virtual void PrepareOriginalShapesBeforeContiguous()
+    {
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            auto *w = (*gmmDsqParams_.weight)[i];
+            if (IsPrivateFormat(w->GetStorageFormat())) {
+                w->SetOriginalShape(w->GetViewShape());
+            }
+        }
+    }
+
+    virtual void RestoreOriginalShapesAfterContiguous() {}
+
 public:
     void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
                     aclOpExecutor **executor)
@@ -392,12 +404,7 @@ public:
                 return ACLNN_SUCCESS;
             }
         }
-        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
-            auto *w = (*gmmDsqParams_.weight)[i];
-            if (IsPrivateFormat(w->GetStorageFormat())) {
-                w->SetOriginalShape(w->GetViewShape());
-            }
-        }
+        PrepareOriginalShapesBeforeContiguous();
 
         // 空Tensor场景
         if (gmmDsqParams_.output->IsEmpty() || gmmDsqParams_.groupList->IsEmpty() || gmmDsqParams_.outputScale->IsEmpty()) {
@@ -408,6 +415,7 @@ public:
 
         ret = CovertDataContiguous();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        RestoreOriginalShapesAfterContiguous();
         auto ret0 = l0op::GroupedMatmulSwigluQuantV2(gmmDsqParams_.x, gmmDsqParams_.weight, gmmDsqParams_.weightScale,
                                                 gmmDsqParams_.xScale, gmmDsqParams_.weightAssistMatrix,
                                                 gmmDsqParams_.bias,

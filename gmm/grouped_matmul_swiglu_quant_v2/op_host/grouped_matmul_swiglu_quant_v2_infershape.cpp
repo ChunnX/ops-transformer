@@ -31,9 +31,15 @@ const int64_t DIM_LEN = 2;
 const int64_t SPLIT_RATIO = 2;
 const int64_t OUT_DIM_LEN = 3;
 const int64_t N_SPLIT_RATIO = 128;
+<<<<<<< HEAD
 constexpr int64_t MX_WEIGHTSCALE_MULTI_DIM = 3;
+=======
+const int64_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
+const int64_t MX_SINGLE_WEIGHT_SCALE_DIM = 4;
+>>>>>>> 单多单
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_DTYPE = 3UL;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_MODE = 2UL;
+constexpr size_t GMMSQ_INDEX_ATTR_TRANSPOSE_WEIGHT = 4UL;
 constexpr size_t QUANT_MODE_MX_TYPE = 2;
 constexpr size_t QUANT_MODE_PERTOKEN_TYPE = 0;
 constexpr const char *GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE = "GroupedMatmulSwigluQuantV2";
@@ -80,10 +86,27 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     const gert::Shape *weightScaleShape = context->GetDynamicInputShape(WEIGHTSCALE_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScaleShape);
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
+    const bool *transposeWeightPtr = attrs->GetBool(GMMSQ_INDEX_ATTR_TRANSPOSE_WEIGHT);
+    const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
+
     int64_t m = xShape->GetDim(M_DIM_INDEX);
-    int64_t nDimIndex = weightScaleShape->GetDimNum() - 1;
+    int64_t weightScaleDimNum = weightScaleShape->GetDimNum();
+    int64_t nDimIndex = weightScaleDimNum - 1;
+    if (*quantModePtr == QUANT_MODE_MX_TYPE) {
+        if (weightScaleDimNum == MX_SINGLE_WEIGHT_SCALE_DIM) {
+            nDimIndex = transposeWeight ? weightScaleDimNum - OUT_DIM_LEN : weightScaleDimNum - DIM_LEN;
+        } else if (weightScaleDimNum == MX_MULTI_WEIGHT_SCALE_DIM) {
+            nDimIndex = transposeWeight ? 0 : weightScaleDimNum - DIM_LEN;
+        }
+    }
+
     auto outScaleShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
+<<<<<<< HEAD
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     bool isMxA8W4MultiWeight = IsMxA8W4MultiWeightScenario(context, weightScaleShape, attrs);
@@ -92,6 +115,9 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
         const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
         nDimIndex = transposeWeight ? weightScaleShape->GetDimNum() - OUT_DIM_LEN :
                                         weightScaleShape->GetDimNum() - DIM_LEN;
+=======
+    if (*quantModePtr == QUANT_MODE_MX_TYPE) {
+>>>>>>> 单多单
         int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
         int64_t n = 0;
         if (dimValue == DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE) {
