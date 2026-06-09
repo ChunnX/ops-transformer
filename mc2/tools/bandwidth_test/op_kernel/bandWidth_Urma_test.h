@@ -436,10 +436,21 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     PRINTF("CommProcess aivId_ = %d\n", aivId_);
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
-    SplitToCore(epWorldSize_, aivNumUsedComm_, startExpert, endExpert, processExpertNum);
-    if (startExpert >= epWorldSize_ || processExpertNum == 0) { 
+    processExpertNum = epWorldSize_  / aivNumUsedComm_;
+    uint32_t remainderRankNum = epWorldSize_ % aivNumUsedComm_;
+    if ((aivId_ - aivNumUsedCompute_) < remainderRankNum) {
+        processExpertNum += 1;
+        startExpert = processExpertNum * (aivId_ - aivNumUsedCompute_);
+    } else {
+        startExpert += remainderRankNum;
+    }
+    endExpert = startExpert + processExpertNum;
+   
+    PRINTF("CommProcess startExpert = %d, endExpert = %d, processExpertNum = %d\n", startExpert, endExpert, processExpertNum);
+    if (startExpert >= endExpert || processExpertNum == 0) { 
         return; 
     }
+    PRINTF("CommProcess startExpert = %d, endExpert = %d\n", startExpert, endExpert);
     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t));
     uint32_t lenth = Ceil(processExpertNum * sizeof(uint32_t),UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sendCntBuf_, lenth);
@@ -455,7 +466,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
-    uint32_t cnt=0;
+    uint3_t cnt=0;
     while(true) {
         cnt += 1;
         for(uint32_t i = startExpert; i < endExpert; ++i) {
@@ -503,7 +514,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
+    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId_, endTokenId_, sendTokenNum_);
     
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
