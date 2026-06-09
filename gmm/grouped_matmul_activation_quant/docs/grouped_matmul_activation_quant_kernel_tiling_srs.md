@@ -16,13 +16,7 @@
 
 当前模型图中存在如下计算链路：
 
-```text
-GroupedMatmul(MX FP8 input, MX FP8 weight NZ)
-    -> dequant to fp32 accumulator
-    -> GeluTanh activation
-    -> dynamic MX FP8 quant
-    -> y, y_scale
-```
+`GroupedMatmul(MX FP8 input, MX FP8 weight NZ)` -> `fp32 accumulator` -> `GeluTanh activation` -> `dynamic MX FP8 quant` -> `y/y_scale`
 
 若将 GMM、Activation、Dynamic MX Quant 拆成多个算子，会产生额外 GM 读写、调度开销和中间张量生命周期。`GroupedMatmulActivationQuant` 的目标是将上述链路融合到一个 AscendC kernel 中：
 
@@ -280,217 +274,52 @@ END_TILING_DATA_DEF;
 
 #### 6.1.2 Tiling 主流程
 
-```text
-TilingPrepareForGroupedMatmulActivationQuant:
-    platform = PlatformAscendC(context.platform)
-    compileInfo.aicNum = platform.GetCoreNumAic()
-    compileInfo.aivNum = platform.GetCoreNumAiv()
-    compileInfo.socVersion = platform.GetSocVersion()
-    compileInfo.npuArch = platform.GetCurNpuArch()
-    compileInfo.ubSize = platform.GetCoreMemSize(UB)
-    compileInfo.l1Size = platform.GetCoreMemSize(L1)
-    compileInfo.l0ASize = platform.GetCoreMemSize(L0_A)
-    compileInfo.l0BSize = platform.GetCoreMemSize(L0_B)
-    compileInfo.l0CSize = platform.GetCoreMemSize(L0_C)
-    compileInfo.l2Size = platform.GetCoreMemSize(L2)
+Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程如下：
 
-GroupedMatmulActivationQuantTilingFunc:
-    if context == nullptr:
-        log "tiling context is nullptr"
-        return GRAPH_FAILED
+| 阶段 | 主要动作 | 产物/约束 |
+| --- | --- | --- |
+| 编译信息准备 | 从 `PlatformAscendC` 读取 AIC/AIV、UB/L1/L0/L2、SoC、NPU arch | `GMMCompileInfo` |
+| schema 解析 | 读取输入、输出、dynamic input 第 0 个 tensor 和 attr | 与第 4.1 节顺序保持一致 |
+| attr 校验 | 收敛 activation、quant、transpose、group_list 相关属性 | 只允许 GELU_TANH、MX FP8 当前组合 |
+| dtype/format 校验 | 校验 FP8 输入输出、E8M0 scale、NZ weight | 不支持 FP16/BF16/FP32 或 ND weight |
+| shape 校验 | 校验 `x_scale`、`weight_scale`、`weight.storage` 关键维度 | scale block 按 64 元素，pair dim 为 2 |
+| BasicAPI tiling | 复用 `GroupedQmmBasicApiTiling` 计算 matmul tile | 生成 `QuantBasicApiMMTiling` |
+| tiling data 写入 | 写入 group、activation、quant、matmul 切分信息 | `GMMActivationQuantTilingDataParams` |
+| workspace/post | 设置系统 workspace，保存 tiling data | kernel dispatch 使用 tiling key |
 
-    // 当前只有 arch35/Ascend950 一套模板注册，registerList 固定为 {0}
-    registerList = {0}
-    return TilingRegistry.DoTilingImpl(context, registerList)
+#### 6.1.3 Tiling 校验要点
 
-GroupedMatmulActivationQuantTiling950.DoTiling:
-    Reset raw tiling data pointer
-    GetShapeAttrsInfo from GroupedQmmBasicApiTiling
-    AnalyzeAttrs
-    AnalyzeDtype
-    AnalyzeInputs
-    DoOpTiling
-    DoLibApiTiling
-    GetWorkspaceSize
-    SaveTilingDataToContext
-```
-
-#### 6.1.3 Attr 解析伪代码
-
-```text
-AnalyzeAttrs:
-    attrs = context.GetAttrs()
-    require attrs != nullptr
-
-    transB = attr[transpose_weight] if exists else false
-    transA = false
-
-    groupListType = attr[group_list_type] if exists else default
-    require groupListType in {0, 1}
-
-    activationType = attr[activation_type]          // required attr
-    dequantDtype = attr[dequant_dtype]              // optional attr with default FLOAT
-    quantDtype = attr[quant_dtype]                  // optional attr with default E4M3
-    roundMode = attr[round_mode]                    // optional attr with default "rint"
-    scaleAlg = attr[scale_alg]                      // optional attr with default OCP
-    dstTypeMax = attr[dst_type_max]                 // optional attr with default 0.0
-
-    require all required quant attrs are non-null
-    require activationType == 2  // GELU_TANH
-    require dequantDtype == FLOAT
-    require quantDtype in {FLOAT8_E4M3FN, FLOAT8_E5M2}
-    require roundMode == "rint"
-    require scaleAlg in {0, 1}
-    require abs(dstTypeMax - 0.0) <= 1e-6
-
-    roundMode_ = ROUND_MODE_RINT
-    scaleAlg_ = scaleAlg
-    activationType_ = activationType
-    dstTypeMax_ = dstTypeMax
-    quantDtype_ = quantDtype
-    groupType = SPLIT_M
-```
+| 检查域 | 当前规则 |
+| --- | --- |
+| activation | `activation_type == 2`，即 GELU_TANH |
+| dequant | `dequant_dtype == ge::DT_FLOAT` |
+| quant | `quant_dtype` 只支持 `FLOAT8_E4M3FN` / `FLOAT8_E5M2`，且必须等于 `y.dtype` |
+| round | `round_mode == "rint"` |
+| scale algorithm | `scale_alg == 0` 表示 OCP，`scale_alg == 1` 表示 cuBLAS |
+| dst max | `dst_type_max == 0.0` |
+| x/weight/y dtype | 均为 FP8 E4M3/E5M2 组合 |
+| scale dtype | `x_scale`、`weight_scale`、`y_scale` 均为 `FLOAT8_E8M0` |
+| weight format | 只支持 `FRACTAL_NZ`，storage rank 为 5，尾维为 `16/32` |
+| scale shape | `x_scale=[M, ceil(K/64), 2]`；`weight_scale` 按转置状态匹配 `[E, KBlocks, N, 2]` 或 `[E, N, KBlocks, 2]` |
+| core ratio | AIC:AIV 必须为 1:2 |
 
 `tuning_config` 当前随 schema 保留，tiling 实现没有读取该字段；若后续需要指定 block shape 或策略开关，应在本流程中显式解析并写入 tiling data。
 
-#### 6.1.4 dtype 解析伪代码
+#### 6.1.4 BasicAPI tiling 与 tiling data
 
-```text
-AnalyzeDtype:
-    xDesc = inputDesc[0]
-    wDesc = inputDesc[3]        // dynamic weight list 当前按第 0 个 tensor 展平到该 index
-    xScaleDesc = inputDesc[2]
-    wScaleDesc = inputDesc[4]   // dynamic weight_scale list 当前按第 0 个 tensor 展平到该 index
-    yDesc = outputDesc[0]
-    yScaleDesc = outputDesc[1]
-    require all desc are non-null
+矩阵乘切分复用 `GroupedQmmBasicApiTiling`。本算子只在其输出基础上限制 `baseM` 上界、写入 MX scale 相关 K 方向切分，并把融合 epilogue 需要的属性写入 `GMMActivationQuantParams`。
 
-    aDtype = xDesc.dtype
-    bDtype = wDesc.dtype
-    perTokenScaleDtype = xScaleDesc.dtype
-    scaleDtype = wScaleDesc.dtype
-    outDataDtype = yDesc.dtype
-    outScaleDtype = yScaleDesc.dtype
-    bFormat = PrimaryFormat(wDesc.storageFormat)
+| tiling data | 字段 | 来源 |
+| --- | --- | --- |
+| `GMMActivationQuantParams` | `groupNum/groupListType` | `group_list` shape 和 `group_list_type` |
+| `GMMActivationQuantParams` | `activationType` | `activation_type`，当前固定 GELU_TANH |
+| `GMMActivationQuantParams` | `quantDtype` | `y.dtype` 对应 GE dtype enum |
+| `GMMActivationQuantParams` | `roundMode/scaleAlg/dstTypeMax` | 对应 quant attr |
+| `QuantBasicApiMMTiling` | `m/n/k/baseM/baseN/baseK` | BasicAPI tiling 结果 |
+| `QuantBasicApiMMTiling` | `kAL1/kBL1/scaleKAL1/scaleKBL1` | BasicAPI L1 tiling 和 MX scale K 方向切分 |
+| `QuantBasicApiMMTiling` | `isBias/dbL0C` | 当前 `isBias=0`，`dbL0C` 来自 BasicAPI |
 
-CheckDtype:
-    require IsFp8(aDtype)
-    require IsFp8(bDtype)
-    require perTokenScaleDtype == FLOAT8_E8M0
-    require scaleDtype == FLOAT8_E8M0
-    require IsFp8(outDataDtype)
-    require outDataDtype == quantDtype_
-    require outScaleDtype == FLOAT8_E8M0
-```
-
-#### 6.1.5 输入 shape 解析伪代码
-
-```text
-AnalyzeInputs:
-    xShape = inputShape[x]
-    weightShape = dynamicInputShape[weight][0]
-    xScaleShape = inputShape[x_scale]
-    weightScaleShape = dynamicInputShape[weight_scale][0]
-    require all shape are non-null
-
-    SetGroupNum(group_list_index)
-    SetMKN(xShape.origin, weightShape.origin)
-
-    aQuantMode = MX_PERGROUP_MODE
-    bQuantMode = MX_PERGROUP_MODE
-    isSingleX = true
-    isSingleW = true
-    isSingleY = true
-
-    CheckMxScaleShape(xScaleShape.origin, weightScaleShape.origin)
-    CheckWeightNzShape(weightShape.storage)
-    CheckCoreNum()
-```
-
-#### 6.1.6 MX scale shape 校验伪代码
-
-```text
-CheckMxScaleShape(xScaleShape, wScaleShape):
-    require rank(xScaleShape) == 3
-    require rank(wScaleShape) == 4
-
-    expectedKBlocks = ceil(kSize / 64)
-
-    if transB:
-        wScaleN = wScaleShape[1]
-        wScaleK = wScaleShape[2]
-    else:
-        wScaleK = wScaleShape[1]
-        wScaleN = wScaleShape[2]
-
-    require xScaleShape[0] == mSize
-    require xScaleShape[1] == expectedKBlocks
-    require xScaleShape[2] == 2
-
-    require wScaleShape[0] == groupNum
-    require wScaleN == nSize
-    require wScaleK == expectedKBlocks
-    require wScaleShape[3] == 2
-```
-
-#### 6.1.7 weight NZ shape 校验伪代码
-
-```text
-CheckWeightNzShape(weightStorageShape):
-    require bFormat == FRACTAL_NZ
-    require rank(weightStorageShape) == 5
-    require weightStorageShape[3] == 16
-    require weightStorageShape[4] == 32
-```
-
-#### 6.1.8 BasicAPI tiling 伪代码
-
-```text
-DoLibApiTiling:
-    GroupedQmmTiling.CalBasicBlock()
-
-    baseM = min(basicTiling.baseM, 128)
-    basicTiling.baseM = CeilAlign(baseM, CUBE_BLOCK)
-
-    if GroupedQmmBasicApiTiling.CalL1Tiling() != GRAPH_SUCCESS:
-        return GRAPH_FAILED
-
-    mmTilingData.m = mSize
-    mmTilingData.n = nSize
-    mmTilingData.k = kSize
-    mmTilingData.baseM = basicTiling.baseM
-    mmTilingData.baseN = basicTiling.baseN
-    mmTilingData.baseK = basicTiling.baseK
-    mmTilingData.kAL1 = stepKa * baseK
-    mmTilingData.kBL1 = stepKb * baseK
-    mmTilingData.scaleKAL1 =
-        min(max(scaleFactorA * stepKa, scaleFactorB * stepKb) * baseK, kSize)
-    mmTilingData.scaleKBL1 = mmTilingData.scaleKAL1
-    mmTilingData.isBias = 0
-    mmTilingData.dbL0C = basicTiling.dbL0c
-    return GRAPH_SUCCESS
-```
-
-#### 6.1.9 Op tiling data 写入伪代码
-
-```text
-DoOpTiling:
-    gmmParams.groupNum = groupNum
-    gmmParams.groupListType = groupListType
-    gmmParams.activationType = activationType_
-    if outDataDtype == FLOAT8_E5M2:
-        gmmParams.quantDtype = FP8_E5M2_VALUE
-    else:
-        gmmParams.quantDtype = FP8_E4M3FN_VALUE
-    gmmParams.roundMode = ROUND_MODE_RINT
-    gmmParams.dequantDtype = FLOAT
-    gmmParams.scaleAlg = scaleAlg_
-    gmmParams.dstTypeMax = dstTypeMax_
-```
-
-`FP8_E5M2_VALUE`、`FP8_E4M3FN_VALUE` 使用当前 GE dtype enum 值写入 tiling data。文档中优先使用符号名，避免把 enum 数值误读成算法常量。
-
-#### 6.1.10 tiling key
+#### 6.1.5 tiling key
 
 当前只生成两个有效 kernel 模板组合：
 
@@ -500,20 +329,9 @@ DoOpTiling:
 | trans weight | 1 | 0 | RowMajor | Zn | 支持 |
 | trans x | 0/1 | 1 | - | - | 不支持 |
 
-伪代码：
+tiling key 仅由 `transpose_weight` 和固定的 `transA=false` 共同决定，kernel dispatch 按表中的 layout 选择模板。
 
-```text
-GetTilingKey:
-    return GET_TPL_TILING_KEY(transB, transA)
-
-Kernel dispatch:
-    if transB == 0 and transA == 0:
-        call GmmActivationMxQuant<RowMajor, Nz>()
-    else if transB == 1 and transA == 0:
-        call GmmActivationMxQuant<RowMajor, Zn>()
-```
-
-#### 6.1.11 Tiling 类图
+#### 6.1.6 Tiling 类图
 
 ```mermaid
 classDiagram
@@ -586,7 +404,7 @@ classDiagram
     GMMActivationQuantTilingDataParams *-- QuantBasicApiMMTiling
 ```
 
-#### 6.1.12 Tiling 小结
+#### 6.1.7 Tiling 小结
 
 Tiling 的职责可以归纳为“收口、复用、传参”：
 
@@ -622,50 +440,19 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 
 #### 6.2.2 Kernel 参数装配
 
-```text
-GmmActivationMxQuant:
-    read gmmActivationQuantParams from tiling
-    read mmTilingData from tiling
+`GmmActivationMxQuant` 是 kernel dispatch 后的模板组装层，核心职责如下：
 
-    BlockEpilogue =
-        BlockEpilogueActivationQuant<L0TileShape, CType, float, E8M0, E8M0, true>
+| 装配项 | 内容 |
+| --- | --- |
+| tiling 读取 | 读取 `GMMActivationQuantParams` 和 `QuantBasicApiMMTiling` |
+| MMAD block | 组装 `BlockMmadMx`，A layout 固定 RowMajor，B layout 由 tiling key 决定为 Nz 或 Zn |
+| Epilogue block | 组装 `BlockEpilogueActivationQuant`，输出 dtype 为 FP8，scale dtype 为 E8M0 |
+| Scheduler | 使用 `GroupedMatmulAswtWithTailSplitScheduler` 做 group/tile 调度 |
+| GMM 参数 | 传入 `groupNum`、`m/n/k`、`baseM/baseN/baseK`、L1 切分、`groupListType` 等 |
+| MMAD 地址 | 传入 `x`、`weight`、`weightScale`、`xScale`、`y`、`groupList` |
+| Epilogue 地址和属性 | 传入 `y`、`yScale`、`baseM/baseN`、`roundMode`、`scaleAlg`、`dstTypeMax`、`activationType` |
 
-    BlockMmad =
-        BlockMmadMx<MatmulWithScale, AType, LayoutA, BType, LayoutB, float>
-
-    QGmmKernel =
-        KernelGmmActivationMixOnlineDynamic<MatmulShape, BlockMmad, BlockEpilogue, Scheduler>
-
-    gmmParams = {
-        groupNum,
-        m, n, k,
-        baseM, baseN, baseK,
-        kAL1, kBL1,
-        scaleKAL1, scaleKBL1,
-        isBias = 0,
-        dbL0C,
-        groupType = SPLIT_M,
-        groupListType
-    }
-
-    params.mmadParams = {
-        x, weight, weightScale, xScale, y, nullptr, groupList
-    }
-
-    params.epilogueParams = {
-        y, yScale,
-        x2Scale = nullptr,
-        x1Scale = nullptr,
-        bias = nullptr,
-        baseM, baseN,
-        roundMode,
-        scaleAlg,
-        dstTypeMax,
-        activationType
-    }
-
-    QGmmKernel(params)
-```
+当前 `bias` 不进入参数装配，`isBias` 固定为 0。
 
 #### 6.2.3 Kernel 类图
 
@@ -774,92 +561,34 @@ sequenceDiagram
 
 #### 6.2.5 group_list 语义
 
-```text
-GetSplitValueFromGroupList(groupIdx, groupListType):
-    if groupListType == 0:
-        // group_list 保存每组累加结束 offset
-        offset = group_list[groupIdx]
-        splitValue = offset - preOffset
-        preOffset = offset
-    else:
-        // group_list 保存每组 token 数
-        splitValue = group_list[groupIdx]
-    return splitValue
-```
+| `group_list_type` | 语义 | 每组 M 值计算方式 |
+| ---: | --- | --- |
+| 0 | `group_list` 保存每组累加结束 offset | 当前 offset 减上一组 offset |
+| 1 | `group_list` 保存每组 token 数 | 直接读取当前 group 的 count |
+
+`M_i == 0` 的 group 会被调度层跳过，不进入 MMAD 和 epilogue。
 
 #### 6.2.6 group 间 GM offset 更新
 
-```text
-UpdateOffset(groupIdx):
-    if groupIdx == 0:
-        return
+group 间 offset 更新遵循“按上一组 M 推进 A/Y，按 group index 推进 NZ weight”的原则：
 
-    previousM = problemShape.m
-    n = problemShape.n
-    k = problemShape.k
-
-    aOffset += previousM * k
-
-    if B format is NZ:
-        if transB:
-            nAlign = align_up(n, BLOCK_CUBE)
-            kAlign = align_up(k, c0Size)
-        else:
-            nAlign = align_up(n, c0Size)
-            kAlign = align_up(k, BLOCK_CUBE)
-        bOffset = nAlign * kAlign * groupIdx
-    else:
-        bOffset += n * k
-
-    scaleK = ceil(k / 64) * 2
-    xScaleOffset += previousM * scaleK
-    wScaleOffset += n * scaleK
-    yOffset += previousM * n
-    yScaleOffset += previousM * ceil(n / 64) * 2
-```
+| 地址 | 更新依据 |
+| --- | --- |
+| `x/aOffset` | 上一组 `M_i * K` |
+| `weight/bOffset` | NZ storage 按 group 独立存放，转置和非转置使用不同的 N/K 对齐方式 |
+| `xScaleOffset` | 上一组 `M_i * ceil(K/64) * 2` |
+| `wScaleOffset` | 每组 `N * ceil(K/64) * 2` |
+| `yOffset` | 上一组 `M_i * N` |
+| `yScaleOffset` | 上一组 `M_i * ceil(N/64) * 2` |
 
 #### 6.2.7 tile 内 AIC/AIV 协同
 
-```text
-ProcessSingleGroup:
-    bs.UpdateNextProblem({m_i, n, k, 0})
-    epilogue.UpdateNextProblem({m_i, n, k, 0})
-    UpdateGlobalBuffer(baseOffset)
-
-    coord = Coordinate(m_i, n, k, baseM, baseN, baseK)
-
-    while bs.GetTileIdx(tileIdx):
-        singleShape = bs.GetBlockShape(tileIdx)
-        if singleShape.m <= 0 or singleShape.n <= 0:
-            return
-
-        quantOffset = coord.GetQuantOffset(MX_PERGROUP_MODE, tileIdx, singleShape, c0Size)
-        blockOffset.a = quantOffset.a
-        blockOffset.b = quantOffset.b
-        blockOffset.xScale = quantOffset.x1Scale
-        blockOffset.wScale = quantOffset.x2Scale
-        blockOffset.y = quantOffset.c
-        blockOffset.yScale =
-            mOffset * ceil(n / 64) * 2 + ceil(nOffset / 64) * 2
-
-        if AIC:
-            if previous tile exists:
-                WaitForVector()
-            mmSingleShape = {singleM, singleN, k}
-            BlockMmad(aGlobal[aOffset], bGlobal[bOffset],
-                      xScaleGlobal[xScaleOffset],
-                      wScaleGlobal[wScaleOffset],
-                      l0cOutUbFirst,
-                      mmSingleShape)
-            NotifyVector()
-
-        if AIV:
-            epilogueShape = {singleM, singleN, 0, 0}
-            epilogueOffset = {yOffset, yScaleOffset, wScaleOffset, xScaleOffset, biasOffset}
-            WaitForCube()
-            Epilogue(epilogueShape, epilogueOffset)
-            NotifyCube()
-```
+| 角色 | 主要职责 |
+| --- | --- |
+| Scheduler | 为当前 group 生成 tile index、tile shape 和 MX scale offset |
+| AIC | 等待上一轮 AIV 消费完成后，调用 `BlockMmadMx` 计算 fp32 L0C tile |
+| AIV | 等待 AIC 产出后，执行 GeluTanh + MX dynamic quant，并写回 `y/y_scale` |
+| 同步 | AIC/AIV 通过 `NotifyVector` 和 `NotifyCube` 保持流水顺序 |
 
 #### 6.2.8 Epilogue UB 规划
 
@@ -875,78 +604,28 @@ Epilogue 在 AIV 侧运行。UB 区域按固定偏移划分：
 | `halfScale_` | `uint16_t` | `MAX_SINGLE_MN / 32` | 反量化/量化用 half scale |
 | `quantScaleBlockOutput_` | `int8_t` | `baseM / taskRatio * 32` | GM 写回前 scale layout |
 
-#### 6.2.9 Epilogue 主流程伪代码
+#### 6.2.9 Epilogue 主流程
 
-```text
-BlockEpilogueActivationQuant::operator()(blockShape, blockCoord):
-    singleM = blockShape.m
-    singleN = blockShape.n
-    scaleBlockN = ceil(singleN / 64) * 2
+Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下：
 
-    halfSingleM = ceil(singleM / taskRatio)
-    if subBlockIdx == 1:
-        singleMInVec = singleM - halfSingleM
-    else:
-        singleMInVec = halfSingleM
+| 阶段 | 说明 |
+| --- | --- |
+| tile 拆分 | 按 subBlock 切分 `singleM`，避免两条 vector 子块重复处理同一行 |
+| activation | 从 L0C 输出 UB 读取 fp32 tile，执行 GeluTanh，并将结果保存为 BF16 中间值 |
+| scale 生成 | 根据 `scale_alg` 选择 OCP 或 cuBLAS 分支，生成 E8M0 `mxScale` 和用于 FP8 cast 的 `halfScale` |
+| FP8 cast | 对 BF16 activation 结果乘 `halfScale`，执行 sat + rint cast 到目标 FP8 |
+| scale layout | 将紧凑 scale 重排成 GM 写回需要的布局 |
+| GM 写回 | 写回 `y` 和 `y_scale`，stride 由完整 `N` 和 `ceil(N/64)*2` 决定 |
 
-    if singleMInVec == 0:
-        return
-
-    vlForHalfNumber = VECTOR_REG_WIDTH / sizeof(bfloat16_t)
-    elementAfterReduce = VECTOR_REG_WIDTH / 32
-
-    VFDoActivationForMX(singleMInVec)
-
-    yOffset = blockCoord.y + subBlockIdx * halfSingleM * fullN
-    yScaleOffset = blockCoord.yScale + subBlockIdx * halfSingleM * fullScaleN
-
-    TransMxScaleLayout(singleMInVec, scaleBlockN)
-
-    CopyOutputFromUb2Gm(singleMInVec, yOffset, quantOutput)
-    CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput)
-```
-
-#### 6.2.10 GeluTanh 计算伪代码
+#### 6.2.10 GeluTanh 计算
 
 当前实现使用 sigmoid 形式的 GeluTanh 近似：
 
-```text
-GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))
-```
+`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`
 
-代码中的等价计算：
+实现中会用等价代数变形组织常数乘法，最终结果先按 rint 转成 BF16，作为后续 MX quant 的输入。`activation_type` 当前只允许 GELU_TANH，因此 epilogue 内不需要额外 activation 分支。
 
-```text
-inputSqr = x * x
-inputCub = inputSqr * x
-inputCub = inputCub + x * (1 / 0.044715)
-inputCub = inputCub * (-1.595769121 * 0.044715)
-denominator = exp(inputCub) + 1
-actOut = x / denominator
-activationRes = cast_bf16_rint(actOut)
-```
-
-逐 tile 伪代码：
-
-```text
-VFDoActivationAndQuantForMX(src, mSize, nSize):
-    sizePerRepeat = VECTOR_REG_WIDTH / sizeof(DataTypeIn)
-    repeatsPerRow = ceil(nSize / sizePerRepeat)
-    nSrcAligned = align_up(nSize, 32 / sizeof(DataTypeIn))
-    nDstAligned = align_up(nSize, 32)
-
-    for mIdx in [0, mSize):
-        mask = UpdateMask(nSize)
-        for vfBlockIdx in [0, repeatsPerRow):
-            offset = mIdx * nSrcAligned + vfBlockIdx * sizePerRepeat
-            input = load_fp32(src + offset)
-            act = GeluTanh(input)
-            store_bf16(activationRes + mIdx * nDstAligned + vfBlockIdx * sizePerRepeat, act)
-
-    DynamicMxQuant(activationRes, nDstAligned)
-```
-
-#### 6.2.11 MX dynamic quant 伪代码
+#### 6.2.11 MX dynamic quant
 
 量化主流程：
 
@@ -966,137 +645,14 @@ flowchart LR
     J --> L[y_scale GM]
 ```
 
-```text
-DynamicMxQuant(activationRes, mSize, nDstAligned):
-    // activationRes 已按 row 存成 BF16，nDstAligned 按 FP8 写回粒度对齐
-    totalData = mSize * nDstAligned
-    totalScaleGroup = totalData / 32
-
-    if scaleAlg == OCP:
-        maxStat = ReduceMaxExponentPerGroup32(activationRes, totalScaleGroup)
-        mxScale, halfScale = BuildScaleByOcpExponent(maxStat)
-    else:
-        maxStat = ReduceMaxAbsPerGroup32(activationRes, totalScaleGroup)
-        mxScale, halfScale = BuildScaleByCublasAbs(maxStat, dtypeMax)
-
-    quantOutput = CastScaledDataToFp8(activationRes, halfScale)
-    quantScaleOutput = PackMxScale(mxScale)
-    return quantOutput, quantScaleOutput
-```
-
-OCP scale 分支按 BF16 exponent 选择共享 scale，和 `dynamic_mx_quant_tail_axis_fp8.h` 的 OCP 路径保持同一类思路：
-
-```text
-ReduceMaxExponentPerGroup32(src, totalScaleGroup):
-    for groupIdx in [0, totalScaleGroup):
-        maxExp = 0
-        for value in src[groupIdx * 32 : groupIdx * 32 + 32):
-            bf16Exp = bits(value) & BF16_EXP_MASK
-            maxExp = max(maxExp, bf16Exp)
-        maxExpBuf[groupIdx] = maxExp
-    return maxExpBuf
-
-BuildScaleByOcpExponent(maxExpBuf):
-    for each maxExp in maxExpBuf:
-        if maxExp represents INF or NaN:
-            mxScale = FP8_NAN_SCALE
-            halfScale = BF16_NAN
-            continue
-
-        // 未超过目标 FP8 exponent 范围时，不额外放大共享 exponent。
-        clippedExp = max(maxExp, fp8MaxExp)
-        sharedExp = clippedExp - fp8MaxExp
-
-        mxScale = sharedExp >> BF16_EXP_SHIFT
-        halfScale = BF16_EXP_BIAS - sharedExp
-
-        if sharedExp == 0:
-            halfScale = 0
-        if sharedExp hits special small-exponent range:
-            halfScale = SPECIAL_EXP_THRESHOLD
-
-        store mxScale, halfScale
-```
-
-cuBLAS scale 分支先规约绝对值，再按目标 FP8 dtype 的最大值反推共享 exponent：
-
-```text
-ReduceMaxAbsPerGroup32(src, totalScaleGroup):
-    for groupIdx in [0, totalScaleGroup):
-        maxAbs = 0
-        for value in src[groupIdx * 32 : groupIdx * 32 + 32):
-            absValue = bits(value) & ABS_MASK_FOR_16BIT
-            maxAbs = max(maxAbs, absValue)
-        maxAbsBuf[groupIdx] = maxAbs
-    return maxAbsBuf
-
-BuildScaleByCublasAbs(maxAbsBuf, dtypeMax):
-    for each maxAbs in maxAbsBuf:
-        if maxAbs == 0:
-            mxScale = 0
-            halfScale = 0
-            continue
-        if maxAbs represents INF or NaN:
-            mxScale = FP8_NAN_SCALE
-            halfScale = BF16_NAN
-            continue
-
-        scaledMax = cast_bf16_to_fp32(maxAbs) * dtypeMax
-        exp32 = extract_fp32_exponent(scaledMax)
-        man32 = extract_fp32_mantissa(scaledMax)
-
-        needRoundUp =
-            (0 < exp32 < FP32_MAX_EXP and man32 > 0) or
-            (exp32 == 0 and man32 > 0.5)
-        sharedExp = exp32 + (needRoundUp ? 1 : 0)
-
-        mxScale = low_u16(sharedExp)
-        halfScale = FP32_EXP_BIAS_CUBLAS - (sharedExp << BF16_EXP_SHIFT)
-        store mxScale, halfScale
-```
-
-FP8 输出 cast：
-
-```text
-CastScaledDataToFp8(activationRes, halfScale):
-    for each vector chunk:
-        data = load_bf16_interleaved(activationRes)
-        scale = broadcast_group_scale(halfScale)
-        scaled = data * scale
-
-        fp32Lo, fp32Hi = cast_bf16_to_fp32_for_fp8_cast(scaled)
-        fp8Lo, fp8Hi = cast_fp32_to_fp8_sat_rint(fp32Lo, fp32Hi)
-        packedFp8 = pack_fp8_lanes(fp8Lo, fp8Hi)
-        store packedFp8 to quantOutput
-```
-
-Scale layout 转换：
-
-```text
-TransMxScaleLayout(mSize, scaleBlockN):
-    // quantScaleOutput 是紧凑 scale；quantScaleBlockOutput 按 GM DataCopyPad 写回粒度重排
-    for mIdx in [0, mSize):
-        src = quantScaleOutput + mIdx * scaleBlockN
-        dst = quantScaleBlockOutput + mIdx * 32
-        copy scaleBlockN bytes from src to dst
-```
-
-GM 写回：
-
-```text
-CopyOutputFromUb2Gm:
-    blockCount = singleMInVec
-    blockLen = singleN * sizeof(int8)
-    dstStride = (fullN - singleN) * sizeof(int8)
-    DataCopyPad(yGM + yOffset, quantOutput, params)
-
-CopyScaleFromUb2Gm:
-    blockScaleN = ceil(singleN / 64) * 2
-    blockCount = singleMInVec
-    blockLen = blockScaleN * sizeof(int8)
-    dstStride = (fullScaleN - blockScaleN) * sizeof(int8)
-    DataCopyPad(yScaleGM + yScaleOffset, quantScaleBlockOutput, params)
-```
+| 分支/阶段 | 设计说明 |
+| --- | --- |
+| OCP scale | 对每 32 个 BF16 元素规约 exponent，按目标 FP8 exponent 范围生成共享 scale |
+| cuBLAS scale | 对每 32 个 BF16 元素规约绝对值，再结合目标 FP8 dtype max 反推出共享 scale |
+| 特殊值 | INF/NaN、zero 和小 exponent 区间按照参考 dynamic MX quant 路径处理 |
+| FP8 cast | activation 结果乘 `halfScale` 后执行 sat + rint cast 到 `FLOAT8_E4M3FN` 或 `FLOAT8_E5M2` |
+| scale 写回 | E8M0 scale 先在 UB 中按紧凑布局生成，再转换成 `y_scale` 的 GM layout |
+| 输出 stride | `y` stride 按完整 `N`，`y_scale` stride 按完整 `ceil(N/64)*2` |
 
 #### 6.2.12 Kernel 小结
 
@@ -1126,127 +682,16 @@ Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合
 | `common/cgmct/epilogue/block_epilogue_activation_mx_quant.h` | GeluTanh + MX dynamic quant epilogue |
 | `tests/ut/op_host/test_grouped_matmul_activation_quant_tiling.*` | CSV tiling UT |
 
-### 7.2 详细修改伪代码
+### 7.2 修改要点
 
-#### 7.2.1 def schema
-
-```text
-DefineOp GroupedMatmulActivationQuant:
-    Input("x").Required().Dtype(FP8_E4M3/E5M2).Format(ND)
-    Input("group_list").Required().Dtype(INT64).Format(ND)
-    Input("x_scale").Optional().Dtype(FLOAT8_E8M0).Format(ND)
-    Input("weight").Dynamic().Dtype(FP8_E4M3/E5M2).Format(FRACTAL_NZ)
-    Input("weight_scale").Dynamic().Dtype(FLOAT8_E8M0).Format(ND)
-    Input("bias").Dynamic().Dtype(FLOAT).Format(ND)
-    Output("y").Required().Dtype(FP8_E4M3/E5M2).Format(ND)
-    Output("y_scale").Required().Dtype(FLOAT8_E8M0).Format(ND)
-
-    Attr("activation_type").Required().Int()
-    Attr("dequant_dtype").Optional().Int(FLOAT)
-    Attr("transpose_weight").Optional().Bool(false)
-    Attr("group_list_type").Optional().Int(0)
-    Attr("tuning_config").Optional().ListInt({0})
-    Attr("quant_dtype").Optional().Int(FLOAT8_E4M3FN)
-    Attr("round_mode").Optional().String("rint")
-    Attr("scale_alg").Optional().Int(0)
-    Attr("dst_type_max").Optional().Float(0.0)
-
-    AICore("ascend950")
-        DynamicCompileStaticFlag(true)
-        DynamicFormatFlag(true)
-        DynamicRankSupportFlag(true)
-        DynamicShapeSupportFlag(true)
-        NeedCheckSupportFlag(false)
-        PrecisionReduceFlag(true)
-        opFile = "grouped_matmul_activation_quant_apt"
-```
-
-#### 7.2.2 InferShape
-
-```text
-InferShape:
-    xShape = input[0].shape
-    weightScaleShape = dynamicInput[4][0].shape
-    transposeWeight = attr[2]
-
-    M = xShape[0]
-    if transposeWeight:
-        N = weightScaleShape[1]
-    else:
-        N = weightScaleShape[2]
-
-    y.shape = [M, N]
-    if N == -1:
-        yScale.shape = [M, -1, 2]
-    else:
-        yScale.shape = [M, ceil(N / 64), 2]
-
-InferDataType:
-    quantDtype = attr[5]
-    y.dtype = quantDtype
-    yScale.dtype = FLOAT8_E8M0
-```
-
-#### 7.2.3 Tiling
-
-```text
-Tiling constants:
-    X_INDEX = 0
-    GROUP_LIST_INDEX = 1
-    X_SCALE_INDEX = 2
-    WEIGHT_INDEX = 3
-    WEIGHT_SCALE_INDEX = 4
-
-    ATTR_ACTIVATION_TYPE = 0
-    ATTR_DEQUANT_DTYPE = 1
-    ATTR_TRANSPOSE_WEIGHT = 2
-    ATTR_GROUP_LIST_TYPE = 3
-    ATTR_TUNING_CONFIG = 4
-    ATTR_QUANT_DTYPE = 5
-    ATTR_ROUND_MODE = 6
-    ATTR_SCALE_ALG = 7
-    ATTR_DST_TYPE_MAX = 8
-
-Tiling flow:
-    Reset -> GetShapeAttrsInfo -> AnalyzeAttrs -> AnalyzeDtype -> AnalyzeInputs
-    -> DoOpTiling -> DoLibApiTiling -> GetWorkspaceSize -> PostTiling
-```
-
-#### 7.2.4 Kernel dispatch
-
-```text
-KernelEntry:
-    save overflowMode
-    set overflowMode = 0
-
-    switch (QUANT_B_TRANS, QUANT_A_TRANS):
-        (0, 0):
-            GmmActivationMxQuant<RowMajor, Nz>(x, weight, weightScale, xScale, groupList, y, yScale)
-        (1, 0):
-            GmmActivationMxQuant<RowMajor, Zn>(x, weight, weightScale, xScale, groupList, y, yScale)
-        otherwise:
-            no-op by template selection; not registered
-
-    restore overflowMode
-```
-
-#### 7.2.5 Epilogue activation + quant
-
-```text
-EpilogueTile:
-    input: L0C fp32 tile in UB
-    for each row fragment assigned to subBlock:
-        act = GeluTanh(l0c)
-        actBf16 = cast_bf16(act)
-
-    if scaleAlg == 0:
-        mxScale, halfScale = OCP_MX_Scale(actBf16)
-    else:
-        mxScale, halfScale = cuBLAS_MX_Scale(actBf16)
-
-    yFp8 = cast_fp8_sat_rint(actBf16 * halfScale)
-    write yFp8 and mxScale to GM
-```
+| 模块 | 修改要点 |
+| --- | --- |
+| def schema | 按第 4.1 节顺序声明字段；`activation_type` 为必选属性；保留 `x_scale` optional 和 `bias` dynamic 的接口形态 |
+| InferShape | `y=[M,N]`；`y_scale=[M,ceil(N/64),2]`；`N` 根据 `transpose_weight` 从 `weight_scale` 对应维度推导 |
+| Tiling | index 常量与 def 顺序一致；完成 attr/dtype/shape/core ratio 校验；写入 `GMMActivationQuantTilingDataParams` |
+| Kernel dispatch | 根据 tiling key 选择 `RowMajor/Nz` 或 `RowMajor/Zn`，并在入口保存/恢复 float overflow mode |
+| GMM 调度 | 使用 low-level BasicAPI 和 tail-split scheduler 处理 group/tile |
+| Epilogue | 对 L0C fp32 tile 执行 GeluTanh、MX scale 生成、FP8 cast 和 `y/y_scale` 写回 |
 
 ### 7.3 软件设计小结
 
@@ -1279,20 +724,7 @@ EpilogueTile:
 | `gmm_csv_ge_parse_utils.h` | 解析 dtype、format、shape、bool、字符串并生成安全参数名 |
 | `tiling_case_executor.h` | 封装 `ExecuteTiling` / `ExecuteTestCase` |
 
-执行结构如下：
-
-```mermaid
-flowchart TD
-    CSV[test_grouped_matmul_activation_quant_tiling.csv] --> Loader[LoadCases]
-    Loader --> Parse[Parse scalar attrs and tensor descs]
-    Parse --> Context[Build TilingContextPara]
-    Context --> Tiling{expectSuccess?}
-    Tiling -->|false| FailPath[ExecuteTestCase expect GRAPH_FAILED]
-    Tiling -->|true| SuccessPath[ExecuteTiling]
-    SuccessPath --> KeyCheck[Compare tilingKey]
-    FailPath --> End[case done]
-    KeyCheck --> End
-```
+UT 章节不画类图或流程图，仅说明 CSV 字段、执行逻辑和覆盖点。
 
 ### 8.3 CSV 字段设计
 
@@ -1340,64 +772,15 @@ tensor 字段顺序如下：
 | 7 | `y` | `y_origin/y_storage/y_dtype/y_format` | OUTPUT 0 |
 | 8 | `y_scale` | `yscale_origin/yscale_storage/yscale_dtype/yscale_format` | OUTPUT 1 |
 
-### 8.4 C++ 驱动伪代码
+### 8.4 UT 执行逻辑
 
-```text
-LoadCases(socVersion):
-    csvPath = ResolveCsvPath("test_grouped_matmul_activation_quant_tiling.csv")
-    for each non-empty and non-comment line:
-        items = split by comma
-        if header or column count < 50:
-            continue
-
-        tc.socVersion = items[0]
-        if tc.socVersion != socVersion:
-            continue
-
-        parse scalar fields in fixed order
-        parse 6 input tensor descs
-        parse 2 output tensor descs
-        append tc
-    return cases
-
-GroupedMatmulActivationQuantTilingCase.Run():
-    if !enable:
-        return
-
-    compileInfo = {
-        aicNum, aivNum, ubSize,
-        default L1/L2/L0A/L0B/L0C,
-        socVersion = ASCEND950,
-        npuArch = DAV_3510
-    }
-
-    attrs = {
-        activation_type,
-        dequant_dtype,
-        transpose_weight,
-        group_list_type,
-        tuning_config,
-        quant_dtype,
-        round_mode,
-        scale_alg,
-        dst_type_max
-    }
-
-    context = TilingContextPara(
-        opName = "GroupedMatmulActivationQuant",
-        inputs = BuildTensorDescs(6 tensors),
-        outputs = BuildTensorDescs(2 tensors),
-        attrs,
-        compileInfo
-    )
-
-    if expectSuccess == false:
-        ExecuteTestCase(context, GRAPH_FAILED)
-        return
-
-    tilingInfo = ExecuteTiling(context)
-    require tilingInfo.tilingKey == expectTilingKey
-```
+| 步骤 | 说明 |
+| --- | --- |
+| 加载用例 | 只加载 `socVersion=Ascend950` 且 `enable=true` 的 CSV 行 |
+| 构造上下文 | 按 CSV 字段构造 6 个输入 tensor、2 个输出 tensor、9 个 attr 和 `GMMCompileInfo` |
+| 执行失败用例 | `expectSuccess=false` 时，期望 tiling 返回 `GRAPH_FAILED` |
+| 执行成功用例 | `expectSuccess=true` 时，执行 tiling 并检查 `tilingKey` |
+| 定位失败 | 使用 `prefix/caseName` 标识失败用例，CSV 解析异常输出行号 |
 
 ### 8.5 当前 CSV 用例覆盖
 
