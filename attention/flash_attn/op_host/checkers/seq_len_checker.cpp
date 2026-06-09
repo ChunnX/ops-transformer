@@ -155,19 +155,23 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
-    OP_CHECK_IF(
-        faInfo.maxSeqQ != -1,
-        OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqQ),
-        return ge::GRAPH_FAILED);
+    if (faInfo.qLayout != FaLayout::TND) {
+        OP_CHECK_IF(faInfo.maxSeqQ != -1,
+                    OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) is only supported in TND layout, but layout_q is %s.",
+                            faInfo.maxSeqQ, LayoutToSerialString(faInfo.qLayout).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo)
 {
-    OP_CHECK_IF(
-        faInfo.maxSeqKv != -1,
-        OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqKv),
-        return ge::GRAPH_FAILED);
+    if (faInfo.kvLayout != FaLayout::TND) {
+        OP_CHECK_IF(faInfo.maxSeqKv != -1,
+                    OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) is only supported in TND layout, but layout_kv is %s.",
+                            faInfo.maxSeqKv, LayoutToSerialString(faInfo.kvLayout).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
