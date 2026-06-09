@@ -232,8 +232,8 @@ __simd_vf__ inline void QDynamicQuantD128NtdToNtdVf(__ubuf__ float *qFp32Ntd,
     const uint32_t scaleHeadStride =
         ((tokenSize + QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) / QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS) *
         QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
-    for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        for (uint16_t headIdx = 0U; headIdx < qHeadSize; ++headIdx) {
+    for (uint16_t headIdx = 0U; headIdx < qHeadSize; ++headIdx) {
+        for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
             const uint32_t srcOffset = static_cast<uint32_t>(headIdx) * qkUbStrideN +
                                        static_cast<uint32_t>(tokenIdx) * qkUbStrideT;
             const uint32_t dstOffset =
@@ -250,8 +250,8 @@ __simd_vf__ inline void KDynamicQuantD128NtdToNtdVf(__ubuf__ float *kFp32Ntd,
                                                    uint32_t kHeadSize, uint32_t qkUbStrideN,
                                                    uint32_t qkUbStrideT)
 {
-    for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        for (uint16_t headIdx = 0U; headIdx < kHeadSize; ++headIdx) {
+    for (uint16_t headIdx = 0U; headIdx < kHeadSize; ++headIdx) {
+        for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
             const uint32_t srcOffset = static_cast<uint32_t>(headIdx) * qkUbStrideN +
                                        static_cast<uint32_t>(tokenIdx) * qkUbStrideT;
             const uint32_t dstOffset =
