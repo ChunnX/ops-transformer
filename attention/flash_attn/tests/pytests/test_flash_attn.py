@@ -86,6 +86,17 @@ if __name__ == "__main__":
         # 解析大表，按 case 拆分到子目录（完整列）
         from utils.perf_parser import _read_perf_log
         import csv as csv_mod
+        with open(str(csv_path)) as f:
+            all_rows = list(csv_mod.DictReader(f))
+        flash_rows = [r for r in all_rows if r.get("OP Type") == "FlashAttn"]
+        fieldnames = all_rows[0].keys() if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
+
+        # 顶层只保留 FlashAttn
+        with open(str(csv_path), "w", newline="") as f:
+            w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
+            for row in flash_rows:
+                w.writerow(row)
+
         perf_log = _read_perf_log(str(out))
         log_path = out / "_perf_log.jsonl"
         print(f"  [perf] log: {log_path} exists={log_path.exists()} entries={len(perf_log)}")
