@@ -557,7 +557,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     }
 
     for (uint32_t i = startExpert; i < endExpert; ++i) {
-        GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+        GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(i) +
                             epRankId_ * expertPerSizeOnWin_);
         hcomm_.WriteNbi(GetCommHandle(i), remoteAddr, xGM_, axisBS_ * sizeof(XType));
         // for (uint32_t j = 0; j < axisBS_; ++j) {
