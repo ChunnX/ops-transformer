@@ -513,50 +513,33 @@ classDiagram
 
 #### 6.2.4 分组调度流程
 
-```mermaid
-flowchart TD
-    Start[Kernel operator()] --> Init[InitParamsAndTensor]
-    Init --> AICInit{AIC?}
-    AICInit -->|yes| InitMmad[Init BlockMmad with m,n,k/baseM/baseN/baseK/L1]
-    AICInit -->|no| InitEpi
-    InitMmad --> InitEpi[Init Epilogue]
-    InitEpi --> Scheduler[Create tail-split scheduler]
-    Scheduler --> LoopGroup[for groupIdx in groupNum]
-    LoopGroup --> UpdateGroup[UpdateOffset + GetSplitValue]
-    UpdateGroup --> Skip{M_i == 0?}
-    Skip -->|yes| LoopGroup
-    Skip -->|no| UpdateMmad[Update matmul problem shape]
-    UpdateMmad --> L2[Set L2 cache hint]
-    L2 --> TileLoop[ProcessSingleGroup tile loop]
-    TileLoop --> LoopGroup
-    LoopGroup --> End[Wait final vector if needed]
-```
+分组调度按 group 外层循环、tile 内层循环组织。AIC 负责 MMAD，AIV 负责 epilogue，二者通过 notify/wait 保持流水顺序。
 
 ```mermaid
-sequenceDiagram
-    participant Kernel as KernelGmmActivationMixOnlineDynamic
-    participant Scheduler as TailSplitScheduler
-    participant AIC as AIC/BlockMmadMx
-    participant AIV as AIV/BlockEpilogue
-    participant GM as Global Memory
+flowchart TB
+    K0["Kernel entry"] --> K1["Init params and tensors"]
+    K1 --> K2{"AIC core"}
+    K2 -->|yes| K3["Init BlockMmad"]
+    K2 -->|no| K4["Init Epilogue"]
+    K3 --> K4
+    K4 --> S0["Create tail split scheduler"]
 
-    Kernel->>Kernel: InitParamsAndTensor
-    Kernel->>Scheduler: Create scheduler by group shape
-    loop each group
-        Kernel->>Kernel: UpdateOffset and split M_i
-        alt M_i > 0
-            Kernel->>Scheduler: GetTileIdx/GetBlockShape
-            Scheduler-->>Kernel: tile shape and quant offsets
-            AIC->>GM: load x, weight, x_scale, weight_scale
-            AIC->>AIC: BlockMmadMx computes fp32 L0C tile
-            AIC-->>AIV: NotifyVector
-            AIV->>AIV: GeluTanh + MX dynamic quant
-            AIV->>GM: write y and y_scale
-            AIV-->>AIC: NotifyCube
-        else M_i == 0
-            Kernel->>Kernel: skip empty group
-        end
-    end
+    S0 --> G0{"More groups"}
+    G0 -->|no| D0["Wait final vector if needed"]
+    G0 -->|yes| G1["Update offsets and read group list"]
+    G1 --> G2{"Group M is zero"}
+    G2 -->|yes| G0
+    G2 -->|no| G3["Update problem shape and L2 hint"]
+
+    G3 --> T0{"More tiles in group"}
+    T0 -->|no| G0
+    T0 -->|yes| T1["Get tile shape and MX offsets"]
+    T1 --> C0["AIC: BlockMmadMx computes fp32 tile"]
+    C0 --> C1["Notify vector"]
+    C1 --> V0["AIV: GeluTanh and MX quant"]
+    V0 --> V1["Write y and y_scale"]
+    V1 --> V2["Notify cube"]
+    V2 --> T0
 ```
 
 #### 6.2.5 group_list 语义
