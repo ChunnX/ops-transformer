@@ -487,7 +487,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     LocalTensor<int32_t> flagTensor = tempBuf.Get<int32_t>();
     while(true) {
         cnt += 1;
-        if (cnt > 100000000) {
+        if (cnt > 100000) {
             break;
         }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
@@ -521,10 +521,11 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                         if (sendSumTensor_(i - startExpert) == curSendCnt) {
                             processCnt += 1;
                         }
+                        SyncFunc<AscendC::HardEvent::S_MTE3>();
+                        DataCopy(sendFlagHandleGMTensor_[index * 8 + j * 8], flagTensor[j * 8], 8);
                    }
                 }
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopy(sendFlagHandleGMTensor_[index * 8], flagTensor, needProcessCnt * 8);
+               
             }
         }
         if (processCnt == processExpertNum) {
