@@ -353,8 +353,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 PipeBarrier<PIPE_V>();
                 DoAndMask(curBuf, curTileLen);
                 PipeBarrier<PIPE_V>();
+                VToSSync();
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    VToSSync();
                     LocalTensor<int16_t> maskedInt16 = curBuf.Get<int16_t>();
                     BSA_TOPK_PRINTF("[DUMP442] after DoAndMask, xBuf int16[tileLen_] first 64:\n");
                     BSA_TOPK_DUMP_TENSOR(maskedInt16[tileLen_], 442, 64);
