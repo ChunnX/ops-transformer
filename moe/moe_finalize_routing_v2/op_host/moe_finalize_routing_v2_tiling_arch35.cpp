@@ -117,6 +117,7 @@ ge::graphStatus CheckShapeAndDtypeIsValid();
     ge::graphStatus CheckRangeOverlap(int64_t start1, int64_t end1, int64_t start2, int64_t end2, const char *name1,
                                       const char *name2);
     ge::graphStatus CheckExpertRangeValidity();
+    ge::graphStatus DoGetZeroShapeAttrsInfo(int64_t idx, int64_t& start, int64_t& end);
 
     bool hasX1_{false};
     bool hasX2_{false};
