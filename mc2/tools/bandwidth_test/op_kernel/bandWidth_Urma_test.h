@@ -574,7 +574,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
                 ProcessToken(localAddr, remoteAddr, j, dstRankId, curExpertCnt);
                 continue;
             }
-            hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_);
+            hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_ * sizeof(XType));
         }
     }
 
