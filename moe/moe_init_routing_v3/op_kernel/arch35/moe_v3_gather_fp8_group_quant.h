@@ -27,7 +27,7 @@ constexpr float FP8_GROUP_E4M3_MAX_VALUE = 448.0f;
 constexpr float FP8_GROUP_E5M2_MAX_VALUE = 57344.0f;
 constexpr int32_t FP32_MANTISSA_MASK = 0x007fffff;
 constexpr int32_t FP32_EXPONENT_MASK = 0x000000ff;
-constexpr uint16_t FP32_EXPONENT_SHIFT = 23U;
+constexpr int16_t FP32_EXPONENT_SHIFT = 23;
 constexpr int32_t FP32_EXPONENT_BIAS = 127;
 
 constexpr CastTrait CAST_TRAIT_B16_TO_F32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -36,8 +36,8 @@ constexpr CastTrait CAST_TRAIT_F32_TO_FP8 = {RegLayout::ZERO, SatMode::SAT, Mask
                                              RoundMode::CAST_RINT};
 
 template <typename T>
-__aicore__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem__ T *src, MaskReg mask,
-                                         uint32_t offset)
+__simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem__ T *src, MaskReg mask,
+                                              uint32_t offset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst, src + offset);
@@ -201,14 +201,13 @@ private:
     float fp8MaxValue_{FP8_GROUP_E5M2_MAX_VALUE};
 
     const uint32_t ubBlockSize_{32U};
-    const uint32_t numElemPerUbBlock_{ubBlockSize_ / sizeof(T)};
+    const uint32_t numElemPerUbBlock_{static_cast<uint32_t>(ubBlockSize_ / sizeof(T))};
 };
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
     GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
-    GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, const MoeInitRoutingV3Arch35TilingData *tilingData,
-    TPipe *tPipe)
+    GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     (void)unusedScaleAddr;
 #if (__NPU_ARCH__ == 3510)
@@ -240,8 +239,9 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(
-    GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData)
+__aicore__ inline void
+MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
+                                                              const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -338,7 +338,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyExpanded
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx,
-                                                                          int64_t loopCols)
+                                                                           int64_t loopCols)
 {
     LocalTensor<T> inLocal = inQueue_.AllocTensor<T>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
@@ -376,9 +376,9 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int6
     for (int64_t groupIdx = 0; groupIdx < loopValidScaleCols; groupIdx++) {
         int64_t groupOffset = groupIdx * FP8_GROUP_QUANT_SIZE;
         int64_t groupElemNum = (groupIdx == loopValidScaleCols - 1) ? (loopCols - groupOffset) : FP8_GROUP_QUANT_SIZE;
-        VF_CALL<ComputeFp8GroupQuantVF<T, U, CLAMP_AMAX>>(
-            xAddr + groupOffset, scaleAddr + groupIdx, outAddr + groupOffset, static_cast<uint32_t>(groupElemNum),
-            fp8MaxValue_);
+        VF_CALL<ComputeFp8GroupQuantVF<T, U, CLAMP_AMAX>>(xAddr + groupOffset, scaleAddr + groupIdx,
+                                                          outAddr + groupOffset, static_cast<uint32_t>(groupElemNum),
+                                                          fp8MaxValue_);
     }
 
     inQueue_.FreeTensor(xLocal);
