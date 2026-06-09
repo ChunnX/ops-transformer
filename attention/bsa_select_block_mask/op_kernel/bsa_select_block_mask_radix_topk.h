@@ -114,6 +114,7 @@ private:
     uint64_t blockOffset_;
 
     uint64_t tileLen_;
+    uint64_t tileStartId_;
     uint64_t tileNum_;
     uint64_t tileNumAlign_;
     uint64_t sortLen_;
@@ -158,12 +159,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tileNum_ = totalTileNum_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
 
-    this->formerTileLen_ = tileLen_;
-    this->tailTileLen_ = (GetBlockIdx() != constInfo.aivNum - 1) ? tileLen_ : (sortLen_ - (totalTileNum_ - 1) * tileLen_);
-    if (tailTileLen_ == 0) {
-        tailTileLen_ = tileLen_;
-    }
-
     uint32_t coreNum = constInfo.aivNum;
     uint64_t baseTilesPerCore = totalTileNum_ / coreNum;
     uint64_t extraCores = totalTileNum_ % coreNum;
@@ -173,8 +168,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tailTileNum_ = baseTilesPerCore;
 
     uint64_t myTileNum = (GetBlockIdx() < formerCoreNum_) ? formerTileNum_ : tailTileNum_;
+    this->tileStartId_ = (GetBlockIdx() < formerCoreNum_)
+        ? GetBlockIdx() * formerTileNum_
+        : formerCoreNum_ * formerTileNum_ + (GetBlockIdx() - formerCoreNum_) * tailTileNum_;
     this->tileNum_ = myTileNum;
     this->tileNumAlign_ = BSACeilDiv(myTileNum, static_cast<uint64_t>(8)) * 8;
+    this->formerTileLen_ = tileLen_;
+    uint64_t lastTileLen = sortLen_ - (totalTileNum_ - 1) * tileLen_;
+    if (lastTileLen == 0) {
+        lastTileLen = tileLen_;
+    }
+    this->tailTileLen_ = (myTileNum > 0 && tileStartId_ + myTileNum == totalTileNum_) ? lastTileLen : tileLen_;
 
     this->tileNumRepeatTimes_ = static_cast<uint32_t>(myTileNum / MAX_TILE_NUM_IN_UB);
     this->tileNumRemain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB);
@@ -219,12 +223,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     this->coreTopKGm_.SetGlobalBuffer(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + (numValue_ * coreNum + coreNum) * sizeof(int32_t)));
 
-    uint64_t tileTopKOffset = 0;
-    if (GetBlockIdx() < formerCoreNum_) {
-        tileTopKOffset = GetBlockIdx() * formerTileNum_;
-    } else {
-        tileTopKOffset = formerCoreNum_ * formerTileNum_ + (GetBlockIdx() - formerCoreNum_) * tailTileNum_;
-    }
+    uint64_t tileTopKOffset = tileStartId_;
     uint64_t tileHistOffset = numValue_ * tileTopKOffset;
 
     this->tileTopKGm_.SetGlobalBuffer(
@@ -253,13 +252,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     }
 
     // 1. Calculate blockOffset
-    this->blockOffset_ = 0;
-    if (GetBlockIdx() < formerCoreNum_) {
-        this->blockOffset_ = GetBlockIdx() * formerTileNum_ * tileLen_;
-    } else {
-        this->blockOffset_ = formerCoreNum_ * formerTileNum_ * tileLen_ +
-                      (GetBlockIdx() - formerCoreNum_) * tailTileNum_ * tileLen_;
-    }
+    this->blockOffset_ = tileStartId_ * tileLen_;
 
     // 3. ClearTileTopKInWs() — batch zero tileTopK in WS
     ClearTileTopKInWs();
@@ -270,7 +263,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     totalDefinitelyInTopK_ = 0;
     boundaryBin = 0;
     boundaryBinPrev = 1;
-    globalHistBoundaryNum_ = (tileNum_ - 1) * tileLen_ + tailTileLen_;
+    globalHistBoundaryNum_ = (tileNum_ > 0) ? (tileNum_ - 1) * tileLen_ + tailTileLen_ : 0;
     remainK_ = kValue_;
 
     // 4.5. Clear globalHist for all AIVs (including those with tileNum_=0)
@@ -288,8 +281,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     bool earlyExit = false;
     for (int32_t roundId = round_ - 1; roundId >= 0; roundId--) {
         // a. Prefetch first tile (double buffering)
-        uint64_t firstTileLen = tileNum_ > 1 ? tileLen_ : tailTileLen_;
-        CopyIn(xBufPing_, firstTileLen, blockOffset_);
+        if (tileNum_ > 0) {
+            uint64_t firstTileLen = tileNum_ > 1 ? tileLen_ : tailTileLen_;
+            CopyIn(xBufPing_, firstTileLen, blockOffset_);
+        }
         pingPongFlag = true;
 
         // b. CopyOutHistToWs<true>
@@ -302,7 +297,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
         // e. Batched tile loop (each batch MAX_TILE_NUM_IN_UB_BY3 = 2048)
-        for (int32_t repeatId = 0; repeatId <= tileNumBy3RepeatTimes_; repeatId++) {
+        int32_t repeatTimes = static_cast<int32_t>(tileNumBy3RepeatTimes_ + (tileNumBy3Remain_ > 0 ? 1 : 0));
+        for (int32_t repeatId = 0; repeatId < repeatTimes; repeatId++) {
             int32_t startTileId = repeatId * MAX_TILE_NUM_IN_UB_BY3;
             int32_t endTileId = BSAMin(startTileId + MAX_TILE_NUM_IN_UB_BY3,
                                        static_cast<int32_t>(tileNum_));
@@ -355,11 +351,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
             // Write this batch's tileHist to WS
             SToMTE3Sync();
             LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
-            for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
-                uint32_t tileHistOffset = binMask * tileNum_ + repeatId * MAX_TILE_NUM_IN_UB_BY3;
-                DataCopyPad(tileHistGm_[tileHistOffset],
-                           tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
-                           DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
+            if (endTileId > startTileId) {
+                for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+                    uint32_t tileHistOffset = binMask * tileNum_ + repeatId * MAX_TILE_NUM_IN_UB_BY3;
+                    DataCopyPad(tileHistGm_[tileHistOffset],
+                               tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
+                               DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
+                }
             }
         }
 
@@ -767,7 +765,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
             DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
         }
-        globalHistBoundaryNum_ = (tileNum_ - 1) * tileLen_ + tailTileLen_;
+        globalHistBoundaryNum_ = (tileNum_ > 0) ? (tileNum_ - 1) * tileLen_ + tailTileLen_ : 0;
     } else {
         if (boundaryBin < static_cast<int32_t>(numValue_) - 1) {
             SubTileHistInWsAll(0, boundaryBin * static_cast<uint32_t>(tileNum_),
@@ -1229,9 +1227,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
         uint64_t firstOffset = blockOffset_ + firstTileId * tileLen_;
         CopyIn(xBufPing_, firstTileLen, firstOffset);
         pingPongFlag = true;
-        if (repeatId > 0) {
-            WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
-        }
         SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
         for (uint32_t i = 0; i < dataNum; i++) {
