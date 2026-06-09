@@ -1300,7 +1300,7 @@ void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTiling
 }
 
 void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
-    info.dequantSize = orgM * orgN * sizeof(int32_t);  // 量化则需要空间存放中间结果
+    info.dequantSize = static_cast<uint64_t>(orgM) * orgN * sizeof(int32_t); // 量化则需要空间存放中间结果
     if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
         CalcQuantTokenNumPerUb(cocTilingData, info);
         uint32_t numPerRankM = cocTilingData.m0 * cocTilingData.pValue;
