@@ -327,9 +327,9 @@ private:
     int32_t cmpRatio_ = 1;
     int32_t oriMaskMode_ = static_cast<int32_t>(SparseMode::BAND);
     int32_t cmpMaskMode_ = static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
-    int64_t winLeft_ = 127;
-    int64_t winRight_ = 0;
-    std::string layoutQuery_ = "BSND";
+    int64_t oriWinLeft_ = 127;
+    int64_t oriWinRight_ = 0;
+    std::string layoutQ_ = "BSND";
     std::string layoutKv_ = "PA_BNBD";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;

@@ -68,9 +68,9 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
     GetAttrValueOpt(ctx, "ori_mask_mode", oriMaskMode_);
     GetAttrValueOpt(ctx, "cmp_mask_mode", cmpMaskMode_);
-    GetAttrValueOpt(ctx, "ori_win_left", winLeft_);
-    GetAttrValueOpt(ctx, "ori_win_right", winRight_);
-    GetAttrValueOpt(ctx, "layout_q", layoutQuery_);
+    GetAttrValueOpt(ctx, "ori_win_left", oriWinLeft_);
+    GetAttrValueOpt(ctx, "ori_win_right", oriWinRight_);
+    GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
@@ -90,7 +90,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
     }
     int32_t batchSize = GetQueryBatchSize();
     // 校验 cu_seqlens_q 元素
-    if (layoutQuery_ == "TND") {
+    if (layoutQ_ == "TND") {
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
             for (int i = 0; i < batchSize + 1; i++) {
@@ -216,7 +216,7 @@ int32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
         }
     }
     // 2. sequsedQ_ 没传，判断 Layout
-    if (layoutQuery_ == "TND") {
+    if (layoutQ_ == "TND") {
         // 如果是 TND，尝试使用 cuSeqlensQ_获取BatchSize
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             if (cuSeqlensQ_->GetTensorShape() != nullptr) {
@@ -239,8 +239,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriMaskMode()
         oriNextToken_ = 0;
         oriAttentionMode_ = HAS_MASK;
     } else {  //SparseMode = 4
-        oriPreToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
-        oriNextToken_ = 0;
+        oriPreToken_ = (oriWinLeft_ > -1) ? oriWinLeft_ : INT64_MAX;
+        oriNextToken_ = (oriWinRight_ > -1) ? oriWinRight_ : INT64_MAX;
         oriAttentionMode_ = HAS_MASK;
     }
 }
@@ -256,8 +256,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpMaskMode()
         cmpNextToken_ = 0;
         cmpAttentionMode_ = HAS_MASK;
     } else {  //SparseMode = 4
-        cmpPreToken_ = (winLeft_ > -1) ? winLeft_ : INT64_MAX;
-        cmpNextToken_ = 0;
+        cmpPreToken_ = (oriWinLeft_ > -1) ? oriWinLeft_ : INT64_MAX;
+        cmpNextToken_ = (oriWinRight_ > -1) ? oriWinRight_ : INT64_MAX;
         cmpAttentionMode_ = HAS_MASK;
     }
 }
@@ -277,7 +277,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     batchSize_ = GetQueryBatchSize();
     CalcOriMaskMode();
     CalcCmpMaskMode();
-    isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
+    isS1G_ = (layoutQ_ == "BSND" || layoutQ_ == "BSH" || layoutQ_ == "TND");
     groupSize_ = numHeadsQ_ / numHeadsKv_;
     if (hasOriKv_ && oriTopK_ != 0) {
         isSparseOriKv_ = true;
@@ -287,20 +287,18 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = 64U;
+        mBaseSize_ = groupSize_;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {
             isSplitG_ = true;
-            mBaseSize_ = groupSize_;
             aicCoreNum_ /= 2;
             aivCoreNum_ /= 2;
-        } else {
-            mBaseSize_ = 64U;
         }
+        mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
     } else {
-        mBaseSize_ = 64U;
+        mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
     }
     return true;
@@ -324,7 +322,7 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     // 2. sequsedQ_ 没传，判断 Layout
-    if (layoutQuery_ == "TND") {
+    if (layoutQ_ == "TND") {
         // 如果是 TND，尝试使用 cuSeqlensQ_
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             const int32_t *s1Ptr =static_cast<const int32_t*>(cuSeqlensQ_->GetData());
