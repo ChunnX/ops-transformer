@@ -153,7 +153,7 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
         uint32_t strideKV, uint32_t blockSize, uint64_t keyBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
@@ -182,7 +182,7 @@ public:
         uint32_t embed = actualOriShape[COORD_DIM2];
 
         GemmCoord actualShape{rowNum, 0, embed};
-        uint32_t gBOffset = 0;
+        uint64_t gBOffset = 0;
 
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(l1ATotalRowNum, l1AEmbedDim);
 
