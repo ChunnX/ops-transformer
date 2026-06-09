@@ -453,7 +453,7 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
         auto sinkDtype = sinkOptional->GetDataType();
         if (sinkDtype != op::DataType::DT_FLOAT) {
             std::string dtypeStr = op::ToString(DataType(sinkDtype)).GetString();
-            OP_LOGE_FOR_INVALID_INPUT_DTYPE(op::internal::GetLogApiInfo().c_str(), "sink",
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(op::internal::GetLogApiInfo().c_str(), "sink",
                 dtypeStr.c_str(), "FLOAT");
             return ACLNN_ERR_PARAM_INVALID;
         }
