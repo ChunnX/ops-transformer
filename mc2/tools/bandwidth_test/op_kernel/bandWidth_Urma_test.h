@@ -488,9 +488,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
         cnt += 1;
-        // if (cnt > 100000000) {
-        //     break;
-        // }
+        if (cnt > 100000000) {
+            break;
+        }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == (uint32_t)epRankId_) { // 本卡不处理
                 continue;
@@ -501,6 +501,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             }
             for (uint32_t j = 0; j < curSendCnt; ++j) {
                 uint32_t index = (i - startExpert) * axisBS_ + j;
+                 DataCacheCleanAndInvalid<int32_t,CacheLine::ENTRE_DATA_CACHE>(sendFlagHandleGMTensor_[index]);
                 if (sendFlagHandleGMTensor_.GetValue(index) == 1) {
                     uint32_t dstRankId = i;
                     GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
