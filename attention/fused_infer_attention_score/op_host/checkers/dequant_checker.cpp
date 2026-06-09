@@ -980,6 +980,9 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                             fiaInfo.n2Size, CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
                     return ge::GRAPH_FAILED);
         // value -- [T/64, N, D, 2]
+        if (fiaInfo.isMaxWorkspace && fiaInfo.qLayout == FiaLayout::TND) {
+            return ge::GRAPH_SUCCESS;
+        }
         OP_CHECK_IF((GetValueScaleActualKVlens4TNDNoPa(fiaInfo) != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                         (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
                         (valueInputShape.GetDim(DIM_NUM_2) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
