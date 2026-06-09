@@ -19,6 +19,7 @@
 using namespace AscendC;
 using namespace MicroAPI;
 
+template<bool DETERMINISTIC>
 extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(
     GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x,
     GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre,
@@ -26,11 +27,16 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(
     GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_phi,
     GM_ADDR grad_alpha, GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
-    GET_TILING_DATA(tilingData, tiling);
+    if (workSpace == nullptr) {
+        return;
+    }
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     if (usrWorkspace == nullptr) {
         return;
     }
+
+    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardTilingData);
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardTilingData, tilingData, tiling);
     TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     MhcPreSinkhornBackwardOneStage<DTYPE_PHI, DTYPE_GRAD_X> op;
