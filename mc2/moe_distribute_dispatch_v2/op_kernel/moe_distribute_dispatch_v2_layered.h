@@ -1303,7 +1303,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
             readFlagValue = readFlagValueGt.GetValue(0);
-            if (AscendC::GetSystemCycle() - startCycleThree >= THREE_SECONS_CYCLE) {
+            if ((AscendC::GetSystemCycle() - startCycleThree >= THREE_SECONS_CYCLE) || (readFlagValue == END_OF_WRITE_FLAG_VALUE)) {
                 break;
             }
         }
