@@ -130,5 +130,44 @@ TEST_PARAMS = {
     },
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
+TEST_PARAMS["cfa_decode_cmp256"] = {
+    "Testcase_Name": ["cfa_decode_cmp256"],
+    "layout_q": ["TND"],
+    "layout_kv": ["PA_BBND"],
+    "q_type": [torch.bfloat16],
+    "ori_kv_type": [torch.float8_e4m3fn],
+    "cmp_kv_type": [torch.float8_e4m3fn],
+    "B": [1],
+    "S1": [1],
+    "S2": [1024],
+    "N1": [64],
+    "N2": [1],
+    "D": [512],
+    "K": [0],
+    "block_num1": [None],
+    "block_num2": [None],
+    "block_size1": [128],
+    "block_size2": [128],
+    "seqused_q": [None],
+    "cu_seqlens_q": [None],
+    "seqused_ori_kv": [None],
+    "seqused_cmp_kv": [None],
+    "cu_seqlens_ori_kv": [None],
+    "cu_seqlens_cmp_kv": [None],
+    "cmp_residual_kv": [None],
+    "softmax_scale": [0.04419417],
+    "cmp_ratio": [4],
+    "ori_mask_mode": [4],
+    "cmp_mask_mode": [3],
+    "ori_win_left": [127],
+    "ori_win_right": [0],
+    "kv_quant_mode": [1],
+    "tile_size": [64],
+    "rope_head_dim": [64],
+    "template_run_mode": ["CFA"],
+    "actlen_mode": ["full"],
+    "S1EQS2": [False],
+}
+
+ENABLED_PARAMS = [TEST_PARAMS["cfa_decode_cmp256"]]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
