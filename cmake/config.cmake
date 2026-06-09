@@ -208,6 +208,13 @@ if (BUILD_OPEN_PROJECT)
     endif ()
 
     string(REPLACE "," ";" ASCEND_OP_NAME "${ASCEND_OP_NAME}")
+    if (NOT "${ASCEND_OP_NAME}" STREQUAL "" AND NOT "${ASCEND_OP_NAME}" STREQUAL "all" AND NOT "${ASCEND_OP_NAME}" STREQUAL "ALL")
+        list(FIND ASCEND_OP_NAME "moe_distribute_combine_v2" MOE_DISTRIBUTE_COMBINE_V2_INDEX)
+        list(FIND ASCEND_OP_NAME "moe_distribute_combine_v4" MOE_DISTRIBUTE_COMBINE_V4_INDEX)
+        if (NOT MOE_DISTRIBUTE_COMBINE_V2_INDEX EQUAL -1 AND MOE_DISTRIBUTE_COMBINE_V4_INDEX EQUAL -1)
+            list(APPEND ASCEND_OP_NAME moe_distribute_combine_v4)
+        endif()
+    endif()
 
     if (NOT PREPARE_BUILD AND ENABLE_OPS_KERNEL)
         if (TILING_KEY)
