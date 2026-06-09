@@ -471,6 +471,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         processCnt += 1; // 包含epRankId_
     }
     for(uint32_t i = startExpert; i < endExpert; ++i) {
+        PRINTF("CommProcess i = %d, sendCntTensor_(i - startExpert) = %d\n", i, sendCntTensor_(i - startExpert));
         if (i == (uint32_t)epRankId_) { // 本卡不处理
             continue;
         }
@@ -484,7 +485,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
         cnt += 1;
-        if (cnt > 100000000) {
+        if (cnt > 10000000) {
             break;
         }
         for(uint32_t i = startExpert; i < endExpert; ++i) {
@@ -518,7 +519,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
     }
-    PRINTF("CommProcess cnt = %d\n", cnt);
+    PRINTF("CommProcess cnt = %d， epRankId_ = %d, processCnt = %d\n", cnt, epRankId_, processCnt);
 }
 
 template <TemplateBandwidthTestTypeClass>
