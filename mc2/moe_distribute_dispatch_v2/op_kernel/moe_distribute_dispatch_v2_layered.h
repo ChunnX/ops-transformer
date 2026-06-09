@@ -91,7 +91,8 @@ public:
 
 private:
     __aicore__ inline void ReorderTokens();
-    __aicore__ inline void SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId = 0);
+    __aicore__ inline void SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv,
+                                            GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
     __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx, GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
     __aicore__ inline void CreateOuterReduceInfo();
     __aicore__ inline void Win2Ipc(GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
@@ -1212,7 +1213,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId,
+    GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId)
 {
     uint32_t dstRankId = rankId_ % SERVER_RANK_SIZE + dstServerId * SERVER_RANK_SIZE;
     uint64_t dstServerMask = (1UL << dstServerId);
@@ -1255,7 +1257,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint64_t ackFlagRdmaAddr = srcFlagRdmaAddr + 2 * STATE_OFFSET + dstServerId * FLAG_SIZE;
     GlobalTensor<uint64_t> readFlagValueGt;
     readFlagValueGt.SetGlobalBuffer((__gm__ uint64_t*)((GM_ADDR)readFlagRdmaAddr));
-    readFlagValueGt.SetValue(0, 0);
+    readFlagValueGt.SetValue(0, 99);
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
     GlobalTensor<uint64_t> ackFlagValueGt;
@@ -1291,8 +1293,27 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyPad(selfDataStatusGMAivSendDump, dumpLt, params);
     PipeBarrier<PIPE_ALL>();
 
+    auto qpNum = ((__gm__ HcclAiRMAInfo*)qpInfo_)->qpNum;
+    auto qpCtxEntry = (__gm__ HcclAiRMAWQ*)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sqPtr +
+        dstRankId * qpNum * (uint64_t)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sizeOfAiRMAWQ));
+    auto qpHeadAddr = qpCtxEntry->headAddr;
+    auto qpTailAddr = qpCtxEntry->tailAddr;
+    uint32_t qpDepth = static_cast<uint32_t>(qpCtxEntry->depth);
+    cacheWriteThrough((__gm__ uint8_t*)qpHeadAddr, CACHEWRITESIZE);
+    cacheWriteThrough((__gm__ uint8_t*)qpTailAddr, CACHEWRITESIZE);
+    uint32_t qpHead = *(__gm__ uint32_t*)(qpHeadAddr);
+    uint32_t qpTail = *(__gm__ uint32_t*)(qpTailAddr);
+    dumpLt.SetValue(0, bufferId_);
+    dumpLt.SetValue(1, qpHead);
+    dumpLt.SetValue(2, qpTail);
+    dumpLt.SetValue(3, qpDepth);
+    PipeBarrier<PIPE_ALL>();
+    DataCopyExtParams qpDumpParams{1, 4 * sizeof(uint32_t), 0, 0, 0};
+    DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
+    PipeBarrier<PIPE_ALL>();
+
     // 维测：16个uint32已用完，轮询readFlagRdmaAddr处读回的值直到RDMA Read完成，写入selfDataStatus 48核后面的扩展区域
-    uint64_t readFlagValue = 0;
+    uint64_t readFlagValue = 99;
     constexpr int64_t WAIT_RDMA_READ_TIMEOUT_CYCLES = 500000000;
     constexpr int64_t THREE_SECONS_CYCLE = 150000000;
     int64_t startCycle = AscendC::GetSystemCycle();
@@ -1317,6 +1338,17 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
             DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
             PipeBarrier<PIPE_ALL>();
+            cacheWriteThrough((__gm__ uint8_t*)qpHeadAddr, CACHEWRITESIZE);
+            cacheWriteThrough((__gm__ uint8_t*)qpTailAddr, CACHEWRITESIZE);
+            qpHead = *(__gm__ uint32_t*)(qpHeadAddr);
+            qpTail = *(__gm__ uint32_t*)(qpTailAddr);
+            dumpLt.SetValue(0, bufferId_);
+            dumpLt.SetValue(1, qpHead);
+            dumpLt.SetValue(2, qpTail);
+            dumpLt.SetValue(3, qpDepth);
+            PipeBarrier<PIPE_ALL>();
+            DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
+            PipeBarrier<PIPE_ALL>();
             dumpId += 1;
             // assert(false && "Dispatch DFX: RDMA Read timeout!");
         }
@@ -1337,6 +1369,17 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     PipeBarrier<PIPE_ALL>();
     DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
     DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
+    PipeBarrier<PIPE_ALL>();
+    cacheWriteThrough((__gm__ uint8_t*)qpHeadAddr, CACHEWRITESIZE);
+    cacheWriteThrough((__gm__ uint8_t*)qpTailAddr, CACHEWRITESIZE);
+    qpHead = *(__gm__ uint32_t*)(qpHeadAddr);
+    qpTail = *(__gm__ uint32_t*)(qpTailAddr);
+    dumpLt.SetValue(0, bufferId_);
+    dumpLt.SetValue(1, qpHead);
+    dumpLt.SetValue(2, qpTail);
+    dumpLt.SetValue(3, qpDepth);
+    PipeBarrier<PIPE_ALL>();
+    DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -1637,7 +1680,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
         if (aivId_ < serverNum_) {
             if (aivId_ != serverId_) {
-                SendDataToServer(aivId_, selfDataStatusGMAiv);
+                SendDataToServer(aivId_, selfDataStatusGMAiv, selfDataStatusGMAiv2);
                 PipeBarrier<PIPE_ALL>();
                 selfDataStatusGMTensor.SetValue(aivId_ * 16, 2); // 初始化为0，表示数据未准备好
                 DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
