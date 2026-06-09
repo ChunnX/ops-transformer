@@ -206,8 +206,8 @@ public:
                 uint32_t mL0Actual = (mL0Idx < mL0Loop - 1U) ? L0TileShape::M : (mActual - mL0Idx * L0TileShape::M);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CPingPongFlag);
                 for (uint32_t kL0Idx = 0; kL0Idx < kL0Loop; kL0Idx++) {
-                    uint32_t kNumL0Actual = (kL0Idx < kL0Loop - 1U) ? L0TileShape::K : (kActual - kL0Idx * L0TileShape::K);
-
+                    uint32_t kNumL0Actual = (kL0Idx < kL0Loop - 1U) ?
+                        L0TileShape::K : (kActual - kL0Idx * L0TileShape::K);
                     LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL0Actual, kNumL0Actual);
                     MatrixCoord l1ATileCoord{mL0Idx * L0TileShape::M + kvNRowOffset, kL0Idx * L0TileShape::K};
                     auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1ATileCoord)];

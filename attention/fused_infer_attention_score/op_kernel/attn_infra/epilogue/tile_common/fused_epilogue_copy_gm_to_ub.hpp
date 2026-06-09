@@ -165,7 +165,9 @@ struct CopyGm2UbAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
         uint32_t colNum = layoutSrc.shape(1);
         if ((layoutSrc.shape(1) == layoutSrc.stride(0)) && (layoutDst.shape(1) == layoutDst.stride(0))) {
             DataCopy(dstTensor, srcTensor, rowNum * colNum);
-        } else if (srcStride < STRIDE_LIMIT && dstStride < STRIDE_LIMIT && (colNum / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
+        } else if (srcStride < STRIDE_LIMIT && 
+                dstStride < STRIDE_LIMIT &&
+                (colNum / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
             uint32_t rLoops = NpuArch::Detail::Alignment::CeilDiv(rowNum, MAX_REPEAT);
             for (uint32_t i = 0; i < rLoops; ++i) {
                 uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rowNum - i * MAX_REPEAT;

@@ -523,7 +523,7 @@ public:
                     tvUbTensor,
                     (uint64_t)0,
                     curRowNum,
-                    AscendC::BinaryRepeatParams(1, 1, 0, 
+                    AscendC::BinaryRepeatParams(1, 1, 0,
                         embedRoundV / FLOAT_BLOCK_SIZE, embedRoundV / FLOAT_BLOCK_SIZE, 1));
                 AscendC::SetVectorMask<int8_t>((uint64_t)(-1), (uint64_t)(-1));
             }

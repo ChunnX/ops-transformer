@@ -103,7 +103,7 @@ public:
     BlockMmad() {}
 
     __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource,uint32_t nDynamic, uint32_t kDynamic, uint32_t l1BufAddrStart = 0)
+    void init(Arch::Resource<ArchTag> &resource, uint32_t nDynamic, uint32_t kDynamic, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
         l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart +
