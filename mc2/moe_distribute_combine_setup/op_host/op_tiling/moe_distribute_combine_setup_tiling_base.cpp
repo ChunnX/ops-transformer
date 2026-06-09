@@ -136,7 +136,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::GetRequiredAttrAndSetTiling
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
 
     // 判空
-    OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "groupEp"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epWorldSize"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epRankId"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "moeExpertNum"), return ge::GRAPH_FAILED);
@@ -146,7 +145,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::GetRequiredAttrAndSetTiling
     }
 
     // 设置 tilingdata
-    groupEp_ = string(groupEpPtr);
     tilingData_->moeDistributeCombineSetupInfo.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
     tilingData_->moeDistributeCombineSetupInfo.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     tilingData_->moeDistributeCombineSetupInfo.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
