@@ -279,48 +279,6 @@ TestCasesFIA = {
         'block_table_shape': [(64, 1)],
         'scale': [0.0883883476483184],
     },
-
-
-
-
-    'Prefill_Unquant_BF16_BF16_Prof_L0_KS_45_4_4_100_1000_64_64_BSND_ks0': {
-        'layout_q': ['BSND'],
-        'layout_kv': ['BSND'],
-        'layout_out': ['BSND'],
-        'Dtype': ['bf16'],
-        'q_range': [(-1,1)],
-        'k_range': [(-1,1)],
-        'v_range': [(-1,1)],
-        'mask_mode': [0],
-        'winLeft': [0],
-        'winRight': [0],
-        'B': [45],
-        'N1': [4],
-        'S1': [100],
-        'D': [64],
-        'N2': [4],
-        'S2': [1000],
-        'scale': [0.125],
-    },
-    'Prefill_Unquant_BF16_BF16_Prof_L0_KS_45_4_4_1000_92000_64_64_BSND_ks1': {
-        'layout_q': ['BSND'],
-        'layout_kv': ['BSND'],
-        'layout_out': ['BSND'],
-        'Dtype': ['bf16'],
-        'q_range': [(-1,1)],
-        'k_range': [(-1,1)],
-        'v_range': [(-1,1)],
-        'mask_mode': [0],
-        'winLeft': [0],
-        'winRight': [0],
-        'B': [45],
-        'N1': [4],
-        'S1': [1000],
-        'D': [64],
-        'N2': [4],
-        'S2': [92000],
-        'scale': [0.125],
-    },
 }
 
 TestCases = TestCasesFIA

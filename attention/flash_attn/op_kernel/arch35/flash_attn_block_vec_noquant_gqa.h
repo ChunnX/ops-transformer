@@ -1128,7 +1128,7 @@ public:
         }
         tPipe->InitBuffer(SharedBuffer2[0], 1, 8192);
         tPipe->InitBuffer(SharedBuffer2[1], 1, 8192);
-        tPipe->InitBuffer(SharedBuffer3, 65536);
+        tPipe->InitBuffer(SharedBuffer3, 32768);
         tPipe->InitBuffer(SharedBuffer1[0], 1, 33024);
         tPipe->InitBuffer(SharedBuffer1[1], 1, 33024);
         if constexpr (s2BaseSize == 256) {    // mBaseSize = 128
