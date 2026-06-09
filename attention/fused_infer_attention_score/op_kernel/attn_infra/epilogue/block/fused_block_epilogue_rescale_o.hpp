@@ -885,7 +885,7 @@ public:
 
             uint32_t epiTokenNum = 0;
             uint32_t integralHeadNum = 0;
-            uint32_t proTokenIdx = 0;
+            uint32_t proTokenIndex = 0;
             uint32_t proTokenIdxPre = 0;
             uint32_t proTokenNum = 0;
             uint32_t qSRemian = qSThisSubBlock;
@@ -908,8 +908,8 @@ public:
                 auto gUpdateCurLoop = gUpdate[offsetUpdate];
                 auto layoutUpdateCurLoop = layoutUpdate.GetTileLayout(MatrixCoord(rowActualCurLoop, embed));
 
-                proTokenIdxTemp = rowOffsetLoop % qSThisSubBlock;
-                proTokenNum = AscendC::Std::min(rowActualCurLoop, (qSThisSubBlock - proTokenIdxTemp)) % qSThisSubBlock;
+                proTokenIndex = rowOffsetLoop % qSThisSubBlock;
+                proTokenNum = AscendC::Std::min(rowActualCurLoop, (qSThisSubBlock - proTokenIndex)) % qSThisSubBlock;
                 integralHeadNum = (rowActualCurLoop - proTokenNum) / qSThisSubBlock;
                 epiTokenNum = rowActualCurLoop - proTokenNum - integralHeadNum * qSThisSubBlock;
 
@@ -931,7 +931,7 @@ public:
                     needRowLoop,
                     (rowLoopIdx == rowLoop - 1U),
                     rowOffsetLoop,
-                    proTokenIdxTemp,
+                    proTokenIndex,
                     proTokenNum,
                     epiTokenNum,
                     integralHeadNum);
