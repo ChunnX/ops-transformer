@@ -97,7 +97,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
 
     if (dim0 != faInfo.bSize) {
-        std::string shapeStr = ToString(blockTableTensor->GetStorageShape());
+        std::string shapeStr = Ops::Base::ToString(blockTableTensor->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table", shapeStr.c_str(),
             ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
         return ge::GRAPH_FAILED;
