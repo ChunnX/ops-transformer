@@ -76,7 +76,7 @@ protected:
                 dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                     std::to_string(dBasicBlock).c_str(),
-                    "The value of dBasicBlock must be in range (0, 768]");
+                    "The value of dBasicBlock must be within range (0, 768]");
         }
     }
 
