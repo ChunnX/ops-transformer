@@ -60,8 +60,8 @@ public:
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void WaitWeightMTE1ToMTE2();
-    __aicore__ inline void SetWeightMTE1ToMTE2();
+    __aicore__ inline void WaitWeightMTE1ToMTE2(uint64_t cvLoopIdx);
+    __aicore__ inline void SetWeightMTE1ToMTE2(uint64_t cvLoopIdx);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
@@ -99,7 +99,6 @@ private:
     uint64_t aL1MaxHalfCount_ = 0;
     uint64_t mxScaleBufIdx_ = 0;
     uint64_t aL1BufIdx_ = 0;
-    uint64_t weightL1BufIdx_ = 0;
 
     AscendC::TEventID cubeEventIdsMxScaleMte1ToMte2_[DOUBLE_BUFFER_NUM];
     AscendC::TEventID cubeEventIdsMte1ToMte2_[DOUBLE_BUFFER_NUM];
@@ -217,16 +216,15 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(ui
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitWeightMTE1ToMTE2()
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitWeightMTE1ToMTE2(uint64_t cvLoopIdx)
 {
-    WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + (weightL1BufIdx_ & 1));
+    WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + (cvLoopIdx & 1));
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2()
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2(uint64_t cvLoopIdx)
 {
-    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + ((weightL1BufIdx_ + 1) & 1));
-    weightL1BufIdx_++;
+    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2 + ((cvLoopIdx + 1) & 1));
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
