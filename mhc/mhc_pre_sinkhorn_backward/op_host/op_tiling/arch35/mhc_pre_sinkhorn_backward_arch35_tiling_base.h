@@ -22,7 +22,7 @@
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_struct.h"
 
 namespace optiling {
-using Ops::Transformer::OpTiling;
+using namespace Ops::Transformer::OpTiling;
 
 struct MhcPreSinkhornBackwardCompileInfo {
   int64_t core_numAiv{1};
