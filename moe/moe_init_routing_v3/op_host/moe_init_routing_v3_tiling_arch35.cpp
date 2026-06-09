@@ -517,12 +517,9 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
     int64_t quantModeFactor = quantMode_ + 1;
 
-    if (isFullload_ && IsInt4DynamicQuantCase()) {
-        return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE +
-                                     (QUANT_MODE_DYNAMIC - QUANT_MODE_UNQUANT) * QUANT_MODE_TILINGKEY_BASE);
-    }
-
     if (isFullload_ && IsSupportFullloadQuantMode()) {
+        // INT4动态量化全载模板复用INT8动态量化tilingkey，kernel通过quantMode区分。
+        quantModeFactor = IsInt4DynamicQuantCase() ? (QUANT_MODE_DYNAMIC - QUANT_MODE_UNQUANT) : quantModeFactor;
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
