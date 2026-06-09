@@ -557,25 +557,26 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     }
 
     for (uint32_t i = startExpert; i < endExpert; ++i) {
-        for (uint32_t j = 0; j < axisBS_; ++j) {
-            uint32_t dstRankId = expertIdsTensor_(j);// expert_id 直接作为目标rank_id
-            if (dstRankId != i) {
-                continue;
-            }
-            int32_t curExpertCnt = 0;
-            SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(dstRankId, j, curExpertCnt);
-            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-                            epRankId_ * expertPerSizeOnWin_ +
-                            curExpertCnt * hAlignWinSize_);
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, xGM_, axisBS_ * sizeof(XType));
+        // for (uint32_t j = 0; j < axisBS_; ++j) {
+        //     uint32_t dstRankId = expertIdsTensor_(j);// expert_id 直接作为目标rank_id
+        //     if (dstRankId != i) {
+        //         continue;
+        //     }
+        //     int32_t curExpertCnt = 0;
+        //     SyncFunc<AscendC::HardEvent::S_V>();
+        //     CalTokenSendExpertCnt(dstRankId, j, curExpertCnt);
+        //     GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+        //                     epRankId_ * expertPerSizeOnWin_ +
+        //                     curExpertCnt * hAlignWinSize_);
 
-            GM_ADDR localAddr = (GM_ADDR)(xGM_ + j * axisH_);
-            if (dstRankId == epRankId_) {
-                ProcessToken(localAddr, remoteAddr, j, dstRankId, curExpertCnt);
-                continue;
-            }
-            hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_ * sizeof(XType));
-        }
+        //     GM_ADDR localAddr = (GM_ADDR)(xGM_ + j * axisH_);
+        //     if (dstRankId == epRankId_) {
+        //         ProcessToken(localAddr, remoteAddr, j, dstRankId, curExpertCnt);
+        //         continue;
+        //     }
+        //     hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_ * sizeof(XType));
+        // }
     }
 
     // //PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
