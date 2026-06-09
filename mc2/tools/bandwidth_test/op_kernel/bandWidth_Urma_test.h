@@ -59,7 +59,7 @@
 
 namespace BandwidthTestImpl {
 #define HCOMM_INIT_SIZE 512UL
-#define ONE_MB 1024 * 1024 * 1024UL
+#define ONE_MB 1024 * 1024UL
 #define COMM_MAX_USE_AIV_NUM 8
 
 using namespace AscendC;
@@ -207,7 +207,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
-
+    PRINTF("aivId_ = %d\n", aivId_);
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -241,6 +241,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         aivNumUsedComm_ = COMM_MAX_USE_AIV_NUM;
         aivNumUsedCompute_ = aivNum_ - COMM_MAX_USE_AIV_NUM;
     }
+    PRINTF("aivNumUsedComm_ = %d\n", aivNumUsedComm_);
+    PRINTF("aivNumUsedCompute_ = %d\n", aivNumUsedCompute_);
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -397,8 +399,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     if (dstRankId != epRankId_) {
-       sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t));
-       sendFlagHandleGMTensor_(curExpertCnt) = 1;
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t));
+        sendFlagHandleGMTensor_(curExpertCnt) = 1;
     }
 }
 
@@ -431,6 +434,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (aivId_ < aivNumUsedCompute_) {
         return;
     }
+    PRINTF("CommProcess aivId_ = %d\n", aivId_);
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     SplitToCore(epWorldSize_, aivNumUsedComm_, startExpert, endExpert, processExpertNum);
     if (startExpert >= epWorldSize_ || processExpertNum == 0) { 
@@ -442,13 +446,18 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     tpipe_->InitBuffer(sendSumBuf_, lenth);
     sendSumTensor_ = sendSumBuf_.Get<int32_t>();
     sendCntTensor_ = sendCntBuf_.Get<int32_t>();
+    Duplicate<int32_t>(sendSumTensor_, 0, processExpertNum);
+    Duplicate<int32_t>(sendCntTensor_, 0, processExpertNum);
     for (uint32_t i = startExpert; i < endExpert; ++i) {
         int32_t curExpertCnt = 0;
         CalTokenSendExpertCnt(i, axisBS_, curExpertCnt);
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
+    PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
+    uint3_t cnt=0;
     while(true) {
+        cnt += 1;
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == epRankId_) { // 本卡不处理
                 continue;
@@ -475,6 +484,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
     }
+    PRINTF("CommProcess cnt = %d\n", cnt);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -484,13 +494,17 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
     // ============ 计算当前核处理的token范围 ============
+    if (aivId_ >= aivNumUsedCompute_) {
+        return;
+    }
     uint32_t startTokenId, endTokenId, sendTokenNum; // 每个aiv发送时的起始rankid
     SplitToCore(axisBS_, aivNumUsedCompute_, startTokenId, endTokenId, sendTokenNum);
 
     if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-
+    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId_, endTokenId_, sendTokenNum_);
+    
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
         uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
