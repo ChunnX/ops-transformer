@@ -58,6 +58,14 @@ def normalize_params(raw: dict) -> dict:
         if "seqused_kv" not in c:
             c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
 
+        # 用例提供了 block_table 直接用，不重新生成
+        if c.get("block_table") is not None and isinstance(c.get("block_table"), list):
+            bt_raw = c["block_table"]
+            c["block_table"] = torch.tensor(bt_raw, dtype=torch.int32)
+            c["actual_b"] = c["block_table"].shape[0]
+            c["num_blocks"] = int(max(max(row) for row in bt_raw)) + 1
+            return c
+
         seqused_kv = c["seqused_kv"]
         block_size = c["block_size"]
         bt_shape = c.get("block_table_shape", [])
