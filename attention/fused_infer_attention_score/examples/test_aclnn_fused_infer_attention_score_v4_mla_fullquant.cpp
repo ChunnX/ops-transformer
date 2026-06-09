@@ -18,7 +18,7 @@
 #include <cmath>
 #include <cstring>
 #include "acl/acl.h"
-#include "aclnn/opdev/fp16_t.h"
+// #include "aclnn/opdev/fp16_t.h"
 #include "aclnn/opdev/bfloat16.h"
 #include "aclnnop/aclnn_fused_infer_attention_score_v4.h"
 #include "securec.h"
