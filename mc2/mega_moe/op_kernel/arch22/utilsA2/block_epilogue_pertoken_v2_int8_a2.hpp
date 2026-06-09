@@ -8,48 +8,40 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_INT8_A2_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_INT8_A2_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
+#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/arch/resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/detail/callback.hpp"
 
-#include "hccl_shmem.hpp"
-#include "layout3d.hpp"
+#include "../utils/hccl_shmem.hpp"
+#include "../utils/layout3d.hpp"
 
 namespace Catlass::Epilogue::Block {
-
-template<bool IS_A2_>
-struct IS_A2_T {
-    static constexpr bool Value = IS_A2_;
-};
-
+// A2-only: IS_A2 is always true, no IS_A2_T parameter needed.
 template <
     uint32_t UB_STAGES_,
     class CType_,
     class LayoutPerTokenScale_,
     class DType_,
-    class TileCopy_,
-    bool IS_A2_
+    class TileCopy_
 >
 class BlockEpilogue <
-    EpilogueAtlasA2PerTokenDequantV2<UB_STAGES_>,
+    EpilogueAtlasA2PerTokenDequantV2Int8<UB_STAGES_>,
     CType_,
     Gemm::GemmType<float, LayoutPerTokenScale_>,
     DType_,
-    TileCopy_,
-    IS_A2_T<IS_A2_>
+    TileCopy_
 > {
 public:
-    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantV2<UB_STAGES_>;
+    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantV2Int8<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
-    static constexpr bool IS_A2 = IS_A2_T<IS_A2_>::Value;
 
     // Data infos
     using ElementC = typename CType_::Element;
@@ -71,7 +63,7 @@ public:
         LayoutC layoutC;
         int32_t n0;
         int32_t rank;
-        HcclShmem<IS_A2> shmem;
+        HcclShmem<true> shmem;
         int32_t offsetD;
         int32_t serverId;
 
@@ -79,20 +71,20 @@ public:
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_,
-            LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<IS_A2>& shmem_, int32_t offsetD_,
-            int32_t serverId_ = 0)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
-              layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_), serverId(serverId_)
+        LayoutC layoutC_, int32_t n2_, int32_t n0_, HcclShmem<true>& shmem_, int32_t offsetD_,
+        int32_t serverId_ = 0) :
+        ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_),
+        expertPerRank(expertPerRank_),rank(rank_), layoutC(layoutC_), n2(n2_), n0(n0_),
+        shmem(shmem_), offsetD(offsetD_), serverId(serverId_)
         {}
     };
 
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
     {
-        // ub:192KB
         n0 = params.n0;
         size_t ubOffset = 0;
-        for (int32_t i = 0; i < 2; i++) {
+        for(int32_t i = 0; i < 2; i++) {
             ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += max_len * sizeof(ElementC);
             ubDList[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
@@ -133,7 +125,7 @@ public:
         int32_t groupIdx,
         int32_t preSrcExpertSum,
         AscendC::GlobalTensor<int32_t> preSumBeforeRank
-    ) {
+    ){
         is_ping = !is_ping;
         auto event_id = is_ping ? EVENT_ID0 : EVENT_ID1;
         auto event_id_2 = is_ping ? EVENT_ID2 : EVENT_ID3;
@@ -170,14 +162,12 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event_id_2);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event_id_2);
-        // Note that the value must be MTE2_S instead of MTE2_V. Otherwise, 0 will be read, causing garbled characters.
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(event_id_2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(event_id_2); // Note that the value must be MTE2_S instead of MTE2_V.
+                                                                   // Otherwise, 0 will be read, causing garbled characters.
         AscendC::PipeBarrier<PIPE_V>();
         for (int32_t row = 0; row < actualBlockShape.m(); ++row) {
-            float scale = scaleUb(row);
-            Muls<float, false>(
-                ubCFp32[n0 * row], ubCFp32[n0 * row], scale, -1,
-                (actualBlockShape.n() + 127) / 128 * 2, {1, 1, 8, 8});
+                float scale = scaleUb(row);
+                Muls<float, false>(ubCFp32[n0* row], ubCFp32[n0 * row] , scale, -1, (actualBlockShape.n() + 127) / 128 * 2, {1, 1, 8, 8});
         }
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(event_id);
@@ -208,7 +198,7 @@ public:
             int32_t stData = max(stRankInExpert, stTile);
             int32_t edData = min(edRankInExpert, edTile);
             uint32_t lenData = edData - stData;
-            if (lenData <= 0) {
+            if (lenData <= 0){
                 continue;
             }
 
@@ -225,9 +215,7 @@ public:
             LayoutC layoutGM2{lenData, actualBlockShape.n(), params.n2};
             LayoutC layoutUB2{lenData, actualBlockShape.n(), n0};
             bool isCrossServer = false;
-            if constexpr (IS_A2) {
-                isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != params.serverId;
-            }
+            isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != params.serverId;
             if (isCrossServer) {
                 AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
                 gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
@@ -266,4 +254,4 @@ private:
     Layout3D tokenPerExpertLayout;
 };
 }
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_V2_ONLY_HPP
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_INT8_A2_HPP
