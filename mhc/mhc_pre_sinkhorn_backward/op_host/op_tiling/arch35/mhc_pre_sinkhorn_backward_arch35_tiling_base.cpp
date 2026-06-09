@@ -21,7 +21,6 @@
 #include "log/log.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "op_common/op_host/util/math_util.h"
-#include "error_util.h"
 
 using namespace AscendC;
 namespace optiling {

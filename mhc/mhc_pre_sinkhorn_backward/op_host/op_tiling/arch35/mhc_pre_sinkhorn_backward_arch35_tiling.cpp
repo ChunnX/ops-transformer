@@ -20,8 +20,6 @@
 
 
 namespace optiling {
-using namespace Ops::Base;
-using Ops::NN::Optiling::TilingRegistry;
 
 static ge::graphStatus Tiling4MhcPreSinkhornBackwardArch35(gert::TilingContext* context)
 {
@@ -46,7 +44,7 @@ static ge::graphStatus TilingPrepare4MhcPreSinkhornBackwardArch35(gert::TilingPa
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     ci->ub_size = ubSize;
     OP_CHECK_IF(
-        (ci->ubSize == 0), OP_LOGE(context->GetNodeName(), "Failed to get ub size."), return ge::GRAPH_FAILED);
+        (ci->ub_size == 0), OP_LOGE(context->GetNodeName(), "Failed to get ub size."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
