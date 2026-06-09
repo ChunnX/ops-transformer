@@ -791,7 +791,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // mode=0: 完整流程 (发送 + 同步 + 接收)
     // mode=1: 仅发送模式 (用于单向带宽测试)
     if ASCEND_IS_AIV {
-        CommProcess();
+        //CommProcess();
         SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
         SetStatus();
         WaitDispatch();
