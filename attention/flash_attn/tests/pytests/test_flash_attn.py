@@ -51,8 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--perf_cold_thr", type=int, default=16)
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
-    _default_csv = os.path.join(os.path.dirname(__file__), "result.csv")
-    parser.add_argument("--result_csv", type=str, default=_default_csv, help="精度结果 CSV 输出路径")
+    parser.add_argument("--result_csv", type=str, default="attention/flash_attn/tests/pytests/result.csv", help="精度结果 CSV 输出路径")
     parser.add_argument("--one_by_one", action="store_true", help="逐个 case 执行，每个完成后暂停")
     args = parser.parse_args()
 
@@ -211,7 +210,9 @@ if __name__ == "__main__":
     # ── 逐 case 执行 ──
     reporter = Reporter()
     if args.result_csv:
-        reporter.set_csv(Path(args.result_csv))
+        csv_path = Path(args.result_csv)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        reporter.set_csv(csv_path)
     for i, name in enumerate(run_cases):
         params = normalize_params(all_cases[name])
         layout = params.get("input_layout", "BNSD")
