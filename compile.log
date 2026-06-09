@@ -1,0 +1,1531 @@
+[2026-06-09 18:46:59] Warning: The current environment is configured for ascend950, Please use Ascend 950PR/Ascend 950DT series hardware for optimal performance.
+[2026-06-09 18:46:59] [2026-06-09 18:46:59] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=flash_attention_score -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/mnt/workspace/errmsg/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/local/bin/ccache -DASCEND_COMPUTE_UNIT=ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-06-09 18:47:00] -- The C compiler identification is GNU 9.4.0
+[2026-06-09 18:47:00] -- The CXX compiler identification is GNU 9.4.0
+[2026-06-09 18:47:00] -- Detecting C compiler ABI info
+[2026-06-09 18:47:00] -- Detecting C compiler ABI info - done
+[2026-06-09 18:47:00] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-09 18:47:00] -- Detecting C compile features
+[2026-06-09 18:47:00] -- Detecting C compile features - done
+[2026-06-09 18:47:00] -- Detecting CXX compiler ABI info
+[2026-06-09 18:47:00] -- Detecting CXX compiler ABI info - done
+[2026-06-09 18:47:00] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-09 18:47:00] -- Detecting CXX compile features
+[2026-06-09 18:47:00] -- Detecting CXX compile features - done
+[2026-06-09 18:47:00] -- Initialization summary: Found ccache, TARGET_ARCH: aarch64
+[2026-06-09 18:47:00] -- ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0
+[2026-06-09 18:47:00] -- compile project with library
+[2026-06-09 18:47:00] -- Find opbase source dir: /mnt/workspace/errmsg/third_party/opbase
+HEAD is now at ee5334d 修改tiling文件名
+[2026-06-09 18:47:00] D	aicpu_common/context/CMakeLists.txt
+[2026-06-09 18:47:00] D	aicpu_common/context/common/async_cpu_kernel.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/async_event_util.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/context.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/cpu_kernel_cache.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/cpu_kernel_register.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/cpu_kernel_utils.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/device.cc
+[2026-06-09 18:47:00] D	aicpu_common/context/common/device_cpu_kernel.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/common/device_sharder.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/common/eigen_threadpool.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/common/host_sharder.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/common/node_def_builder.cpp
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/attr_value.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/node_def.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/node_def_impl.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/tensor.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/tensor_impl.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/tensor_shape.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cust_op/cust_dlog_record.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/cust_op/cust_dlog_record.h
+[2026-06-09 18:47:01] D	aicpu_common/context/cust_op/cust_op_log.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/device/CMakeLists.txt
+[2026-06-09 18:47:01] D	aicpu_common/context/host/CMakeLists.txt
+[2026-06-09 18:47:01] D	aicpu_common/context/utils/bcast.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/utils/eigen_tensor.cc
+[2026-06-09 18:47:01] D	aicpu_common/context/utils/kernel_util.cc
+[2026-06-09 18:47:01] M	include/op_common/log/log.h
+[2026-06-09 18:47:01] -- Find ops-tensor source dir: /mnt/workspace/errmsg/third_party/ops-tensor
+[2026-06-09 18:47:02] -- ops-tensor fetched f2e975775ca754c04084dece850dd6cc76bfbc5b
+[2026-06-09 18:47:02] -- Found Python3: /home/developer/miniconda3/bin/python3.1 (found version "3.13.13") found components: Interpreter 
+[2026-06-09 18:47:02] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/local/bin/ccache
+[2026-06-09 18:47:02] -- CCACHE_PROGRAM=/usr/local/bin/ccache
+[2026-06-09 18:47:02] -- ASCEND_COMPUTE_UNIT=ascend950
+[2026-06-09 18:47:02] -- ASCEND_OP_NAME=flash_attention_score
+[2026-06-09 18:47:02] -- TILING_KEY=
+[2026-06-09 18:47:02] -- TESTS_UT_OPS_TEST=
+[2026-06-09 18:47:02] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-06-09 18:47:02] -- CMAKE_BUILD_TYPE=Release
+[2026-06-09 18:47:02] -- VERSION=
+HEAD is now at ee5334d 修改tiling文件名
+[ThirdParty][eigen] package needs to be downloaded.
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] Runtime protobuf lib:
+[ThirdParty][protobuf] PROTOC_PATH : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.3.13.0.0.
+[ThirdParty][protobuf] GE protobuf lib:
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIBRARY : ASCEND_PROTOBUF_SHARED_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIBRARY : /mnt/workspace/errmsg/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] PROTOBUF_STATIC_LIBRARY : PROTOBUF_STATIC_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] need build protobuf
+[ThirdParty][protobuf] /mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz not found, need download.
+[ThirdParty][protobuf] protobuf headers only build.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_static] static depend protobuf_headers_target.
+[ThirdParty][protobuf_host_static] host static build.
+LIBASAN_PATH = 
+/mnt/workspace/errmsg/cmake/scripts/util/ascendc_impl_build.py:237: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-06-09 18:47:06] -- Found json: /mnt/workspace/errmsg/third_party/json/include  
+[2026-06-09 18:47:06] -- [ThirdPartyLib][json] build json end, JSON_SOURCE_PATH: /mnt/workspace/errmsg/third_party/json.
+[2026-06-09 18:47:06] -- Start building custom package.
+[2026-06-09 18:47:06] -- Search libs under install path /home/developer/Ascend/cann-9.1.0
+[2026-06-09 18:47:06] -- CMAKE_MODULE_PATH            :/mnt/workspace/errmsg/cmake/modules;/home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[2026-06-09 18:47:06] -- compile option:   -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-06-09 18:47:06] -- Found dlog: /home/developer/Ascend/cann-9.1.0/pkg_inc/base  
+[2026-06-09 18:47:06] -- Transformer Variables in dlog module:
+[2026-06-09 18:47:06] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-09 18:47:06] -- dlog_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06]  Properties for TARGET dlog:
+[2026-06-09 18:47:06]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-09 18:47:06]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-06-09 18:47:06]    dlog.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06]  Properties for TARGET dlog_headers:
+[2026-06-09 18:47:06]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] -- Found securec: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-09 18:47:06] -- Found OPBASE: /mnt/workspace/errmsg/third_party/opbase/include  
+[ThirdParty][eigen] package needs to be downloaded.
+[2026-06-09 18:47:06] -- Found OPABSE include:/mnt/workspace/errmsg/third_party/opbase/include
+[2026-06-09 18:47:06] -- Found OPABSE lib:
+[2026-06-09 18:47:06] -- Found platform: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-09 18:47:06] -- Found platform include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-09 18:47:06] -- Found register library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libregister.so
+[2026-06-09 18:47:06] -- Found opp_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libopp_registry.so
+[2026-06-09 18:47:06] -- Found exe_graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libexe_graph.so
+[2026-06-09 18:47:06] -- Found graph_base library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph_base.so
+[2026-06-09 18:47:06] -- Found error_manager library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/liberror_manager.so
+[2026-06-09 18:47:06] -- Found metadef library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmetadef.so
+[2026-06-09 18:47:06] -- Found rt2_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/librt2_registry.a
+[2026-06-09 18:47:06] -- Found metadef: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-09 18:47:06] -- Found source metadef include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/exe_graph
+[2026-06-09 18:47:06] -- Found graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph.so
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] Runtime protobuf lib:
+[ThirdParty][protobuf] PROTOC_PATH : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.3.13.0.0.
+[ThirdParty][protobuf] GE protobuf lib:
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIBRARY : ASCEND_PROTOBUF_SHARED_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIBRARY : /mnt/workspace/errmsg/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] PROTOBUF_STATIC_LIBRARY : PROTOBUF_STATIC_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] need build protobuf
+[ThirdParty][protobuf] /mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz not found, need download.
+[2026-06-09 18:47:06] -- Found mmpa library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmmpa.so
+[2026-06-09 18:47:06] -- Found source acl include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-09 18:47:06] -- [transformer]Found source npuruntime include dir: /home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/runtime
+[2026-06-09 18:47:06] -- Found aclnn include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-09 18:47:06] -- Found opdev include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn
+[2026-06-09 18:47:06] -- Found tilingapi include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-09 18:47:06] -- TILINGAPI_INC_DIRS: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/lib;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/impl;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/tiling
+[ThirdParty][protobuf] protobuf headers only build.
+[2026-06-09 18:47:06] -- Found tilingapi lib:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libtiling_api.a
+[2026-06-09 18:47:06] -- Using AICPU include dirs: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/cce;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/msprof;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu
+[2026-06-09 18:47:06] -- Finding gen es pkg
+[2026-06-09 18:47:06] -- [add_es_library] Module loaded from: /home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[2026-06-09 18:47:06] -- Found abseil-cpp: /mnt/workspace/errmsg/third_party/lib_cache/abseil-cpp  
+[2026-06-09 18:47:06] -- [ThirdPartyLib][abseil-cpp] Found abseil-cpp in: /mnt/workspace/errmsg/third_party/lib_cache/abseil-cpp
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_static] static depend protobuf_headers_target.
+[ThirdParty][protobuf_host_static] host static build.
+[2026-06-09 18:47:06] -- Found alog: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-09 18:47:06] -- Variables in alog module:
+[2026-06-09 18:47:06] -- alog_a_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/include"
+[2026-06-09 18:47:06] -- slog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] -- alog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06]  Properties for TARGET slog_a:
+[2026-06-09 18:47:06]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-09 18:47:06]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-09 18:47:06]    slog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06]  Properties for TARGET alog_a:
+[2026-06-09 18:47:06]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-09 18:47:06]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-09 18:47:06]    alog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06]  Properties for TARGET alog_headers:
+[2026-06-09 18:47:06]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/include;/home/developer/Ascend/cann-9.1.0/include/base"
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-06-09 18:47:06] -- Generated helper script: /mnt/workspace/errmsg/build/cmake/run_gen_esb_with_lock.sh
+[2026-06-09 18:47:06] -- Using existing Python3: /home/developer/miniconda3/bin/python3.1
+[2026-06-09 18:47:06] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/errmsg/build/es_packages_math
+[2026-06-09 18:47:06] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-09 18:47:06] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] --   - Created standard OPP path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:06] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-09 18:47:06] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-09 18:47:06] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-09 18:47:06] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-09 18:47:06] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:06] -- add_es_package: Module name for gen_esb: math
+[2026-06-09 18:47:06] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/math, skipping
+[2026-06-09 18:47:06] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-09 18:47:06] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-09 18:47:06] -- Configuring ES package: es_math
+[2026-06-09 18:47:06] --   - Exported target: es_math (public interface)
+[2026-06-09 18:47:06] --   - Internal .obj target: es_math_obj (compile once)
+[2026-06-09 18:47:06] --   - Internal .so target: es_math_so
+[2026-06-09 18:47:06] --   - Internal .a target: es_math_a
+[2026-06-09 18:47:06] --   - Module name (for gen_esb): math
+[2026-06-09 18:47:06] --   - OPP proto target: proto_math (type: SHARED_LIBRARY)
+[2026-06-09 18:47:06] --   - OPP proto path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:06] --   - Output path: /mnt/workspace/errmsg/build/es_packages_math (artifacts will be copied)
+[2026-06-09 18:47:06] --   - Library files: libes_math.so, libes_math.a
+[2026-06-09 18:47:06] --   - Python package: es_math
+[2026-06-09 18:47:06] -- ES package 'es_math' using single-file compilation mode
+[2026-06-09 18:47:06] --   - Wrapper file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-09 18:47:06] --   - Module name: math
+[2026-06-09 18:47:06] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-09 18:47:06] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-09 18:47:06] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-09 18:47:06] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-09 18:47:06] -- add_es_library: Found c_sec target
+[2026-06-09 18:47:06] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-09 18:47:06] -- add_es_package: 'build_es_math' is the first ES package (will be built first)
+[2026-06-09 18:47:06] -- ES package 'es_math' configured successfully (single-file mode):
+[2026-06-09 18:47:06] --   - Exported target (for linking): es_math
+[2026-06-09 18:47:06] --   - Build target: build_es_math
+[2026-06-09 18:47:06] --   - Wrapper file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-09 18:47:06] --   - Internal targets:
+[2026-06-09 18:47:06] --     * Code generation: generate_es_math_code
+[2026-06-09 18:47:06] --     * Object library: es_math_obj (compiled once)
+[2026-06-09 18:47:06] --     * Shared library: es_math_so
+[2026-06-09 18:47:06] --     * Static library: es_math_a
+[2026-06-09 18:47:06] --     * Wheel generation: generate_es_math_whl
+[2026-06-09 18:47:06] --     * Install: install_es_math
+[2026-06-09 18:47:06] --   - Library files: libes_math.so, libes_math.a
+[2026-06-09 18:47:06] --   - Python package: es_math
+[2026-06-09 18:47:06] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06] -- Quick start:
+[2026-06-09 18:47:06] --   1. Link:    target_link_libraries(your_target PRIVATE es_math)
+[2026-06-09 18:47:06] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-09 18:47:06] -- 
+LIBASAN_PATH = 
+[2026-06-09 18:47:06] -- Update proto header path: /mnt/workspace/errmsg/attention/flash_attention_score/op_graph/flash_attention_score_proto.h
+[2026-06-09 18:47:06] -- Start Generating es transformer for custom pkg
+[2026-06-09 18:47:06] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/errmsg/build/es_packages
+[2026-06-09 18:47:06] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-09 18:47:06] -- add_es_package: Using default output directory: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] --   - Created standard OPP path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:06] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-09 18:47:06] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-09 18:47:06] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-09 18:47:06] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-09 18:47:06] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:06] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-06-09 18:47:06] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/transformer_cust, skipping
+[2026-06-09 18:47:06] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-09 18:47:06] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-09 18:47:06] -- Configuring ES package: es_transformer_cust
+[2026-06-09 18:47:06] --   - Exported target: es_transformer_cust (public interface)
+[2026-06-09 18:47:06] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-06-09 18:47:06] --   - Internal .so target: es_transformer_cust_so
+[2026-06-09 18:47:06] --   - Internal .a target: es_transformer_cust_a
+[2026-06-09 18:47:06] --   - Module name (for gen_esb): transformer_cust
+[2026-06-09 18:47:06] --   - OPP proto target: proto_transformer_cust (type: SHARED_LIBRARY)
+[2026-06-09 18:47:06] --   - OPP proto path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:06] --   - Output path: /mnt/workspace/errmsg/build/es_packages (artifacts will be copied)
+[2026-06-09 18:47:06] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-09 18:47:06] --   - Python package: es_transformer_cust
+[2026-06-09 18:47:06] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-06-09 18:47:06] --   - Wrapper file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-09 18:47:06] --   - Module name: transformer_cust
+[2026-06-09 18:47:06] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-09 18:47:06] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-09 18:47:06] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-09 18:47:06] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-09 18:47:06] -- add_es_library: Found c_sec target
+[2026-06-09 18:47:06] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-09 18:47:06] -- add_es_package: 'build_es_transformer_cust' depends on 'build_es_math' to avoid concurrent builds of shared dependencies
+[2026-06-09 18:47:06] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-06-09 18:47:06] --   - Exported target (for linking): es_transformer_cust
+[2026-06-09 18:47:06] --   - Build target: build_es_transformer_cust
+[2026-06-09 18:47:06] --   - Wrapper file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-09 18:47:06] --   - Internal targets:
+[2026-06-09 18:47:06] --     * Code generation: generate_es_transformer_cust_code
+[2026-06-09 18:47:06] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-06-09 18:47:06] --     * Shared library: es_transformer_cust_so
+[2026-06-09 18:47:06] --     * Static library: es_transformer_cust_a
+[2026-06-09 18:47:06] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-06-09 18:47:06] --     * Install: install_es_transformer_cust
+[2026-06-09 18:47:06] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-09 18:47:06] --   - Python package: es_transformer_cust
+[2026-06-09 18:47:06] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06] -- Quick start:
+[2026-06-09 18:47:06] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-06-09 18:47:06] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-09 18:47:06] -- 
+[2026-06-09 18:47:06] -- Detected architecture: ARM64
+[2026-06-09 18:47:06] -- End building custom package.
+[2026-06-09 18:47:06] -- create aclnn master header file: /mnt/workspace/errmsg/build/aclnn_ops_transformer_custom.h
+[2026-06-09 18:47:06] -- no operator info to generate
+[2026-06-09 18:47:06] -- Start building custom package.
+[2026-06-09 18:47:06] -- No aicpu opdef/json files to merge, skipping.
+[2026-06-09 18:47:06] -- No aicpu cust obj targets found, skipping.
+[2026-06-09 18:47:06] -- Configuring done
+[2026-06-09 18:47:06] -- Generating done
+[2026-06-09 18:47:06] -- Build files have been written to: /mnt/workspace/errmsg/build
+[2026-06-09 18:47:06] [  1%] Generating op_host_aclnn_stub.cpp
+[2026-06-09 18:47:06] [  1%] Generating op_host_aclnn_exc_stub.cpp
+[2026-06-09 18:47:06] [  2%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/op_host/tiling_util.cpp.o
+[2026-06-09 18:47:06] [  3%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/attention/flash_attention_score/op_host/flash_attention_score_def.cpp.o
+[2026-06-09 18:47:06] [  4%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/flash_attention_score_tiling.cpp.o
+[2026-06-09 18:47:06] [  4%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/runtime_kb_api.cpp.o
+[2026-06-09 18:47:06] [  5%] Generating scripts/install.sh, scripts/upgrade.sh
+[2026-06-09 18:47:06] [  6%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm.cpp.o
+[2026-06-09 18:47:06] [  7%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm_2stages.cpp.o
+[2026-06-09 18:47:06] [  9%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/flash_attention_score_infershape.cpp.o
+[2026-06-09 18:47:06] [  9%] Copying update proto /mnt/workspace/errmsg/attention/flash_attention_score/op_graph/flash_attention_score_proto.h to /mnt/workspace/errmsg/build/autogen/updateproto/flash_attention_score_proto.cpp
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_dropmask.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-09 18:47:06] [ 11%] Building CXX object common/stub/op_graph/CMakeFiles/proto_math.dir/math_proto_stub.cpp.o
+[2026-06-09 18:47:06] [ 11%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_dropmask.cpp.o
+[2026-06-09 18:47:06] [ 11%] Built target abseil_build
+[2026-06-09 18:47:06] [ 11%] Generating version.info
+[2026-06-09 18:47:06] [ 11%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_regbase.cpp.o
+[2026-06-09 18:47:06] [ 13%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_varlen.cpp.o
+[2026-06-09 18:47:06] [ 13%] Creating directories for 'external_eigen'
+[2026-06-09 18:47:06] [ 15%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_basic.cpp.o
+[2026-06-09 18:47:06] [ 15%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/tbe_tiling_api.cpp.o
+[2026-06-09 18:47:06] [ 17%] Generating binary/ascend950/src/common/.all_common_copy.stamp
+[2026-06-09 18:47:06] [ 17%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+[2026-06-09 18:47:06] [ 18%] Generating binary/ascend950/src/flash_attention_score_apt/FlashAttentionScore.py
+[2026-06-09 18:47:06] [ 19%] Generating version.ops-transformer.info
+[2026-06-09 18:47:06] [ 20%] Generating binary/ascend950/bin/flash_attention_score_apt
+[2026-06-09 18:47:06] [ 21%] Generating binary/ascend950/src/ascendc/common/.utils_copy.stamp
+[2026-06-09 18:47:06] [ 21%] Building CXX object CMakeFiles/op_host_aclnnExc.dir/op_host_aclnn_exc_stub.cpp.o
+[2026-06-09 18:47:06] [ 22%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-06-09 18:47:06] [ 23%] Building update proto files
+[2026-06-09 18:47:06] [ 23%] Built target flash_attention_score_apt_ascend950_py_copy
+[2026-06-09 18:47:06] [ 23%] Built target flash_attention_score_apt_ascend950_mkdir
+[2026-06-09 18:47:06] [ 23%] Built target gen_version_info
+[2026-06-09 18:47:06] [ 23%] Built target update_proto_target
+[2026-06-09 18:47:06] [ 25%] Linking CXX shared library libop_host_aclnnExc.so
+[2026-06-09 18:47:06] [ 26%] Creating directories for 'protobuf_src'
+[2026-06-09 18:47:06] [ 27%] Linking CXX shared library libop_host_aclnn.so
+[2026-06-09 18:47:06] [ 28%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-06-09 18:47:06] [ 28%] Built target common_transformer_obj
+[2026-06-09 18:47:06] [ 28%] Linking CXX shared library ../../../libproto_math.so
+[2026-06-09 18:47:06] [ 29%] Linking CXX shared library ../../../libopapi_math.so
+[2026-06-09 18:47:06] [ 30%] Built target common_transformer_fallback_obj
+[2026-06-09 18:47:06] [ 30%] Linking CXX shared library ../../../liboptiling.so
+[2026-06-09 18:47:06] [ 30%] Built target modify_vendor
+[2026-06-09 18:47:06] [ 31%] Performing download step (download, verify and extract) for 'external_eigen'
+[2026-06-09 18:47:06] [ 31%] Built target common_src_copy
+[2026-06-09 18:47:06] [ 31%] Built target ops_utils_inc_kernel_ascend950
+[2026-06-09 18:47:06] -- Downloading...
+/mnt/workspace/errmsg/cmake/scripts/util/ascendc_impl_build.py:237: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-06-09 18:47:06]    dst='/mnt/workspace/errmsg/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-06-09 18:47:06]    timeout='none'
+[2026-06-09 18:47:06]    inactivity timeout='none'
+[2026-06-09 18:47:06] -- Using src='https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz'
+[2026-06-09 18:47:06] [ 31%] Built target version_ops-transformer_info
+[2026-06-09 18:47:06] [ 32%] Performing download step (download, verify and extract) for 'protobuf_src'
+[2026-06-09 18:47:06] [ 34%] Generating binary/ascend950/src/flash_attention_score_apt/flash_attention_score_apt_ascend950_src_copy.done
+[2026-06-09 18:47:06] -- File already exists but no hash specified (use URL_HASH):
+[2026-06-09 18:47:06]   file='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-09 18:47:06] Old file will be removed and new file downloaded from URL.
+[2026-06-09 18:47:06] [ 34%] Built target op_host_aclnnExc
+[2026-06-09 18:47:06] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-09 18:47:06] -- Downloading...
+[2026-06-09 18:47:06] [ES-GEN] Lock file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-06-09 18:47:06]    dst='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-09 18:47:06] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-09 18:47:06]    timeout='none'
+[2026-06-09 18:47:06] [ES-GEN] OPP path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:06]    inactivity timeout='none'
+[2026-06-09 18:47:06] [ES-GEN] Output dir: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code
+[2026-06-09 18:47:06] -- Using src='https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/protobuf/protobuf-25.1.tar.gz'
+[2026-06-09 18:47:06] [ES-GEN] Module: math
+[2026-06-09 18:47:06] [ 34%] Built target op_host_aclnn
+[2026-06-09 18:47:06] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-09 18:47:06] [ 34%] Built target opbuild_gen_exc
+[2026-06-09 18:47:06] [ES-GEN] Exclude ops: 
+[2026-06-09 18:47:06] [ 34%] Built target opbuild_gen_default
+[2026-06-09 18:47:06] [ 34%] Built target flash_attention_score_apt_ascend950_src_copy
+[2026-06-09 18:47:06] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-09 18:47:06] [ 34%] Built target optiling
+[2026-06-09 18:47:06] [ES-GEN] Using flock file locking mechanism
+[2026-06-09 18:47:06] [ 34%] Built target op_host_aclnnInner
+[2026-06-09 18:47:06] [ 34%] Built target opapi_math
+[2026-06-09 18:47:06] [ES-GEN] [flock] Acquired lock immediately
+[2026-06-09 18:47:06] [ 35%] Built target opbuild_gen_inner
+[2026-06-09 18:47:06] [ES-GEN] Waiting for filesystem sync...
+[2026-06-09 18:47:06] [ 35%] Built target proto_math
+[2026-06-09 18:47:06] [ 35%] Filtering proto srcs from update files
+[2026-06-09 18:47:06] [ 36%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_flash_attention_score.cpp.o
+[2026-06-09 18:47:06] [ 36%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/updateproto/flash_attention_score_proto.cpp.o
+[2026-06-09 18:47:06] [ 37%] Generating autogen/aic-ascend950-ops-info.json
+[2026-06-09 18:47:06] [ 38%] Copying OPP proto library to standard path...
+[2026-06-09 18:47:06] [ 39%] Built target generate_proto_filtered_target
+[2026-06-09 18:47:06] [ 40%] Linking CXX static library libops_aclnn.a
+[2026-06-09 18:47:06] [ 42%] Linking CXX shared library libproto_transformer_cust.so
+[2026-06-09 18:47:06] [ 43%] Generating ES API code for 'es_math' using run package gen_esb...
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] ==============check valid for ops info start==============
+[2026-06-09 18:47:06] ==============check valid for ops info end================
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] 
+[2026-06-09 18:47:06] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-09 18:47:06] Compile op info cfg successfully.
+[2026-06-09 18:47:06] [ES-GEN] Lock file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-06-09 18:47:06] Generating ES code for package: es_math
+[2026-06-09 18:47:06] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-09 18:47:06] [ 44%] Built target ops_aclnn
+[2026-06-09 18:47:06] [ES-GEN] OPP path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:06] [ 44%] Built target generate_ops_info_ascend950
+[2026-06-09 18:47:06] [ES-GEN] Output dir: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code
+[2026-06-09 18:47:06] INFO: /mnt/workspace/errmsg/build/autogen/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-09 18:47:06] [ 45%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_flash_attention_score.cpp.o
+[2026-06-09 18:47:06] [ES-GEN] Module: transformer_cust
+[2026-06-09 18:47:06] [ 45%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/flash_attention_score.cpp.o
+[2026-06-09 18:47:06] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-09 18:47:06] [ 45%] Built target generate_ops_info
+[2026-06-09 18:47:06] [ES-GEN] Exclude ops: 
+[2026-06-09 18:47:06] [ 46%] Built target proto_transformer_cust
+[2026-06-09 18:47:06] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-09 18:47:06] [ 47%] Copying OPP proto library to standard path...
+[2026-06-09 18:47:06] [ES-GEN] Using flock file locking mechanism
+[2026-06-09 18:47:06] [ 47%] Built target generate_transformer_adapt_py
+[2026-06-09 18:47:06] [ 47%] Generating ES API code for 'es_transformer_cust' using run package gen_esb...
+[2026-06-09 18:47:06] [ES-GEN] [flock] Acquired lock immediately
+[2026-06-09 18:47:06] Generating ES code for package: es_transformer_cust
+[2026-06-09 18:47:07] [ES-GEN] Waiting for filesystem sync...
+[2026-06-09 18:47:07] INFO: /mnt/workspace/errmsg/build/autogen/exc/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-09 18:47:07] -- [download 0% complete]
+[2026-06-09 18:47:07] [ 47%] Built target generate_compile_cmd_ascend950
+[2026-06-09 18:47:07] -- [download 1% complete]
+[2026-06-09 18:47:07] [ 47%] Built target generate_compile_cmd
+[2026-06-09 18:47:07] -- [download 2% complete]
+[2026-06-09 18:47:07] [ 47%] Built target prepare_build
+[2026-06-09 18:47:07] -- [download 3% complete]
+[2026-06-09 18:47:07] -- [download 4% complete]
+[2026-06-09 18:47:07] -- [download 5% complete]
+[2026-06-09 18:47:07] -- [download 6% complete]
+[2026-06-09 18:47:07] -- [download 7% complete]
+[2026-06-09 18:47:07] -- [download 8% complete]
+[2026-06-09 18:47:07] -- [download 9% complete]
+[2026-06-09 18:47:07] -- [download 10% complete]
+[2026-06-09 18:47:07] -- [download 11% complete]
+[2026-06-09 18:47:07] -- [download 12% complete]
+[2026-06-09 18:47:07] -- [download 13% complete]
+[2026-06-09 18:47:07] -- [download 14% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:90:25: warning: missing terminating " character
+   90 |                         "The B dim of input query must be the same as the B dim “
+      |                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:91:74: warning: missing terminating " character
+   91 |                         ”of input key when the attr input_layout is BSH");
+      |                                                                          ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:102:29: warning: missing terminating " character
+  102 |                             "The D dim of input query must be the same as the D dim of “
+      |                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:103:75: warning: missing terminating " character
+  103 |                             ”input key when the attr input_layout is TND");
+      |                                                                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:114:25: warning: missing terminating " character
+  114 |                         "The B dim of input query must be the same as the B dim of “
+      |                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:115:71: warning: missing terminating " character
+  115 |                         ”input key when the attr input_layout is SBH");
+      |                                                                       ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:124:35: warning: missing terminating " character
+  124 |                     dMsg.c_str(), "The value of D dim of input key must be greater than or ”
+      |                                   ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:125:66: warning: missing terminating " character
+  125 |                     “equal to the value of D dim of input value");
+      |                                                                  ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:445: error: unterminated argument list invoking macro "OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON"
+  445 | } // namespace optiling
+      | 
+[2026-06-09 18:47:07] -- [download 15% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:142:21: warning: missing terminating " character
+  142 |                     "The parameters of input pse should be valid when sparse_mode is BAND_LEFT_UP_CAUSAL “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:143:45: warning: missing terminating " character
+  143 |                     ”and pseType is 2 or 3");
+      |                                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:303:21: warning: missing terminating " character
+  303 |                     "The following constraint must be met for each batch: “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:304:75: warning: missing terminating " character
+  304 |                     “actual_seq_len_q - next_tokens <= actual_seq_len_kv");
+      |                                                                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:324:37: warning: missing terminating " character
+  324 |             std::string reasonMsg = "In RightDownCausal_Band mode, pre_tokens must not “
+      |                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:326:62: warning: missing terminating " character
+  326 |                 ”and next_tokens must not be greater than 0";
+      |                                                              ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:395:28: warning: missing terminating " character
+  395 |                            "The values of pre_tokens and next_tokens must satisfy “
+      |                            ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:396:74: warning: missing terminating " character
+  396 |                            ”the right down causal band mode constraints"),
+      |                                                                          ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:402:21: warning: missing terminating " character
+  402 |                     "The following constraint must be met for the band index batch: “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:403:75: warning: missing terminating " character
+  403 |                     ”actual_seq_len_q - next_tokens <= actual_seq_len_kv");
+      |                                                                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:410:21: warning: missing terminating " character
+  410 |                     "The value of pre_tokens must be greater than the first “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:411:75: warning: missing terminating " character
+  411 |                     ”valid actual_seq_len_kv in BAND_LEFT_UP_CAUSAL mode");
+      |                                                                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:424:53: warning: missing terminating " character
+  424 |                 std::to_string(nextTokens).c_str(), "To have valid data blocks, the value of “
+      |                                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:425:61: warning: missing terminating " character
+  425 |                     ”next_tokens must be greater than zero");
+      |                                                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:438:21: warning: missing terminating " character
+  438 |                     "The following constraint must be met for each batch: “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:439:74: warning: missing terminating " character
+  439 |                     ”actual_seq_len_kv + pre_tokens >= actual_seq_len_q");
+      |                                                                          ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:460:21: warning: missing terminating " character
+  460 |                     "The following constraint must be met: “
+      |                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:461:94: warning: missing terminating " character
+  461 |                     ”pre_tokens + next_tokens >= min(actual_seq_len_kv) when pre_tokens < 0");
+      |                                                                                              ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:504:29: warning: missing terminating " character
+  504 |                             "The value of prefix_n must be [0, actual_seq_len_kv] “
+      |                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:505:73: warning: missing terminating " character
+  505 |                             ”when actual_seq_len_q > actual_seq_len_kv");
+      |                                                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:517:29: warning: missing terminating " character
+  517 |                             "The value of prefix_n must be [actual_seq_len_kv - actual_seq_len_q, “
+      |                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:518:93: warning: missing terminating " character
+  518 |                             ”actual_seq_len_kv] when actual_seq_len_q <= actual_seq_len_kv");
+      |                                                                                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:553:53: warning: missing terminating " character
+  553 |                 std::to_string(sparseMode).c_str(), "The value of sparse_mode must be within “
+      |                                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:554:59: warning: missing terminating " character
+  554 |                     ”the supported range for VarLen mode");
+      |                                                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:841: error: unterminated argument list invoking macro "OP_LOGE_FOR_INVALID_VALUE_WITH_REASON"
+  841 | } // namespace optiling
+      | 
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:147:25: warning: missing terminating " character
+  147 |                         "The values of s1Size and s2Size must be the same “
+      |                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:148:69: warning: missing terminating " character
+  148 |                         ”when pse alibi is used with s1Size > 1024");
+      |                                                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:240: error: unterminated argument list invoking macro "OP_LOGE_FOR_INVALID_VALUES_WITH_REASON"
+  240 | } // namespace optiling
+      | 
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:354:83: error: macro "OP_LOGE_FOR_INVALID_VALUES_WITH_REASON" requires 4 arguments, but only 2 given
+  354 |             "The Value of q must be equal to kv with VarLen scene."), return false);
+      |                                                                                   ^
+In file included from /mnt/workspace/errmsg/common/include/op_host/tiling_base.h:23,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/errmsg/third_party/opbase/include/op_common/log/log.h:774: note: macro "OP_LOGE_FOR_INVALID_VALUES_WITH_REASON" defined here
+  774 | #define OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, paramNames, incorrectValues, reason)                           \
+      | 
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:517:29: warning: missing terminating " character
+  517 |                             "The value of attr head_num must be equal to the 1st dim “
+      |                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:518:70: warning: missing terminating " character
+  518 |                             ”of input query when the layout is BNSD"),
+      |                                                                      ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:572:17: warning: missing terminating " character
+  572 |                 "The shape of input query should be the same as the shape of input key “
+      |                 ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:573:61: warning: missing terminating " character
+  573 |                 ”at the N dim when input dtype is HIFLOAT8");
+      |                                                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:717:37: warning: missing terminating " character
+  717 |                     dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or “
+      |                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:718:57: warning: missing terminating " character
+  718 |                     ”1D (N2) when it is pse inner mode");
+      |                                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:1939: error: unterminated argument list invoking macro "OP_CHECK_IF"
+ 1939 | } // namespace optiling
+      | 
+[2026-06-09 18:47:07] -- [download 16% complete]
+[2026-06-09 18:47:07] -- [download 17% complete]
+[2026-06-09 18:47:07] -- [download 18% complete]
+[2026-06-09 18:47:07] -- [download 19% complete]
+[2026-06-09 18:47:07] -- [download 20% complete]
+[2026-06-09 18:47:07] -- [download 21% complete]
+[2026-06-09 18:47:07] -- [download 22% complete]
+[2026-06-09 18:47:07] -- [download 23% complete]
+[2026-06-09 18:47:07] -- [download 24% complete]
+[2026-06-09 18:47:07] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-09 18:47:07] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""     
+[2026-06-09 18:47:07] -- [download 25% complete]
+[2026-06-09 18:47:07] -- [download 26% complete]
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] ES Graph Builder Generator v1.0
+[2026-06-09 18:47:07] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] Starting code generation...
+[2026-06-09 18:47:07] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:07] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/errmsg/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-06-09 18:47:07] Output directory: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-09 18:47:07] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-09 18:47:07] Module name: math
+[2026-06-09 18:47:07] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-06-09 18:47:07] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-09 18:47:07] ASCEND_OPP_PATH is: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-09 18:47:07] ops proto path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+[2026-06-09 18:47:07] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-09 18:47:07] Get ops num: 1
+[2026-06-09 18:47:07] Generate done, generated num 1, unsupported: 
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-09 18:47:07] Generated C generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-09 18:47:07] Generated C++ generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-09 18:47:07] Generated Python generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-09 18:47:07] Generated aggregate files:
+[2026-06-09 18:47:07]   C generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-09 18:47:07]   C++ generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-09 18:47:07]   Python generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-09 18:47:07] Generated util files:
+[2026-06-09 18:47:07]   Utils generator:
+[2026-06-09 18:47:07]     /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+[2026-06-09 18:47:07] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-09 18:47:07] Generated files in: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-09 18:47:07] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-09 18:47:07] 
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] Code generation completed!
+[2026-06-09 18:47:07] Module name: math
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] -- [download 27% complete]
+[2026-06-09 18:47:07] -- [download 28% complete]
+[2026-06-09 18:47:07] -- [ES Wrapper] Generated: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-09 18:47:07] -- [ES Wrapper] Total operators included: 1
+[2026-06-09 18:47:07] -- [download 29% complete]
+[2026-06-09 18:47:07] [ 47%] Built target generate_es_math_code
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] ES Graph Builder Generator v1.0
+[2026-06-09 18:47:07] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] Starting code generation...
+[2026-06-09 18:47:07] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:07] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/errmsg/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-06-09 18:47:07] Output directory: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/
+[2026-06-09 18:47:07] Module name: transformer_cust
+[2026-06-09 18:47:07] ASCEND_OPP_PATH is: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-09 18:47:07] ops proto path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/custom/:/mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/built-in/
+[2026-06-09 18:47:07] -- [download 30% complete]
+[2026-06-09 18:47:07] Get ops num: 1
+[2026-06-09 18:47:07] Generate done, generated num 1, unsupported: 
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-09 18:47:07] Generated C generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-09 18:47:07] Generated C++ generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-09 18:47:07] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-09 18:47:07] Generated Python generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-09 18:47:07] Generated aggregate files:
+[2026-06-09 18:47:07]   C generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-09 18:47:07]   C++ generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-09 18:47:07]   Python generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-09 18:47:07] Generated util files:
+[2026-06-09 18:47:07]   Utils generator:
+[2026-06-09 18:47:07]     /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_log.h
+[2026-06-09 18:47:07] Generated files in: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/
+[2026-06-09 18:47:07] 
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] Code generation completed!
+[2026-06-09 18:47:07] Module name: transformer_cust
+[2026-06-09 18:47:07] ==========================================
+[2026-06-09 18:47:07] [ 48%] Building CXX object common/stub/op_graph/CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+[2026-06-09 18:47:07] [ 50%] Building Python wheel package for 'es_math'...
+[2026-06-09 18:47:07] Building Python wheel for package: es_math
+[2026-06-09 18:47:07] -- [download 31% complete]
+[2026-06-09 18:47:07] -- [ES Wrapper] Generated: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-09 18:47:07] -- [ES Wrapper] Total operators included: 1
+[2026-06-09 18:47:07] [ 50%] Built target es_math_obj
+[2026-06-09 18:47:07] [ 50%] Built target generate_es_transformer_cust_code
+[2026-06-09 18:47:07] -- [download 32% complete]
+[2026-06-09 18:47:07] -- Copied: es_Transpose.py
+[2026-06-09 18:47:07] -- Copied: es_math_ops.py
+[2026-06-09 18:47:07] -- [download 33% complete]
+[2026-06-09 18:47:07] [ 50%] Linking CXX static library libes_math.a
+[2026-06-09 18:47:07] [ 51%] Linking CXX shared library ../../../libes_math.so
+[2026-06-09 18:47:07] [ 52%] Skipping Python wheel package generation for 'es_transformer_cust'
+[2026-06-09 18:47:07] [ 52%] Building CXX object CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+[2026-06-09 18:47:07] -- Created setup.py for package 'es_math'
+[2026-06-09 18:47:07] Skipping wheel generation
+[2026-06-09 18:47:07] [ 52%] Built target generate_es_transformer_cust_whl
+[2026-06-09 18:47:07] -- [download 34% complete]
+[2026-06-09 18:47:07] [ 52%] Built target es_math_a
+[2026-06-09 18:47:07] [ 52%] Built target es_transformer_cust_obj
+[2026-06-09 18:47:07] -- [download 35% complete]
+[2026-06-09 18:47:07] [ 53%] Linking CXX static library libes_transformer_cust.a
+[2026-06-09 18:47:07] [ 54%] Linking CXX shared library libes_transformer_cust.so
+[2026-06-09 18:47:07] -- [download 36% complete]
+[2026-06-09 18:47:07] -- [download 37% complete]
+[2026-06-09 18:47:07] [ 54%] Built target es_transformer_cust_a
+[2026-06-09 18:47:07] -- [download 38% complete]
+[2026-06-09 18:47:07] [ 54%] Built target es_math_so
+[2026-06-09 18:47:07] -- [download 39% complete]
+[2026-06-09 18:47:07] -- [download 40% complete]
+[2026-06-09 18:47:07] [ 54%] Built target es_transformer_cust_so
+[2026-06-09 18:47:07] -- [download 41% complete]
+[2026-06-09 18:47:07] [ 55%] Installing ES package 'es_transformer_cust' to /mnt/workspace/errmsg/build/es_packages
+[2026-06-09 18:47:07] Installing ES package: es_transformer_cust
+[2026-06-09 18:47:07] -- Copied header: es_FlashAttentionScore.h
+[2026-06-09 18:47:07] -- Copied header: es_FlashAttentionScore_c.h
+[2026-06-09 18:47:07] -- Copied header: es_log.h
+[2026-06-09 18:47:07] -- Copied header: es_transformer_cust_ops.h
+[2026-06-09 18:47:07] -- Copied header: es_transformer_cust_ops_c.h
+[2026-06-09 18:47:07] -- [download 42% complete]
+[2026-06-09 18:47:07] [ 55%] Built target install_es_transformer_cust
+[2026-06-09 18:47:07] -- [download 43% complete]
+[2026-06-09 18:47:07] -- [download 44% complete]
+[2026-06-09 18:47:07] -- [download 45% complete]
+[2026-06-09 18:47:07] -- [download 46% complete]
+[2026-06-09 18:47:07] -- [download 47% complete]
+[2026-06-09 18:47:07] -- [download 48% complete]
+[2026-06-09 18:47:07] -- [download 49% complete]
+[2026-06-09 18:47:07] -- [download 50% complete]
+[2026-06-09 18:47:07] -- [download 51% complete]
+[2026-06-09 18:47:07] -- [download 52% complete]
+[2026-06-09 18:47:07] -- [download 53% complete]
+[2026-06-09 18:47:07] -- [download 54% complete]
+[2026-06-09 18:47:07] -- [download 55% complete]
+[2026-06-09 18:47:07] -- [download 56% complete]
+[2026-06-09 18:47:07] -- [download 1% complete]
+[2026-06-09 18:47:07] -- [download 57% complete]
+[2026-06-09 18:47:07] -- [download 58% complete]
+[2026-06-09 18:47:07] -- [download 59% complete]
+[2026-06-09 18:47:07] Looking in indexes: https://repo.huaweicloud.com/repository/pypi/simple
+[2026-06-09 18:47:07] Processing ./.
+[2026-06-09 18:47:07]   Installing build dependencies: started
+[2026-06-09 18:47:07] -- [download 60% complete]
+[2026-06-09 18:47:07] -- [download 2% complete]
+[2026-06-09 18:47:07] -- [download 61% complete]
+[2026-06-09 18:47:07] -- [download 62% complete]
+[2026-06-09 18:47:07] -- [download 63% complete]
+[2026-06-09 18:47:07] -- [download 64% complete]
+[2026-06-09 18:47:07] -- [download 3% complete]
+[2026-06-09 18:47:07] -- [download 65% complete]
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:18:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp: In function ‘ge::graphStatus ops::InferShapeFlashAttentionScore(gert::InferShapeContext*)’:
+/mnt/workspace/errmsg/third_party/opbase/include/op_common/log/log.h:700:41: error: no matching function for call to ‘std::basic_string<char>::basic_string(gert::InferShapeContext*&)’
+  700 |         std::string _safe_opName_(opName);                                                                     \
+      |                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:64:9: note: in expansion of macro ‘OP_LOGE_FOR_INVALID_VALUE’
+   64 |         OP_LOGE_FOR_INVALID_VALUE(context, "input_layout",
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/9/string:55,
+                 from /home/developer/Ascend/cann-9.1.0/include/graph/utils/type_utils.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:16:
+/usr/include/c++/9/bits/basic_string.h:3702:2: note: candidate: ‘template<class _Tp, class> std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _Tp&, const _Alloc&)’
+ 3702 |  basic_string(const _Tp& __t, const _Alloc& __a = _Alloc())
+      |  ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3702:2: note:   template argument deduction/substitution failed:
+In file included from /usr/include/c++/9/bits/move.h:55,
+                 from /usr/include/c++/9/bits/stl_pair.h:59,
+                 from /usr/include/c++/9/bits/stl_algobase.h:64,
+                 from /usr/include/c++/9/bits/char_traits.h:39,
+                 from /usr/include/c++/9/string:40,
+                 from /home/developer/Ascend/cann-9.1.0/include/graph/utils/type_utils.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:16:
+/usr/include/c++/9/type_traits: In substitution of ‘template<bool _Cond, class _Tp> using enable_if_t = typename std::enable_if::type [with bool _Cond = std::integral_constant<bool, false>::value; _Tp = void]’:
+/usr/include/c++/9/bits/basic_string.h:3508:8:   required by substitution of ‘template<class _CharT, class _Traits, class _Alloc> template<class _Tp, class _Res> using _If_sv = std::enable_if_t<std::__and_<std::is_convertible<const _Tp&, std::basic_string_view<_CharT, _Traits> >, std::__not_<std::is_convertible<const _Tp*, const std::basic_string<_CharT, _Traits, _Alloc>*> >, std::__not_<std::is_convertible<const _Tp&, const _CharT*> > >::value, _Res> [with _Tp = gert::InferShapeContext*; _Res = void; _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+/usr/include/c++/9/bits/basic_string.h:3700:30:   required from here
+/usr/include/c++/9/type_traits:2378:11: error: no type named ‘type’ in ‘struct std::enable_if<false, void>’
+ 2378 |     using enable_if_t = typename enable_if<_Cond, _Tp>::type;
+      |           ^~~~~~~~~~~
+In file included from /usr/include/c++/9/string:55,
+                 from /home/developer/Ascend/cann-9.1.0/include/graph/utils/type_utils.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:16:
+/usr/include/c++/9/bits/basic_string.h:3691:2: note: candidate: ‘template<class _Tp, class> std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _Tp&, std::basic_string<_CharT, _Traits, _Alloc>::size_type, std::basic_string<_CharT, _Traits, _Alloc>::size_type, const _Alloc&)’
+ 3691 |  basic_string(const _Tp& __t, size_type __pos, size_type __n,
+      |  ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3691:2: note:   template argument deduction/substitution failed:
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:18:
+/mnt/workspace/errmsg/third_party/opbase/include/op_common/log/log.h:700:41: note:   candidate expects 4 arguments, 1 provided
+  700 |         std::string _safe_opName_(opName);                                                                     \
+      |                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:64:9: note: in expansion of macro ‘OP_LOGE_FOR_INVALID_VALUE’
+   64 |         OP_LOGE_FOR_INVALID_VALUE(context, "input_layout",
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/9/string:55,
+                 from /home/developer/Ascend/cann-9.1.0/include/graph/utils/type_utils.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:16:
+/usr/include/c++/9/bits/basic_string.h:3679:9: note: candidate: ‘template<class _InputIterator> std::basic_string<_CharT, _Traits, _Alloc>::basic_string(_InputIterator, _InputIterator, const _Alloc&)’
+ 3679 |         basic_string(_InputIterator __beg, _InputIterator __end,
+      |         ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3679:9: note:   template argument deduction/substitution failed:
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:18:
+/mnt/workspace/errmsg/third_party/opbase/include/op_common/log/log.h:700:41: note:   candidate expects 3 arguments, 1 provided
+  700 |         std::string _safe_opName_(opName);                                                                     \
+      |                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:64:9: note: in expansion of macro ‘OP_LOGE_FOR_INVALID_VALUE’
+   64 |         OP_LOGE_FOR_INVALID_VALUE(context, "input_layout",
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/9/string:55,
+                 from /home/developer/Ascend/cann-9.1.0/include/graph/utils/type_utils.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:16:
+/usr/include/c++/9/bits/basic_string.h:3656:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::basic_string<_CharT, _Traits, _Alloc>&&, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3656 |       basic_string(basic_string&& __str, const _Alloc& __a)
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3656:7: note:   candidate expects 2 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3652:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::basic_string<_CharT, _Traits, _Alloc>&, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3652 |       basic_string(const basic_string& __str, const _Alloc& __a)
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3652:7: note:   candidate expects 2 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3650:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::initializer_list<_Tp>, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3650 |       basic_string(initializer_list<_CharT> __l, const _Alloc& __a = _Alloc());
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3650:45: note:   no known conversion for argument 1 from ‘gert::InferShapeContext*’ to ‘std::initializer_list<char>’
+ 3650 |       basic_string(initializer_list<_CharT> __l, const _Alloc& __a = _Alloc());
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~~~^~~
+/usr/include/c++/9/bits/basic_string.h:3632:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::basic_string<_CharT, _Traits, _Alloc>&&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3632 |       basic_string(basic_string&& __str)
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3632:35: note:   no known conversion for argument 1 from ‘gert::InferShapeContext*’ to ‘std::basic_string<char>&&’
+ 3632 |       basic_string(basic_string&& __str)
+      |                    ~~~~~~~~~~~~~~~^~~~~
+/usr/include/c++/9/bits/basic_string.h:3622:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::basic_string<_CharT, _Traits, _Alloc>::size_type, _CharT, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>; std::basic_string<_CharT, _Traits, _Alloc>::size_type = long unsigned int]’
+ 3622 |       basic_string(size_type __n, _CharT __c, const _Alloc& __a = _Alloc());
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3622:7: note:   candidate expects 3 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3615:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _CharT*, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3615 |       basic_string(const _CharT* __s, const _Alloc& __a = _Alloc());
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3615:34: note:   no known conversion for argument 1 from ‘gert::InferShapeContext*’ to ‘const char*’
+ 3615 |       basic_string(const _CharT* __s, const _Alloc& __a = _Alloc());
+      |                    ~~~~~~~~~~~~~~^~~
+/usr/include/c++/9/bits/basic_string.h:3608:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _CharT*, std::basic_string<_CharT, _Traits, _Alloc>::size_type, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>; std::basic_string<_CharT, _Traits, _Alloc>::size_type = long unsigned int]’
+ 3608 |       basic_string(const _CharT* __s, size_type __n,
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3608:7: note:   candidate expects 3 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3596:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::basic_string<_CharT, _Traits, _Alloc>&, std::basic_string<_CharT, _Traits, _Alloc>::size_type, std::basic_string<_CharT, _Traits, _Alloc>::size_type, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>; std::basic_string<_CharT, _Traits, _Alloc>::size_type = long unsigned int]’
+ 3596 |       basic_string(const basic_string& __str, size_type __pos,
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3596:7: note:   candidate expects 4 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3587:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::basic_string<_CharT, _Traits, _Alloc>&, std::basic_string<_CharT, _Traits, _Alloc>::size_type, std::basic_string<_CharT, _Traits, _Alloc>::size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>; std::basic_string<_CharT, _Traits, _Alloc>::size_type = long unsigned int]’
+ 3587 |       basic_string(const basic_string& __str, size_type __pos,
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3587:7: note:   candidate expects 3 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3578:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::basic_string<_CharT, _Traits, _Alloc>&, std::basic_string<_CharT, _Traits, _Alloc>::size_type, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>; std::basic_string<_CharT, _Traits, _Alloc>::size_type = long unsigned int]’
+ 3578 |       basic_string(const basic_string& __str, size_type __pos,
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3578:7: note:   candidate expects 3 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3568:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::basic_string<_CharT, _Traits, _Alloc>&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3568 |       basic_string(const basic_string& __str);
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3568:40: note:   no known conversion for argument 1 from ‘gert::InferShapeContext*’ to ‘const std::basic_string<char>&’
+ 3568 |       basic_string(const basic_string& __str);
+      |                    ~~~~~~~~~~~~~~~~~~~~^~~~~
+/usr/include/c++/9/bits/basic_string.h:3561:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3561 |       basic_string(const _Alloc& __a);
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3561:34: note:   no known conversion for argument 1 from ‘gert::InferShapeContext*’ to ‘const std::allocator<char>&’
+ 3561 |       basic_string(const _Alloc& __a);
+      |                    ~~~~~~~~~~~~~~^~~
+/usr/include/c++/9/bits/basic_string.h:3548:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string() [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3548 |       basic_string()
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3548:7: note:   candidate expects 0 arguments, 1 provided
+/usr/include/c++/9/bits/basic_string.h:3536:7: note: candidate: ‘std::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::basic_string<_CharT, _Traits, _Alloc>::__sv_wrapper, const _Alloc&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]’
+ 3536 |       basic_string(__sv_wrapper __svw, const _Alloc& __a)
+      |       ^~~~~~~~~~~~
+/usr/include/c++/9/bits/basic_string.h:3536:7: note:   candidate expects 2 arguments, 1 provided
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp: In function ‘ge::graphStatus ops::InferDataTypeFlashAttentionScore(gert::InferDataTypeContext*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:182:17: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  182 |         int64_t outDtype = *outDtypePtr;
+      |                 ^~~~~~~~
+[2026-06-09 18:47:07] -- [download 66% complete]
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/build.make:76: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/flash_attention_score_infershape.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2337: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:22:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-09 18:47:07] -- [download 4% complete]
+[2026-06-09 18:47:07] -- [download 67% complete]
+[2026-06-09 18:47:07] -- [download 68% complete]
+[2026-06-09 18:47:07] -- [download 69% complete]
+[2026-06-09 18:47:07] -- [download 5% complete]
+[2026-06-09 18:47:07] -- [download 70% complete]
+[2026-06-09 18:47:07] -- [download 6% complete]
+[2026-06-09 18:47:07] -- [download 7% complete]
+[2026-06-09 18:47:07] -- [download 71% complete]
+[2026-06-09 18:47:07] -- [download 72% complete]
+[2026-06-09 18:47:07] -- [download 73% complete]
+[2026-06-09 18:47:07] -- [download 74% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp: In function ‘ge::graphStatus optiling::CheckParams(const gert::TilingContext*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: ‘OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON’ was not declared in this scope
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:86:65: note: to match this ‘{’
+   86 |                 if (queryShape.GetDim(0) != keyShape.GetDim(0)) {
+      |                                                                 ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:84:40: note: to match this ‘{’
+   84 |             if (inputLayout[0] == 'B') {
+      |                                        ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:83:39: note: to match this ‘{’
+   83 |         if (strlen(inputLayout) == 3) { // 3: BSH or SBH
+      |                                       ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:79:15: warning: unused variable ‘valueShape’ [-Wunused-variable]
+   79 |         auto &valueShape = context->GetInputShape(VALUE_INPUT_INDEX)->GetStorageShape();
+      |               ^~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:78:117: note: to match this ‘{’
+   78 |         context->GetInputShape(KEY_INPUT_INDEX) != nullptr && context->GetInputShape(VALUE_INPUT_INDEX) != nullptr) {
+      |                                                                                                                     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:76:1: note: to match this ‘{’
+   76 | {
+      | ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:89:21: error: expected ‘}’ at end of input
+   89 |                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and key", shapeMsg.c_str(),
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:34:20: note: to match this ‘{’
+   34 | namespace optiling {
+      |                    ^
+[2026-06-09 18:47:07] -- [download 8% complete]
+[2026-06-09 18:47:07] -- [download 75% complete]
+[2026-06-09 18:47:07] -- [download 76% complete]
+[2026-06-09 18:47:07] -- [download 9% complete]
+[2026-06-09 18:47:07] -- [download 10% complete]
+[2026-06-09 18:47:07] -- [download 11% complete]
+[2026-06-09 18:47:07] -- [download 12% complete]
+[2026-06-09 18:47:07] -- [download 77% complete]
+[2026-06-09 18:47:07] -- [download 78% complete]
+[2026-06-09 18:47:07] -- [download 79% complete]
+[2026-06-09 18:47:07] -- [download 80% complete]
+[2026-06-09 18:47:07] -- [download 81% complete]
+[2026-06-09 18:47:07] -- [download 82% complete]
+[2026-06-09 18:47:07] -- [download 83% complete]
+[2026-06-09 18:47:07] -- [download 13% complete]
+[2026-06-09 18:47:07] -- [download 14% complete]
+[2026-06-09 18:47:08] -- [download 15% complete]
+[2026-06-09 18:47:08] -- [download 16% complete]
+[2026-06-09 18:47:08] -- [download 17% complete]
+[2026-06-09 18:47:08] -- [download 18% complete]
+[2026-06-09 18:47:08] -- [download 19% complete]
+[2026-06-09 18:47:08] -- [download 20% complete]
+[2026-06-09 18:47:08] -- [download 21% complete]
+[2026-06-09 18:47:08] -- [download 22% complete]
+[2026-06-09 18:47:08] -- [download 23% complete]
+[2026-06-09 18:47:08] -- [download 84% complete]
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-09 18:47:08] -- [download 85% complete]
+[2026-06-09 18:47:08] -- [download 86% complete]
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:16:80: note: to match this ‘{’
+   16 | class FlashAttentionScoreTilingBasic : public FlashAttentionScoreTilingRegbase {
+      |                                                                                ^
+[2026-06-09 18:47:08] -- [download 24% complete]
+[2026-06-09 18:47:08] -- [download 87% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp: In member function ‘virtual bool optiling::FA::FlashAttentionScoreTilingBasic::SetPseAlibiParamsRegbase()’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: ‘OP_LOGE_FOR_INVALID_VALUES_WITH_REASON’ was not declared in this scope
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:144:20: note: to match this ‘{’
+  144 |             } else {
+      |                    ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:134:73: note: to match this ‘{’
+  134 |         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
+      |                                                                         ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:131:14: warning: unused variable ‘pseS2Size’ [-Wunused-variable]
+  131 |         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
+      |              ^~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:120:5: note: to match this ‘{’
+  120 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected unqualified-id at end of input
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:15:14: note: to match this ‘{’
+   15 | namespace FA {
+      |              ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:145:17: error: expected ‘}’ at end of input
+  145 |                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:14:20: note: to match this ‘{’
+   14 | namespace optiling {
+      |                    ^
+[2026-06-09 18:47:08] -- [download 25% complete]
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-09 18:47:08] -- [download 26% complete]
+[2026-06-09 18:47:08] -- [download 27% complete]
+[2026-06-09 18:47:08] -- [download 88% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:16:81: note: to match this ‘{’
+   16 | class FlashAttentionScoreTilingVarLen : public FlashAttentionScoreTilingRegbase {
+      |                                                                                 ^
+[2026-06-09 18:47:08] -- [download 89% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp: In member function ‘virtual bool optiling::FA::FlashAttentionScoreTilingVarLen::SetPseAlibiParamsRegbase()’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: ‘OP_LOGE_FOR_INVALID_VALUE_WITH_REASON’ was not declared in this scope
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:139:61: note: to match this ‘{’
+  139 |                 if (!SetBandLeftUpCausalPseParamsRegbase()) {
+      |                                                             ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:138:113: note: to match this ‘{’
+  138 |             if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL)) {
+      |                                                                                                                 ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:131:84: note: to match this ‘{’
+  131 |             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+      |                                                                                    ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:125:5: note: to match this ‘{’
+  125 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected unqualified-id at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:15:14: note: to match this ‘{’
+   15 | namespace FA {
+      |              ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:140:17: error: expected ‘}’ at end of input
+  140 |                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:14:20: note: to match this ‘{’
+   14 | namespace optiling {
+      |                    ^
+In file included from /mnt/workspace/errmsg/common/include/op_host/tiling_base.h:23,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp: In member function ‘bool optiling::FA::FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape&, const gert::Shape&, const gert::Shape&)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:353:9: error: ‘OP_LOGE_FOR_INVALID_VALUES_WITH_REASON’ was not declared in this scope
+  353 |         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/third_party/opbase/include/op_common/log/log.h:994:13: note: in definition of macro ‘OP_CHECK_IF’
+  994 |             log;                                 \
+      |             ^~~
+[2026-06-09 18:47:08] -- [download 28% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp: In member function ‘bool optiling::FA::FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape&, const gert::Shape&, const gert::Shape&, size_t, const gert::Shape*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: ‘OP_CHECK_IF’ was not declared in this scope
+  514 |             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+      |             ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: expected ‘}’ at end of input
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:510:68: note: to match this ‘{’
+  510 |                    inputLayout[2] == 'S' && inputLayout[3] == 'D') {
+      |                                                                    ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: expected ‘}’ at end of input
+  514 |             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+      |             ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:485:27: note: to match this ‘{’
+  485 |     if (layoutLen == 4UL) {
+      |                           ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: expected ‘}’ at end of input
+  514 |             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+      |             ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:484:1: note: to match this ‘{’
+  484 | {
+      | ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp: At global scope:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: expected ‘}’ at end of input
+  514 |             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+      |             ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:16:14: note: to match this ‘{’
+   16 | namespace FA {
+      |              ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:514:13: error: expected ‘}’ at end of input
+  514 |             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+      |             ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:15:20: note: to match this ‘{’
+   15 | namespace optiling {
+      |                    ^
+[2026-06-09 18:47:08] -- [download 29% complete]
+[2026-06-09 18:47:08] -- [download 90% complete]
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:75:24: warning: ‘ge::graphStatus optiling::CheckParams(const gert::TilingContext*)’ defined but not used [-Wunused-function]
+   75 | static ge::graphStatus CheckParams(const gert::TilingContext *context)
+      |                        ^~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:67:17: warning: ‘uint32_t optiling::Ceil(uint32_t, uint32_t)’ defined but not used [-Wunused-function]
+   67 | static uint32_t Ceil(uint32_t num1, uint32_t num2)
+      |                 ^~~~
+[2026-06-09 18:47:08] -- [download 91% complete]
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:76: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/flash_attention_score_tiling.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[2026-06-09 18:47:08] -- [download 92% complete]
+[2026-06-09 18:47:08] -- [download 93% complete]
+[2026-06-09 18:47:08] -- [download 30% complete]
+[2026-06-09 18:47:08] -- [download 94% complete]
+[2026-06-09 18:47:08] -- [download 31% complete]
+[2026-06-09 18:47:08] -- [download 95% complete]
+[2026-06-09 18:47:08] -- [download 32% complete]
+[2026-06-09 18:47:08] -- [download 96% complete]
+[2026-06-09 18:47:08] -- [download 33% complete]
+[2026-06-09 18:47:08] -- [download 97% complete]
+[2026-06-09 18:47:08] -- [download 34% complete]
+[2026-06-09 18:47:08] -- [download 35% complete]
+[2026-06-09 18:47:08] -- [download 98% complete]
+[2026-06-09 18:47:08] -- [download 36% complete]
+[2026-06-09 18:47:08] -- [download 37% complete]
+[2026-06-09 18:47:08] -- [download 38% complete]
+[2026-06-09 18:47:08] -- [download 99% complete]
+[2026-06-09 18:47:08] -- [download 100% complete]
+[2026-06-09 18:47:08] -- Downloading... done
+[2026-06-09 18:47:08] -- extracting...
+[2026-06-09 18:47:08]      src='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-09 18:47:08]      dst='/mnt/workspace/errmsg/third_party/protobuf-src'
+[2026-06-09 18:47:08] -- extracting... [tar xfz]
+[2026-06-09 18:47:08] -- [download 39% complete]
+[2026-06-09 18:47:08] -- [download 40% complete]
+[2026-06-09 18:47:08] -- [download 41% complete]
+[2026-06-09 18:47:08] -- [download 42% complete]
+[2026-06-09 18:47:08] -- [download 43% complete]
+[2026-06-09 18:47:08] -- [download 44% complete]
+[2026-06-09 18:47:08] -- [download 45% complete]
+[2026-06-09 18:47:08] -- [download 46% complete]
+[2026-06-09 18:47:08] -- [download 47% complete]
+[2026-06-09 18:47:08] -- [download 48% complete]
+[2026-06-09 18:47:08] -- [download 49% complete]
+[2026-06-09 18:47:08] -- [download 50% complete]
+[2026-06-09 18:47:08] -- [download 51% complete]
+[2026-06-09 18:47:08] -- [download 52% complete]
+[2026-06-09 18:47:08] -- [download 53% complete]
+[2026-06-09 18:47:08] -- [download 54% complete]
+[2026-06-09 18:47:08] -- [download 55% complete]
+[2026-06-09 18:47:08] -- [download 56% complete]
+[2026-06-09 18:47:08] -- [download 57% complete]
+[2026-06-09 18:47:08] -- [download 58% complete]
+[2026-06-09 18:47:08] -- [download 59% complete]
+[2026-06-09 18:47:08] -- [download 60% complete]
+[2026-06-09 18:47:08] -- [download 61% complete]
+[2026-06-09 18:47:08] -- [download 62% complete]
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:90: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_basic.cpp.o] Error 1
+[2026-06-09 18:47:08] -- [download 63% complete]
+[2026-06-09 18:47:08] -- [download 64% complete]
+[2026-06-09 18:47:08] -- [download 65% complete]
+[2026-06-09 18:47:08] -- [download 66% complete]
+[2026-06-09 18:47:08] -- [download 67% complete]
+[2026-06-09 18:47:08] -- extracting... [analysis]
+[2026-06-09 18:47:08] -- extracting... [rename]
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:132: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_varlen.cpp.o] Error 1
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:118: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_regbase.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2311: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/all] Error 2
+[2026-06-09 18:47:08] -- [download 68% complete]
+[2026-06-09 18:47:08] -- [download 69% complete]
+[2026-06-09 18:47:08] -- extracting... [clean up]
+[2026-06-09 18:47:08] -- extracting... done
+[2026-06-09 18:47:08] -- [download 70% complete]
+[2026-06-09 18:47:08] [ 56%] No update step for 'protobuf_src'
+[2026-06-09 18:47:08] -- [download 71% complete]
+[2026-06-09 18:47:08] -- [download 72% complete]
+[2026-06-09 18:47:08] -- [download 73% complete]
+[2026-06-09 18:47:08] -- [download 74% complete]
+[2026-06-09 18:47:08] -- [download 75% complete]
+[2026-06-09 18:47:08] -- [download 76% complete]
+[2026-06-09 18:47:08] -- [download 77% complete]
+[2026-06-09 18:47:08] -- [download 78% complete]
+[2026-06-09 18:47:08] -- [download 79% complete]
+[2026-06-09 18:47:08] -- [download 80% complete]
+[2026-06-09 18:47:08] -- [download 81% complete]
+[2026-06-09 18:47:08] -- [download 82% complete]
+[2026-06-09 18:47:08] [ 56%] Performing patch step for 'protobuf_src'
+[2026-06-09 18:47:08] -- [download 83% complete]
+[2026-06-09 18:47:08] patching file CMakeLists.txt
+[2026-06-09 18:47:08] patching file cmake/abseil-cpp.cmake
+[2026-06-09 18:47:08] patching file src/google/protobuf/arenastring.cc
+[2026-06-09 18:47:08] patching file src/google/protobuf/arenastring.h
+[2026-06-09 18:47:08] patching file src/google/protobuf/compiler/cpp/field_generators/string_field.cc
+[2026-06-09 18:47:08] patching file src/google/protobuf/compiler/cpp/helpers.cc
+[2026-06-09 18:47:08] patching file src/google/protobuf/compiler/cpp/helpers.h
+[2026-06-09 18:47:08] patching file src/google/protobuf/compiler/csharp/csharp_helpers.cc
+[2026-06-09 18:47:08] patching file src/google/protobuf/compiler/java/names.cc
+[2026-06-09 18:47:08] patching file src/google/protobuf/extension_set.h
+[2026-06-09 18:47:08] patching file src/google/protobuf/message_lite.h
+[2026-06-09 18:47:08] patching file src/google/protobuf/port_def.inc
+[2026-06-09 18:47:08] patching file src/google/protobuf/stubs/common.cc
+[2026-06-09 18:47:08] patching file third_party/utf8_range/CMakeLists.txt
+[2026-06-09 18:47:08] -- [download 84% complete]
+[2026-06-09 18:47:08] -- [download 85% complete]
+[2026-06-09 18:47:08] [ 56%] No configure step for 'protobuf_src'
+[2026-06-09 18:47:08] -- [download 86% complete]
+[2026-06-09 18:47:08] [ 57%] No build step for 'protobuf_src'
+[2026-06-09 18:47:08] -- [download 87% complete]
+[2026-06-09 18:47:08] [ 59%] No install step for 'protobuf_src'
+[2026-06-09 18:47:08] -- [download 88% complete]
+[2026-06-09 18:47:08] [ 60%] Completed 'protobuf_src'
+[2026-06-09 18:47:08] [ 60%] Built target protobuf_src
+[2026-06-09 18:47:08] -- [download 89% complete]
+[2026-06-09 18:47:08] -- [download 90% complete]
+[2026-06-09 18:47:08] -- [download 91% complete]
+[2026-06-09 18:47:08] -- [download 92% complete]
+[2026-06-09 18:47:08] -- [download 93% complete]
+[2026-06-09 18:47:08] -- [download 94% complete]
+[2026-06-09 18:47:08] -- [download 95% complete]
+[2026-06-09 18:47:08] -- [download 96% complete]
+[2026-06-09 18:47:08] -- [download 97% complete]
+[2026-06-09 18:47:08] -- [download 98% complete]
+[2026-06-09 18:47:08] -- [download 99% complete]
+[2026-06-09 18:47:08] -- [download 100% complete]
+[2026-06-09 18:47:08] -- Downloading... done
+[2026-06-09 18:47:08] -- extracting...
+[2026-06-09 18:47:08]      src='/mnt/workspace/errmsg/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-06-09 18:47:08]      dst='/mnt/workspace/errmsg/build/third_party/src/external_eigen'
+[2026-06-09 18:47:08] -- extracting... [tar xfz]
+[2026-06-09 18:47:08] -- extracting... [analysis]
+[2026-06-09 18:47:08] -- extracting... [rename]
+[2026-06-09 18:47:08] -- extracting... [clean up]
+[2026-06-09 18:47:08] -- extracting... done
+[2026-06-09 18:47:08] [ 60%] No update step for 'external_eigen'
+[2026-06-09 18:47:08] [ 61%] No patch step for 'external_eigen'
+[2026-06-09 18:47:08] [ 61%] Performing configure step for 'external_eigen'
+[2026-06-09 18:47:08] -- The C compiler identification is GNU 9.4.0
+[2026-06-09 18:47:08]   Installing build dependencies: finished with status 'done'
+[2026-06-09 18:47:08]   Getting requirements to build wheel: started
+[2026-06-09 18:47:08] -- The CXX compiler identification is GNU 9.4.0
+[2026-06-09 18:47:08] -- Detecting C compiler ABI info
+[2026-06-09 18:47:08] -- Detecting C compiler ABI info - done
+[2026-06-09 18:47:08] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-09 18:47:08] -- Detecting C compile features
+[2026-06-09 18:47:08] -- Detecting C compile features - done
+[2026-06-09 18:47:08] -- Detecting CXX compiler ABI info
+[2026-06-09 18:47:08] -- Detecting CXX compiler ABI info - done
+[2026-06-09 18:47:08] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-09 18:47:08] -- Detecting CXX compile features
+[2026-06-09 18:47:08] -- Detecting CXX compile features - done
+[2026-06-09 18:47:08] -- The Fortran compiler identification is unknown
+[2026-06-09 18:47:08] -- Performing Test standard_math_library_linked_to_automatically
+[2026-06-09 18:47:09] -- Performing Test standard_math_library_linked_to_automatically - Success
+[2026-06-09 18:47:09] -- Standard libraries to link to explicitly: none
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_WERROR
+[2026-06-09 18:47:09]   Getting requirements to build wheel: finished with status 'done'
+[2026-06-09 18:47:09]   Preparing metadata (pyproject.toml): started
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_WERROR - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_pedantic
+In file included from /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn/opdev/pool_allocator.h:18,
+                 from /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn/opdev/fast_vector.h:14,
+                 from /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn/opdev/common_types.h:29,
+                 from /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn/opdev/op_executor.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_api/flash_attention_score.h:14,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:12:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::AnalysisAxis(const aclTensor*, const aclTensor*, const aclTensor*, const char*, int64_t, {anonymous}::FaShapeInfo&)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:210:89: error: ‘input_layout’ was not declared in this scope; did you mean ‘inputLayout’?
+  210 |         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu", input_layout, shapeInfo.dimNum);
+      |                                                                                         ^~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:210:89: error: ‘input_layout’ was not declared in this scope; did you mean ‘inputLayout’?
+  210 |         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu", input_layout, shapeInfo.dimNum);
+      |                                                                                         ^~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::InputDtypeCheckQuant(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:469:10: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  469 |     auto outDtype = attentionOut->GetDataType();
+      |          ^~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnQuantFlashAttentionScoreGetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, double, int64_t, int64_t, int64_t, char*, int64_t, aclTensor*, aclTensor*, aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1611:92: warning: unused parameter ‘attenMaskOptional’ [-Wunused-parameter]
+ 1611 |     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
+      |                                                                           ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1613:32: warning: unused parameter ‘preTokens’ [-Wunused-parameter]
+ 1613 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                        ~~~~~~~~^~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1613:51: warning: unused parameter ‘nextTokens’ [-Wunused-parameter]
+ 1613 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                                           ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1614:13: warning: unused parameter ‘sparseMode’ [-Wunused-parameter]
+ 1614 |     int64_t sparseMode, aclTensor *softmaxMaxOut, aclTensor *softmaxSumOut, aclTensor *softmaxOutout,
+      |     ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**, bool)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2022:86: warning: unused parameter ‘softmaxOutOut’ [-Wunused-parameter]
+ 2022 |     const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *softmaxOutOut,
+      |                                                                     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2152:22: warning: unused parameter ‘dropMaskOptional’ [-Wunused-parameter]
+ 2152 |     const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2156:70: warning: unused parameter ‘keepProb’ [-Wunused-parameter]
+ 2156 |     const aclIntArray *kvStartIdxOptional, double scaleValue, double keepProb,
+      |                                                               ~~~~~~~^~~~~~~~
+make[2]: *** [attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/build.make:76: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_flash_attention_score.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2285: attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/all] Error 2
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_pedantic - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wall
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wall - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wextra
+[2026-06-09 18:47:09]   Preparing metadata (pyproject.toml): finished with status 'done'
+[2026-06-09 18:47:09] Building wheels for collected packages: es_math
+[2026-06-09 18:47:09]   Building wheel for es_math (pyproject.toml): started
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wextra - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wundef
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wundef - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcastalign
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcastalign - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts
+[2026-06-09 18:47:09]   Building wheel for es_math (pyproject.toml): finished with status 'done'
+[2026-06-09 18:47:09]   Created wheel for es_math: filename=es_math-1.0.0-py3-none-any.whl size=3844 sha256=2317e93bfaf82dccf918c501f4847a05592e684e0877447c59d8fcba76df197b
+[2026-06-09 18:47:09]   Stored in directory: /tmp/pip-ephem-wheel-cache-l9gt1m_n/wheels/59/0b/38/8084aebcbf19106a3c2377e1a8f9f2150b699a721e24d65e53
+[2026-06-09 18:47:09] Successfully built es_math
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs
+[2026-06-09 18:47:09] [ 61%] Built target generate_es_math_whl
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wpointerarith
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wpointerarith - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wwritestrings
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wwritestrings - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wformatsecurity
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wformatsecurity - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wshorten64to32
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wshorten64to32 - Failed
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wlogicalop
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wlogicalop - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wenumconversion
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wenumconversion - Failed
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions - Failed
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wshadow
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wshadow - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnopsabi
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnopsabi - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros - Success
+[2026-06-09 18:47:09] -- Performing Test COMPILER_SUPPORT_Wnolonglong
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_Wnolonglong - Success
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fnocommon
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fnocommon - Success
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fstrictaliasing
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fstrictaliasing - Success
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_wd981
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_wd981 - Failed
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_wd2304
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_wd2304 - Failed
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fnochecknew
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_fnochecknew - Success
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_OPENMP
+[2026-06-09 18:47:10] -- Performing Test COMPILER_SUPPORT_OPENMP - Success
+[2026-06-09 18:47:10] -- Looking for pthread.h
+[2026-06-09 18:47:10] -- Looking for pthread.h - found
+[2026-06-09 18:47:10] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[2026-06-09 18:47:10] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+[2026-06-09 18:47:10] -- Looking for pthread_create in pthreads
+[2026-06-09 18:47:10] -- Looking for pthread_create in pthreads - not found
+[2026-06-09 18:47:10] -- Looking for pthread_create in pthread
+[2026-06-09 18:47:10] -- Looking for pthread_create in pthread - found
+[2026-06-09 18:47:10] -- Found Threads: TRUE  
+[2026-06-09 18:47:10] -- Could NOT find CHOLMOD (missing: CHOLMOD_INCLUDES CHOLMOD_LIBRARIES) 
+[2026-06-09 18:47:10] -- Could NOT find UMFPACK (missing: UMFPACK_INCLUDES UMFPACK_LIBRARIES) 
+[2026-06-09 18:47:10] -- Could NOT find KLU (missing: KLU_INCLUDES KLU_LIBRARIES) 
+[2026-06-09 18:47:10] -- Could NOT find SuperLU (missing: SUPERLU_INCLUDES SUPERLU_LIBRARIES SUPERLU_VERSION_OK) (Required is at least version "4.0")
+[2026-06-09 18:47:10] -- Checking for one of the modules 'hwloc'
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_PARENT_MEMBER
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_PARENT_MEMBER - Success
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_CACHE_ATTR
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_CACHE_ATTR - Success
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_OBJ_PU
+[2026-06-09 18:47:10] -- Performing Test HAVE_HWLOC_OBJ_PU - Success
+[2026-06-09 18:47:10] -- Looking for hwloc_bitmap_free in hwloc
+[2026-06-09 18:47:10] -- Looking for hwloc_bitmap_free in hwloc - found
+[2026-06-09 18:47:10] -- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+[2026-06-09 18:47:10] -- Could NOT find SPQR (missing: SPQR_INCLUDES SPQR_LIBRARIES) 
+[2026-06-09 18:47:10] -- Could NOT find Accelerate (missing: Accelerate_INCLUDES Accelerate_LIBRARIES) 
+[2026-06-09 18:47:10] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-09 18:47:11] -- Performing Test COMPILER_SUPPORT_FASTMATH
+[2026-06-09 18:47:11] -- Performing Test COMPILER_SUPPORT_FASTMATH - Success
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-09 18:47:11] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-09 18:47:11] -- ************************************************************
+[2026-06-09 18:47:11] -- ***    Eigen's unit tests configuration summary          ***
+[2026-06-09 18:47:11] -- ************************************************************
+[2026-06-09 18:47:11] -- 
+[2026-06-09 18:47:11] -- Build type:        Release
+[2026-06-09 18:47:11] -- Build site:        ea7dd44a051e4ca28c7799ee31116922
+[2026-06-09 18:47:11] -- Build string:      linux-5.10.0-182.0.0.95.r2220_156.hce2.aarch64-_-9.4.0-sse2-64bit
+[2026-06-09 18:47:11] -- Enabled backends:  Boost.Multiprecision, 
+[2026-06-09 18:47:11] -- Disabled backends: CHOLMOD,  UMFPACK,  KLU,  SuperLU,  PaStiX,  METIS,  SPQR,  Accelerate,  Qt4 support, 
+[2026-06-09 18:47:11] -- Default order:     Column-major
+[2026-06-09 18:47:11] -- Maximal matrix/vector size: 320
+[2026-06-09 18:47:11] -- SSE2:              Using architecture defaults
+[2026-06-09 18:47:11] -- SSE3:              Using architecture defaults
+[2026-06-09 18:47:11] -- SSSE3:             Using architecture defaults
+[2026-06-09 18:47:11] -- SSE4.1:            Using architecture defaults
+[2026-06-09 18:47:11] -- SSE4.2:            Using architecture defaults
+[2026-06-09 18:47:11] -- AVX:               Using architecture defaults
+[2026-06-09 18:47:11] -- AVX2:              Using architecture defaults
+[2026-06-09 18:47:11] -- FMA:               Using architecture defaults
+[2026-06-09 18:47:11] -- AVX512:            Using architecture defaults
+[2026-06-09 18:47:11] -- AVX512DQ:          Using architecture defaults
+[2026-06-09 18:47:11] -- Altivec:           Using architecture defaults
+[2026-06-09 18:47:11] -- VSX:               Using architecture defaults
+[2026-06-09 18:47:11] -- MIPS MSA:          Using architecture defaults
+[2026-06-09 18:47:11] -- ARM NEON:          Using architecture defaults
+INFO  DUCCFFT-NOTFOUND
+[2026-06-09 18:47:11] -- ARMv8 NEON:        Using architecture defaults
+[2026-06-09 18:47:11] -- S390X ZVECTOR:     Using architecture defaults
+[2026-06-09 18:47:11] -- LSX:               Using architecture defaults
+[2026-06-09 18:47:11] -- SYCL:              OFF
+[2026-06-09 18:47:11] -- CUDA:              OFF
+[2026-06-09 18:47:11] -- HIP:               OFF
+[2026-06-09 18:47:11] -- 
+[2026-06-09 18:47:11] CXX:               /usr/bin/c++
+[2026-06-09 18:47:11]  CXX_VERSION:       c++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0
+[2026-06-09 18:47:11]  CXX_FLAGS:          -pedantic -Wall -Wextra -Wundef -Wcast-align -Wchar-subscripts -Wnon-virtual-dtor -Wunused-local-typedefs -Wpointer-arith -Wwrite-strings -Wformat-security -Wlogical-op -Wdouble-promotion -Wshadow -Wno-psabi -Wno-variadic-macros -Wno-long-long -fno-common -fstrict-aliasing -fno-check-new
+[2026-06-09 18:47:11]  Sparse lib flags:   
+[2026-06-09 18:47:11] 
+[2026-06-09 18:47:11] -- ************************************************************
+[2026-06-09 18:47:11] -- Could NOT find GoogleHash (missing: GOOGLEHASH_INCLUDES GOOGLEHASH_COMPILE) 
+[2026-06-09 18:47:11] -- Could NOT find Adolc (missing: ADOLC_INCLUDES ADOLC_LIBRARIES) 
+[2026-06-09 18:47:11] -- Could NOT find MPFR (missing: MPFR_INCLUDES MPFR_LIBRARIES MPFR_VERSION_OK) (Required is at least version "1.0.0")
+[2026-06-09 18:47:11] -- Found PkgConfig: /usr/bin/pkg-config (found version "0.29.1") 
+[2026-06-09 18:47:11] -- Could NOT find FFTW (missing: FFTW_INCLUDES FFTW_LIBRARIES) 
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-09 18:47:11] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-09 18:47:11] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-09 18:47:11] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-09 18:47:11] -- Qt4 not found, so disabling the mandelbrot and opengl demos
+[2026-06-09 18:47:11] -- Available targets (use: make TARGET):
+[2026-06-09 18:47:11] -- ------------+--------------------------------------------------------------
+[2026-06-09 18:47:11] -- Target      |   Description
+[2026-06-09 18:47:11] -- ------------+--------------------------------------------------------------
+[2026-06-09 18:47:11] -- install     | Install Eigen. Headers will be installed to:
+[2026-06-09 18:47:11] --             |     <CMAKE_INSTALL_PREFIX>/<INCLUDE_INSTALL_DIR>
+[2026-06-09 18:47:11] --             |   Using the following values:
+[2026-06-09 18:47:11] --             |     CMAKE_INSTALL_PREFIX: /usr/local
+[2026-06-09 18:47:11] --             |     INCLUDE_INSTALL_DIR:  include/eigen3
+[2026-06-09 18:47:11] --             |   Change the install location of Eigen headers using:
+[2026-06-09 18:47:11] --             |     cmake . -DCMAKE_INSTALL_PREFIX=yourprefix
+[2026-06-09 18:47:11] --             |   Or:
+[2026-06-09 18:47:11] --             |     cmake . -DINCLUDE_INSTALL_DIR=yourdir
+[2026-06-09 18:47:11] -- uninstall   | Remove files installed by the install target
+[2026-06-09 18:47:11] -- doc         | Generate the API documentation, requires Doxygen & LaTeX
+[2026-06-09 18:47:11] -- install-doc | Install the API documentation
+[2026-06-09 18:47:11] -- check       | Build and run the unit-tests. Read this page:
+[2026-06-09 18:47:11] --             |   http://eigen.tuxfamily.org/index.php?title=Tests
+[2026-06-09 18:47:11] -- ------------+--------------------------------------------------------------
+[2026-06-09 18:47:11] -- 
+[2026-06-09 18:47:11] -- 
+[2026-06-09 18:47:11] -- Configured Eigen 5.0.0-dev
+[2026-06-09 18:47:11] -- 
+[2026-06-09 18:47:11] -- Configuring done
+[2026-06-09 18:47:12] -- Generating done
+[2026-06-09 18:47:12] -- Build files have been written to: /mnt/workspace/errmsg/build/third_party/src/external_eigen-build
+[2026-06-09 18:47:13] [ 62%] No build step for 'external_eigen'
+[2026-06-09 18:47:13] [ 63%] Performing install step for 'external_eigen'
+[2026-06-09 18:47:13] [ 64%] Completed 'external_eigen'
+make: *** [Makefile:156: all] Error 2
+[2026-06-09 18:47:13] [ 64%] Built target external_eigen

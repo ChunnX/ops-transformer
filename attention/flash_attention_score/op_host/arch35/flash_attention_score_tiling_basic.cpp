@@ -144,8 +144,8 @@ protected:
             } else {
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
                         "s1Size and s2Size", (std::to_string(s1Size) + " and " + std::to_string(s2Size)).c_str(),
-                        "The values of s1Size and s2Size must be the same “
-                        ”when pse alibi is used with s1Size > 1024");
+                        "The values of s1Size and s2Size must be the same "
+                        "when pse alibi is used with s1Size > 1024");
                     return false;
             }
         }
