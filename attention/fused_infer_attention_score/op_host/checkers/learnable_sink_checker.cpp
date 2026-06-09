@@ -75,18 +75,15 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     }
     // sink 不支持左padding
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, left padding is not supported."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
+            "leftPadding must be empty when learnable sink is enabled."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, system prefix is not supported."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty when learnable sink is enabled."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fiaInfo.enableAlibiPse,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, pseType = 2/3 is not supported."),
-        return ge::GRAPH_FAILED);
     if (fiaInfo.enableAlibiPse) {
         std::string reason = "The value of pse_type cannot be 2/3 when learnable sink is enabled.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pse_type",
@@ -95,12 +92,13 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     }
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OP_LOGE(fiaInfo.opName,
-                "When learnable sink enable, pse is not supported."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when learnable sink is enabled."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post quant is not supported."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "quantScale2",
+            "quantScale2 must be empty when learnable sink is enabled."),
         return ge::GRAPH_FAILED);
 
     if (fiaInfo.innerPrecise != HIGH_PRECISION) {
@@ -113,8 +111,8 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
 
     // 仅支持GQA 非量化
     OP_CHECK_IF(!(enableNonQuant_ && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512),
-        OP_LOGE(fiaInfo.opName,
-                "Learnable sink only supports no-quantized GQA mode."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "learnableSink",
+            "learnableSink must be empty when not in the no-quantized GQA mode."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

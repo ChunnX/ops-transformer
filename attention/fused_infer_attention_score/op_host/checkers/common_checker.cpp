@@ -461,12 +461,12 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
 {
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     OP_CHECK_IF((fiaInfo.opParamInfo.blockTable.tensor != nullptr),
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-            "When tensorlist is used, page attention is not supported!"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "blockTable",
+            "blockTable must be empty in the tensorlist scenario."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((layoutStr == "TND" || layoutStr == "NTD" || layoutStr == "NTD_TND" || layoutStr == "TND_NTD"),
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-            "When tensorlist is used, layout TND/NTD/TND_NTD/NTD_TND is not supported!"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "input_layout",
+            "input_layout TND/NTD/TND_NTD/NTD_TND is not supported in the tensorlist scenario."),
         return ge::GRAPH_FAILED);
     if (fiaInfo.bSize > B_LIMIT) {
         std::string reason = "B of query must be less than or equal to 63535 in the tensorlist scenario.";
@@ -936,14 +936,17 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support PA when query and key headdim is not equal to value headdim."),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "blockTable",
+                "blockTable must be empty when D of query and key is not equal to D of value."),
             return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when D of query and key is not equal to D of value."),
         return false);
     OP_CHECK_IF(fiaInfo.enableAlibiPse && fiaInfo.isQKVDDifferent,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when D of query and key is not equal to D of value."),
         return false);
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
@@ -952,7 +955,8 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
 
     if (fiaInfo.qLayout == FiaLayout::TND) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-                    OP_LOGE(fiaInfo.opName, "When layout is TND, tensorlist is not supported!"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
+                        "When layout is TND, tensorlist is not supported."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1199,16 +1203,19 @@ bool CommonChecker::CheckTNDLayoutCrossover(const FiaTilingInfo &fiaInfo)
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && layoutStr == "TND_NTD") { // Decode MLA
         OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In Decode MLA scenario, when layout is TND_NTD, post quant is not supported!"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "quantScale2",
+                "quantScale2 must be empty in Decode MLA scenario, when layout is TND_NTD."),
             return false);
     }
     
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is TND, tensorlist is not supported!"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
+            "When layout is TND, tensorlist is not supported."),
         return false);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is TND, pse is not supported!"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            "pseShift must be empty when layout is TND."),
         return false);
 
     return true;
@@ -1239,11 +1246,13 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
     }
     
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is %s, tensorlist is not supported!", layoutStr.c_str()),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
+            ("When layout is " + layoutStr + ", tensorlist is not supported.").c_str()),
         return false);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is %s, pse is not supported!", layoutStr.c_str()),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+            ("pseShift must be empty when layout is " + layoutStr + ".").c_str()),
         return false);
 
     return true;
@@ -1275,12 +1284,14 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
         }
         
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is %s, tensorlist is not supported!",
-            layoutStr.c_str()), return false);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
+                ("When layout is " + layoutStr + ", tensorlist is not supported.").c_str()),
+            return false);
 
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "When layout is %s, pse is not supported!",
-            layoutStr.c_str()), return false);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
+                ("pseShift must be empty when layout is " + layoutStr + ".").c_str()),
+            return false);
     } else if (layoutStr == "BNSD_BSND") {
         if (isGqa) { // GQA
             if (fiaInfo.outputType == ge::DT_INT8 && fiaInfo.qkHeadDim % 32 != 0) {

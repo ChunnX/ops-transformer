@@ -325,9 +325,8 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenQ(const FiaTiling
     auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
     if (qLayout == FiaLayout::TND || qLayout == FiaLayout::NTD) {
         OP_CHECK_IF(actualSeqLengthsQTensor == nullptr,
-            OP_LOGE(fiaInfo.opName,
-                    "actualSeqLengthsQ does not exist. "
-                    "actualSeqLengthsQ must exist when the layout of query is TND or NTD."),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
+                    "actualSeqLengthsQ cannot be empty when the layout of query is TND or NTD."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -339,17 +338,15 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenKv(const FiaTilin
     // key、value的layout为TND/NTD时，actualSeqLengthsKv必须传入
     if (kvLayout == FiaLayout::TND || kvLayout == FiaLayout::NTD) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr,
-            OP_LOGE(fiaInfo.opName,
-                    "actualSeqLengthsKv does not exist. "
-                    "actualSeqLengthsKv must exist when the layout of key and value is TND or NTD."),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsKv",
+                    "actualSeqLengthsKv cannot be empty when the layout of key and value is TND or NTD."),
             return ge::GRAPH_FAILED);
     }
     // PagedAttention场景下，必须传入actualSeqLengthsKv
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr,
-            OP_LOGE(fiaInfo.opName,
-                    "actualSeqLengthsKv does not exist. "
-                    "actualSeqLengthsKv must exist when page attention is enabled."),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsKv",
+                    "actualSeqLengthsKv cannot be empty when page attention is enabled."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -392,8 +389,8 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
     bool enableIFAMLA = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA && actualSeqLengthsQTensor != nullptr) {
         OP_CHECK_IF((qLayout != FiaLayout::TND) && (qLayout != FiaLayout::NTD),
-            OP_LOGE(fiaInfo.opName,
-                    "actualSeqLengthsQ cannot be configured in IFA MLA and non-TND/NTD scenarios."),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
+                    "actualSeqLengthsQ must be empty in IFA MLA and non-TND/NTD scenarios."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

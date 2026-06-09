@@ -32,21 +32,21 @@ namespace optiling {
 
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "shape of query cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "desc of query cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "shape of key cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "desc of key cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "shape of value cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "value", "desc of value cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "output", "shape of output cannot be empty."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "output", "desc of output cannot be empty."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -648,7 +648,7 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
         kvLayout_ = qLayout_;
     } else {
         OP_CHECK_IF(kCache_.empty() || kCache_[0] == nullptr,
-                    OP_LOGE(opName_, "kCache is empty or kCache[0] is nullptr"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "kCache", "kCache cannot be empty."), return ge::GRAPH_FAILED);
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
         if (keyDimNum == 3U) {
             kvLayout_ = FiaLayout::BnBsH;
@@ -776,7 +776,7 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
 ge::graphStatus FiaInfoParser::GetBlockSize()
 {
     if (opParamInfo_.blockSize == nullptr) {
-        OP_LOGE(opName_, "Attr %s not exist", BLOCK_SIZE_NAME.c_str());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_size", "block_size cannot be empty.");
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);
