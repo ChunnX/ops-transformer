@@ -128,43 +128,6 @@ if __name__ == "__main__":
                     w = csv_mod.DictWriter(f, fieldnames); w.writeheader()
 
         entries = parse_op_summary(str(csv_path))
-        perf_log = _read_perf_log(str(out))
-
-        hot_idxs = [i for i, c in enumerate(cases_list) if c.get("S1", 9999) > args.perf_cold_thr]
-        cold_idxs = [i for i, c in enumerate(cases_list) if c.get("S1", 9999) <= args.perf_cold_thr]
-        ordered = [(i, "hot") for i in hot_idxs] + [(i, "cold") for i in cold_idxs]
-
-        pos = 0
-        for idx_ord, (case_idx, mode) in enumerate(ordered):
-            tag = f"{mode}{idx_ord}"
-            info = perf_log.get(tag, {})
-            case_dir = out / run_cases[case_idx].replace("/", "_")
-            case_dir.mkdir(parents=True, exist_ok=True)
-            sub_csv = case_dir / "op_summary.csv"
-            is_crashed = not info.get("ok", False)
-
-            if is_crashed:
-                with open(case_dir / "ERROR", "w") as ef:
-                    ef.write(info.get("error", "case crashed"))
-                with open(sub_csv, "w") as f:
-                    f.write("Task Start Time(us),Task Duration(us)\n")
-                continue
-
-            if pos + args.perf_runs > len(entries):
-                print(f"  [WARN]  entry 不足，推荐 --one_by_one")
-                with open(case_dir / "ERROR", "w") as ef:
-                    ef.write("CRASH: expected entries exceed available")
-                with open(sub_csv, "w") as f:
-                    f.write("Task Start Time(us),Task Duration(us)\n")
-                continue
-
-            chunk = entries[pos:pos + args.perf_runs]
-            pos += args.perf_runs
-            with open(sub_csv, "w", newline="") as f:
-                f.write("Task Start Time(us),Task Duration(us)\n")
-                for ts, dur in chunk:
-                    f.write(f"{ts},{dur}\n")
-
         stats, crashed = compute_stats(entries, cases_list, args.perf_runs,
                                         args.perf_cold_thr, log_dir=str(out))
 
