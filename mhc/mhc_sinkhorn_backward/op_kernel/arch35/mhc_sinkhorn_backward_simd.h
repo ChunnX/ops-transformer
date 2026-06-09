@@ -183,7 +183,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
                     (MicroAPI::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
                 MicroAPI::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
                 MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumReg,
-                    sumAddr + k * perloopSizePad + j * repeatSize);
+                    sumAddr + k * perloopSize + j * repeatSize);
 
                 MicroAPI::Mul(dotProdReg, gradYReg, normReg, CalcMaskReg);
                 MicroAPI::ReduceSumWithDataBlock(sumGradYReg, dotProdReg, CalcMaskReg);
