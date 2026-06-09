@@ -33,6 +33,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
 {
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, ...);
 
+    fa_base_matmul::idCounterNum = 0;
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
                       UbOutCondition<INPUT_T>(false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
@@ -101,30 +102,50 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
+    fa_base_matmul::idCounterNum = 0;
 
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
                       UbOutCondition<INPUT_T>(false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
                                               (uint32_t)s1TemplateType == 64),
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
-    // constexpr bool useDn =
-    //     IsDn(false, false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, (uint32_t)s1TemplateType == 64,
-    //          dTemplateType, hasRope, enableKVPrefix, true, IsSameType<INPUT_T, hifloat8_t>::value);
-    constexpr bool useDn = false;
+    constexpr bool useDn = (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL);
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 
-    using CubBlock = BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-        dTemplateType, dVTemplateType, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFaBlock = BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-        KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                       KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    // CubBlockType
+    using CubBlockNormal = BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope, KvLayoutType,
+        enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using CubBlockDummy = BaseApi::FAFullQuantMxBlockCubeDummy<INPUT_T, float, inputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope, KvLayoutType,
+        enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using CubBlock = typename std::conditional<g_coreType == AscendC::AIC, CubBlockNormal, CubBlockDummy>::type;
 
+    // VecFaBlockType
+    using VecFaBlockNormal = BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode),
+        hasAttenMask, false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFaBlockDummy = BaseApi::FAFullQuantMxBlockVecDummy<
+        INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
+        false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
+
+    // VecFdBlockType
+    using VecFdBlockNormal = BaseApi::FiaBlockVecFlashDecodeFullQuant<
+        INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
+        false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlockDummy = BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T,
+        inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+        static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType, enableKVPrefix,
+        useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
+
+    // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
+
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);

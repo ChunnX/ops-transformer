@@ -36,7 +36,7 @@
 
 ### 模板类型
 
-1. C+V模板：对应文件名incre_flash_attention_split_Bbn2s2_Us2.h, IFA 基础模板, 支持绝大多数输入场景, 计算时同时使能VectorCore 和 CubeCore, matmul计算放在CubeCore执行; matmul计算为调用AscendC提供的高阶API;
+1. C+V模板：对应文件名incre_flash_attention_split_Bbn2s2_Us2.h, IFA 基础模板, 支持绝大多数输入场景, 计算时同时开启VectorCore 和 CubeCore, matmul计算放在CubeCore执行; matmul计算为调用AscendC提供的高阶API;
 2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h, 对C+V模板的补充, 主流程与C+V模板基本一致, matmul计算由vector实现,  降低Cube启动和CV通信开销, 对于部分输入类型有更好的性能表现；支持场景：
 
 - <term>Atlas 推理系列加速卡产品</term>：全部使用该模板。
@@ -233,13 +233,13 @@ GenTilingKey()
 | 2        | inputKvVal               | KV数据类型, 0: FP16;2:BF16;  3:INT8;4:INT4                  |
 | 3        | outputVal                | output数据类型, 0: FP16; 2:BF16;   3:INT8                    |
 | 4        | originVal                | 同inputQval                                                  |
-| 5 [bit0] | splitKvVal               | 使能FlashDecode标志, 1:enable;  0: disable;                   |
-| 5 [bit1] | paVal                    | 使能PageAttention标志, 1:enable;  0: disable;                 |
-| 5 [bit2] | antiquantModeVal         | 使能PerToken伪量化标记, 1:enable;  0: disable;                 |
+| 5 [bit0] | splitKvVal               | 开启FlashDecode标志, 1:enable;  0: disable;                   |
+| 5 [bit1] | paVal                    | 开启PageAttention标志, 1:enable;  0: disable;                 |
+| 5 [bit2] | antiquantModeVal         | 开启PerToken伪量化标记, 1:enable;  0: disable;                 |
 | 6        | antiquantMode_           | 量化模式, 0:无效值 2:K-perChannel-V-perToken                   |
 | 7        | kvLayoutInfo.kvLayoutVal | KV的shape格式, 仅伪量化MSD DD模板和MLA全量化模板该字段有效，其余模板该字段的值为0, 0:BNSD 1:BSH/BSND 2：NZ |
 | 8        | kvLayoutInfo.amlaMode    | 该字段废弃，取值只能为0 |
-| 9        | balanceMode              | 使能新的负载均衡算法的标志，1:enable;  0: disable; 仅MLA全量化模板可使能 |
+| 9        | balanceMode              | 开启新的负载均衡算法的标志，1:enable;  0: disable; 仅MLA全量化模板可开启 |
 | 10...14   |                         | 预留字段, 值为0              |
 | 15       | perfMode_                | 模板编号, 0: C1_V2 (CV配比1:2) ; 1：全V; 2: C1_V1（CV配比1:1）;3:matmul基础API模板;5:MLA全量化模板 6:伪量化MSD DD模板 |
 | 16       | modeVal                  | 1：IFA TilingKey Base   2：IFA启用SysPrefix功能              |

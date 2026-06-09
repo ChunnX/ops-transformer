@@ -71,13 +71,17 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <LayOutTypeEnum LAYOUT, bool useDn = false>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
         return GmFormat::BNGSD;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::NTGD;
+        if constexpr (!useDn) {
+            return GmFormat::NTGD;
+        } else {
+            return GmFormat::TNGD;
+        }
     } else {
         return GmFormat::TNGD;
     }

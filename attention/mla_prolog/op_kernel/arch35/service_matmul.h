@@ -790,6 +790,196 @@ __aicore__ inline void MatmulGroupComputeAFullLoad(const GlobalTensor<O> &tensor
     SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
     bufParam.aL1BufIter++;
 }
+
+/**
+ * @brief K-outer: 加载B矩阵到L1B（支持双缓冲slot选择）
+ *        bScaleL1Offset: B-scale在slot内的bf16偏移 (需放在A-scale之后避免冲突)
+ */
+template <typename T, typename S, DataFormat loadFormat = DataFormat::NZ>
+__aicore__ inline void LoadL1BOuter(const GlobalTensor<T> &tensorBGm, const GlobalTensor<S> &tensorBScaleGm,
+                                    uint32_t nL1Size, uint32_t kL1StepSize, uint32_t kInput, uint32_t kScale,
+                                    uint32_t bEventIdx, uint32_t bScaleL1Offset, MMBufParams &bufParam)
+{
+    LocalTensor<T> bL1Tensor;
+    bL1Tensor.SetAddr(bufParam.bL1BufAddr);
+    uint32_t bL1SlotSize = L1_B_SIZE / sizeof(T);
+
+    WaitFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + bEventIdx);
+    LocalTensor<T> bL1 = bL1Tensor[bEventIdx * bL1SlotSize];
+
+    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
+        CopyNZGmToL1(bL1, tensorBGm, kL1StepSize, nL1Size, kInput);
+
+        LocalTensor<bfloat16_t> bL1ScaleTensor = bL1.template ReinterpretCast<bfloat16_t>();
+        GlobalTensor<bfloat16_t> tensorScaleGmCast;
+        tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(tensorBScaleGm.GetPhyAddr())));
+        Dn2NzParams dn2Nzparam;
+        dn2Nzparam.dnNum = 1;
+        uint32_t nValueB = CeilDivT(kScale, static_cast<uint32_t>(FP8_TWO));
+        dn2Nzparam.nValue = nValueB;
+        dn2Nzparam.dValue = nL1Size;
+        dn2Nzparam.srcDnMatrixStride = 0;
+        dn2Nzparam.srcDValue = nValueB;     // B-scale无padding, 保持原值
+        dn2Nzparam.dstNzC0Stride = nValueB; // = nValue, NZ输出布局不变
+        dn2Nzparam.dstNzNStride = 1;
+        dn2Nzparam.dstNzMatrixStride = nValueB;
+        DataCopy(bL1ScaleTensor[bScaleL1Offset], tensorScaleGmCast, dn2Nzparam);
+    } else if constexpr (loadFormat == DataFormat::NZ) {
+        CopyNZGmToL1(bL1, tensorBGm, kL1StepSize, nL1Size, kInput);
+    } else {
+        CopyNDGmToL1(bL1, tensorBGm, kInput, nL1Size, nL1Size);
+    }
+    SetFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + bEventIdx);
+}
+
+
+/**
+ * @brief K-outer: 主Matmul函数。A数据每kL1加载到L1A，A-scale复用原LoadL1AAndScale放L1B一次加载全量。
+ *        B每nb双缓冲加载，B-scale紧随B数据之后。FixPipe使用AtomicAdd累加到GM。
+ */
+template <typename T, typename O, typename S>
+__aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
+                                          const GlobalTensor<T> &tensorBGm, const MMParams &para, MMBufParams &bufParam,
+                                          const GlobalTensor<S> &tensorAScaleGm, const GlobalTensor<S> &tensorBScaleGm)
+{
+    using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
+
+    uint32_t nBlocks = CeilDivT(para.n, para.baseN);
+    uint32_t kL1Loops = CeilDivT(para.k, para.kL1StepSize);
+    uint32_t kOffesetUnit = para.kL1StepSize * GetC0Num<T>();
+    uint32_t mSizeAligned = Align(para.m, BLOCK_CUBE_SIZE);
+    uint32_t aOffsetUnit = mSizeAligned * para.baseK;
+    uint32_t bOffsetUnit = GetC0Num<T>() * para.baseK;
+    uint32_t bL1SlotSize = L1_B_SIZE / sizeof(T);
+    uint32_t scaleOffUnit = para.baseK / static_cast<uint32_t>(BYTE_BLOCK) * BLOCK_CUBE_SIZE;
+
+    mmLocalTensors<T, O_L0C> localTensors;
+    localTensors.Init(bufParam);
+
+    // ──── 一次加载全量A-scale到L1B, 复用原LoadL1AAndScale的DN2NZ参数 ────
+    LocalTensor<T> aScaleL1Base;
+    uint32_t bScaleBf16Off = 0;
+    uint32_t bScaleL1BaseOff = 0;
+    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
+        uint64_t scaleAOff = L1_B_SIZE / 2 / sizeof(T);
+        LocalTensor<bfloat16_t> bL1Bf16;
+        bL1Bf16.SetAddr(bufParam.bL1BufAddr);
+        GlobalTensor<bfloat16_t> scaleGmCast;
+        scaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(tensorAScaleGm.GetPhyAddr())));
+        Dn2NzParams dn2nz;
+        dn2nz.dnNum = 1;
+        uint32_t nValue = CeilDivT(para.kScale, static_cast<uint32_t>(FP8_TWO));
+        dn2nz.nValue = nValue;
+        dn2nz.dValue = para.m;
+        dn2nz.srcDnMatrixStride = 0;
+        dn2nz.srcDValue = nValue;
+        dn2nz.dstNzC0Stride = nValue;
+        dn2nz.dstNzNStride = 1;
+        dn2nz.dstNzMatrixStride = nValue;
+        DataCopy(bL1Bf16[scaleAOff / FP8_TWO], scaleGmCast, dn2nz);
+        aScaleL1Base = localTensors.bL1Tensor[scaleAOff];
+
+        uint32_t aScaleTotalSize = mSizeAligned * para.kScale;
+        bScaleL1BaseOff = static_cast<uint32_t>(scaleAOff) + aScaleTotalSize;
+        bScaleBf16Off = bScaleL1BaseOff / FP8_TWO;
+    }
+
+    for (uint32_t kL1 = 0; kL1 < kL1Loops; ++kL1) {
+        // ── 加载A数据到L1A slot0 ──
+        LocalTensor<T> aL1;
+        WaitFlag<HardEvent::MTE1_MTE2>(A_EVENT0);
+        aL1 = localTensors.aL1Tensor;
+        CopyNDGmToL1(aL1, tensorAGm[kL1 * para.kL1StepSize], para.m, para.kL1StepSize, para.k);
+        SetFlag<HardEvent::MTE2_MTE1>(A_EVENT0);
+        WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0);
+
+        // A-scale起始偏移: 原MatmulL1公式
+        uint32_t kL1ScaleOff = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
+
+        // ── 预加载 B[0] ──
+        uint32_t subN0 = (nBlocks == 1) ? para.n : para.baseN;
+        int64_t bGmOff0 = static_cast<int64_t>(kL1) * kOffesetUnit;
+        if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
+            int64_t bScaleOff0 = static_cast<int64_t>(0); // 全量K-step从0开始
+            LoadL1BOuter<T, S>(tensorBGm[bGmOff0], tensorBScaleGm[bScaleOff0], subN0, para.kL1StepSize, para.k,
+                               para.kScale, 0, bScaleBf16Off, bufParam);
+        } else {
+            LoadL1BOuter<T, S>(tensorBGm[bGmOff0], tensorBScaleGm, subN0, para.kL1StepSize, para.k, 0, 0, bScaleBf16Off,
+                               bufParam);
+        }
+
+        // ── N分块: B双缓冲ping-pong ──
+        for (uint32_t nb = 0; nb < nBlocks; ++nb) {
+            uint32_t subN = (nb == nBlocks - 1) ? (para.n - nb * para.baseN) : para.baseN;
+            uint32_t curSlot = nb & 1u;
+
+            WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + curSlot);
+            LocalTensor<T> bL1 = localTensors.bL1Tensor[curSlot * bL1SlotSize];
+            LocalTensor<T> bScaleL1;
+            if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
+                bScaleL1 = localTensors.bL1Tensor[curSlot * bL1SlotSize + bScaleL1BaseOff];
+            }
+
+            // 预取 B[nb+1]
+            if (nb + 1 < nBlocks) {
+                uint32_t nextSlot = (nb + 1) & 1u;
+                uint32_t subNx = ((nb + 1) == nBlocks - 1) ? (para.n - (nb + 1) * para.baseN) : para.baseN;
+                int64_t bOffNext =
+                    static_cast<int64_t>(para.k) * (nb + 1) * para.baseN + static_cast<int64_t>(kL1) * kOffesetUnit;
+                if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
+                    int64_t bScOffNext = static_cast<int64_t>((nb + 1) * para.baseN * para.kScale);
+                    LoadL1BOuter<T, S>(tensorBGm[bOffNext], tensorBScaleGm[bScOffNext], subNx, para.kL1StepSize, para.k,
+                                       para.kScale, nextSlot, bScaleBf16Off, bufParam);
+                } else {
+                    LoadL1BOuter<T, S>(tensorBGm[bOffNext], tensorBScaleGm, subNx, para.kL1StepSize, para.k, 0,
+                                       nextSlot, bScaleBf16Off, bufParam);
+                }
+            }
+
+            // ── L0C ──
+            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            LocalTensor<O_L0C> cL0 = localTensors.cL0Tensor[(bufParam.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
+
+            // ── stepK L0循环 ──
+            MmadParams mmadParams = MmadParams(mSizeAligned, subN, para.baseK, UNIT_FLAG_DISABLE, false, true);
+            int64_t aOffset = 0;
+            uint32_t bOffset = 0;
+            uint32_t aScaleOff = kL1ScaleOff;
+            uint32_t bScaleOff = kL1ScaleOff;
+            for (int64_t sk = 0; sk < para.stepK; sk++) {
+                mmadParams.cmatrixInitVal = (sk == 0);
+                MatmulL0<T, O_L0C, S>(bufParam, aL1[aOffset], bL1[bOffset], localTensors.aL0Tensor,
+                                      localTensors.bL0Tensor, cL0, mmadParams, para.kL1StepSize, para.k,
+                                      aScaleL1Base[aScaleOff], bScaleL1[bScaleOff]);
+                aOffset += aOffsetUnit;
+                bOffset += bOffsetUnit;
+                aScaleOff += scaleOffUnit;
+                bScaleOff += scaleOffUnit;
+            }
+
+            // ── FixPipe AtomicAdd ──
+            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            FixpipeParamsV220 fixParams;
+            fixParams.nSize = subN;
+            fixParams.mSize = para.m;
+            fixParams.srcStride = mSizeAligned;
+            fixParams.dstStride = para.orgKc;
+            fixParams.ndNum = 1;
+            fixParams.unitFlag = UNIT_FLAG_DISABLE;
+            AscendC::SetAtomicAdd<float>();
+            Fixpipe(tensorCGm[nb * para.baseN], cL0, fixParams);
+            AscendC::SetAtomicNone();
+
+            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            bufParam.cL0BufIter++;
+
+            SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + curSlot);
+        }
+        SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0);
+    }
+}
+
 } // namespace MlaProlog
 
 

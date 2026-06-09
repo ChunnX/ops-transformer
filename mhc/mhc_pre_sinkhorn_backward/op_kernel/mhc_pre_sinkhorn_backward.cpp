@@ -29,18 +29,28 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
     if (usrWorkspace == nullptr) {
         return;
     }
-    KERNEL_TASK_TYPE(0, KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     TPipe pipe;
+    if (TILING_KEY_IS(1)) {
+        MhcPreGradKernel<DTYPE_X, DTYPE_PHI, true> op;
+        op.mm1_.SetSubBlockIdx(0);
+        op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
+        op.mm2_.SetSubBlockIdx(0);
+        op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
 
-    MhcPreGradKernel<DTYPE_X, DTYPE_PHI> op;
+        op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out,
+                norm_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+        op.Process();
+    } else if (TILING_KEY_IS(0)) {
+        MhcPreGradKernel<DTYPE_X, DTYPE_PHI, false> op;
+        op.mm1_.SetSubBlockIdx(0);
+        op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
+        op.mm2_.SetSubBlockIdx(0);
+        op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
 
-    op.mm1_.SetSubBlockIdx(0);
-    op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
-    op.mm2_.SetSubBlockIdx(0);
-    op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
-
-    op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out, norm_out,
-            grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
-    op.Process();
+        op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out,
+                norm_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+        op.Process();
+    }
 }

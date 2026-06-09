@@ -12,7 +12,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
-#include "common/op_api_def.h"
+#include "op_api/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "posembedding/rotary_position_embedding/op_host/op_api/aclnn_rotary_position_embedding.h"

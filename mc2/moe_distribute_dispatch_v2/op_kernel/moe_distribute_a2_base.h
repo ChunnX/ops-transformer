@@ -27,6 +27,7 @@
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
+#include "moe_distribute_a2_constant.h"
 namespace MoeDistributeA2Base {
 class MoeDistributeA2Context {
 public:
@@ -88,48 +89,49 @@ COMBINE_TOKENFLAG_SIZE = align32((maxBs + (aivNum / (epWorldSize / 8) + 1)) * si
 # WindowIn
 |           |                                              | Start Addr                                   | Size                                      | Function                                                      |
 |-----------|----------------------------------------------|----------------------------------------------|-------------------------------------------|---------------------------------------------------------------|
-| Ping RDMA | Arrived Flag                                 | 0MB                                          | A1                                        | GetLocalRecvBuffFlagAddr, GetRemoteRecvBuffFlagAddr           |
-| Ping RDMA | Inner Flag                                   | A1                                           | A1                                        | GetLocalRecvBuffInnerFlagAddr, GetRemoteRecvBuffInnerFlagAddr |
-| Ping RDMA | Inner Data                                   | 2 * A1                                       | 1MB - 2 * A1                              | GetLocalRecvBuffInnerDataAddr, GetRemoteRecvBuffInnerDataAddr |
-| Ping RDMA | RDMA Data                                    | 1MB                                          | RDMA_DATA_SIZE                            | GetLocalRecvBuffDataAddr, GetRemoteRecvBuffDataAddr           |
+| ADump     | ADump                                        | 0MB                                          | 1MB                                       |                                                               |
+| Ping RDMA | Arrived Flag                                 | 1MB                                          | A1                                        | GetLocalRecvBuffFlagAddr, GetRemoteRecvBuffFlagAddr           |
+| Ping RDMA | Inner Flag                                   | 1MB + A1                                     | A1                                        | GetLocalRecvBuffInnerFlagAddr, GetRemoteRecvBuffInnerFlagAddr |
+| Ping RDMA | Inner Data                                   | 1MB + 2 * A1                                 | 1MB - 2 * A1                              | GetLocalRecvBuffInnerDataAddr, GetRemoteRecvBuffInnerDataAddr |
+| Ping RDMA | RDMA Data                                    | 2MB                                          | RDMA_DATA_SIZE                            | GetLocalRecvBuffDataAddr, GetRemoteRecvBuffDataAddr           |
 | -         | -                                            | -                                            | -                                         | -                                                             |
-| IPC Data  | localExp 0--(srcRankId 0~n/2-1)              | (W/2 - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 3B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Data  | localExp x--(srcRankId 0~n/2-1)              | (W/2 - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 2B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Data  | localExp n--(srcRankId 0~n/2-1)              | (W/2 - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 1B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Flag  | Combine Sync Flag 1: GM2IPC                  | (W/2 - 2)MB                                  | 8 * 32B = 256B                            | GetLocalIpcSyncFlagAddr, GetRemoteIpcSyncFlagAddr             |
-| IPC Flag  | Combine Sync Flag 2: SumToWindow--server 0-n | (W/2 - 2)MB + 288B                           | COMBINE_TOKENFLAG_SIZE * epWorldSize / 8B | GetIpcTokenFlagAddr                                           |
-| IPC Flag  | Dispatch Sync flag                           | (W/2 - 1)MB                                  | 8 * 32B = 256B                            | GetLocalIpcSyncFlagAddr, GetRemoteIpcSyncFlagAddr             |
-| IPC Flag  | Magic Value, BufferId = Magic Value & 0x1    | W/2MB - 128 * 32B                            | aivNum * 32B                              | UpdateMagicValue, GetMagicValue                               |
-| Pong RDMA | Arrived Flag                                 | W/2MB                                        | A1                                        | GetLocalRecvBuffFlagAddr, GetRemoteRecvBuffFlagAddr           |
-| Pong RDMA | Inner Flag                                   | W/2MB + A1                                   | A1                                        | GetLocalRecvBuffInnerFlagAddr, GetRemoteRecvBuffInnerFlagAddr |
-| Pong RDMA | Inner Data                                   | W/2MB + 2 * A1                               | 1MB - 2 * A1                              | GetLocalRecvBuffInnerDataAddr, GetRemoteRecvBuffInnerDataAddr |
-| Pong RDMA | RDMA Data                                    | (W/2 + 1)MB                                  | RDMA_DATA_SIZE                            | GetLocalRecvBuffDataAddr, GetRemoteRecvBuffDataAddr           |
+| IPC Data  | localExp 0--(srcRankId 0~n/2-1)              | (W/2 - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 3B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Data  | localExp x--(srcRankId 0~n/2-1)              | (W/2 - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 2B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Data  | localExp n--(srcRankId 0~n/2-1)              | (W/2 - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 1B | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Flag  | Combine Sync Flag 1: GM2IPC                  | (W/2 - 1)MB                                  | 8 * 32B = 256B                            | GetLocalIpcSyncFlagAddr, GetRemoteIpcSyncFlagAddr             |
+| IPC Flag  | Combine Sync Flag 2: SumToWindow--server 0-n | (W/2 - 1)MB + 288B                           | COMBINE_TOKENFLAG_SIZE * epWorldSize / 8B | GetIpcTokenFlagAddr                                           |
+| IPC Flag  | Dispatch Sync flag                           | (W/2)MB                                      | 8 * 32B = 256B                            | GetLocalIpcSyncFlagAddr, GetRemoteIpcSyncFlagAddr             |
+| IPC Flag  | Magic Value, BufferId = Magic Value & 0x1    | (W/2 + 1)MB - 128 * 32B                      | aivNum * 32B                              | UpdateMagicValue, GetMagicValue                               |
+| Pong RDMA | Arrived Flag                                 | (W/2 + 1)MB                                  | A1                                        | GetLocalRecvBuffFlagAddr, GetRemoteRecvBuffFlagAddr           |
+| Pong RDMA | Inner Flag                                   | (W/2 + 1)MB + A1                             | A1                                        | GetLocalRecvBuffInnerFlagAddr, GetRemoteRecvBuffInnerFlagAddr |
+| Pong RDMA | Inner Data                                   | (W/2 + 1)MB + 2 * A1                         | 1MB - 2 * A1                              | GetLocalRecvBuffInnerDataAddr, GetRemoteRecvBuffInnerDataAddr |
+| Pong RDMA | RDMA Data                                    | (W/2 + 2)MB                                  | RDMA_DATA_SIZE                            | GetLocalRecvBuffDataAddr, GetRemoteRecvBuffDataAddr           |
 |  -        | -                                            | -                                            | -                                         | -                                                             |
-| IPC Data  | localExp 0--(srcRankId n/2~n-1)              | (W - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 3B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Data  | localExp x--(srcRankId n/2~n-1)              | (W - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 2B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Data  | localExp n--(srcRankId n/2~n-1)              | (W - 2)MB - IPC_DATA_SIZE_PER_EXP / 2 * 1B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
-| IPC Flag  | TokenCnt                                     | (W - 2)MB                                    | moeExpertNum * 32B                        | GetLocalIpcTokenCntAddr, GetRemoteIpcTokenCntAddr             |
+| IPC Data  | localExp 0--(srcRankId n/2~n-1)              | (W - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 3B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Data  | localExp x--(srcRankId n/2~n-1)              | (W - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 2B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Data  | localExp n--(srcRankId n/2~n-1)              | (W - 1)MB - IPC_DATA_SIZE_PER_EXP / 2 * 1B   | IPC_DATA_SIZE_PER_EXP / 2                 | GetIpcDataAddr                                                |
+| IPC Flag  | TokenCnt                                     | (W - 1)MB                                    | moeExpertNum * 32B                        | GetLocalIpcTokenCntAddr, GetRemoteIpcTokenCntAddr             |
 # WindowOut
 |           |                                              | Start Addr                                   | Size                                      | Function                      |
 |-----------|----------------------------------------------|----------------------------------------------|-------------------------------------------|-------------------------------|
-| Ping RDMA | Flag                                         | 0MB                                          | 32B                                       | GetLocalSendBuffFlagAddr      |
-| Ping RDMA | Inner Data                                   | 2 * A1                                       | 1MB - 2 * A1                              | GetLocalSendBuffInnerDataAddr |
-| Ping RDMA | RDMA Data                                    | 1MB                                          | RDMA_DATA_SIZE                            | GetLocalSendBuffDataAddr      |
+| Ping RDMA | Flag                                         | 1MB                                          | 32B                                       | GetLocalSendBuffFlagAddr      |
+| Ping RDMA | Inner Data                                   | 1MB + 2 * A1                                 | 1MB - 2 * A1                              | GetLocalSendBuffInnerDataAddr |
+| Ping RDMA | RDMA Data                                    | 2MB                                          | RDMA_DATA_SIZE                            | GetLocalSendBuffDataAddr      |
 | -         | -                                            | -                                            | -                                         | -                             |
-| Pong RDMA | Inner Data                                   | W/2MB + 2 * A1                               | 1M - 2 * A1                               | GetLocalSendBuffInnerDataAddr |
-| Pong RDMA | RDMA Data                                    | (W/2 + 1)MB                                  | RDMA_DATA_SIZE                            | GetLocalSendBuffDataAddr      |
+| Pong RDMA | Inner Data                                   | (W/2 + 1)MB + 2 * A1                         | 1M - 2 * A1                               | GetLocalSendBuffInnerDataAddr |
+| Pong RDMA | RDMA Data                                    | (W/2 + 2)MB                                  | RDMA_DATA_SIZE                            | GetLocalSendBuffDataAddr      |
 
 ## WindowOut-Dispatch--RDMAData：内容连续
 |                     |                                        | Start Addr                               | Size                                      | Function                 |
 |---------------------|----------------------------------------|------------------------------------------|-------------------------------------------|--------------------------|
-| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data               | (1 or (W/2 + 1))MB                       | MAXBS_TOKEN_SIZE                          | GetLocalSendBuffDataAddr |
+| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data               | (2 or (W/2 + 2))MB                       | MAXBS_TOKEN_SIZE                          | GetLocalSendBuffDataAddr |
 
 ## WindowOut-Combine--RDMAData：按照server划分，不连续
 |                     |                                        | Start Addr                               | Size                                      | Function                 |
 |---------------------|----------------------------------------|------------------------------------------|-------------------------------------------|--------------------------|
-| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer 0   | (1 or (W/2 + 1))MB                       | A2 = RDMA_DATA_SIZE / (epWorldSize / 8)   | GetLocalSendBuffDataAddr |
-| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer x   | (1 or (W/2 + 1))MB + A2 * x              | A2                                        | GetLocalSendBuffDataAddr |
-| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer n-1 | (1 or (W/2 + 1))MB + A2 * (n - 1)        | A2                                        | GetLocalSendBuffDataAddr |
+| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer 0   | (2 or (W/2 + 2))MB                       | A2 = RDMA_DATA_SIZE / (epWorldSize / 8)   | GetLocalSendBuffDataAddr |
+| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer x   | (2 or (W/2 + 2))MB + A2 * x              | A2                                        | GetLocalSendBuffDataAddr |
+| (Ping Or Pong) RDMA | (Ping Or Pong) RDMA Data-DstServer n-1 | (2 or (W/2 + 2))MB + A2 * (n - 1)        | A2                                        | GetLocalSendBuffDataAddr |
 */
 class MoeDistributeA2AddrInfo {
 protected:
@@ -170,6 +172,7 @@ public:
         // Get Hccl Buffer Size
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
+
         auto winSize = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
@@ -181,8 +184,8 @@ public:
         serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
         rankSizeOnIpcData_ = RoundUp(maxBs * maxTokenStructBytes, BUFFER_ALIGN);
         // ipc addr
-        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES;
-        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES;
+        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
+        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
         uint64_t halfIpcDataSize = rankSizeOnIpcData_ * localMoeExpertNum_ * halfWorldSize_;
         ipcDataAddrStart_[0] = RoundUp(ipcFlagAddrStart_[0] - halfIpcDataSize, BUFFER_ALIGN);
         ipcDataAddrStart_[1] = RoundUp(ipcFlagAddrStart_[1] - halfIpcDataSize, BUFFER_ALIGN);
@@ -196,8 +199,9 @@ public:
         // rdma addr
         UpdateMagicValue();
         // Get BufferId
-        uint64_t bufferId = magicValue_ & 0x1;
+        uint64_t bufferId = (magicValue_ - 1UL) & 0x1;
         rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize / 2UL) : 0UL;
+        rdmaFlagAddrStart_ += Mc2A2Kernel::ADUMP_WIN_SIZE;
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
     }
 
@@ -247,10 +251,10 @@ public:
     // 参数：
     //   localMoeExpertId: 目标卡的第几个Moe专家
     __aicore__ inline GM_ADDR GetIpcDataAddr(uint32_t dstRankId, uint32_t localMoeExpertId,
-                                               uint32_t srcRankId) const
+                                             uint32_t srcRankId) const
     {
         return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcDataAddrStart_[srcRankId / halfWorldSize_] +
-               (localMoeExpertId * halfWorldSize_ + (srcRankId % halfWorldSize_)) * rankSizeOnIpcData_;
+                (localMoeExpertId * halfWorldSize_ + (srcRankId % halfWorldSize_)) * rankSizeOnIpcData_;
     }
 
 protected:
@@ -295,6 +299,16 @@ public:
         InitInnerAddr();
         ipcSyncFlagAddrStart_ = ipcFlagAddrStart_[0] + IPC_DISPATCH_FLAG_OFFSET;
         ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_DISPATCH_ADDR_START;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_DISPATCH_ADDR;
     }
 
     // ===== Sender =====
@@ -375,6 +389,16 @@ public:
         // 这里使用aivNum是为了添加冗余，确保处理不同server的token级flag不重叠
         ipcTokenFlagSize_ = RoundUp(static_cast<uint32_t>((maxBs + aivNum / serverNum_ + 1U) * sizeof(uint64_t)), UB_32B_ALIGN);
         ipcTokenFlagAddrStart_ = ipcSyncFlagAddrStart_ + (SERVER_RANK_SIZE + 1) * UB_32B_ALIGN;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_COMBINE_ADDR_START;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_COMBINE_ADDR;
     }
 
     // ===== Sender =====

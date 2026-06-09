@@ -93,7 +93,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>elasticInfoOptional</td>
     <td>输入</td>
     <td>EP通信域动态缩容信息。</td>
-    <td>可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能。</td>
+    <td>可选择传入有效数据或填空指针，传入空指针时表示不开启动态缩容功能。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>0-1</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     - 可以连续调用，入图时，需将上个算子的输入、下个算子的输出作为入参传入接口。
 
 - 参数一致性约束：
-  - 使能`elasticInfoOptional`时，需确保`aclnnMoeDistributeDispatchV3`与`aclnnMoeDistributeCombineV3`或`aclnnMoeDistributeCombineAddRmsNormV2`也使能此参数，并且其取值与对应的`elasticInfoOptional`参数保持一致。
+  - 开启`elasticInfoOptional`时，需确保`aclnnMoeDistributeDispatchV3`与`aclnnMoeDistributeCombineV3`或`aclnnMoeDistributeCombineAddRmsNormV2`也开启此参数，并且其取值与对应的`elasticInfoOptional`参数保持一致。
 
 ## 调用示例
 

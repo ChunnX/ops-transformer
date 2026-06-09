@@ -122,6 +122,7 @@ static const int64_t TND_S1_BASICBLOCK_256 = 256L;
 static const int64_t TND_S1_BASICBLOCK_512 = 512L;
 static const int64_t SAMEAB_BASIC_BLOCK_OPTIMIZE = 2048L;
 static constexpr uint64_t B4_L2_CACHESIZE = static_cast<uint64_t>(96) * 1024 * 1024;
+static constexpr uint64_t B4_1_L2_CACHESIZE = static_cast<uint64_t>(168) * 1024 * 1024;
 static const int64_t S2_SPECIFIC_SIZE_18432 = 18432L;
 static const int64_t S1_BASIC_BLOCK_L1CARRY_MAX = 128L;
 static const int64_t D_SIZE_L1CARRY_MAX = 256L;
@@ -439,6 +440,7 @@ protected:
                              int64_t sparseArraySize, int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult);
     SparseEnum GetPrefixNList(std::ostringstream &failReason);
     void GetMaxWorkspaceFlag();
+    bool IsB41L2CacheOptimizable() const;
 
     uint32_t aivNum;
     uint32_t aicNum;
@@ -885,6 +887,36 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         return true;
     }
     return true;
+}
+
+bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
+{
+    uint64_t perCoreL2 = l2CacheSize / std::max(aicNum, aivNum);
+    int64_t origDataPerCore = 8L * std::min(128L, alignedS1) * alignedS2 * calcTypeSize * 2;
+    int64_t totalAttnData = alignedS1 * alignedS2 * calcTypeSize;
+    auto layoutType = tilingData->inputParams.get_layoutType();
+
+    // BSND: S1,S2>1024, not 32-aligned (avoids tile-boundary bank conflict), N in (32,128] not 32-multiple
+    bool bsndOk = (layoutType == LAYOUT_BSND &&
+                   s1Size > 1024 && s2Size > 1024 &&
+                   s1Size % 32 != 0 && s2Size % 32 != 0 &&
+                   32 < n1Size && n1Size <= 128 && n1Size % 16 != 0 &&
+                   dSize == 128 && 1 <= bSize && bSize <= 16);
+
+    // SBH: S1>30K, S2 in [180,256] not 32-aligned, dSize=128, headNum=1, B in [5,7]
+    bool sbhOk = (layoutType == LAYOUT_SBH &&
+                  dSize == 128 &&
+                  n1Size == 1 &&
+                  s1Size > 30000 &&
+                  180 <= s2Size && s2Size <= 256 &&
+                  s2Size % 32 != 0 &&
+                  5 <= bSize && bSize <= 7);
+
+    return (l2CacheSize == B4_1_L2_CACHESIZE) &&
+           (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
+           (static_cast<uint64_t>(origDataPerCore) >= perCoreL2 ||
+            static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&
+           (bsndOk || sbhOk);
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
@@ -2749,7 +2781,12 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
-        s1BasicBlock = std::min(128L, alignedS1); // PERFORMANCE OPT
+        if (IsB41L2CacheOptimizable()) {
+            OP_LOGI(opName, "L2 cache optimization: s1BasicBlock set to 64 for B4_1.");
+            s1BasicBlock = std::min(64L, alignedS1);
+        } else {
+            s1BasicBlock = std::min(128L, alignedS1);
+        }
         s2BasicBlock = std::min(128L, alignedS2);
     }
 
@@ -3231,7 +3268,12 @@ protected:
 
     void CalcNRatio() override
     {
-        nRatio = 8L;
+        if (IsB41L2CacheOptimizable()) {
+            OP_LOGI(opName, "L2 cache optimization: nRatio set to 4 for B4_1.");
+            nRatio = 4L;
+        } else {
+            nRatio = 8L;
+        }
         // s2Size (1025, 1040]
         if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L) {
             nRatio = 5L;

@@ -65,7 +65,7 @@ __aicore__ inline void CopyInAttenMask(FagConstInfo &constInfo, FagRunInfo &runI
     }
 }
 
-template <typename T2, const uint32_t VECTOR_BASEM = 64>
+template <typename T2, const uint32_t VECTOR_BASEM = 64, const uint32_t IS_ROPE = 0>
 __aicore__ inline void CopyInMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo,
                                     TQue<QuePosition::VECIN, 1> &maxSumInQue, GlobalTensor<T2> &maxGm,
                                     GlobalTensor<T2> &sumGm)
@@ -73,7 +73,12 @@ __aicore__ inline void CopyInMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo
     if (runInfo.commonRunInfo.halfS1RealSize == 0) { return; }
     int64_t maxSumGmOffset = 0;
     if (constInfo.tndMaxSumLayout == MAX_SUM_TND) { // TND + TND
-        maxSumGmOffset = (runInfo.commonRunInfo.queryOffset / constInfo.commonConstInfo.dSize +
+        int64_t dSize = constInfo.commonConstInfo.dSize;
+        if constexpr (IS_ROPE) {
+            dSize = constInfo.commonConstInfo.dSizeV;
+        }
+        maxSumGmOffset =
+            (runInfo.commonRunInfo.queryOffset / dSize +
              runInfo.commonRunInfo.firstHalfS1RealSize * GetSubBlockIdx() * constInfo.commonConstInfo.n2G) *
             MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2);
     } else if (constInfo.commonConstInfo.layoutType == TND) { // TND + BNS8
@@ -140,7 +145,7 @@ __aicore__ inline int64_t GetBNSOffset(FagConstInfo &constInfo, FagRunInfo &runI
     return offset;
 }
  
-template <typename T2, const uint32_t VECTOR_BASEM = 64>
+template <typename T2, const uint32_t VECTOR_BASEM = 64, const uint32_t IS_ROPE = 0>
 __aicore__ inline void CopyInMaxSumWithSfmg(FagConstInfo &constInfo, FagRunInfo &runInfo,
                                     TQue<QuePosition::VECIN, 1> &maxSumInQue, GlobalTensor<T2> &maxGm,
                                     GlobalTensor<T2> &sumGm, GlobalTensor<T2> &sfmgWorkspaceGm)
@@ -149,7 +154,12 @@ __aicore__ inline void CopyInMaxSumWithSfmg(FagConstInfo &constInfo, FagRunInfo 
     int64_t maxSumGmOffset = 0;
     int64_t sfmgGmOffset = 0;
     if (constInfo.tndMaxSumLayout == MAX_SUM_TND) { // TND + TND
-        maxSumGmOffset = (runInfo.commonRunInfo.queryOffset / constInfo.commonConstInfo.dSize +
+        int64_t dSize = constInfo.commonConstInfo.dSize;
+        if constexpr (IS_ROPE) {
+            dSize = constInfo.commonConstInfo.dSizeV;
+        }
+        maxSumGmOffset =
+            (runInfo.commonRunInfo.queryOffset / dSize +
              runInfo.commonRunInfo.firstHalfS1RealSize * GetSubBlockIdx() * constInfo.commonConstInfo.n2G) *
             MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2);
         sfmgGmOffset = GetBNSOffset<T2, VECTOR_BASEM>(constInfo, runInfo);

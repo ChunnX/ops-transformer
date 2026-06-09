@@ -20,7 +20,7 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：新增perblock、pertile、mxfp量化方式。新增x1，x2输入支持dtype为`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、HIFLOAT8、`FLOAT4_E2M1`。
 - **计算公式**：
 
-  - 公式1，使能低bit通信的公式2或公式3场景：
+  - 公式1，开启低bit通信的公式2或公式3场景：
   
     x1，x2为INT8，commQuantScale1Optional, commQuantScale2Optional不为空时:
 
@@ -87,7 +87,7 @@
     output_{pq} = AllReduce(\sum_{0}^{\left \lfloor \frac{k}{128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1ScaleOptional_{pr}*x2Scale_{rq})) + x3Optional)
     $$
 
-   - 公式8，使能低bit通信，pertile量化：
+   - 公式8，开启低bit通信，pertile量化：
 
       x1，x2为`FLOAT8_E4M3FN`/`FLOAT8_E5M2`，x1ScaleOptional为FLOAT32，x2Scale为FLOAT32，可选biasOptional为FLOAT32，commQuantMode为1，out为FLOAT16/BFLOAT16/FLOAT32:
 
@@ -446,7 +446,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 - 确定性计算：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduceV4`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV4`默认确定性实现。
-- 增量场景不使能MC2，全量场景使能MC2。
+- 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为2维或者3维，其shape为(b, s, k)或者(m, k)。x2必须是2维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
 - m大小不超过2147483647，x1与x2的最后一维大小不超过65535，x1的最后一维指k，x2的最后一维指转置时的k或非转置时的n。
 - 传入的x1、x2、x2Scale或者output不为空指针。
@@ -456,7 +456,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
-- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。（注：INT8低bit通信指输入为int8且使能commQuantScale1Optional、commQuantScale2Optional；FP8低bit通信指输入为FLOAT8_E4M3FN/FLOAT8_E5M2且使能commQuantMode=1。）
+- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议开启INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。（注：INT8低bit通信指输入为int8且开启commQuantScale1Optional、commQuantScale2Optional；FP8低bit通信指输入为FLOAT8_E4M3FN/FLOAT8_E5M2且开启commQuantMode=1。）
 - 空tensor支持度：
   - 不支持空tensor。
 - groupSize相关约束:

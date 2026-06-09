@@ -82,6 +82,7 @@ struct RunInfoX {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
+    uint32_t realN2Idx = 0;   // GS1合轴时为n2Idx，不合轴时为n1Idx
     uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
     uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
     uint32_t actMSize = 0;    // GS1方向上的长度
@@ -113,6 +114,8 @@ struct CommonConstInfo {
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
     uint32_t n2Size;
+    uint32_t realGSize;
+    uint32_t realN2Size;
     uint64_t s1Size;             /* s1总大小 */
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
@@ -143,6 +146,10 @@ struct CommonConstInfo {
     uint32_t aivIdx;
     uint8_t subBlockIdx;
     uint32_t coreNum;
+
+    /* S1外切 */
+    bool enableS1OutSplit;
+    uint32_t totalSize;
 
     /* FA中间结果写出workspace信息 */
     uint32_t accumOutSize;

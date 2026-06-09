@@ -356,10 +356,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
         if constexpr (isPa) {
-            bool isNz = inputParamsRegbase.paLayoutType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
-            if (isNz) {
-                this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
-            }
+            this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
     }
     this->constInfo.isRowInvalid = inputParamsRegbase.isRowInvalid;

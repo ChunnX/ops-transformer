@@ -997,6 +997,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     SetOutputDtype();
     multiCoreParamsRegbase_->set_s1OuterSize(CeilDivision(s1Size, s1BasicBlock));
     int64_t totalSize = CalcTotalSize();
+    AnalyzeOptionalDn();
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     SetSplitCoreModeParam();
     SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
@@ -1629,9 +1630,18 @@ void FlashAttentionScoreTilingRegbase::PrintSparseMaxMinLoadPerCore(const std::v
 SparseEnum FlashAttentionScoreTilingRegbase::GetPrefixNList(std::ostringstream &failReason)
 {
     auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
-    if (prefixN == nullptr) {
-        OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
-        failReason << "prefixN is null pointer while sparse mode is prefix";
+    bool isPrefixNullptr = true;
+    if (prefixN != nullptr) {
+        isPrefixNullptr = prefixN->GetShape().GetStorageShape().GetDimNum() == 0 ? true : false;
+    }
+    if (isPrefixNullptr) {
+        if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
+            OP_LOGE(context_, "[%s] prefixN must be provided when sparseMode=6.", templateName);
+            failReason << "prefixN must be provided when sparseMode=6";
+        } else {
+            OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
+            failReason << "prefixN is null pointer while sparse mode is prefix";
+        }
         return SparseEnum::ALL;
     }
 

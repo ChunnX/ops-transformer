@@ -32,6 +32,8 @@
 #endif
 
 #include "moe_distribute_a2_base.h"
+#include "moe_distribute_a2_adump.h"
+#include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass typename XType, typename ExpandXOutType,bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
@@ -121,6 +123,7 @@ private:
     TBuf<QuePosition::VECCALC> tBuf;
     TBuf<TPosition::VECOUT> rdmaInBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
+    TBuf<TPosition::LCM> aDumpBuf_;
 
     __gm__ HcclAiRMAInfo* qp_info_;
     GM_ADDR expandXGM_;
@@ -191,6 +194,7 @@ private:
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     MoeDistributeA2Base::MoeDistributeA2DispatchAddrInfo addrInfo_;
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -282,14 +286,19 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     //UB init
     tpipe_->InitBuffer(statusBuf_, FLAG_SIZE * 3U); // GetArrivedTokenInfo 会搬入3个Flag：ArrivedFlag, CurrentTokenFlag, NextTokenFlag
+    uint32_t leftBufSize = AscendC::TOTAL_UB_SIZE - FLAG_SIZE * 3U;
 
     tpipe_->InitBuffer(rdmaInBuf_, UB_32B_ALIGN);
     ubLocal = rdmaInBuf_.Get<uint64_t>();
 
     tpipe_->InitBuffer(rdmaInBuf2_, UB_32B_ALIGN);
     ubLocalHead = rdmaInBuf2_.Get<uint32_t>();
+    leftBufSize -= UB_32B_ALIGN * 2;
 
-    tpipe_->InitBuffer(tBuf, TBUF_SIZE);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, BITS32_PER_BLOCK),
+                                  BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    tpipe_->InitBuffer(aDumpBuf_, aDumpSize);
+    leftBufSize -= aDumpSize;
 
     needPerformanceInfo_ = performanceInfo != nullptr;
     if (unlikely(needPerformanceInfo_)) {
@@ -298,7 +307,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         tpipe_->InitBuffer(performanceInfoBuf_, performanceInfoSize_ * sizeof(int64_t));
         performanceInfoI32Tensor_ = performanceInfoBuf_.Get<int32_t>();
         Duplicate<int32_t>(performanceInfoI32Tensor_, 0, performanceInfoSize_ * sizeof(int64_t) / sizeof(int32_t));
+        leftBufSize -= RoundUp(worldSize_, B64_PER_BLOCK) * sizeof(uint64_t);
     }
+    tpipe_->InitBuffer(tBuf, leftBufSize);
 
     // The maximum value of expertIdsCnt_ is 256 * 16, so there is no integer wrap.
     uint32_t expertIdsSize = RoundUp(expertIdsCnt_ * static_cast<uint32_t>(sizeof(int16_t)), UB_32B_ALIGN);
@@ -314,6 +325,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     // 每次调用magic++,用来区分不同轮次
     magicVal_ = addrInfo_.GetMagicValue();
+    LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
+    GM_ADDR aDumpAddr = addrInfo_.GetAdumpDataAddr();
+    aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+                globalBs_, (magicVal_ - 1UL) & 0x1,
+                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_, axisBS_);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -532,7 +548,8 @@ CreateInnerReduceInfo(uint32_t serverIdx)
         uint64_t dstFlagRdmaAddr = (uint64_t)(addrInfo_.GetRemoteRecvBuffInnerFlagAddr(dstServerId));
         // 发送Inner结束符
         AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qp_info_);
-    } 
+    }
+    aDump_.UpdateHierarchyInnerSendOrRecv(dstServerId, Mc2A2Kernel::IS_SEND);
 
     GlobalTensor<uint8_t> readInnerTensor;
     // 等待Id为aivId_的主机发来的Inner
@@ -556,6 +573,7 @@ CreateInnerReduceInfo(uint32_t serverIdx)
     else {
         readInnerTensor.SetGlobalBuffer((__gm__ uint8_t*)(addrInfo_.GetLocalSendBuffInnerDataAddr(serverId_)));
     }
+    aDump_.UpdateHierarchyInnerSendOrRecv(dstServerId, Mc2A2Kernel::IS_RECV);
 
     // 先存储BS信息到Out
     GlobalTensor<int16_t> combineInnerCnt;
@@ -868,19 +886,21 @@ SendDataToServer(uint32_t destServerId)
         tBuf.GetWithOffset<uint64_t>((axisBS_ * FLAG_SIZE)/sizeof(uint64_t), 0);
     DataCopy(sendTokenInfoLocalTensor, tokenAddrFlagStructGlobalU64Tensor_, (axisBS_ * FLAG_SIZE)/sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-
+    uint32_t token_num = 0U;
     for (uint32_t tokenIdx = 0; tokenIdx < axisBS_; ++tokenIdx) {
         uint64_t destServerInfo = sendTokenInfoLocalTensor(tokenIdx * FLAG_SIZE / sizeof(uint64_t));
         if ((destServerInfo & destServerMask) != 0) { // 当前有需要发送的token立即发送
             uint64_t srcRdmaAddr = (uint64_t)(srcRdmaAddrBase + (tokenStructLen_ * tokenIdx * 1UL));
             AIVRDMAPostSend((GM_ADDR)srcRdmaAddr, (GM_ADDR)dstRdmaAddr, dstRankId, tokenStructLen_, qp_info_);
             dstRdmaAddr += tokenStructLen_;
+            ++token_num;
         }
     }
 
     uint64_t srcFlagRdmaAddr = (uint64_t)(addrInfo_.GetLocalSendBuffFlagAddr());
     uint64_t dstFlagRdmaAddr = (uint64_t)(addrInfo_.GetRemoteRecvBuffFlagAddr(dstRankId));
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qp_info_);
+    aDump_.UpdateHierarchyInterNodeSendOrRecv(destServerId, token_num, Mc2A2Kernel::IS_SEND);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -954,14 +974,19 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     uint64_t nextTokenOffset = (tokenIdx + 1) * tokenStructLen_;
     uint32_t copyNum = FLAG_SIZE / sizeof(uint64_t);
     DataCopy(statusTensor, readStatusTensor, copyNum);
+    // 考虑到指令下发与数据实际传输的异步特性，可能出现tokenFlag先于endFlag写入UB的情况，
+    // 且endFlag写入时数据可能恰好到达。此时若提前读取tokenFlag，可能获取到数据未就绪时的无效值，
+    // 因此必须确保endFlag搬运完成后，再进行tokenFlag的读取操作。
+    PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum * 2U], TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
     uint64_t tokenFlagValue = statusTensor.GetValue(copyNum);
     uint64_t nextTokenFlagValue = statusTensor.GetValue(copyNum * 2U);
 
-    //等到发送结束信号，没等到token结束信号，则返回结束等待状态
+    // 下一个Token flag到达，说明当前Token已到达。
     if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
         if (justExpInfo) {
             DataCopy(localUB_U8, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
@@ -974,7 +999,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         // 等待 token 或者 endOfWrite
         return WAIT_STATUS;
-    } else { //得到上个token->可以处理
+    } else { // 若endFlag已到达且当前TokenFlag有效，那么当前Token是最后一个可处理的Token
         if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
             if (justExpInfo) {
                 DataCopy(localUB_U8, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
@@ -982,7 +1007,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layer
                 DataCopy(localUB_U8, TokensGtU8[TokenOffset], tokenStructLen_);
             }
             return ARRIVAL_STATUS;
-        } else {
+        } else { // 若只有endFlag有效，那么后续无Token可处理。
             return FINISH_STATUS;
         }
     }
@@ -1115,10 +1140,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         if (targetExpId >= expEndId) {
             return;
         }
-        uint32_t localExpOffset = targetExpId % (localMoeExpertNum_ * SERVER_RANK_SIZE) * EXP_TOKEN_COUNT_FLAG_CNT;
+        uint32_t localExpOffset = (targetExpId % (localMoeExpertNum_ * SERVER_RANK_SIZE)) * EXP_TOKEN_COUNT_FLAG_CNT;
         targetCntIpcGt.SetGlobalBuffer((__gm__ int32_t*)(addrInfo_.GetRemoteIpcTokenCntAddr(targetRankId, targetExpId, fromRankId)));
         DataCopy(targetCntIpcGt, tokenNumPerExp[localExpOffset], EXP_TOKEN_COUNT_FLAG_CNT);
     }
+    aDump_.UpdateHierarchyInterNodeSendOrRecv(fromServerId, tokenIdx, Mc2A2Kernel::IS_RECV);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -1325,30 +1351,36 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 {
     if ASCEND_IS_AIV { // 全aiv处理
         ReorderTokens();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         if(aivId_ < serverNum){
             if(aivId_ != serverId_){
                 SendDataToServer(aivId_);
             }
+            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_SEND);
             CreateInnerReduceInfo(aivId_);
         } else if (aivId_ == serverNum) {
             CreateOuterReduceInfo();
         } else {
             Win2Ipc();
         }
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         SetIpcFlag(IPC_FLAG_STEP_1);
         WaitIpcFlag(IPC_FLAG_STEP_1);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         Ipc2Out();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
         CleanUp();
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CopyPerformanceInfo();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
 }
