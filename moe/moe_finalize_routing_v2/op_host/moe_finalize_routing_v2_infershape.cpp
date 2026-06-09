@@ -41,6 +41,126 @@ static inline bool IsValidType(const DataType dtype)
     return dtype == ge::DT_FLOAT || dtype == ge::DT_FLOAT16 || dtype == ge::DT_BF16;
 }
 
+static const gert::Shape* CheckOptionalInput2DShape(gert::InferShapeContext* context, size_t inputIdx,
+                                                      const char* inputName, gert::Shape* outShape)
+{
+    const gert::Tensor* tensor = context->GetOptionalInputTensor(inputIdx);
+    if (tensor == nullptr || tensor->GetShapeSize() == 0) {
+        return nullptr;
+    }
+    const gert::Shape* shape = context->GetOptionalInputShape(inputIdx);
+    if (IsUnknownRank(shape)) {
+        SetUnknownRank(outShape);
+        return nullptr;
+    }
+    if (IsUnknownShape(shape)) {
+        SetAllUnknownDim(outShape);
+        return nullptr;
+    }
+    OP_CHECK_IF(
+        shape->GetDimNum() != SHAPE_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), inputName,
+            std::to_string(shape->GetDimNum()).c_str(), "2D"), return nullptr);
+    return shape;
+}
+
+static ge::graphStatus CheckExpandedXShape(gert::InferShapeContext* context, int64_t dropPadMode,
+                                             gert::Shape* outShape, int64_t& lastDimExpandedX)
+{
+    const gert::Shape* expandedXShape = context->GetInputShape(INDEX_IN_EXPANDED_X);
+    OP_CHECK_NULL_WITH_CONTEXT(context, expandedXShape);
+    if (IsUnknownRank(expandedXShape)) {
+        return SetUnknownRank(outShape);
+    }
+    if (IsUnknownShape(expandedXShape)) {
+        return SetAllUnknownDim(outShape);
+    }
+    const size_t expandedXShapeSize = expandedXShape->GetDimNum();
+    lastDimExpandedX = expandedXShape->GetDim(expandedXShapeSize - 1);
+
+    OP_CHECK_IF(
+        (dropPadMode == VALUE_MODE_0 || dropPadMode == VALUE_MODE_2) && expandedXShapeSize != SHAPE_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "expanded_x",
+            std::to_string(expandedXShapeSize).c_str(),
+            "The expanded_x of input should be 2D tensor when drop_pad_mode is 0 or 2."),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        (dropPadMode == VALUE_MODE_1 || dropPadMode == VALUE_MODE_3) && expandedXShapeSize != SHAPE_SIZE + 1,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "expanded_x",
+            std::to_string(expandedXShapeSize).c_str(),
+            "The expanded_x of input should be 3D tensor when drop_pad_mode is 1 or 3."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckExpandedRowIdxShape(gert::InferShapeContext* context, gert::Shape* outShape)
+{
+    const gert::Shape* expandedSrcToDstRowInputShape = context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, expandedSrcToDstRowInputShape);
+    if (IsUnknownRank(expandedSrcToDstRowInputShape)) {
+        return SetUnknownRank(outShape);
+    }
+    if (IsUnknownShape(expandedSrcToDstRowInputShape)) {
+        return SetAllUnknownDim(outShape);
+    }
+    OP_CHECK_IF(
+        expandedSrcToDstRowInputShape->GetDimNum() != 1,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expanded_row_idx",
+            std::to_string(expandedSrcToDstRowInputShape->GetDimNum()).c_str(), "1D"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ValidateCrossShapeConsistency(gert::InferShapeContext* context, int64_t dropPadMode,
+                                                       int64_t lastDimExpandedX,
+                                                       const gert::Shape* skip1InputShape,
+                                                       const gert::Shape* skip2InputShape,
+                                                       const gert::Shape* biasInputShape,
+                                                       const gert::Shape* scalesInputShape,
+                                                       const gert::Shape* expertIdxShape)
+{
+    bool validColK = (scalesInputShape == nullptr || expertIdxShape == nullptr) ||
+                     ((scalesInputShape != nullptr && expertIdxShape != nullptr) &&
+                      (scalesInputShape->GetDim(1) == -1 || expertIdxShape->GetDim(1) == -1 ||
+                       scalesInputShape->GetDim(1) == expertIdxShape->GetDim(1)));
+    OP_CHECK_IF(
+        !validColK, OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "scales and expert_idx",
+            "invalid", "The dim 1 of scales and expert_idx should be same."),
+        return ge::GRAPH_FAILED);
+
+    int64_t skip2Row = skip2InputShape != nullptr ? skip2InputShape->GetDim(0) : -1;
+    int64_t skip1Row = skip1InputShape != nullptr ? skip1InputShape->GetDim(0) : -1;
+    int64_t scaleRow = scalesInputShape != nullptr ? scalesInputShape->GetDim(0) : -1;
+    int64_t expertIdxRow = expertIdxShape != nullptr ? expertIdxShape->GetDim(0) : -1;
+    OP_CHECK_IF(
+        !IsValidShape(skip1Row, skip2Row, scaleRow, expertIdxRow),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "skip1, skip2, scales and expert_idx",
+            "invalid", "The dim 0 of skip1, skip2, scales and expert_idx should be same."),
+        return ge::GRAPH_FAILED);
+
+    int64_t skip2Col = skip2InputShape != nullptr ? skip2InputShape->GetDim(1) : -1;
+    int64_t skip1Col = skip1InputShape != nullptr ? skip1InputShape->GetDim(1) : -1;
+    int64_t biasCol = biasInputShape != nullptr ? biasInputShape->GetDim(1) : -1;
+    OP_CHECK_IF(
+        !IsValidShape(skip1Col, skip2Col, lastDimExpandedX, biasCol),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "skip1, skip2, bias and expanded_x",
+            "invalid", "The dim 1 of skip1, skip2, bias and last dim of expanded_x should be same."),
+        return ge::GRAPH_FAILED);
+
+    if (dropPadMode == VALUE_MODE_0 || dropPadMode == VALUE_MODE_2) {
+        const gert::Shape* expandedSrcToDstRowInputShape = context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX);
+        const gert::Shape* expandedXShape = context->GetInputShape(INDEX_IN_EXPANDED_X);
+        bool validDim = expandedSrcToDstRowInputShape->GetDim(0) == -1 || expandedXShape->GetDim(0) == -1 ||
+                        (expandedSrcToDstRowInputShape->GetDim(0) == expandedXShape->GetDim(0));
+        OP_CHECK_IF(
+            !validDim,
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "expanded_x and expanded_row_idx",
+                "invalid", "The dim 0 of expanded_x and expanded_row_idx should be same when drop_pad_mode is 0."),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus InferDataTypeMoeFinalizeRoutingV2(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MoeFinalizeRoutingV2InferDataType.");
@@ -160,8 +280,6 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
 
 static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* context)
 {
-    // get and check input param
-
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t* dropPadModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE);
@@ -174,159 +292,71 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
         OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "drop_pad_mode",
             std::to_string(dropPadMode).c_str(), "[0,3]"), return ge::GRAPH_FAILED);
 
-    const gert::Shape* expandedXShape = context->GetInputShape(INDEX_IN_EXPANDED_X);
-    OP_CHECK_NULL_WITH_CONTEXT(context, expandedXShape);
-    if (IsUnknownRank(expandedXShape)) {
-        return SetUnknownRank(outShape);
+    int64_t lastDimExpandedX = 0;
+    ge::graphStatus ret = CheckExpandedXShape(context, dropPadMode, outShape, lastDimExpandedX);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, return ret);
+    if (IsUnknownRank(context->GetInputShape(INDEX_IN_EXPANDED_X)) ||
+        IsUnknownShape(context->GetInputShape(INDEX_IN_EXPANDED_X))) {
+        return ret;
     }
-    if (IsUnknownShape(expandedXShape)) {
-        return SetAllUnknownDim(outShape);
+
+    ret = CheckExpandedRowIdxShape(context, outShape);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, return ret);
+    if (IsUnknownRank(context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX)) ||
+        IsUnknownShape(context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX))) {
+        return ret;
     }
-    const size_t expandedXShapeSize = expandedXShape->GetDimNum();
-    auto lastDimExpandedX = expandedXShape->GetDim(expandedXShapeSize - 1);
+
+    const gert::Shape* skip1InputShape = CheckOptionalInput2DShape(context, INDEX_IN_SKIP1, "skip1", outShape);
+    if (skip1InputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SKIP1) != nullptr &&
+        context->GetOptionalInputTensor(INDEX_IN_SKIP1)->GetShapeSize() != 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if (skip1InputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SKIP1) != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::Shape* skip2InputShape = CheckOptionalInput2DShape(context, INDEX_IN_SKIP2, "skip2", outShape);
+    if (skip2InputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SKIP2) != nullptr &&
+        context->GetOptionalInputTensor(INDEX_IN_SKIP2)->GetShapeSize() != 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if (skip2InputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SKIP2) != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::Shape* biasInputShape = CheckOptionalInput2DShape(context, INDEX_IN_BIAS, "bias", outShape);
+    if (biasInputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_BIAS) != nullptr &&
+        context->GetOptionalInputTensor(INDEX_IN_BIAS)->GetShapeSize() != 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if (biasInputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_BIAS) != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::Shape* scalesInputShape = CheckOptionalInput2DShape(context, INDEX_IN_SCALES, "scales", outShape);
+    if (scalesInputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SCALES) != nullptr &&
+        context->GetOptionalInputTensor(INDEX_IN_SCALES)->GetShapeSize() != 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if (scalesInputShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_SCALES) != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::Shape* expertIdxShape = CheckOptionalInput2DShape(context, INDEX_IN_EXPERT_IDX, "expert_idx", outShape);
+    if (expertIdxShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_EXPERT_IDX) != nullptr &&
+        context->GetOptionalInputTensor(INDEX_IN_EXPERT_IDX)->GetShapeSize() != 0) {
+        return ge::GRAPH_FAILED;
+    }
+    if (expertIdxShape == nullptr && context->GetOptionalInputTensor(INDEX_IN_EXPERT_IDX) != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
 
     OP_CHECK_IF(
-        (dropPadMode == VALUE_MODE_0 || dropPadMode == VALUE_MODE_2) && expandedXShapeSize != SHAPE_SIZE,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "expanded_x",
-            std::to_string(expandedXShapeSize).c_str(),
-            "The expanded_x of input should be 2D tensor when drop_pad_mode is 0 or 2."),
+        ValidateCrossShapeConsistency(context, dropPadMode, lastDimExpandedX, skip1InputShape, skip2InputShape,
+            biasInputShape, scalesInputShape, expertIdxShape) != ge::GRAPH_SUCCESS,
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        (dropPadMode == VALUE_MODE_1 || dropPadMode == VALUE_MODE_3) && expandedXShapeSize != SHAPE_SIZE + 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "expanded_x",
-            std::to_string(expandedXShapeSize).c_str(),
-            "The expanded_x of input should be 3D tensor when drop_pad_mode is 1 or 3."),
-        return ge::GRAPH_FAILED);
-
-    const gert::Shape* expandedSrcToDstRowInputShape = context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, expandedSrcToDstRowInputShape);
-    if (IsUnknownRank(expandedSrcToDstRowInputShape)) {
-        return SetUnknownRank(outShape);
-    }
-    if (IsUnknownShape(expandedSrcToDstRowInputShape)) {
-        return SetAllUnknownDim(outShape);
-    }
-    OP_CHECK_IF(
-        expandedSrcToDstRowInputShape->GetDimNum() != 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expanded_row_idx",
-            std::to_string(expandedSrcToDstRowInputShape->GetDimNum()).c_str(), "1D"), return ge::GRAPH_FAILED);
-
-    const gert::Tensor* x1Tensor = context->GetOptionalInputTensor(INDEX_IN_SKIP1);
-    const gert::Shape* skip1InputShape = nullptr;
-    if (x1Tensor != nullptr && x1Tensor->GetShapeSize() != 0) {
-        skip1InputShape = context->GetOptionalInputShape(INDEX_IN_SKIP1);
-        if (IsUnknownRank(skip1InputShape)) {
-            return SetUnknownRank(outShape);
-        }
-        if (IsUnknownShape(skip1InputShape)) {
-            return SetAllUnknownDim(outShape);
-        }
-        OP_CHECK_IF(
-            skip1InputShape->GetDimNum() != SHAPE_SIZE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "skip1",
-                std::to_string(skip1InputShape->GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
-    }
-
-    const gert::Tensor* x2Tensor = context->GetOptionalInputTensor(INDEX_IN_SKIP2);
-    const gert::Shape* skip2InputShape = nullptr;
-    if (x2Tensor != nullptr && x2Tensor->GetShapeSize() != 0) {
-        skip2InputShape = context->GetOptionalInputShape(INDEX_IN_SKIP2);
-        if (IsUnknownRank(skip2InputShape)) {
-            return SetUnknownRank(outShape);
-        }
-        if (IsUnknownShape(skip2InputShape)) {
-            return SetAllUnknownDim(outShape);
-        }
-        OP_CHECK_IF(
-            skip2InputShape->GetDimNum() != SHAPE_SIZE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "skip2",
-                std::to_string(skip2InputShape->GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
-    }
-    const gert::Tensor* biasTensor = context->GetOptionalInputTensor(INDEX_IN_BIAS);
-    const gert::Shape* biasInputShape = nullptr;
-    if (biasTensor != nullptr && biasTensor->GetShapeSize() != 0) {
-        biasInputShape = context->GetOptionalInputShape(INDEX_IN_BIAS);
-        if (IsUnknownRank(biasInputShape)) {
-            return SetUnknownRank(outShape);
-        }
-        if (IsUnknownShape(biasInputShape)) {
-            return SetAllUnknownDim(outShape);
-        }
-        OP_CHECK_IF(
-            biasInputShape->GetDimNum() != SHAPE_SIZE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "bias",
-                std::to_string(biasInputShape->GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
-    }
-    const gert::Tensor* scalesTensor = context->GetOptionalInputTensor(INDEX_IN_SCALES);
-    const gert::Shape* scalesInputShape = nullptr;
-    if (scalesTensor != nullptr && scalesTensor->GetShapeSize() != 0) {
-        scalesInputShape = context->GetOptionalInputShape(INDEX_IN_SCALES);
-        if (IsUnknownRank(scalesInputShape)) {
-            return SetUnknownRank(outShape);
-        }
-        if (IsUnknownShape(scalesInputShape)) {
-            return SetAllUnknownDim(outShape);
-        }
-
-        OP_CHECK_IF(
-            scalesInputShape->GetDimNum() != SHAPE_SIZE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scales",
-                std::to_string(scalesInputShape->GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
-    }
-    const gert::Tensor* expertIdxTensor = context->GetOptionalInputTensor(INDEX_IN_EXPERT_IDX);
-    const gert::Shape* expertIdxShape = nullptr;
-    if (expertIdxTensor != nullptr && expertIdxTensor->GetShapeSize() != 0) {
-        expertIdxShape = context->GetOptionalInputShape(INDEX_IN_EXPERT_IDX);
-        if (IsUnknownRank(expertIdxShape)) {
-            return SetUnknownRank(outShape);
-        }
-        if (IsUnknownShape(expertIdxShape)) {
-            return SetAllUnknownDim(outShape);
-        }
-        OP_CHECK_IF(
-            expertIdxShape->GetDimNum() != SHAPE_SIZE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expert_idx",
-                std::to_string(expertIdxShape->GetDimNum()).c_str(), "2D"), return ge::GRAPH_FAILED);
-    }
-    bool validColK = (scalesInputShape == nullptr || expertIdxTensor == nullptr) ||
-                     ((scalesInputShape != nullptr && expertIdxTensor != nullptr) &&
-                      (scalesInputShape->GetDim(1) == -1 || expertIdxShape->GetDim(1) == -1 ||
-                       scalesInputShape->GetDim(1) == expertIdxShape->GetDim(1)));
-    OP_CHECK_IF(
-        !validColK, OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "scales and expert_idx",
-            "invalid", "The dim 1 of scales and expert_idx should be same."),
-        return ge::GRAPH_FAILED);
-
-    int64_t skip2Row = skip2InputShape != nullptr ? skip2InputShape->GetDim(0) : -1;
-    int64_t skip1Row = skip1InputShape != nullptr ? skip1InputShape->GetDim(0) : -1;
-    int64_t scaleRow = scalesInputShape != nullptr ? scalesInputShape->GetDim(0) : -1;
-    int64_t expertIdxRow = expertIdxShape != nullptr ? expertIdxShape->GetDim(0) : -1;
-    OP_CHECK_IF(
-        !IsValidShape(skip1Row, skip2Row, scaleRow, expertIdxRow),
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "skip1, skip2, scales and expert_idx",
-            "invalid", "The dim 0 of skip1, skip2, scales and expert_idx should be same."),
-        return ge::GRAPH_FAILED);
-
-    int64_t skip2Col = skip2InputShape != nullptr ? skip2InputShape->GetDim(1) : -1;
-    int64_t skip1Col = skip1InputShape != nullptr ? skip1InputShape->GetDim(1) : -1;
-    int64_t biasCol = biasInputShape != nullptr ? biasInputShape->GetDim(1) : -1;
-    OP_CHECK_IF(
-        !IsValidShape(skip1Col, skip2Col, lastDimExpandedX, biasCol),
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "skip1, skip2, bias and expanded_x",
-            "invalid", "The dim 1 of skip1, skip2, bias and last dim of expanded_x should be same."),
-        return ge::GRAPH_FAILED);
-
-    if (dropPadMode == VALUE_MODE_0 || dropPadMode == VALUE_MODE_2) {
-        bool validDim = expandedSrcToDstRowInputShape->GetDim(0) == -1 || expandedXShape->GetDim(0) == -1 ||
-                        (expandedSrcToDstRowInputShape->GetDim(0) == expandedXShape->GetDim(0));
-        OP_CHECK_IF(
-            !validDim,
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "expanded_x and expanded_row_idx",
-                "invalid", "The dim 0 of expanded_x and expanded_row_idx should be same when drop_pad_mode is 0."),
-            return ge::GRAPH_FAILED);
-    }
-    // infershape output
     OP_CHECK_IF(
         MoeCopyShapeInput2OutputWithIdx(context) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "infershape", "GRAPH_FAILED",

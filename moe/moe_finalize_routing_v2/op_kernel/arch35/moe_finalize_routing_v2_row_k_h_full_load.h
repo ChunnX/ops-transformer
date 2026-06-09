@@ -26,7 +26,6 @@ public:
     __aicore__ inline MoeFinalizeRoutingV2RowKHFullLoad()
     {}
 
-    // expandX/bias 全部载入ub，避免多次小段搬运, 此时对应的Que不开db
     __aicore__ inline void Init(
         GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
         GM_ADDR expertIdx, GM_ADDR x, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR v,
@@ -36,88 +35,16 @@ public:
         pipe = pipePtr;
         tilingData = tilingDataPtr;
 
-        hasX1 = (x1 != nullptr);
-        hasX2 = (x2 != nullptr);
-        hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
-        hasExpertIdx = expertIdx != nullptr;
-        hasScales = scales != nullptr;
-        hasX = (x != nullptr);
-        hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
-
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
-        biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
-        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-        xGm.SetGlobalBuffer((__gm__ T*)x);
-        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha1);
-        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
-        vGm.SetGlobalBuffer((__gm__ T*)v);
-        yGm.SetGlobalBuffer((__gm__ T*)y);
-
-        int32_t eHAligned = RoundUp<T>(tilingData->e * tilingData->h);
-        int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * tilingData->h);
-        int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->k);
-        int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
-        if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROPLESS_ROW) {
-            int32_t rowsKHAligned = RoundUp<T>(tilingData->row * tilingData->k * tilingData->h);
-            pipe->InitBuffer(expandedXQue, 1, rowsKHAligned * sizeof(T));
-        } else {
-            int32_t eCHAligned = RoundUp<T>(tilingData->e * tilingData->c * tilingData->h);
-            pipe->InitBuffer(expandedXQue, 1, eCHAligned * sizeof(T));
-        }
-        pipe->InitBuffer(yQue, DOUBLE_BUFFER, rowFactorHAlignedFloat * sizeof(float));
-        if (hasX1) {
-            pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
-        }
-        if (hasBiasAndExpertIdx) {
-            pipe->InitBuffer(biasQue, 1, eHAligned * sizeof(T));
-        }
-        if (hasX2) {
-            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
-        }
-        if (hasScales) {
-            pipe->InitBuffer(scalesQue, DOUBLE_BUFFER, rowFactorKAlignedT * sizeof(S));
-        }
-        if (hasX) {
-            // X的大小是row_num, h
-            pipe->InitBuffer(xQue, DOUBLE_BUFFER, tilingData->h * sizeof(T));
-        }
-        if (hasConstExpert) {
-            pipe->InitBuffer(constExpertAlpha1Que, DOUBLE_BUFFER, tilingData->h * sizeof(T));
-            pipe->InitBuffer(constExpertAlpha2Que, DOUBLE_BUFFER, tilingData->h * sizeof(T));
-            pipe->InitBuffer(vQue, DOUBLE_BUFFER, tilingData->h * sizeof(T));
-        }
+        InitBasicParams(x1, x2, bias, scales, expertIdx, x, constExpertAlpha1, constExpertAlpha2, v);
+        InitGlobalBuffers(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, x,
+                          constExpertAlpha1, constExpertAlpha2, v, y);
+        InitQueueBuffers();
     }
 
     __aicore__ inline void Process()
     {
-        expandedXLocal = expandedXQue.AllocTensor<T>();
-        if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROPLESS_ROW) {
-            CopyIn(expandedXGm, expandedXLocal, 1, tilingData->row * tilingData->k * tilingData->h);
-        } else {
-            CopyIn(expandedXGm, expandedXLocal, 1, tilingData->e * tilingData->c * tilingData->h);
-        }
-        expandedXQue.EnQue(expandedXLocal);
-        expandedXLocal = expandedXQue.DeQue<T>();
+        LoadPersistentData();
 
-        if (hasBiasAndExpertIdx) {
-            biasLocal = biasQue.AllocTensor<T>();
-            CopyIn(biasGm, biasLocal, 1, tilingData->e * tilingData->h);
-            biasQue.EnQue(biasLocal);
-            biasLocal = biasQue.DeQue<T>();
-        }
-        if (hasX) {
-            xLocal = xQue.AllocTensor<T>();
-        }
-        if (hasConstExpert) {
-            constExpertAlpha1Local = constExpertAlpha1Que.AllocTensor<T>();
-            constExpertAlpha2Local = constExpertAlpha2Que.AllocTensor<T>();
-            vLocal = vQue.AllocTensor<T>();
-        }
-        
         int64_t rowOuterLoop =
             (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->rowLoopOfTailBlock : tilingData->rowLoopOfFormerBlock;
         int64_t tailRowFactor = (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->tailRowFactorOfTailBlock :
@@ -147,6 +74,107 @@ public:
             yQue.FreeTensor(yLocal);
         }
 
+        FreePersistentData();
+    }
+
+private:
+    __aicore__ inline void InitBasicParams(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
+                                            GM_ADDR expertIdx, GM_ADDR x, GM_ADDR constExpertAlpha1,
+                                            GM_ADDR constExpertAlpha2, GM_ADDR v)
+    {
+        hasX1 = (x1 != nullptr);
+        hasX2 = (x2 != nullptr);
+        hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
+        hasExpertIdx = expertIdx != nullptr;
+        hasScales = scales != nullptr;
+        hasX = (x != nullptr);
+        hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
+    }
+
+    __aicore__ inline void InitGlobalBuffers(GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2,
+                                              GM_ADDR bias, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR x,
+                                              GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR v,
+                                              GM_ADDR y)
+    {
+        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
+        biasGm.SetGlobalBuffer((__gm__ T*)bias);
+        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+        xGm.SetGlobalBuffer((__gm__ T*)x);
+        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha1);
+        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
+        vGm.SetGlobalBuffer((__gm__ T*)v);
+        yGm.SetGlobalBuffer((__gm__ T*)y);
+    }
+
+    __aicore__ inline void InitQueueBuffers()
+    {
+        int32_t eHAligned = RoundUp<T>(tilingData->e * tilingData->h);
+        int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * tilingData->h);
+        int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->k);
+        int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
+        if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROPLESS_ROW) {
+            int32_t rowsKHAligned = RoundUp<T>(tilingData->row * tilingData->k * tilingData->h);
+            pipe->InitBuffer(expandedXQue, 1, rowsKHAligned * sizeof(T));
+        } else {
+            int32_t eCHAligned = RoundUp<T>(tilingData->e * tilingData->c * tilingData->h);
+            pipe->InitBuffer(expandedXQue, 1, eCHAligned * sizeof(T));
+        }
+        pipe->InitBuffer(yQue, DOUBLE_BUFFER, rowFactorHAlignedFloat * sizeof(float));
+        if (hasX1) {
+            pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
+        }
+        if (hasBiasAndExpertIdx) {
+            pipe->InitBuffer(biasQue, 1, eHAligned * sizeof(T));
+        }
+        if (hasX2) {
+            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
+        }
+        if (hasScales) {
+            pipe->InitBuffer(scalesQue, DOUBLE_BUFFER, rowFactorKAlignedT * sizeof(S));
+        }
+        if (hasX) {
+            pipe->InitBuffer(xQue, DOUBLE_BUFFER, tilingData->h * sizeof(T));
+        }
+        if (hasConstExpert) {
+            pipe->InitBuffer(constExpertAlpha1Que, DOUBLE_BUFFER, tilingData->h * sizeof(T));
+            pipe->InitBuffer(constExpertAlpha2Que, DOUBLE_BUFFER, tilingData->h * sizeof(T));
+            pipe->InitBuffer(vQue, DOUBLE_BUFFER, tilingData->h * sizeof(T));
+        }
+    }
+
+    __aicore__ inline void LoadPersistentData()
+    {
+        expandedXLocal = expandedXQue.AllocTensor<T>();
+        if constexpr (dropPadMode == DROPLESS_COLUMN || dropPadMode == DROPLESS_ROW) {
+            CopyIn(expandedXGm, expandedXLocal, 1, tilingData->row * tilingData->k * tilingData->h);
+        } else {
+            CopyIn(expandedXGm, expandedXLocal, 1, tilingData->e * tilingData->c * tilingData->h);
+        }
+        expandedXQue.EnQue(expandedXLocal);
+        expandedXLocal = expandedXQue.DeQue<T>();
+
+        if (hasBiasAndExpertIdx) {
+            biasLocal = biasQue.AllocTensor<T>();
+            CopyIn(biasGm, biasLocal, 1, tilingData->e * tilingData->h);
+            biasQue.EnQue(biasLocal);
+            biasLocal = biasQue.DeQue<T>();
+        }
+        if (hasX) {
+            xLocal = xQue.AllocTensor<T>();
+        }
+        if (hasConstExpert) {
+            constExpertAlpha1Local = constExpertAlpha1Que.AllocTensor<T>();
+            constExpertAlpha2Local = constExpertAlpha2Que.AllocTensor<T>();
+            vLocal = vQue.AllocTensor<T>();
+        }
+    }
+
+    __aicore__ inline void FreePersistentData()
+    {
         expandedXQue.FreeTensor(expandedXLocal);
         if (hasBiasAndExpertIdx) {
             biasQue.FreeTensor(biasLocal);
@@ -161,7 +189,6 @@ public:
         }
     }
 
-private:
     __aicore__ inline void ProcessInputWithX(int64_t rowOuterIdx, int64_t rowInnerLoop)
     {
         if (hasX2) {
@@ -194,87 +221,111 @@ private:
     {
         for (int64_t rowInnerIdx = 0; rowInnerIdx < rowInnerLoop; rowInnerIdx += 1) {
             for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
-                SetOffsetForExpandedRowIdx(rowOuterIdx, kIdx, rowInnerIdx);
-                int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
-                if (expandedRowIdxGmValue == INVALID_IDX) {
-                    continue;
-                }
-                if constexpr (dropPadMode != DROP_PAD_COLUMN && dropPadMode != DROP_PAD_ROW) {
-                    if (expandedRowIdxGmValue >= tilingData->activeNum) {
-                        continue;
-                    }
-                }
-                int64_t expertIdx = -1;
-                if (hasExpertIdx) {
-                    SetExpertIdxOffset(rowOuterIdx, rowInnerIdx, kIdx);
-                    expertIdx = expertIdxGm.GetValue(expertIdxOffset);
-                }
-
-                if (hasBiasAndExpertIdx) {
-                    biasGmOffset = expertIdx * tilingData->h;
-                }
-                if (hasScales) {
-                    int64_t scaleOffset = rowInnerIdx * tilingData->k + kIdx;
-                    scale = scalesLocal.GetValue(scaleOffset);
-                }
-                LocalTensor<T> innerBiasLocal = hasBiasAndExpertIdx ? biasLocal[biasGmOffset] : expandedXLocal;
-                if (hasX && hasExpertIdx) {
-                    if (expertIdx >= tilingData->zeroExpertStart && expertIdx < tilingData->zeroExpertEnd) {
-                        // 直接不计算
-                        continue;
-                    }
-                    if (expertIdx >= tilingData->copyExpertStart && expertIdx < tilingData->copyExpertEnd) {
-                        // x = x[i]
-                        int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
-                            rowOuterIdx * tilingData->rowFactor * tilingData->h + rowInnerIdx * tilingData->h;
-                        CopyIn(xGm[xGmOffset], xLocal, 1, tilingData->h);
-                        xQue.EnQue(xLocal);
-                        xLocal = xQue.DeQue<T>();
-                        ProcessExpandXBiasScale<T, S>(
-                            yLocal[rowInnerIdx * tilingData->h], xLocal,
-                            innerBiasLocal, scale, tilingData->h, hasBiasAndExpertIdx, hasScales);
-                    } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
-                        expertIdx < tilingData->constantExpertEnd) {
-                        // x = a1 * x[i] +  a2 * v
-                        // 不需要有偏移，用完就下一个循环覆盖掉就行
-                        int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
-                            rowOuterIdx * tilingData->rowFactor * tilingData->h + rowInnerIdx * tilingData->h;
-                        CopyIn(xGm[xGmOffset], xLocal, 1, tilingData->h);
-
-                        int64_t constExpertGmOffset = (expertIdx - tilingData->constantExpertStart) * tilingData->h;
-                        CopyIn(constExpertAlpha1Gm[constExpertGmOffset], constExpertAlpha1Local, 1,  tilingData->h);
-                        CopyIn(constExpertAlpha2Gm[constExpertGmOffset], constExpertAlpha2Local, 1, tilingData->h);
-                        CopyIn(vGm[constExpertGmOffset], vLocal, 1, tilingData->h);
-                        PipeBarrier<PIPE_ALL>();
-                        vLocal = vLocal * constExpertAlpha2Local;
-                        xLocal = xLocal * constExpertAlpha1Local;
-                        xLocal = xLocal + vLocal;
-                        constExpertAlpha1Que.EnQue(constExpertAlpha1Local);
-                        constExpertAlpha1Local = constExpertAlpha1Que.DeQue<T>();
-                        constExpertAlpha2Que.EnQue(constExpertAlpha2Local);
-                        constExpertAlpha2Local = constExpertAlpha2Que.DeQue<T>();
-                        vQue.EnQue(vLocal);
-                        vLocal = vQue.DeQue<T>();
-                        xQue.EnQue(xLocal);
-                        xLocal = xQue.DeQue<T>();
-                        ProcessExpandXBiasScale<T, S>(
-                            yLocal[rowInnerIdx * tilingData->h], xLocal,
-                            innerBiasLocal, scale, tilingData->h, hasBiasAndExpertIdx, hasScales);
-                    } else {
-                        ProcessExpandXBiasScale<T, S>(
-                            yLocal[rowInnerIdx * tilingData->h], expandedXLocal[expandedRowIdxGmValue * tilingData->h],
-                            innerBiasLocal, scale, tilingData->h, hasBiasAndExpertIdx, hasScales);
-                    }
-                } else {
-                    ProcessExpandXBiasScale<T, S>(
-                        yLocal[rowInnerIdx * tilingData->h], expandedXLocal[expandedRowIdxGmValue * tilingData->h],
-                        innerBiasLocal, scale, tilingData->h, hasBiasAndExpertIdx, hasScales);
-                }
+                ProcessSingleRowK(rowOuterIdx, rowInnerIdx, kIdx);
             }
         }
         if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
             Cast(yLocal.template ReinterpretCast<T>(), yLocal, RoundMode::CAST_RINT, rowInnerLoop * tilingData->h);
         }
+    }
+
+    __aicore__ inline bool IsValidExpandedRowIdx(int64_t expandedRowIdxValue)
+    {
+        if (expandedRowIdxValue == INVALID_IDX) {
+            return false;
+        }
+        if constexpr (dropPadMode != DROP_PAD_COLUMN && dropPadMode != DROP_PAD_ROW) {
+            if (expandedRowIdxValue >= tilingData->activeNum) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    __aicore__ inline void ProcessSingleRowK(int64_t rowOuterIdx, int64_t rowInnerIdx, int64_t kIdx)
+    {
+        SetOffsetForExpandedRowIdx(rowOuterIdx, kIdx, rowInnerIdx);
+        int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
+        if (!IsValidExpandedRowIdx(expandedRowIdxGmValue)) {
+            return;
+        }
+
+        int64_t expertIdx = -1;
+        if (hasExpertIdx) {
+            SetExpertIdxOffset(rowOuterIdx, rowInnerIdx, kIdx);
+            expertIdx = expertIdxGm.GetValue(expertIdxOffset);
+        }
+
+        if (hasBiasAndExpertIdx) {
+            biasGmOffset = expertIdx * tilingData->h;
+        }
+        S curScale = 1;
+        if (hasScales) {
+            int64_t scaleOffset = rowInnerIdx * tilingData->k + kIdx;
+            curScale = scalesLocal.GetValue(scaleOffset);
+        }
+        LocalTensor<T> innerBiasLocal = hasBiasAndExpertIdx ? biasLocal[biasGmOffset] : expandedXLocal;
+
+        if (hasX && hasExpertIdx) {
+            if (expertIdx >= tilingData->zeroExpertStart && expertIdx < tilingData->zeroExpertEnd) {
+                return;
+            }
+            if (expertIdx >= tilingData->copyExpertStart && expertIdx < tilingData->copyExpertEnd) {
+                ProcessCopyExpert(rowOuterIdx, rowInnerIdx, innerBiasLocal, curScale);
+            } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
+                       expertIdx < tilingData->constantExpertEnd) {
+                ProcessConstExpert(rowOuterIdx, rowInnerIdx, innerBiasLocal, curScale);
+            } else {
+                ProcessExpandXBiasScale<T, S>(
+                    yLocal[rowInnerIdx * tilingData->h], expandedXLocal[expandedRowIdxGmValue * tilingData->h],
+                    innerBiasLocal, curScale, tilingData->h, hasBiasAndExpertIdx, hasScales);
+            }
+        } else {
+            ProcessExpandXBiasScale<T, S>(
+                yLocal[rowInnerIdx * tilingData->h], expandedXLocal[expandedRowIdxGmValue * tilingData->h],
+                innerBiasLocal, curScale, tilingData->h, hasBiasAndExpertIdx, hasScales);
+        }
+    }
+
+    __aicore__ inline void ProcessCopyExpert(int64_t rowOuterIdx, int64_t rowInnerIdx,
+                                              LocalTensor<T> innerBiasLocal, S curScale)
+    {
+        int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
+            rowOuterIdx * tilingData->rowFactor * tilingData->h + rowInnerIdx * tilingData->h;
+        CopyIn(xGm[xGmOffset], xLocal, 1, tilingData->h);
+        xQue.EnQue(xLocal);
+        xLocal = xQue.DeQue<T>();
+        ProcessExpandXBiasScale<T, S>(
+            yLocal[rowInnerIdx * tilingData->h], xLocal,
+            innerBiasLocal, curScale, tilingData->h, hasBiasAndExpertIdx, hasScales);
+    }
+
+    __aicore__ inline void ProcessConstExpert(int64_t rowOuterIdx, int64_t rowInnerIdx,
+                                               LocalTensor<T> innerBiasLocal, S curScale)
+    {
+        int64_t xGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->h +
+            rowOuterIdx * tilingData->rowFactor * tilingData->h + rowInnerIdx * tilingData->h;
+        CopyIn(xGm[xGmOffset], xLocal, 1, tilingData->h);
+
+        int64_t constExpertGmOffset = (expertIdx - tilingData->constantExpertStart) * tilingData->h;
+        CopyIn(constExpertAlpha1Gm[constExpertGmOffset], constExpertAlpha1Local, 1, tilingData->h);
+        CopyIn(constExpertAlpha2Gm[constExpertGmOffset], constExpertAlpha2Local, 1, tilingData->h);
+        CopyIn(vGm[constExpertGmOffset], vLocal, 1, tilingData->h);
+        PipeBarrier<PIPE_ALL>();
+        vLocal = vLocal * constExpertAlpha2Local;
+        xLocal = xLocal * constExpertAlpha1Local;
+        xLocal = xLocal + vLocal;
+        constExpertAlpha1Que.EnQue(constExpertAlpha1Local);
+        constExpertAlpha1Local = constExpertAlpha1Que.DeQue<T>();
+        constExpertAlpha2Que.EnQue(constExpertAlpha2Local);
+        constExpertAlpha2Local = constExpertAlpha2Que.DeQue<T>();
+        vQue.EnQue(vLocal);
+        vLocal = vQue.DeQue<T>();
+        xQue.EnQue(xLocal);
+        xLocal = xQue.DeQue<T>();
+        ProcessExpandXBiasScale<T, S>(
+            yLocal[rowInnerIdx * tilingData->h], xLocal,
+            innerBiasLocal, curScale, tilingData->h, hasBiasAndExpertIdx, hasScales);
     }
 
     __aicore__ inline void SetOffsetForExpandedRowIdx(int64_t rowOuterIdx, int64_t kIdx, int64_t rowInnerIdx)
@@ -304,7 +355,6 @@ private:
     TPipe* pipe;
     const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
 
-    S scale;
     bool hasX1{false};
     bool hasX2{false};
     bool hasBiasAndExpertIdx{false};

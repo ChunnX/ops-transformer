@@ -74,6 +74,9 @@ public:
 protected:
     ge::graphStatus DoGetPlatformInfo() override;
     ge::graphStatus DoGetShapeAttrsInfo() override;
+    ge::graphStatus GetAttrs();
+    ge::graphStatus GetInputOutputShape();
+    ge::graphStatus SetOptionalInputFlags();
     ge::graphStatus CalcOpTiling() override;
     ge::graphStatus CalcTilingKey() override;
     void DoPostTiling() override;
@@ -83,11 +86,20 @@ protected:
     bool IsRowKHFullLoad();
     bool IsKHFullLoad();
     bool IsHFullLoad();
-    ge::graphStatus CheckShapeAndDtypeIsValid();
+ge::graphStatus CheckShapeAndDtypeIsValid();
+    ge::graphStatus CheckExpandedRowIdxDtypeAndShape();
+    ge::graphStatus CheckX1DtypeAndShape();
+    ge::graphStatus CheckX2Dtype();
     ge::graphStatus CheckPartShapeAndDtypeIsValid();
+    ge::graphStatus CheckX2Shape();
+    ge::graphStatus CheckBiasDtypeAndShape();
+    ge::graphStatus CheckScalesDtype();
     ge::graphStatus CheckConstExpertPartShapeAndDtypeIsValid(int64_t idx);
-    ge::graphStatus DoGetZeroShapeAttrsInfo(int64_t idx, int64_t& start, int64_t& end);
     ge::graphStatus FinalCheckShapeAndDtypeIsValid();
+    ge::graphStatus CheckScalesShape();
+    ge::graphStatus CheckExpertIdxDtypeAndShape();
+    ge::graphStatus CheckXDtypeAndShape();
+    ge::graphStatus CheckYDtypeAndShape();
     ge::graphStatus GetRow(const gert::StorageShape* expandedRowIdxShape);
     ge::graphStatus CheckBiasShape(const gert::StorageShape* biasShape);
     ge::graphStatus GetECH(const gert::StorageShape* expandedXShape);
@@ -274,11 +286,9 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckBiasShape(const gert::StorageS
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckExpandedRowIdxDtypeAndShape()
 {
     gert::Shape rowIdxShape = {row * k};
-    gert::Shape bsh = {row, h};
-
     auto expandedRowIdxDesc = context_->GetInputDesc(EXPANDED_ROW_IDX_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expandedRowIdxDesc);
     auto expandedRowIdxShape = context_->GetInputShape(EXPANDED_ROW_IDX_IDX);
@@ -293,7 +303,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expanded_row_idx",
             "invalid", "shape of expanded_row_idx must be (bs,k)."),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckX1DtypeAndShape()
+{
+    gert::Shape bsh = {row, h};
     auto x1Desc = context_->GetOptionalInputDesc(X1_IDX);
     if (x1Desc) {
         OP_CHECK_IF(
@@ -311,7 +326,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
                 "invalid", "shape of x1 must be (bs,h)."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckX2Dtype()
+{
     auto x2Desc = context_->GetOptionalInputDesc(X2_IDX);
     if (x2Desc) {
         OP_CHECK_IF(
@@ -321,13 +340,31 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
                 Ops::Base::ToString(dtype).c_str()),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckShapeAndDtypeIsValid()
+{
+    OP_CHECK_IF(
+            CheckExpandedRowIdxDtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckExpandedRowIdxDtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckX1DtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckX1DtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckX2Dtype() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckX2Dtype failed."),
+            return ge::GRAPH_FAILED);
     OP_CHECK_IF(
             CheckPartShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
                 "CheckPartShapeAndDtypeIsValid failed."),
             return ge::GRAPH_FAILED);
-    
     OP_CHECK_IF(
             FinalCheckShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
@@ -365,10 +402,9 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckX2Shape()
 {
     gert::Shape bsh = {row, h};
-
     auto x2Shape = context_->GetOptionalInputShape(X2_IDX);
     if (x2Shape) {
         OP_CHECK_IF(
@@ -377,7 +413,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
                 "invalid", "shape of x2 must be (bs,h)."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckBiasDtypeAndShape()
+{
     auto biasDesc = context_->GetOptionalInputDesc(BIAS_IDX);
     if (biasDesc) {
         OP_CHECK_IF(
@@ -399,7 +439,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
                 "invalid", "dim 1 of bias should be h."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckScalesDtype()
+{
     auto scalesDesc = context_->GetOptionalInputDesc(SCALES_IDX);
     scaleDtypeSize = dtypeSize;
     if (scalesDesc) {
@@ -417,16 +461,47 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
             scaleDtypeKey = BFLOAT16_TILING_KEY;
         }
     }
-    return CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_ALPHA1_IDX) &&
-        CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_ALPHA2_IDX) &&
-        CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_V_IDX);
+    return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckPartShapeAndDtypeIsValid()
+{
+    OP_CHECK_IF(
+            CheckX2Shape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckX2Shape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckBiasDtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckBiasDtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckScalesDtype() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckScalesDtype failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_ALPHA1_IDX) != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckConstExpertPartShapeAndDtypeIsValid for alpha1 failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_ALPHA2_IDX) != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckConstExpertPartShapeAndDtypeIsValid for alpha2 failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckConstExpertPartShapeAndDtypeIsValid(CONST_EXPERT_V_IDX) != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckConstExpertPartShapeAndDtypeIsValid for v failed."),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckScalesShape()
 {
     gert::Shape bsk = {row, k};
-    gert::Shape bsh = {row, h};
-
     auto scalesShape = context_->GetOptionalInputShape(SCALES_IDX);
     if (scalesShape) {
         OP_CHECK_IF(
@@ -435,7 +510,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
                 "invalid", "shape of scales must be (bs,k)."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckExpertIdxDtypeAndShape()
+{
+    gert::Shape bsk = {row, k};
     auto expertIdxDesc = context_->GetOptionalInputDesc(EXPERTIDX_IDX);
     if (expertIdxDesc) {
         OP_CHECK_IF(
@@ -452,8 +532,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
                 "invalid", "shape of expert_idx must be (bs,k)."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
-    // 判断x的shape信息要与（ROW_NUM, H）一致
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckXDtypeAndShape()
+{
+    gert::Shape bsh = {row, h};
     auto xDesc = context_->GetOptionalInputDesc(X_IDX);
     if (xDesc) {
         auto xShape = context_->GetOptionalInputShape(X_IDX);
@@ -469,7 +553,12 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
                 "invalid", "shape of x must be (bs,h)."),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckYDtypeAndShape()
+{
+    gert::Shape bsh = {row, h};
     auto yDesc = context_->GetOutputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, yDesc);
     auto yShape = context_->GetOutputShape(0);
@@ -485,6 +574,31 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y",
             "invalid", "shape of y must be (bs,h)."),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::FinalCheckShapeAndDtypeIsValid()
+{
+    OP_CHECK_IF(
+            CheckScalesShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckScalesShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckExpertIdxDtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckExpertIdxDtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckXDtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckXDtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+            CheckYDtypeAndShape() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
+                "CheckYDtypeAndShape failed."),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -564,9 +678,8 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckExpertRangeValidity()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
+ge::graphStatus MoeFinalizeRoutingV2Regbase::GetAttrs()
 {
-    // attr的实现
     auto attrsPtr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     auto dropPadModePtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE_IDX);
@@ -578,12 +691,14 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
         OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode",
             std::to_string(dropPadMode).c_str(), "0, 1, 2 or 3"),
         return ge::GRAPH_FAILED);
-
     DoGetZeroShapeAttrsInfo(ATTR_ZERO_EXPERT_RANGE_IDX, zeroExpertStart, zeroExpertEnd);
     DoGetZeroShapeAttrsInfo(ATTR_COPY_EXPERT_RANGE_IDX, copyExpertStart, copyExpertEnd);
     DoGetZeroShapeAttrsInfo(ATTR_CONSTANT_EXPERT_RANGE_IDX, constantExpertStart, constantExpertEnd);
+    return ge::GRAPH_SUCCESS;
+}
 
-    // 输入数据
+ge::graphStatus MoeFinalizeRoutingV2Regbase::GetInputOutputShape()
+{
     auto expandedXDesc = context_->GetInputDesc(EXPANDED_X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expandedXDesc);
     dtype = expandedXDesc->GetDataType();
@@ -612,7 +727,11 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
         GetRow(expandedRowIdxShape) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "row", "GRAPH_FAILED",
             "failed to get row."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2Regbase::SetOptionalInputFlags()
+{
     auto x1Desc = context_->GetOptionalInputDesc(X1_IDX);
     hasX1_ = x1Desc != nullptr;
     auto x2Desc = context_->GetOptionalInputDesc(X2_IDX);
@@ -624,20 +743,35 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
             "nullptr", "x1 must exist when x2 exists."),
         return ge::GRAPH_FAILED);
 
-    // 新增x
     auto xDesc = context_->GetOptionalInputDesc(X_IDX);
     hasX_ = xDesc != nullptr;
     auto constExpertAlpha1Desc = context_->GetOptionalInputDesc(CONST_EXPERT_ALPHA1_IDX);
     auto constExpertAlpha2Desc = context_->GetOptionalInputDesc(CONST_EXPERT_ALPHA2_IDX);
     auto constExpertVDesc = context_->GetOptionalInputDesc(CONST_EXPERT_V_IDX);
-    hasConstantExpert_ =  constExpertVDesc != nullptr && constExpertAlpha1Desc != nullptr &&
+    hasConstantExpert_ = constExpertVDesc != nullptr && constExpertAlpha1Desc != nullptr &&
         constExpertAlpha2Desc != nullptr;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
+{
+    OP_CHECK_IF(
+        GetAttrs() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "attrs", "GRAPH_FAILED",
+            "GetAttrs failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        GetInputOutputShape() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape", "GRAPH_FAILED",
+            "GetInputOutputShape failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        SetOptionalInputFlags() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "flags", "GRAPH_FAILED",
+            "SetOptionalInputFlags failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         CheckShapeAndDtypeIsValid() != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "shape_and_dtype", "GRAPH_FAILED",
             "check shapes and dtype are invalid."),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(
         CheckExpertRangeValidity() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "check const/zero/copy expert range are invalid."),

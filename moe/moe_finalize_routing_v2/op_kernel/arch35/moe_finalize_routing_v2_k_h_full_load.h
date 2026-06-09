@@ -29,7 +29,6 @@ public:
     __aicore__ inline MoeFinalizeRoutingV2KHFullLoad()
     {}
 
-    // expandedX/bias k*h全载，需要fork次搬入
     __aicore__ inline void Init(
         GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
         GM_ADDR expertIdx, GM_ADDR x, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR v,
@@ -39,76 +38,10 @@ public:
         pipe = pipePtr;
         tilingData = tilingDataPtr;
 
-        k = tilingData->k;
-        h = tilingData->h;
-        hAligned = tilingData->hAligned;
-        khAligned = k * hAligned;
-        hasX1 = x1 != nullptr;
-        hasX2 = x2 != nullptr;
-        hasExpertIdx = (expertIdx != nullptr);
-        hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
-        hasScales = scales != nullptr;
-        hasX = (x != nullptr);
-        hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
-        // k == 1时，expandedX/bias大小是row_num, h，其他情况是k*row_num, h
-        // k表示从总的专家E中选出K个专家， E表示expert num,即专家数，E需要大于等于K
-        k1 = k == 1;
-        k4 = k <= 4;
-        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
-        biasGm.SetGlobalBuffer((__gm__ T*)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
-        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-        yGm.SetGlobalBuffer((__gm__ T*)y);
-        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
-        xGm.SetGlobalBuffer((__gm__ T*)x);
-        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha1);
-        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
-        vGm.SetGlobalBuffer((__gm__ T*)v);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-
-        // yGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-
-        int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * h);
-        int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * h);
-        int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * k);
-        int32_t rowFactorKAlignedTInt32 = RoundUp<int32_t>(tilingData->rowFactor * k);
-        if (k1) {
-            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
-            pipe->InitBuffer(expandedRowIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
-        } else if (k4 && tilingData->rowFactor >= BATCH_COPY_SIZE) {
-            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, BATCH_COPY_SIZE * k * hAligned * sizeof(T));
-        } else {
-            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
-        }
-        pipe->InitBuffer(yQue, DOUBLE_BUFFER, rowFactorHAlignedFloat * sizeof(float));
-        if (hasBiasAndExpertIdx) {
-            if (k1) {
-                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
-                pipe->InitBuffer(expertIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
-            } else if (k4 && tilingData->rowFactor >= BATCH_COPY_SIZE) {
-                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, BATCH_COPY_SIZE * k * hAligned * sizeof(T));
-            } else {
-                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
-            }
-        }
-        if (hasX1) {
-            pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
-        }
-        if (hasX2) {
-            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
-        }
-        if (hasScales) {
-            pipe->InitBuffer(scalesQue, DOUBLE_BUFFER, rowFactorKAlignedT * sizeof(S));
-        }
-        if (hasX) {
-            pipe->InitBuffer(xBuf, h * sizeof(T));
-        }
-        if (hasConstExpert) {
-            pipe->InitBuffer(constExpertAlpha1Buf, h * sizeof(T));
-            pipe->InitBuffer(constExpertAlpha2Buf, h * sizeof(T));
-            pipe->InitBuffer(vBuf, h * sizeof(T));
-        }
+        InitBasicParams(x1, x2, bias, scales, expertIdx, x, constExpertAlpha1, constExpertAlpha2, v);
+        InitGlobalBuffers(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, x,
+                          constExpertAlpha1, constExpertAlpha2, v, y);
+        InitQueueBuffers();
     }
 
     __aicore__ inline void Process()
@@ -160,6 +93,97 @@ public:
     }
 
 private:
+    __aicore__ inline void InitBasicParams(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales,
+                                            GM_ADDR expertIdx, GM_ADDR x, GM_ADDR constExpertAlpha1,
+                                            GM_ADDR constExpertAlpha2, GM_ADDR v)
+    {
+        k = tilingData->k;
+        h = tilingData->h;
+        hAligned = tilingData->hAligned;
+        khAligned = k * hAligned;
+        hasX1 = x1 != nullptr;
+        hasX2 = x2 != nullptr;
+        hasExpertIdx = (expertIdx != nullptr);
+        hasBiasAndExpertIdx = (bias != nullptr) && (expertIdx != nullptr);
+        hasScales = scales != nullptr;
+        hasX = (x != nullptr);
+        hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
+        k1 = k == 1;
+        k4 = k <= 4;
+    }
+
+    __aicore__ inline void InitGlobalBuffers(GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2,
+                                              GM_ADDR bias, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR x,
+                                              GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR v,
+                                              GM_ADDR y)
+    {
+        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
+        biasGm.SetGlobalBuffer((__gm__ T*)bias);
+        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+        xGm.SetGlobalBuffer((__gm__ T*)x);
+        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha1);
+        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
+        vGm.SetGlobalBuffer((__gm__ T*)v);
+        yGm.SetGlobalBuffer((__gm__ T*)y);
+    }
+
+    __aicore__ inline int64_t CalcExpandedBufferSize()
+    {
+        if (k1) {
+            return tilingData->rowFactor * hAligned * sizeof(T);
+        } else if (k4 && tilingData->rowFactor >= BATCH_COPY_SIZE) {
+            return BATCH_COPY_SIZE * k * hAligned * sizeof(T);
+        } else {
+            return k * hAligned * sizeof(T);
+        }
+    }
+
+    __aicore__ inline void InitQueueBuffers()
+    {
+        int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * h);
+        int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * h);
+        int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * k);
+        int32_t rowFactorKAlignedTInt32 = RoundUp<int32_t>(tilingData->rowFactor * k);
+
+        if (k1) {
+            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, CalcExpandedBufferSize());
+            pipe->InitBuffer(expandedRowIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+        } else {
+            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, CalcExpandedBufferSize());
+        }
+        pipe->InitBuffer(yQue, DOUBLE_BUFFER, rowFactorHAlignedFloat * sizeof(float));
+
+        if (hasBiasAndExpertIdx) {
+            if (k1) {
+                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, CalcExpandedBufferSize());
+                pipe->InitBuffer(expertIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+            } else {
+                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, CalcExpandedBufferSize());
+            }
+        }
+        if (hasX1) {
+            pipe->InitBuffer(x1Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
+        }
+        if (hasX2) {
+            pipe->InitBuffer(x2Que, DOUBLE_BUFFER, rowFactorHAlignedT * sizeof(T));
+        }
+        if (hasScales) {
+            pipe->InitBuffer(scalesQue, DOUBLE_BUFFER, rowFactorKAlignedT * sizeof(S));
+        }
+        if (hasX) {
+            pipe->InitBuffer(xBuf, h * sizeof(T));
+        }
+        if (hasConstExpert) {
+            pipe->InitBuffer(constExpertAlpha1Buf, h * sizeof(T));
+            pipe->InitBuffer(constExpertAlpha2Buf, h * sizeof(T));
+            pipe->InitBuffer(vBuf, h * sizeof(T));
+        }
+    }
+
     __aicore__ inline void ProcessWithId(int64_t rowOuterIdx, int64_t rowInnerLoop) {
         // k == 1
         if (k1) {
