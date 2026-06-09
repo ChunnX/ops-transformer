@@ -1,5 +1,4 @@
 import torch
-import torch_npu
 import math
 import numpy as np
 import os
@@ -905,79 +904,6 @@ def sparse_lightning_indexer_grad_kl_loss(
         loss_out = results[3]
 
         kl_loss = loss_out[:, :, 0].sum()
-
-        # --- DEBUG: compare V-scope intermediates with Python reference ---
-        if os.environ.get("TL_DEBUG") == "1":
-            with torch.no_grad():
-                bmm1_tl = results[0]  # dQueryIndex, not bmm1
-                # Recompute bmm1/bmm2 in Python for reference
-                q_full = torch.cat([query.float(), query_rope.float()], dim=-1) if d_rope_orig > 0 else query.float()
-                gk_full = torch.cat([gather_key.float(), gather_key_rope.float()], dim=-1) if d_rope_orig > 0 else gather_key.float()
-                bmm1_ref = torch.matmul(q_full, gk_full.transpose(-2, -1))
-                bmm2_raw_ref = torch.matmul(query_index.float(), gather_key_index.float().transpose(-2, -1))
-                bmm2_ref = torch.relu(bmm2_raw_ref)
-
-                # P_reduced
-                bmm1_scaled = bmm1_ref * scale_value
-                sm_max = softmax_max.squeeze(1)
-                sm_sum = softmax_sum.squeeze(1)
-                P_ref = torch.exp(bmm1_scaled - sm_max.unsqueeze(-1)) / sm_sum.unsqueeze(-1)
-                P_reduced_ref = P_ref.mean(dim=2)
-
-                # ReduceSumY
-                w = weights.float().unsqueeze(-1)
-                reduce_sum_y_ref = (bmm2_ref * w).sum(dim=2)
-
-                # SoftmaxI
-                rsy_max_ref = reduce_sum_y_ref.max(dim=-1, keepdim=True).values
-                rsy_exp_ref = torch.exp(reduce_sum_y_ref - rsy_max_ref)
-                rsy_sum_ref = rsy_exp_ref.sum(dim=-1, keepdim=True)
-                softmax_i_ref = rsy_exp_ref / rsy_sum_ref
-
-                # diff, dWeight, reluGrad
-                diff_ref = softmax_i_ref - P_reduced_ref
-                dw_ref = (diff_ref.unsqueeze(2) * bmm2_ref).sum(dim=-1)
-                relu_mask_ref = (bmm2_ref > 0).float()
-                rg_ref = w * diff_ref.unsqueeze(2) * relu_mask_ref
-
-                # Read kernel intermediates from results (out_idx=[-7,-6,-5,-4,-3,-2])
-                # results = (dQueryIndex, dWeight, reluGrad, LossOut)
-                # Need to re-run with diag kernel to get P/RSY/SI; compare final outputs instead
-                d_qi_tl_f = d_query_index.float()
-                dw_tl_f = d_weight.float()
-                rg_tl_f = relu_grad.float()
-
-                # Compare dWeight
-                dw_diff = (dw_tl_f - dw_ref).abs()
-                dw_off_max = dw_ref.abs().max() + 1e-8
-                print(f"[TL_DEBUG] dWeight: max_diff={dw_diff.max().item():.6f}, rel_err={(dw_diff.max()/dw_off_max).item():.6f}")
-                print(f"[TL_DEBUG]   ref range=[{dw_ref.min().item():.6f}, {dw_ref.max().item():.6f}]")
-                print(f"[TL_DEBUG]   tl  range=[{dw_tl_f.min().item():.6f}, {dw_tl_f.max().item():.6f}]")
-                # Compare reluGrad
-                rg_diff = (rg_tl_f - rg_ref).abs()
-                rg_off_max = rg_ref.abs().max() + 1e-8
-                print(f"[TL_DEBUG] reluGrad: max_diff={rg_diff.max().item():.6f}, rel_err={(rg_diff.max()/rg_off_max).item():.6f}")
-                # Compare P_reduced vs kernel (need diag kernel, skip)
-                # Instead, compare Python ref vs official op
-                try:
-                    d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
-                        query, key, query_index, key_index, weights, sparse_indices,
-                        softmax_max, softmax_sum, scale_value,
-                        query_rope=query_rope_orig, key_rope=key_rope_orig,
-                        actual_seq_qlen=[S1]*B, actual_seq_klen=[S2]*B,
-                        layout="BSND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
-                    torch.npu.synchronize()
-                    dw_off_f = dw_off.float()
-                    dw_off_diff = (dw_tl_f - dw_off_f).abs()
-                    dw_off_max2 = dw_off_f.abs().max() + 1e-8
-                    print(f"[TL_DEBUG] dWeight vs Official: max_diff={dw_off_diff.max().item():.6f}, rel_err={(dw_off_diff.max()/dw_off_max2).item():.6f}")
-                    print(f"[TL_DEBUG]   off range=[{dw_off_f.min().item():.6f}, {dw_off_f.max().item():.6f}]")
-                    # Also compare Python ref vs Official
-                    dw_pyroff = (dw_ref - dw_off_f).abs()
-                    print(f"[TL_DEBUG] dWeight Python_ref vs Official: max_diff={dw_pyroff.max().item():.6f}, rel_err={(dw_pyroff.max()/dw_off_max2).item():.6f}")
-                except Exception as e:
-                    print(f"[TL_DEBUG] Official op failed: {e}")
-        # --- END DEBUG ---
 
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,

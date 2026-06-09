@@ -41,7 +41,6 @@ TEST_CASES = [
         "d_rope": 64,
         "K": 2048,
         "layout": "BSND",
-        "dynamic_fill": False,
     },
     {
         "name": "Case 1 - 官方风格TND",
@@ -57,7 +56,6 @@ TEST_CASES = [
         "d_rope": 64,
         "K": 2048,
         "layout": "TND",
-        "dynamic_fill": True,
     },
     {
         "name": "Case 2 - 短序列",
@@ -73,7 +71,6 @@ TEST_CASES = [
         "d_rope": 64,
         "K": 2048,
         "layout": "BSND",
-        "dynamic_fill": False,
     },
     {
         "name": "Case 3 - 中序列",
@@ -89,10 +86,9 @@ TEST_CASES = [
         "d_rope": 64,
         "K": 2048,
         "layout": "BSND",
-        "dynamic_fill": False,
     },
     {
-        "name": "Case 4 - 长序列动态填充",
+        "name": "Case 4 - 长序列",
         "B": 1,
         "S1": 2048,
         "S2": 8192,
@@ -105,7 +101,6 @@ TEST_CASES = [
         "d_rope": 64,
         "K": 2048,
         "layout": "BSND",
-        "dynamic_fill": True,
     },
 ]
 
@@ -129,7 +124,6 @@ def gen_inputs_corrected(case_config, seed=42):
     d_rope = case_config["d_rope"]
     K = case_config["K"]
     layout = case_config["layout"]
-    dynamic_fill = case_config["dynamic_fill"]
 
     G = N1 // N2
     scale_value = 1.0 / math.sqrt(DQuery)
@@ -168,35 +162,23 @@ def gen_inputs_corrected(case_config, seed=42):
     if layout == "TND":
         for s1_idx in range(S1):
             s2_real_size = S2 - S1 + s1_idx + 1
-            if dynamic_fill:
-                if s2_real_size <= 0:
-                    s2_real_size = S2
-                s2_real_len = min(s2_real_size, K)
-                indices = torch.randperm(s2_real_size)[:s2_real_len]
-                sparse_indices[s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
+            if s2_real_size <= 0:
+                s2_real_size = S2
+            s2_real_len = min(s2_real_size, K)
+            indices = torch.randperm(s2_real_size)[:s2_real_len]
+            sparse_indices[s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
+            if s2_real_len < K:
                 sparse_indices[s1_idx, 0, s2_real_len:] = -1
-            else:
-                s2_real_len = min(S2, K)
-                indices = torch.randperm(S2)[:s2_real_len]
-                sparse_indices[s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
-                if s2_real_len < K:
-                    sparse_indices[s1_idx, 0, s2_real_len:] = -1
     else:
         for s1_idx in range(S1):
             s2_real_size = S2 - S1 + s1_idx + 1
-            if dynamic_fill:
-                if s2_real_size <= 0:
-                    s2_real_size = S2
-                s2_real_len = min(s2_real_size, K)
-                indices = torch.randperm(s2_real_size)[:s2_real_len]
-                sparse_indices[0, s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
+            if s2_real_size <= 0:
+                s2_real_size = S2
+            s2_real_len = min(s2_real_size, K)
+            indices = torch.randperm(s2_real_size)[:s2_real_len]
+            sparse_indices[0, s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
+            if s2_real_len < K:
                 sparse_indices[0, s1_idx, 0, s2_real_len:] = -1
-            else:
-                s2_real_len = min(S2, K)
-                indices = torch.randperm(S2)[:s2_real_len]
-                sparse_indices[0, s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
-                if s2_real_len < K:
-                    sparse_indices[0, s1_idx, 0, s2_real_len:] = -1
 
     with torch.no_grad():
         if layout == "TND":
@@ -204,15 +186,13 @@ def gen_inputs_corrected(case_config, seed=42):
             k_rope_mqa = key_rope.squeeze(1)
             q_full = torch.cat([query, query_rope], dim=-1)
             k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
-            k_full_t = k_full.transpose(-1, -2).unsqueeze(0)
-            bmm1_full = torch.matmul(q_full.unsqueeze(0), k_full_t)
+            k_full_t = k_full.transpose(-1, -2)
+            bmm1_full = torch.matmul(q_full, k_full_t)
             bmm1_scaled = bmm1_full.float() * scale_value
             sm_max_val = bmm1_scaled.max(dim=-1).values
             sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
-            softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
-            softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
-            softmax_max = softmax_max.squeeze(0)
-            softmax_sum = softmax_sum.squeeze(0)
+            softmax_max = sm_max_val.reshape(S1, N2, G).permute(1, 0, 2).contiguous().float()
+            softmax_sum = sm_sum_val.reshape(S1, N2, G).permute(1, 0, 2).contiguous().float()
         else:
             k_mqa = key.squeeze(2)
             k_rope_mqa = key_rope.squeeze(2)
@@ -258,8 +238,7 @@ def run_single_test(case_idx):
     print("=" * 80)
 
     config_str = f"B={case['B']}, S1={case['S1']}, S2={case['S2']}, K={case['K']}, " \
-                f"N1={case['N1']}, Nidx1={case['Nidx1']}, layout={case['layout']}, " \
-                f"dynamic_fill={case['dynamic_fill']}"
+                f"N1={case['N1']}, Nidx1={case['Nidx1']}, layout={case['layout']}"
     print(f"配置: {config_str}")
 
     inputs = gen_inputs_corrected(case)

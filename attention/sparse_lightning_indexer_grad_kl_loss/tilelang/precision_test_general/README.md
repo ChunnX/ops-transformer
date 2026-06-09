@@ -11,30 +11,40 @@
 | Case | 配置 | 特点 |
 |------|------|------|
 | 0 | S1=1, S2=2048, K=2048, N1=128, Nidx1=64, BSND | 现有配置（已验证） |
-| 1 | S1=128, S2=128, K=2048, N1=128, Nidx1=64, TND | 官方风格TND布局，动态填充 |
+| 1 | S1=128, S2=128, K=2048, N1=128, Nidx1=64, TND | 官方风格TND布局 |
 | 2 | S1=64, S2=512, K=2048, N1=128, Nidx1=64, BSND | 短序列 |
 | 3 | S1=512, S2=2048, K=2048, N1=128, Nidx1=64, BSND | 中序列，典型配置 |
-| 4 | S1=2048, S2=8192, K=2048, N1=128, Nidx1=64, BSND | 长序列，动态填充 |
+| 4 | S1=2048, S2=8192, K=2048, N1=128, Nidx1=64, BSND | 长序列 |
 
 ## 关键改进
 
 ### 1. TND入参构造（从BSND squeeze）
 ```python
-# 先构造BSND格式，再squeeze掉B维
-query_bsnd = torch.randn(B, S1, N1, DQuery)
+# 先构造BSND格式，再squeeze掉B维，确保数据一致性
+query_bsnd = torch.randn(B, S1, N1, DQuery).npu()
 if layout == "TND":
     query = query_bsnd.squeeze(0)  # (S1, N1, DQuery)
 ```
 
-### 2. sparse_indices不重复索引
+### 2. sparse_indices构造（统一使用官方示例逻辑）
 ```python
-# 使用randperm替代randint（避免重复）
-indices = torch.randperm(s2_real_size)[:s2_real_len]
+# 根据causal mask动态计算有效key数量
+for s1_idx in range(S1):
+    s2_real_size = S2 - S1 + s1_idx + 1  # 当前query能看到的key数量
+    if s2_real_size <= 0:
+        s2_real_size = S2  # 异常情况fallback
+    s2_real_len = min(s2_real_size, K)
+    
+    # 使用randperm生成不重复索引
+    indices = torch.randperm(s2_real_size)[:s2_real_len]
+    sparse_indices[..., :s2_real_len] = indices.to(torch.int32)
+    if s2_real_len < K:
+        sparse_indices[..., s2_real_len:] = -1  # 超出部分填-1
 ```
 
 ### 3. softmax_max/sum正确计算
 ```python
-# 从实际QK计算（修正官方使用随机值的错误）
+# 从实际QK计算（修正官方示例使用随机值的错误）
 bmm1 = torch.matmul(query, key.transpose())
 bmm1_scaled = bmm1 * scale_value
 softmax_max = bmm1_scaled.max(dim=-1).values
