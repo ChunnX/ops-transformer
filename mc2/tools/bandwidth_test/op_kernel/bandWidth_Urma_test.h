@@ -402,7 +402,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + dstRankId * axisBS_ * sizeof(int32_t)));
         sendFlagHandleGMTensor_(curExpertCnt) = 1;
-        PRINTF("ProcessToken dstRankId = %d, curExpertCnt = %d\n", dstRankId, curExpertCnt);
+        PRINTF("ProcessToken dstRankId = %d, curExpertCnt = %d, sendFlagHandleGMTensor_(curExpertCnt) = %d\n", dstRankId, curExpertCnt, sendFlagHandleGMTensor_(curExpertCnt));
     }
 }
 
@@ -523,6 +523,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     PRINTF("CommProcess cnt = %d, epRankId_ = %d, processCnt = %d\n", cnt, epRankId_, processCnt);
     for (uint32_t i = startExpert; i < endExpert; ++i) {
         PRINTF("CommProcess i = %d, sendSumTensor_(i - startExpert) = %d\n", i, sendSumTensor_(i - startExpert));
+    }
+    sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + startExpert * axisBS_ * sizeof(int32_t)));
+    for (uint32_t i = 0; i < axisBS_; ++i) {
+       PRINTF("CommProcess i = %d, epRankId_ = %d, sendFlagHandleGMTensor_(i) = %d\n", i, epRankId_, sendFlagHandleGMTensor_.GetValue(i));
     }
 }
 
