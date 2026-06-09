@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_lightning_indexer_template_tiling_key.h
+ * \file quant_lightning_indexer_v2_template_tiling_key.h
  * \brief
  */
 
-#ifndef QUANT_LIGHTNING_INDEXER_TEMPLATE_TILING_KEY_H
-#define QUANT_LIGHTNING_INDEXER_TEMPLATE_TILING_KEY_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H
+#define QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -94,4 +94,4 @@
                             ASCENDC_TPL_UINT_SEL(K_LAYOUT_T, ASCENDC_TPL_UI_LIST, QLIV2_LAYOUT_TND), ), );
 #endif
 
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_TEMPLATE_TILING_KEY_H

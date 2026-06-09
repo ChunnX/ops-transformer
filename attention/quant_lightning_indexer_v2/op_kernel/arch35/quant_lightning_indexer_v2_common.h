@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_common.h
+ * \file quant_lightning_indexer_v2_common.h
  * \brief
  */
-#ifndef quant_lightning_indexer_COMMON_H
-#define quant_lightning_indexer_COMMON_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+#define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
 namespace QLIV2Common {
 
@@ -194,4 +194,4 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
 #define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
 
-#endif  // quant_lightning_indexer_COMMON_H
+#endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

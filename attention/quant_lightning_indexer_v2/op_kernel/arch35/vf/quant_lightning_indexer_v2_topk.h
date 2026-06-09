@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_topk.h
+ * \file quant_lightning_indexer_v2_topk.h
  * \brief
  */
-#ifndef quant_lightning_indexer_TOPK_H
-#define quant_lightning_indexer_TOPK_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_TOPK_H
+#define QUANT_LIGHTNING_INDEXER_V2_TOPK_H
 
 #include "kernel_operator.h"
 #include "vf_topk.h"
@@ -189,4 +189,4 @@ private:
     uint32_t trunkLen = 16384;
 };
 }
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_TOPK_H

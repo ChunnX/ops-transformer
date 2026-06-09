@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_common.h
+ * \file quant_lightning_indexer_v2_common.h
  * \brief
  */
-#ifndef QUANT_LIGHTNING_INDEXER_COMMON_H
-#define QUANT_LIGHTNING_INDEXER_COMMON_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+#define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 
 namespace QLIV2Common {
 
@@ -159,4 +159,4 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 }  // namespace QLIV2Common
 
-#endif  // QUANT_LIGHTNING_INDEXER_COMMON_H
+#endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H
