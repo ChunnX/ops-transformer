@@ -64,6 +64,9 @@ constexpr uint64_t TILING_KEY_BSH_BF16 = 10000UL;
 constexpr uint64_t TILING_KEY_BSH_FP16 = 10001UL;
 constexpr uint64_t SYS_WORKSPACE_SIZE = static_cast<uint64_t>(16 * 1024 * 1024);
 
+constexpr uint64_t LARGE_SEQ_LEN_THRESHOLD = 1024UL * 512UL;  // 524288
+constexpr uint64_t MIN_BS_CORES_FOR_LARGE_SEQ = 4UL;
+
 bool FusedCausalConv1dCutBSHTiling::IsCapable()
 {
     if (context_ == nullptr) {
@@ -782,6 +785,23 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::DoOpTiling()
     CuSeqLenSplitInfo bestBSSplitInfo = {};
     if (SearchBestCoreSplit(searchN, bsOverlap, bestDimCores, bestBSSplitInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
+    }
+    // 大 tensor 场景：cuSeqLen 过大时单核 BS 偏移可能超出 MTE DDR 寻址范围，
+    // 强制为 BS 方向分配至少 MIN_BS_CORES_FOR_LARGE_SEQ 个核
+    if (cuSeqLen_ > LARGE_SEQ_LEN_THRESHOLD && bestBSSplitInfo.realCoreNum < MIN_BS_CORES_FOR_LARGE_SEQ) {
+        uint64_t forcedBSCores = MIN_BS_CORES_FOR_LARGE_SEQ;
+        uint64_t forcedDimCores = totalCoreNum_ / forcedBSCores;
+        if (forcedDimCores == 0) {
+            forcedDimCores = 1;
+        }
+        // dim 核数不能超过可切分的 128 块数
+        if (forcedDimCores > searchN) {
+            forcedDimCores = searchN;
+        }
+        // 重新计算 BS 切分信息
+        bestBSSplitInfo = CalculateCuSeqLenSplitInfo(cuSeqLen_, bsOverlap, forcedBSCores);
+        bestDimCores = forcedDimCores;
+        realCoreNum_ = forcedDimCores * forcedBSCores;
     }
 
     if (ApplyDimSplit(N, bestDimCores) != ge::GRAPH_SUCCESS)
