@@ -78,41 +78,100 @@ MHC (Manifold-Constraint Hyper-Connection) 是一种改进的注意力机制连�
 ### 2.1 前向计算流程
 
 ```mermaid
-graph TD
-    A[x] --> B[x_phi]
-    B --> C[+bias]
-    C --> D[hcBeforeNorm]
-    D --> E[RmsNorm]
-    E --> F[Reshape]
-    F --> G[Save_hResLogits]
-    G --> H{clamp}
-    H -- yes --> I[Maxs]
-    I --> J[Mins]
-    H -- no --> K[Skip]
-    J --> L[Softmax]
-    K --> L
-    L --> M[Sinkhorn]
-    M --> N[Output]
+sequenceDiagram
+    participant Host as Host CPU
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
+    participant GM as Global Memory
+
+    Host->>AIC: 启动算子 (TILING_KEY_IS 0/1)
+    AIC->>GM: 读取 x, phi
+    AIV->>GM: 读取 x
+    AIV->>AIV: Cast x (BF16→FP32)
+    AIV->>GM: 写回 x_cast
+    AIV->>AIV: Square + ReduceSum + Rsqrt
+    AIV->>GM: 写回 inv_rms
+    AIV-->>AIC: CrossCoreSetFlag (AIV→AIC)
+    AIC->>AIC: Wait AIV Cast 完成
+    AIC->>AIC: MatMul: x_cast @ phi
+    AIC->>GM: 写回 hcBeforeNorm
+    AIC-->>AIV: CrossCoreSetFlag (AIC→AIV)
+    AIV->>AIV: Wait AIC MatMul 完成
+
+    Note over AIV: Stage2 开始
+    AIV->>GM: 读取 hcBase, hcScale
+    AIV->>GM: 读取 hcBeforeNorm
+    AIV->>AIV: ProcessPre (RmsNorm)
+    AIV->>GM: 写回 hPre (needGrad)
+    AIV->>GM: 读取 x
+    AIV->>AIV: ProcessY (y = pre * x)
+    AIV->>GM: 写回 y
+    AIV->>AIV: ProcessPost
+    AIV->>GM: 写回 post
+    AIV->>GM: 读取 hcBeforeNorm (combFrag 部分)
+    AIV->>AIV: Mul + Muls + Add (combFrag = scale * hat2 + base)
+    AIV->>GM: 写回 hResLogits (needGrad, clamp 前原始值)
+
+    Note over AIV: Clamp 前向
+    AIV->>AIV: Maxs(mxies02ReduceLocal, clamp_min)
+    AIV->>AIV: Mins(mxies02ReduceLocal, clamp_max)
+
+    AIV->>AIV: SoftmaxFP32Perf
+    AIV->>GM: 写回 normOut (needGrad)
+    AIV->>AIV: ReduceSum + Add eps
+    AIV->>GM: 写回 sumOut (needGrad)
+    AIV->>AIV: Div (Sinkhorn 归一化)
+    loop iter=1..iterTimes-1
+        AIV->>AIV: ReduceSum + Add eps
+        AIV->>AIV: Div (Sinkhorn 迭代)
+        AIV->>GM: 写回 sumOut (needGrad)
+    end
+    AIV->>GM: 写回 hRes (最终输出)
 ```
 
 ### 2.2 反向计算流程
 
 ```mermaid
-graph TD
-    A[grad_h_res] --> B[SinkhornGrad]
-    B --> C[grad after softmax bwd]
-    C --> D{clamp enabled?}
-    D -->|Yes| E[Load reduceOut]
-    E --> F[Compare < min]
-    F --> G[Compare > max]
-    G --> H[Or masks]
-    H --> I[Mul grad * mask]
-    I --> J[Continue backward]
-    D -->|No| J
-    J --> K[ComputeGradHHat2]
-    K --> L[grad_phi/alpha/bias]
-    L --> M[ComputeGradX1]
-    M --> N[grad_x]
+sequenceDiagram
+    participant Host as Host CPU
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
+    participant GM as Global Memory
+
+    Host->>AIV: 启动反向算子
+    AIV->>GM: 读取 hcScale, hcBase
+    AIV->>AIV: GetHcScaleAndHcBase
+
+    Note over AIV: ComputeGradPre
+    AIV->>GM: 读取 grad_h_res, hPre, invRms, sumOut, normOut
+    AIV->>AIV: SinkhornGrad (Sinkhorn 反向传播)
+    AIV->>AIV: Softmax 梯度计算
+
+    Note over AIV: Clamp 反向
+    AIV->>GM: 读取 reduceOut (hResLogits)
+    AIV->>AIV: Compare(reduceOut, min, GE)
+    AIV->>AIV: Compare(reduceOut, max, LE)
+    AIV->>AIV: And(mask_ge, mask_le)
+    AIV->>AIV: Select(grad, mask, 0)
+    Note right of AIV: 梯度置零: grad[i]=0 当 reduceOut[i]<min || reduceOut[i]>max
+
+    AIV->>AIV: ComputeGradHHat2
+    AIV-->>AIC: CrossCoreSetFlag (AIV→AIC)
+    AIC->>AIC: Wait AIV 完成
+    AIC->>AIC: ProcessMatmul1 (grad_h2 @ weight)
+    AIC->>GM: 写回 grad_x_cube
+    AIC->>AIC: ProcessMatmul2 (grad_h2 @ x)
+    AIC->>GM: 写回 grad_weight
+    AIC-->>AIV: CrossCoreSetFlag (AIC→AIV)
+    AIV->>AIV: Wait AIC MatMul 完成
+
+    AIV->>GM: 读取 pre, dRsqrt
+    AIV->>AIV: Brcb (broadcast)
+    AIV->>AIV: ComputeGradX1
+    AIV->>GM: 写回 grad_x
+
+    AIV->>AIV: ComputeScaleBias
+    AIV->>GM: 写回 grad_hc_scale, grad_hc_base, grad_phi, grad_alpha, grad_bias
 ```
 
 ### 2.3 数据流图
@@ -317,23 +376,160 @@ graph TD
 
 ### 5.2 核心类设计
 
+#### 前向算子类图
+
+```mermaid
+classDiagram
+    class MhcPreClampSinkhornTiling {
+        -gert::TilingContext* context_
+        -MhcPreClampSinkhornTilingData tilingData_
+        -float clamp_min_, clamp_max_
+        +GetPlatformInfo()
+        +DoOpTiling()
+        +GetWorkspaceSize()
+        +GetAttr()
+        +CalcOpTiling()
+        +CalcMembaseOpTiling()
+        +CalcMKSplitCoreMembasePart2Tiling()
+        +CalcBsSplit()
+        +CalcTailBsTiling()
+        +CalcStage1Tiling()
+    }
+
+    class MhcPreClampSinkhornTilingRegbase {
+        -gert::TilingContext* context_
+        -MhcPreClampSinkhornTilingData tilingData_
+        -float clamp_min_, clamp_max_
+        +GetPlatformInfo()
+        +DoOpTiling()
+        +GetWorkspaceSize()
+        +GetAttr()
+        +CalcOpTiling()
+        +CalcRegbaseOpTiling()
+        +CalcMKSplitCorePart2Tiling()
+        +CalcRegbaseOpGradoutTiling()
+        +CalcMKSplitCorePart2GradoutTiling()
+    }
+
+    class MhcPreClampSinkhornTilingData {
+        +int64_t bs, hcMult, d
+        +int64_t iterTimes
+        +float hcEps, normEps
+        +float clamp_min, clamp_max
+        +int64_t needGrad
+        +TCubeTiling mm1TilingData
+    }
+
+    class HcCubeCompute~T~ {
+        -TPipe* pipe_
+        -const MhcPreClampSinkhornTilingData* tiling_
+        +Init(xGm, phiGm, pipe)
+        +ComputeDecode()
+        +CopyInB1()
+        +End()
+    }
+
+    class HcCubeComputeSplitK {
+        -TPipe* pipe_
+        -const MhcPreClampSinkhornTilingData* tiling_
+        +Init(xGm, phiGm, pipe)
+        +ComputeDecode()
+        +CopyInB1()
+        +End()
+    }
+
+    class MhcPreClampSinkhornStage1~T~ {
+        +HcCubeCompute~T~ cubeCompute_
+        -GlobalTensor~T~ xGm
+        -GlobalTensor~float~ phiGm
+        -GlobalTensor~float~ invRmsGm
+        -GlobalTensor~float~ hcBeforeNormGm
+        +Init(x, phi, invRms, hcBeforeNorm, workspace, tilingData, pipe)
+        +Process()
+    }
+
+    class MhcPreClampSinkhornStage2~T~ {
+        -GlobalTensor~T~ xGm
+        -GlobalTensor~float~ hcScaleGm, hcBaseGm
+        -GlobalTensor~float~ hResLogitsGm
+        -LocalTensor~float~ mxies02ReduceLocal
+        +Init(x, hcScale, hcBase, y, post, combFrag, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, workspace, tilingData, pipe)
+        +Process()
+    }
+
+    class MhcPreClampSinkhornMembaseKSplitCorePart1~T~ {
+        +HcCubeComputeSplitK cubeCompute_
+        -GlobalTensor~T~ xGm
+        -GlobalTensor~float~ hcFnGm
+        +Init(x, hcFn, workspace, tilingData, pipe, bsOffset, curBs)
+        +Process(bsOffset, curBs)
+    }
+
+    class MhcPreClampSinkhornMembaseKSplitCorePart2~T~ {
+        -GlobalTensor~T~ xGm
+        -GlobalTensor~float~ hcScaleGm, hcBaseGm
+        -GlobalTensor~float~ reduceOutGm
+        -LocalTensor~float~ mxies02ReduceLocal
+        +Init(x, hcScale, hcBase, y, post, combFrag, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, workspace, tilingData, pipe, bsOffset)
+        +Process(bsOffset, curBs)
+    }
+
+    MhcPreClampSinkhornStage1 --> HcCubeCompute : 包含
+    MhcPreClampSinkhornMembaseKSplitCorePart1 --> HcCubeComputeSplitK : 包含
+    MhcPreClampSinkhornStage2 ..> MhcPreClampSinkhornTilingData : 使用
+    MhcPreClampSinkhornMembaseKSplitCorePart2 ..> MhcPreClampSinkhornTilingData : 使用
+    MhcPreClampSinkhornTiling --> MhcPreClampSinkhornTilingData : 生成
+    MhcPreClampSinkhornTilingRegbase --> MhcPreClampSinkhornTilingData : 生成
+```
+
+#### 反向算子类图
+
 ```mermaid
 classDiagram
     class MhcPreClampSinkhornBackwardKernel {
         -int64_t batchSize_, seqLength_, n_, c_
         -int64_t tileCoreBS_, skIterCount_
         -float minVal_, maxVal_
-        -LocalTensor<T> gradHResLocal_
-        -LocalTensor<T> gradHResTempLocal_, gradHResTempLocal2_
-        -GlobalTensor<T> reduceOutGlobal_
-        +Init()
+        -float hcScalePre_, hcScalePost_, hcScaleRes_
+        -TPipe* pipe_
+        -TQue~VECIN,1~ inputClampQueue
+        -TBuf~VECCALC~ clampMixBuf_, clampMinBuf_, clampMaxBuf_
+        -TBuf~VECCALC~ clampMaskBuf_, clampMaskFloatBuf_
+        -TBuf~VECCALC~ clampMinScalarBuf_, clampMaxScalarBuf_
+        -LocalTensor~T~ clampMixLocal_
+        -LocalTensor~T~ clampMinLocal_, clampMaxLocal_
+        -LocalTensor~T~ clampMaskLocal_, clampMaskFloatLocal_
+        -LocalTensor~T~ clampMinScalarLocal_, clampMaxScalarLocal_
+        -LocalTensor~T~ gradHResLocal_
+        -LocalTensor~T~ gradHResTempLocal_, gradHResTempLocal2_
+        -GlobalTensor~T~ reduceOutGlobal_
+        -matmul_MatmulImpl mm1_, mm2_
+        +Init(x, hc_fn, pre, grad_y, grad_post, grad_comb, hc_scale, hc_base, h_hat2, rsqrt, sum_out, norm_out, reduce_out, grad_x, grad_hc_fn, grad_hc_scale, grad_hc_base, workspace, tilingData, pipe)
         +Process()
-        -ComputeGradPre()
-        -SinkhornGrad()
-        -ComputeGradHHat2()
-        -ComputeGradX1()
+        -InitTiling(tilingData)
+        -InitGM(...)
+        -InitGradPreStageBuffer()
+        -ComputeGradPre(taskOffset, tileTaskCount, innerId)
+        -SinkhornGrad(taskOffset, tileTaskCount)
+        -ComputeGradHHat2(taskOffset, tileTaskCount)
+        -ComputeGradX1(taskOffset, tileTaskCount, innerId)
         -ComputeScaleBias()
+        -GetHcScaleAndHcBase()
+        -ProcessMatmul1(taskOffset, mm1M)
+        -ProcessMatmul2(taskOffset, mm2K)
     }
+
+    class MhcPreClampSinkhornBackwardTilingData {
+        +int64_t batchSize, seqLength, c, n
+        +int64_t skIterCount
+        +float eps
+        +float minVal, maxVal
+        +TCubeTiling mm1TilingData
+        +TCubeTiling mm2TilingData
+    }
+
+    MhcPreClampSinkhornBackwardKernel ..> MhcPreClampSinkhornBackwardTilingData : 使用
+    MhcPreClampSinkhornBackwardKernel --> matmul_MatmulImpl : 包含
 ```
 
 ### 5.3 内存布局
@@ -373,71 +569,106 @@ gradHResTempLocal_[calCnt].ReinterpretCast<uint8_t>() → maskHigh
 SinkhornGrad 实现 Sinkhorn 算子的反向传播，包含 softmax 梯度计算和 clamp 反向。
 
 ```mermaid
-graph TD
-    A[开始 SinkhornGrad] --> B[Load grad_h_res]
-    B --> C[iter = skIterCount-1 to 1]
-    C --> D[Load skRowNorm/Sum/ColSum]
-    D --> E[Add eps to skColSum]
-    E --> F[Div: grad / skColSum]
-    F --> G[Mul: grad * skRowNorm]
-    G --> H[Mul: skColSum^2]
-    H --> I[ReduceSum]
-    I --> J[Div: sum / skColSum^2]
-    J --> K[Sub: grad - sum/sum^2]
-    K --> L[Add eps to skRowSum]
-    L --> M[Brcb skRowSum]
-    M --> N[Div: grad / skRowSum]
-    N --> O[Mul: skRowNorm * grad]
-    O --> P[BlockReduceSum]
-    P --> Q[Brcb reduce result]
-    Q --> R[Sub: grad - reduce]
-    R --> S[iter--]
-    S --> C
-    C --> T[iter=0: final softmax bwd]
-    T --> U[Mul: grad * skRowNorm]
-    U --> V[BlockReduceSum]
-    V --> W[Brcb reduce result]
-    W --> X[Sub: grad - reduce]
-    X --> Y[Mul: grad * skRowNorm]
-    Y --> Z[ClampBwd]
-    Z --> Z1[Load reduceOut]
-    Z1 --> Z2[Compare < min]
-    Z2 --> Z3[Compare > max]
-    Z3 --> Z4[Or masks]
-    Z4 --> Z5[Cast uint8 to float]
-    Z5 --> Z6[Mul grad * mask]
-    Z6 --> ZA[Layout transform]
-    ZA --> ZB[结束 SinkhornGrad]
+sequenceDiagram
+    participant SinkhornGrad
+    participant GM as Global Memory
+    participant LM as Local Memory
+
+    SinkhornGrad->>GM: Load grad_h_res
+    Note over SinkhornGrad: iter = skIterCount-1 → 1 (反向迭代)
+    loop iter=skIterCount-1 down to 1
+        SinkhornGrad->>GM: Load skRowNorm, Sum, ColSum
+        SinkhornGrad->>LM: Add eps to skColSum
+        SinkhornGrad->>LM: Div: grad / skColSum
+        SinkhornGrad->>LM: Mul: grad * skRowNorm
+        SinkhornGrad->>LM: Mul: skColSum^2
+        SinkhornGrad->>LM: ReduceSum
+        SinkhornGrad->>LM: Div: sum / skColSum^2
+        SinkhornGrad->>LM: Sub: grad - sum/sum^2
+        SinkhornGrad->>LM: Add eps to skRowSum
+        SinkhornGrad->>LM: Brcb skRowSum
+        SinkhornGrad->>LM: Div: grad / skRowSum
+        SinkhornGrad->>LM: Mul: skRowNorm * grad
+        SinkhornGrad->>LM: BlockReduceSum
+        SinkhornGrad->>LM: Brcb reduce result
+        SinkhornGrad->>LM: Sub: grad - reduce
+    end
+
+    Note over SinkhornGrad: iter=0: final softmax bwd
+    SinkhornGrad->>LM: Mul: grad * skRowNorm
+    SinkhornGrad->>LM: BlockReduceSum
+    SinkhornGrad->>LM: Brcb reduce result
+    SinkhornGrad->>LM: Sub: grad - reduce
+    SinkhornGrad->>LM: Mul: grad * skRowNorm
+
+    Note over SinkhornGrad: Clamp 反向
+    SinkhornGrad->>GM: Load reduceOut (hResLogits)
+    SinkhornGrad->>LM: Duplicate(minScalar, minVal)
+    SinkhornGrad->>LM: Duplicate(maxScalar, maxVal)
+    SinkhornGrad->>LM: Compare(reduceOut, minScalar, GE)
+    SinkhornGrad->>LM: Compare(reduceOut, maxScalar, LE)
+    SinkhornGrad->>LM: And(mask_ge, mask_le)
+    SinkhornGrad->>LM: Select(grad, mask, 0)
+    Note right of SinkhornGrad: 越界位置梯度置零
+
+    SinkhornGrad->>LM: Layout transform
+    SinkhornGrad->>GM: 写回 grad_h_res (处理后)
 ```
 
 #### ComputeGradHHat2
 
 ```mermaid
-graph TD
-    A[开始 ComputeGradHHat2] --> B[调用 SinkhornGrad]
-    B --> C[Copy gradHRes to dhat]
-    C --> D[Load gradHPost, hat2, rsqrt]
-    D --> E[Axpy: dPrePost = gradHPost * 2]
-    E --> F[Brcb rsqrt]
-    F --> G[Mul: hat2Scale = scale * hat2]
-    G --> H[Mul: hat = hat2Scale * rsqrtbrcb]
-    H --> I[Add: hat = hat + hcBase]
-    I --> J[Sigmoid backward]
-    J --> K[Mul: dhat = dPrePost * sigmoid_grad]
-    K --> L[Mul: gradRsqrt = dhat * hat2Scale]
-    L --> M[继续 rmsnorm 梯度计算]
-    M --> N[结束 ComputeGradHHat2]
+sequenceDiagram
+    participant ComputeGradHHat2
+    participant GM as Global Memory
+    participant LM as Local Memory
+
+    ComputeGradHHat2->>ComputeGradHHat2: 调用 SinkhornGrad
+    ComputeGradHHat2->>LM: Copy gradHRes → dhat
+    ComputeGradHHat2->>GM: Load gradHPost, hat2, rsqrt
+    ComputeGradHHat2->>LM: Axpy: dPrePost = gradHPost * 2
+    ComputeGradHHat2->>LM: Brcb rsqrt
+    ComputeGradHHat2->>LM: Mul: hat2Scale = scale * hat2
+    ComputeGradHHat2->>LM: Mul: hat = hat2Scale * rsqrtbrcb
+    ComputeGradHHat2->>LM: Add: hat = hat + hcBase
+    ComputeGradHHat2->>LM: Sigmoid backward
+    ComputeGradHHat2->>LM: Mul: dhat = dPrePost * sigmoid_grad
+    ComputeGradHHat2->>LM: Mul: gradRsqrt = dhat * hat2Scale
+
+    Note over ComputeGradHHat2: RmsNorm 梯度计算
+    ComputeGradHHat2->>LM: ReduceSum + Mul + Sub
+    ComputeGradHHat2->>LM: Mul: gradRsqrt * invRms^3
+    ComputeGradHHat2->>LM: ReduceSum + Mul + Sub
+    ComputeGradHHat2->>LM: Mul: gradHcBeforeNorm = grad * invRms
+    ComputeGradHHat2->>GM: 写回 grad_hc_fn, grad_hc_scale, grad_hc_base
 ```
 
 #### ComputeGradX1
 
 ```mermaid
-graph TD
-    A[开始 ComputeGradX1] --> B[Load x, grad]
-    B --> C[MatMul: grad_x = grad * phi^T]
-    C --> D[Cast grad_x]
-    D --> E[Store grad_x]
-    E --> F[结束 ComputeGradX1]
+sequenceDiagram
+    participant ComputeGradX1
+    participant AIC as AIC (Cube)
+    participant AIV as AIV (Vector)
+    participant GM as Global Memory
+
+    Note over AIV: ComputeGradHHat2 完成
+    AIV-->>AIC: CrossCoreSetFlag (AIV→AIC)
+    AIC->>AIC: Wait AIV 完成
+    AIC->>GM: Load grad_h2, weight
+    AIC->>AIC: MatMul: grad_x = grad_h2 @ weight
+    AIC->>GM: 写回 grad_x_cube
+    AIC->>GM: Load grad_h2, x
+    AIC->>AIC: MatMul: grad_weight = grad_h2^T @ x
+    AIC->>GM: 写回 grad_weight
+    AIC-->>AIV: CrossCoreSetFlag (AIC→AIV)
+    AIV->>AIV: Wait AIC MatMul 完成
+
+    AIV->>GM: Load pre, dRsqrt
+    AIV->>AIV: Brcb (broadcast)
+    AIV->>AIV: Mul: grad_x = grad_x_cube * pre
+    AIV->>AIV: Cast grad_x (FP32 → BF16)
+    AIV->>GM: 写回 grad_x
 ```
 
 ### 5.5 并行策略
