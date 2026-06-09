@@ -70,8 +70,9 @@ struct SectionStreamKFdResult {
 };
 
 struct SectionStreamKResult {
-    SectionStreamKFaResult sectionFaResult{0};
-    SectionStreamKFdResult sectionFdResult{0, 0};
+    uint32_t sectionNum { 0U };
+    std::vector<SectionStreamKFaResult> sectionFaResult {};
+    std::vector<SectionStreamKFdResult> sectionFdResult {};
 };
 
 }

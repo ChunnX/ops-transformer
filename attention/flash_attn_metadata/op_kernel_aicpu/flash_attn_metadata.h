@@ -48,6 +48,14 @@ constexpr uint32_t FD_M_START_INDEX = 4;
 constexpr uint32_t FD_M_NUM_INDEX = 5;
 
 #ifdef __CCE_AICORE__
+/**
+ * @brief 获取sectionNum的绝对索引
+ * @return 返回sectionNum的绝对索引
+ */
+__aicore__ inline uint32_t GetAttrSectionNumIndex()
+{
+    return 0U;
+}
 
 /**
  * @brief 获取属性的绝对索引
@@ -56,50 +64,51 @@ constexpr uint32_t FD_M_NUM_INDEX = 5;
  * @param isAIV 是否为AIV数据，默认为false
  * @return 返回属性的绝对索引
  */
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t idx, uint32_t coreIdx,
-                                           uint32_t metaIdx, uint32_t num, bool isAIV = false)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t sectionIdx, uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionNum, bool isAIV = false)
 {
     if (isAIV) {
-        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx + 16U;
+        return sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE +
+               FD_METADATA_SIZE * AIV_CORE_NUM * sectionIdx + FD_METADATA_SIZE * coreIdx + metaIdx + 16U;
     } else {
-        return FA_METADATA_SIZE * coreIdx + metaIdx + 16U;
+        return FA_METADATA_SIZE * AIC_CORE_NUM * sectionIdx + FA_METADATA_SIZE * coreIdx + metaIdx + 16U;
     }
 }
 #endif
 
 namespace detail {
 struct FaMetaData {
-    uint32_t *faMetadata; // [AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
-    FaMetaData(void *metadataPtr)
-        : faMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
-          fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + AIC_CORE_NUM * FA_METADATA_SIZE)
-    {
-        static_cast<uint32_t*>(metadataPtr)[0] = 1;
-    }
-    void setFaMetadata(uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
-    {
+    uint32_t sectionNum;
+    uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
+    uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
+    FaMetaData(void *metadataPtr, uint32_t sectionNum)
+        :sectionNum(sectionNum),
+        faMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
+        fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE) {
+            static_cast<uint32_t*>(metadataPtr)[0] = sectionNum;
+        }
+    void setFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val) {
+        assert(sectionIdx < sectionNum);
         assert(aicIdx < AIC_CORE_NUM);
         assert(metaIdx < FA_METADATA_SIZE);
-        faMetadata[FA_METADATA_SIZE * aicIdx + metaIdx] = val;
+        faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE *sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx] = val;
     }
-    uint32_t getFaMetadata(uint32_t aicIdx, uint32_t metaIdx)
-    {
+    uint32_t getFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx) {
+        assert(sectionIdx < sectionNum);
         assert(aicIdx < AIC_CORE_NUM);
         assert(metaIdx < FA_METADATA_SIZE);
-        return faMetadata[FA_METADATA_SIZE * aicIdx + metaIdx];
+        return faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE *sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx];
     }
-    void setFdMetadata(uint32_t aivIdx, uint32_t metaIdx, uint32_t val)
-    {
+    void setFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val) {
+        assert(sectionIdx < sectionNum);
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);
-        fdMetadata[FD_METADATA_SIZE * aivIdx + metaIdx] = val;
+        fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE *sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx] = val;
     }
-    uint32_t getFdMetadata(uint32_t aivIdx, uint32_t metaIdx)
-    {
+    uint32_t getFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx) {
+        assert(sectionIdx < sectionNum);
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);
-        return fdMetadata[FD_METADATA_SIZE * aivIdx + metaIdx];
+        return fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE *sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
     }
 };
 } // namespace detail
