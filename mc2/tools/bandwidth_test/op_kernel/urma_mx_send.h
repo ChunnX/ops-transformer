@@ -207,7 +207,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
-
+    PRINTF("aivId_ = %d\n", aivId_);
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -241,6 +241,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
         aivNumUsedComm_ = COMM_MAX_USE_AIV_NUM;
         aivNumUsedCompute_ = aivNum_ - COMM_MAX_USE_AIV_NUM;
     }
+    PRINTF("aivNumUsedComm_ = %d\n", aivNumUsedComm_);
+    PRINTF("aivNumUsedCompute_ = %d\n", aivNumUsedCompute_);
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -432,6 +434,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (aivId_ < aivNumUsedCompute_) {
         return;
     }
+    PRINTF("CommProcess aivId_ = %d\n", aivId_);
     uint32_t startExpert, endExpert, processExpertNum; // 每个aiv发送时的起始rankid
     SplitToCore(epWorldSize_, aivNumUsedComm_, startExpert, endExpert, processExpertNum);
     if (startExpert >= epWorldSize_ || processExpertNum == 0) { 
@@ -452,7 +455,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     }
     PipeBarrier<PIPE_ALL>();
     uint32_t processCnt = 0;
+    uint3_t cnt=0;
     while(true) {
+        cnt += 1;
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             if (i == epRankId_) { // 本卡不处理
                 continue;
@@ -479,6 +484,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             break;
         }
     }
+    PRINTF("CommProcess cnt = %d\n", cnt);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -497,7 +503,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToM
     if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-
+    PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId_, endTokenId_, sendTokenNum_);
+    
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
         uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
