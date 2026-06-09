@@ -18,8 +18,6 @@
 #include <cmath>
 #include <cstring>
 #include "acl/acl.h"
-// #include "aclnn/opdev/fp16_t.h"
-#include "aclnn/opdev/bfloat16.h"
 #include "aclnnop/aclnn_fused_infer_attention_score_v4.h"
 #include "securec.h"
 
@@ -168,12 +166,12 @@ int main() {
     for (int i = 0; i < blockTableShapeSize; i++) {
         blockTableHostData[i] = i;
     }
-    std::vector<op::bfloat16> queryRopeHostData(queryRopeShapeSize, 1);
-    std::vector<op::bfloat16> keyRopeHostData(keyRopeShapeSize, 1);
+    std::vector<float> queryRopeHostData(queryRopeShapeSize, 1);
+    std::vector<float> keyRopeHostData(keyRopeShapeSize, 1);
     std::vector<float> dequantScaleQueryHostData(dequantScaleQuerySize, 1);
     std::vector<float> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 1);
     std::vector<float> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 1);
-    std::vector<op::bfloat16> attentionOutHostData(attentionOutShapeSize, 1);
+    std::vector<float> attentionOutHostData(attentionOutShapeSize, 1);
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_INT8, &queryTensor);
@@ -304,7 +302,7 @@ int main() {
     // 5. Retrieve the attentionOutput value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
     auto size = GetShapeSize(attentionOutShape);
-    std::vector<op::bfloat16> resultData(size, 0);
+    std::vector<float> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
