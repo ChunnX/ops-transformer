@@ -92,7 +92,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 
     if (layoutQStr == "BSND") {
         if (qShape->GetDimNum() < 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context, "q",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 4 when layout_q is BSND.");
             return ge::GRAPH_FAILED;
@@ -103,7 +103,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDim   = qShape->GetDim(3);
     } else if (layoutQStr == "BNSD") {
         if (qShape->GetDimNum() < 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context, "q",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 4 when layout_q is BNSD.");
             return ge::GRAPH_FAILED;
@@ -114,7 +114,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDim   = qShape->GetDim(3);
     } else if (layoutQStr == "TND") {
         if (qShape->GetDimNum() < 3) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context, "q",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 3 when layout_q is TND.");
             return ge::GRAPH_FAILED;
@@ -124,7 +124,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDim   = qShape->GetDim(2);
         isTND     = true;
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "layout_q",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_q",
             layoutQStr.c_str(), "The value of layout_q must be in BSND/BNSD/TND.");
         return ge::GRAPH_FAILED;
     }
@@ -159,7 +159,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         attnOutShape->SetDim(1, numHeadsQ);
         attnOutShape->SetDim(2, headDimV);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "layout_out",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out",
             layoutOutStr.c_str(), "The value of layout_out must be in BSND/BNSD/TND.");
         return ge::GRAPH_FAILED;
     }

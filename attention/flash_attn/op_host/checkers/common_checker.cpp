@@ -32,6 +32,7 @@ using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
+using namespace Ops::Base;
 
 // ============================================================================
 // Layout — SinglePara
@@ -46,21 +47,21 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
         supportedQLayouts.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "layout_q",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
             LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND.");
         return ge::GRAPH_FAILED;
     }
 
     if (std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
         supportedKvLayouts.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "layout_kv",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
             LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_kv must be in BNSD/BSND/TND/PA_BBND/PA_BNBD.");
         return ge::GRAPH_FAILED;
     }
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "layout_out",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
             LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND.");
         return ge::GRAPH_FAILED;
     }
@@ -189,7 +190,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
     if (faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0) {
         std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ").";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis B",
-            std::to_string(faInfo.bSize).c_str(), reason.c_str()),
+            std::to_string(faInfo.bSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -377,7 +378,7 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
             return CheckKVShapeForPageAttention(faInfo);
         }
         std::string reason = "block_table cannot be empty when layout_kv is " + LayoutToSerialString(faInfo.kvLayout) + ".";
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str()),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
