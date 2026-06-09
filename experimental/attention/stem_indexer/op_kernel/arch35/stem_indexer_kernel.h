@@ -124,8 +124,6 @@ protected:
     GlobalTensor<int32_t> numPromptTokensGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
-    __gm__ uint8_t *workspaceGm = nullptr;
-    __gm__ uint8_t *scoreWorkspaceGm = nullptr;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -174,8 +172,8 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kvHeadNum = tilingData->kvHeadNum;
     constInfo.kHeadNum = tilingData->kvHeadNum;
     constInfo.gSize = tilingData->gSize;
-    constInfo.maxQb = tilingData->maxQb;
-    constInfo.maxKb = tilingData->maxKb;
+    constInfo.maxQb = tilingData->maxQb; // ???
+    constInfo.maxKb = tilingData->maxKb; // ???
     constInfo.flattenDim = tilingData->flattenDim;
     constInfo.qSeqSize = tilingData->maxQb;
     constInfo.kSeqSize = tilingData->maxKb;
@@ -241,7 +239,7 @@ __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32
     bIdx = (constInfo.batchSupperFlag)? bIdx + 1 : bIdx; // 如果为B+1情况，则向后移动一位
     if (actualLenDims == 0) {
         return defaultSeqLen;
-    } else if (isAccumSeq && bIdx > 0) {
+    } else if (isAccumSeq && bIdx > 0) { // TND
         return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
     } else {
         return actualSeqLengthsGm.GetValue(bIdx);
@@ -255,7 +253,7 @@ __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLenKey(uint32_t bIdx, uin
 {
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio;
-    } else if (isAccumSeq && bIdx > 0) {
+    } else if (isAccumSeq && bIdx > 0) { // TND
         return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
     } else {
         return actualSeqLengthsGm.GetValue(bIdx);
@@ -443,38 +441,37 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
         aiCoreIdx = tmpBlockIdx;
     }
 
-    pipe = tPipe;
     InitTilingData(tiling);
+    InitActualSeqLen(qSeqLens, kvSeqLens);
 
-    qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-    kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
-    vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
-    qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
-    kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
-    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
-    metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
-    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
+    // 计算分核
+    // SplitCore(aiCoreIdx, usedCoreNum, splitCoreInfo); // ？？？？？？？？？？
 
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-    keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
-    weightsGm.SetGlobalBuffer((__gm__ float *)vbias);
-    actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)qSeqLens);
-    actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)kvSeqLens);
-    indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
-
-    workspaceGm = workspace;
-    uint64_t singleCoreScoreWorkspaceBytes =
-        static_cast<uint64_t>(constInfo.mBaseSize) * constInfo.nBaseSize * sizeof(SCORE_T) * WS_DOUBLE;
-    scoreWorkspaceGm = workspace + static_cast<uint64_t>(aiCoreIdx) * singleCoreScoreWorkspaceBytes;
+    pipe = tPipe;
+    if ASCEND_IS_AIV {
+        // vectorService.InitParams(constInfo, tiling);
+        vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
+        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
+        kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
+        numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+        metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
+        sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+        sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
+        // vectorService.InitVecInputTensor(vbiasGm, qSeqLensGm, kvSeqLensGm, numPromptTokensGm, metadataGm, sparseIndicesGm, sparseSeqLenGm);
+        // vectorService.InitVecWorkspaceTensor();  // 预留
+    } else {
+        // matmulService.InitParams(constInfo);
+        qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+        kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+        // matmulService.InitMm1GlobalTensor(kflatGm, qflatGm);
+    }
 
     if (GetBlockIdx() == 0) {
         AscendC::printf("[StemIndexer Init] bSize=%u qHeadNum=%u kvHeadNum=%u gSize=%u maxQb=%u maxKb=%u "
                         "flattenDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
                         "initialBlocks=%u windowSize=%u mBaseSize=%u nBaseSize=%u scoreScale=%f alpha=%f "
                         "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
-                        "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
+                        "kBlockNumBiasLarge=%u\n",
                         static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
                         static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
                         static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
@@ -482,8 +479,10 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
                         constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
                         constInfo.mBaseSize, constInfo.nBaseSize, constInfo.scoreScale, constInfo.alpha,
                         constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
-                        constInfo.kBlockNumBiasLarge, static_cast<uint32_t>(singleCoreScoreWorkspaceBytes));
+                        constInfo.kBlockNumBiasLarge);
     }
+
+    InitBuffers();
 }
 
 template <typename SIT>
@@ -726,3 +725,4 @@ __aicore__ inline void SIPreload<SIT>::ProcessDecode()
 
 }  // namespace QLIKernel
 #endif  // stem_indexer_KERNEL_H
+
