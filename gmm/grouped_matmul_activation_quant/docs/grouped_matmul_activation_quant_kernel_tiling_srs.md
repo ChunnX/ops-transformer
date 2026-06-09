@@ -1,18 +1,6 @@
 # GroupedMatmulActivationQuant Kernel/Tiling SRS
 
-## 1. 迭代信息
-
-| 项目 | 内容 |
-| --- | --- |
-| 迭代名称 | GroupedMatmulActivationQuant kernel/tiling 实现 |
-| 算子类型 | GMM + Activation + MX FP8 dynamic quant 融合算子 |
-| 覆盖范围 | Host def、InferShape、Tiling、AscendC Kernel、CSV tiling UT |
-| 不覆盖范围 | aclnn/op_api、PTA wrapper、端到端精度 STC、性能 benchmark |
-| 目标芯片 | Ascend950 / `__NPU_ARCH__ == 3510` |
-| 迭代版本 | v0.1 |
-| 更新时间 | 2026-06-08 |
-
-## 2. 需求背景
+## 1. 需求背景
 
 当前模型图中存在如下计算链路：
 
@@ -27,114 +15,15 @@
 - 当前 activation 仅支持 `GMM_ACT_TYPE_GELU_TANH = 2`。
 - quant 逻辑参考 `dynamic_mx_quant_tail_axis_fp8.h` 的 tail axis FP8 MX quant 思路，并在 epilogue 中完成。
 
-### 2.1 设计结论摘要
+### 1.1 设计结论摘要
 
 本轮设计可以概括为三件事：第一，把 GMM、GeluTanh 和 MX dynamic quant 合并成一个 Ascend950 AICore kernel；第二，GMM 主体不重造矩阵乘逻辑，而是复用已有 grouped QMM BasicAPI 和 MX scale 能力；第三，把 activation 和 quant 放到 epilogue，在 L0C 结果出 tile 后直接完成 BF16 activation、FP8 cast、`y/y_scale` 写回。
 
 因此本算子的核心收益来自“少落一次中间张量”。融合前，中间 activation 输入和 quant 输入需要经过 GM；融合后，matmul 的 fp32 tile 在 AIV epilogue 中就地完成后处理，只输出最终 FP8 `y` 和 E8M0 `y_scale`。当前交付的主要风险不在接口覆盖面，而在数值一致性和边界用例：GeluTanh 近似、OCP/cuBLAS scale 选择、NZ weight layout、dynamic input 语义都需要通过后续 STC 继续闭环。
 
-## 3. 方案简述
+## 2. 输入输出规格
 
-### 3.1 总体数据流
-
-```mermaid
-flowchart LR
-    X[x: FP8 ND] --> MMAD[Grouped MX Matmul BasicAPI]
-    XS[x_scale: E8M0] --> MMAD
-    W[weight: FP8 FRACTAL_NZ] --> MMAD
-    WS[weight_scale: E8M0] --> MMAD
-    GL[group_list] --> Scheduler[Group Scheduler]
-    Scheduler --> MMAD
-    MMAD --> L0C[L0C fp32 tile]
-    L0C --> Epi[Epilogue on AIV]
-    Epi --> Act[GeluTanh]
-    Act --> Quant[MX dynamic quant]
-    Quant --> Y[y: FP8 ND]
-    Quant --> YS[y_scale: E8M0 ND]
-```
-
-### 3.2 模块划分
-
-| 模块 | 职责 |
-| --- | --- |
-| Host def | 定义输入、输出、属性顺序和 dtype/format 组合；注册 Ascend950 AICore 配置 |
-| InferShape | 根据 `x` 和 `weight_scale` 推导 `y` / `y_scale` shape；根据 `quant_dtype` 推导 `y` dtype |
-| Tiling | 校验 dtype、shape、attr；调用 GMM BasicAPI tiling；生成 `GMMActivationQuantTilingDataParams` |
-| Kernel Dispatch | 根据 tiling key 选择 `weight` 是否转置，对应 `layout::Nz` / `layout::Zn` |
-| GMM Kernel | 按 group 遍历，使用 low-level MX matmul BasicAPI 完成矩阵乘 |
-| Epilogue | 对每个 matmul tile 做 GeluTanh + MX dynamic quant + GM 写回 |
-| UT | 使用 CSV 驱动 tiling 白盒用例，覆盖合法和非法参数 |
-
-### 3.3 当前实现边界
-
-这篇 SRS 描述的是本轮 kernel/tiling 交付，不包含 aclnn/op_api 通路。为避免接口字段和实际数值路径混淆，当前实现边界如下：
-
-- `activation_type` 是必选属性，但当前只允许 `GELU_TANH = 2`。tiling 会在 host 侧拦截其他值，kernel/epilogue 暂不做多 activation 分支。
-- `x_scale` 在 def 中保持 optional，以便和 schema 演进兼容；当前 MX FP8 路径在 tiling 中会读取 `x_scale` desc/shape，因此本轮实际要求调用方传入有效 `x_scale`。
-- `bias` 是 dynamic input 预留字段，kernel 入口接收该地址但当前通过 `(void)bias` 丢弃，不参与 GMM、Activation 或 Quant 数值计算。
-- `weight`、`weight_scale`、`bias` 都是 dynamic input；当前 GMM 路径只消费 `weight[0]` 和 `weight_scale[0]`，多 weight list 不是本轮交付目标。
-- `round_mode`、`scale_alg`、`dst_type_max` 仅按 MX FP8 当前可用组合收敛：`round_mode = "rint"`，`scale_alg in {0, 1}`，`dst_type_max = 0.0`。
-
-### 3.4 类关系总览
-
-```mermaid
-classDiagram
-    class GroupedMatmulActivationQuant {
-        <<OpDef>>
-        +x
-        +group_list
-        +x_scale
-        +weight[]
-        +weight_scale[]
-        +bias[]
-        +y
-        +y_scale
-        +activation_type
-    }
-
-    class GroupedMatmulActivationQuantTiling950 {
-        +AnalyzeAttrs()
-        +AnalyzeDtype()
-        +AnalyzeInputs()
-        +DoOpTiling()
-        +DoLibApiTiling()
-        +GetTilingKey()
-    }
-
-    class GroupedQmmBasicApiTiling {
-        +GetShapeAttrsInfo()
-        +SetGroupNum()
-        +SetMKN()
-        +CalL1Tiling()
-    }
-
-    class GMMActivationQuantTilingDataParams {
-        +GMMActivationQuantParams
-        +QuantBasicApiMMTiling
-    }
-
-    class grouped_matmul_activation_quant_apt {
-        <<AICore_entry>>
-        +DispatchRowMajorNz()
-        +DispatchRowMajorZn()
-    }
-
-    class GmmActivationMxQuant {
-        +AssembleBlockMmadMx()
-        +AssembleBlockEpilogueActivationQuant()
-        +AssembleKernelGmmActivationMixOnlineDynamic()
-    }
-
-    GroupedMatmulActivationQuant --> GroupedMatmulActivationQuantTiling950
-    GroupedMatmulActivationQuantTiling950 --|> GroupedQmmBasicApiTiling
-    GroupedMatmulActivationQuantTiling950 --> GMMActivationQuantTilingDataParams
-    GMMActivationQuantTilingDataParams --> grouped_matmul_activation_quant_apt
-    grouped_matmul_activation_quant_apt --> GmmActivationMxQuant
-```
-
-## 4. 输入输出规格
-
-### 4.1 Host 字段顺序
+### 2.1 Host 字段顺序
 
 def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中 attr index 和 input index：
 
@@ -158,7 +47,7 @@ def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中
 | OPTIONAL_ATTR | `scale_alg` | 7 | `0` OCP；`1` cuBLAS |
 | OPTIONAL_ATTR | `dst_type_max` | 8 | 当前仅支持 `0.0` |
 
-### 4.2 dtype 与 format
+### 2.2 dtype 与 format
 
 | 张量 | dtype | format | 说明 |
 | --- | --- | --- | --- |
@@ -171,7 +60,7 @@ def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中
 | `y` | `FLOAT8_E4M3FN` / `FLOAT8_E5M2` | `ND` | `y.dtype == quant_dtype` |
 | `y_scale` | `FLOAT8_E8M0` | `ND` | 输出 MX scale |
 
-### 4.3 shape 约束
+### 2.3 shape 约束
 
 设：
 
@@ -213,7 +102,7 @@ def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中
 - `x_scale` 和 `weight_scale` 的 scale 块维按 64 个原始 K/N 元素生成两个 E8M0 scale 字节，对应 MX FP8 的 pair dim = 2。
 - `group_list` 的内容合法性依赖运行时数据，本轮 tiling 只校验 shape 和 `group_list_type`，不读取 GM 数据。
 
-### 4.4 dtype/format/场景矩阵
+### 2.4 dtype/format/场景矩阵
 
 | x dtype | weight dtype | y dtype | quant_dtype | weight format | transpose_weight | 是否支持 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -226,7 +115,7 @@ def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中
 | FP8 | FP8 | FP8 | 与 y 不一致 | FRACTAL_NZ | 任意 | 不支持 |
 | FP8 | FP8 | FP8 | E4M3/E5M2 | ND weight | 任意 | 不支持 |
 
-## 5. 交付标准
+## 3. 交付标准
 
 | 交付范围 | 当前迭代 |
 | --- | --- |
@@ -235,20 +124,20 @@ def 文件需按以下顺序声明。该顺序同时决定 tiling/infershape 中
 | 精度交付标准 | 与参考链路 `GMM(fp32 accum) -> GeluTanh -> Dynamic MX Quant` 对齐；具体容差待 STC 定义 |
 | 性能交付标准 | 目标是减少中间 GM 读写；本 SRS 不给性能阈值，性能 benchmark 待补 |
 | UT 交付 | CSV tiling UT 覆盖 dtype、shape、attr、core ratio、tiling key |
-| 设计材料 | 本 SRS；代码路径见第 7 章 |
+| 设计材料 | 本 SRS；代码路径见第 5 章 |
 | 维测材料 | 暂无；依赖 tiling 日志和 UT 失败信息定位 |
 
-### 5.1 交付结论
+### 3.1 交付结论
 
 - 本轮交付的是 kernel/tiling 能力，不交付 aclnn/op_api、PTA wrapper 和端到端 benchmark。
 - 支持面刻意收窄到 Ascend950、MX FP8、NZ weight、`activation_type=GELU_TANH`，这样可以先把主链路打通并降低融合 epilogue 的不确定性。
 - Tiling UT 已覆盖主要 host 侧准入条件；数值精度、scale byte 一致性和性能收益需要 STC/benchmark 继续验证。
 
-## 6. 具体方案描述
+## 4. 具体方案描述
 
-### 6.1 Tiling 设计
+### 4.1 Tiling 设计
 
-#### 6.1.1 Tiling 数据结构
+#### 4.1.1 Tiling 数据结构
 
 ```cpp
 BEGIN_TILING_DATA_DEF(GMMActivationQuantParams)
@@ -272,14 +161,14 @@ END_TILING_DATA_DEF;
 
 `mmTilingData` 由 `GroupedQmmBasicApiTiling` 计算，kernel 侧转换成 `KernelGmmActivationMixOnlineDynamic::GMMTiling`。
 
-#### 6.1.2 Tiling 主流程
+#### 4.1.2 Tiling 主流程
 
 Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程如下：
 
 | 阶段 | 主要动作 | 产物/约束 |
 | --- | --- | --- |
 | 编译信息准备 | 从 `PlatformAscendC` 读取 AIC/AIV、UB/L1/L0/L2、SoC、NPU arch | `GMMCompileInfo` |
-| schema 解析 | 读取输入、输出、dynamic input 第 0 个 tensor 和 attr | 与第 4.1 节顺序保持一致 |
+| schema 解析 | 读取输入、输出、dynamic input 第 0 个 tensor 和 attr | 与第 2.1 节顺序保持一致 |
 | attr 校验 | 收敛 activation、quant、transpose、group_list 相关属性 | 只允许 GELU_TANH、MX FP8 当前组合 |
 | dtype/format 校验 | 校验 FP8 输入输出、E8M0 scale、NZ weight | 不支持 FP16/BF16/FP32 或 ND weight |
 | shape 校验 | 校验 `x_scale`、`weight_scale`、`weight.storage` 关键维度 | scale block 按 64 元素，pair dim 为 2 |
@@ -287,7 +176,7 @@ Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程�
 | tiling data 写入 | 写入 group、activation、quant、matmul 切分信息 | `GMMActivationQuantTilingDataParams` |
 | workspace/post | 设置系统 workspace，保存 tiling data | kernel dispatch 使用 tiling key |
 
-#### 6.1.3 Tiling 校验要点
+#### 4.1.3 Tiling 校验要点
 
 | 检查域 | 当前规则 |
 | --- | --- |
@@ -305,7 +194,7 @@ Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程�
 
 `tuning_config` 当前随 schema 保留，tiling 实现没有读取该字段；若后续需要指定 block shape 或策略开关，应在本流程中显式解析并写入 tiling data。
 
-#### 6.1.4 BasicAPI tiling 与 tiling data
+#### 4.1.4 BasicAPI tiling 与 tiling data
 
 矩阵乘切分复用 `GroupedQmmBasicApiTiling`。本算子只在其输出基础上限制 `baseM` 上界、写入 MX scale 相关 K 方向切分，并把融合 epilogue 需要的属性写入 `GMMActivationQuantParams`。
 
@@ -319,7 +208,7 @@ Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程�
 | `QuantBasicApiMMTiling` | `kAL1/kBL1/scaleKAL1/scaleKBL1` | BasicAPI L1 tiling 和 MX scale K 方向切分 |
 | `QuantBasicApiMMTiling` | `isBias/dbL0C` | 当前 `isBias=0`，`dbL0C` 来自 BasicAPI |
 
-#### 6.1.5 tiling key
+#### 4.1.5 tiling key
 
 当前只生成两个有效 kernel 模板组合：
 
@@ -331,7 +220,7 @@ Tiling 只保留阶段级描述，不展开逐函数实现细节。整体流程�
 
 tiling key 仅由 `transpose_weight` 和固定的 `transA=false` 共同决定，kernel dispatch 按表中的 layout 选择模板。
 
-#### 6.1.6 Tiling 类图
+#### 4.1.6 Tiling 类图
 
 ```mermaid
 classDiagram
@@ -404,7 +293,7 @@ classDiagram
     GMMActivationQuantTilingDataParams *-- QuantBasicApiMMTiling
 ```
 
-#### 6.1.7 Tiling 小结
+#### 4.1.7 Tiling 小结
 
 Tiling 的职责可以归纳为“收口、复用、传参”：
 
@@ -414,9 +303,9 @@ Tiling 的职责可以归纳为“收口、复用、传参”：
 
 从评审角度看，Tiling 的关键不是追求最多场景，而是保证每个进入 kernel 的 case 都满足 epilogue 的假设：`y` dtype 与 `quant_dtype` 一致，scale layout 可按 `ceil(K/64)`、`ceil(N/64)` 解释，weight storage 至少满足 FP8 NZ 的尾维规则。
 
-### 6.2 Kernel 设计
+### 4.2 Kernel 设计
 
-#### 6.2.1 Kernel 参数入口
+#### 4.2.1 Kernel 参数入口
 
 ```cpp
 __global__ __aicore__ void grouped_matmul_activation_quant(
@@ -438,7 +327,7 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 - `bias` 为预留输入，当前 `(void)bias`，不进入 matmul 或 epilogue。
 - kernel 会临时将 float overflow mode 控制位清 0，结束时恢复。
 
-#### 6.2.2 Kernel 参数装配
+#### 4.2.2 Kernel 参数装配
 
 `GmmActivationMxQuant` 是 kernel dispatch 后的模板组装层，核心职责如下：
 
@@ -454,7 +343,7 @@ __global__ __aicore__ void grouped_matmul_activation_quant(
 
 当前 `bias` 不进入参数装配，`isBias` 固定为 0。
 
-#### 6.2.3 Kernel 类图
+#### 4.2.3 Kernel 类图
 
 ```mermaid
 classDiagram
@@ -511,7 +400,7 @@ classDiagram
     KernelGmmActivationMixOnlineDynamic *-- GroupedMatmulAswtWithTailSplitScheduler
 ```
 
-#### 6.2.4 分组调度流程
+#### 4.2.4 分组调度流程
 
 分组调度按 group 外层循环、tile 内层循环组织。AIC 负责 MMAD，AIV 负责 epilogue，二者通过 notify/wait 保持流水顺序。
 
@@ -542,7 +431,7 @@ flowchart TB
     V2 --> T0
 ```
 
-#### 6.2.5 group_list 语义
+#### 4.2.5 group_list 语义
 
 | `group_list_type` | 语义 | 每组 M 值计算方式 |
 | ---: | --- | --- |
@@ -551,7 +440,7 @@ flowchart TB
 
 `M_i == 0` 的 group 会被调度层跳过，不进入 MMAD 和 epilogue。
 
-#### 6.2.6 group 间 GM offset 更新
+#### 4.2.6 group 间 GM offset 更新
 
 group 间 offset 更新遵循“按上一组 M 推进 A/Y，按 group index 推进 NZ weight”的原则：
 
@@ -564,7 +453,7 @@ group 间 offset 更新遵循“按上一组 M 推进 A/Y，按 group index 推�
 | `yOffset` | 上一组 `M_i * N` |
 | `yScaleOffset` | 上一组 `M_i * ceil(N/64) * 2` |
 
-#### 6.2.7 tile 内 AIC/AIV 协同
+#### 4.2.7 tile 内 AIC/AIV 协同
 
 | 角色 | 主要职责 |
 | --- | --- |
@@ -573,7 +462,7 @@ group 间 offset 更新遵循“按上一组 M 推进 A/Y，按 group index 推�
 | AIV | 等待 AIC 产出后，执行 GeluTanh + MX dynamic quant，并写回 `y/y_scale` |
 | 同步 | AIC/AIV 通过 `NotifyVector` 和 `NotifyCube` 保持流水顺序 |
 
-#### 6.2.8 Epilogue UB 规划
+#### 4.2.8 Epilogue UB 规划
 
 Epilogue 在 AIV 侧运行。UB 区域按固定偏移划分：
 
@@ -587,7 +476,7 @@ Epilogue 在 AIV 侧运行。UB 区域按固定偏移划分：
 | `halfScale_` | `uint16_t` | `MAX_SINGLE_MN / 32` | 反量化/量化用 half scale |
 | `quantScaleBlockOutput_` | `int8_t` | `baseM / taskRatio * 32` | GM 写回前 scale layout |
 
-#### 6.2.9 Epilogue 主流程
+#### 4.2.9 Epilogue 主流程
 
 Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下：
 
@@ -600,7 +489,7 @@ Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下
 | scale layout | 将紧凑 scale 重排成 GM 写回需要的布局 |
 | GM 写回 | 写回 `y` 和 `y_scale`，stride 由完整 `N` 和 `ceil(N/64)*2` 决定 |
 
-#### 6.2.10 GeluTanh 计算
+#### 4.2.10 GeluTanh 计算
 
 当前实现使用 sigmoid 形式的 GeluTanh 近似：
 
@@ -608,7 +497,7 @@ Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下
 
 实现中会用等价代数变形组织常数乘法，最终结果先按 rint 转成 BF16，作为后续 MX quant 的输入。`activation_type` 当前只允许 GELU_TANH，因此 epilogue 内不需要额外 activation 分支。
 
-#### 6.2.11 MX dynamic quant
+#### 4.2.11 MX dynamic quant
 
 量化主流程：
 
@@ -637,7 +526,7 @@ flowchart LR
 | scale 写回 | E8M0 scale 先在 UB 中按紧凑布局生成，再转换成 `y_scale` 的 GM layout |
 | 输出 stride | `y` stride 按完整 `N`，`y_scale` stride 按完整 `ceil(N/64)*2` |
 
-#### 6.2.12 Kernel 小结
+#### 4.2.12 Kernel 小结
 
 Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合后处理”。AIC 侧只关心按 group 和 tile 取数、调用 `BlockMmadMx` 产出 fp32 L0C；AIV 侧等待 cube 完成后，把当前 tile 做 GeluTanh、MX scale 规约、FP8 cast 和 GM 写回。两侧通过 `NotifyVector/NotifyCube` 保持生产消费顺序。
 
@@ -650,9 +539,9 @@ Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合
 - GeluTanh 使用 sigmoid 形式近似，activation 后先转 BF16，再进入 MX dynamic quant。
 - OCP 和 cuBLAS scale 分支共用后续 FP8 cast/writeback 流程，只在 scale 生成方式上不同。
 
-## 7. 软件设计和接口定义
+## 5. 软件设计和接口定义
 
-### 7.1 文件级修改清单
+### 5.1 文件级修改清单
 
 | 文件 | 设计职责 |
 | --- | --- |
@@ -665,26 +554,26 @@ Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合
 | `common/cgmct/epilogue/block_epilogue_activation_mx_quant.h` | GeluTanh + MX dynamic quant epilogue |
 | `tests/ut/op_host/test_grouped_matmul_activation_quant_tiling.*` | CSV tiling UT |
 
-### 7.2 修改要点
+### 5.2 修改要点
 
 | 模块 | 修改要点 |
 | --- | --- |
-| def schema | 按第 4.1 节顺序声明字段；`activation_type` 为必选属性；保留 `x_scale` optional 和 `bias` dynamic 的接口形态 |
+| def schema | 按第 2.1 节顺序声明字段；`activation_type` 为必选属性；保留 `x_scale` optional 和 `bias` dynamic 的接口形态 |
 | InferShape | `y=[M,N]`；`y_scale=[M,ceil(N/64),2]`；`N` 根据 `transpose_weight` 从 `weight_scale` 对应维度推导 |
 | Tiling | index 常量与 def 顺序一致；完成 attr/dtype/shape/core ratio 校验；写入 `GMMActivationQuantTilingDataParams` |
 | Kernel dispatch | 根据 tiling key 选择 `RowMajor/Nz` 或 `RowMajor/Zn`，并在入口保存/恢复 float overflow mode |
 | GMM 调度 | 使用 low-level BasicAPI 和 tail-split scheduler 处理 group/tile |
 | Epilogue | 对 L0C fp32 tile 执行 GeluTanh、MX scale 生成、FP8 cast 和 `y/y_scale` 写回 |
 
-### 7.3 软件设计小结
+### 5.3 软件设计小结
 
 代码分层上，本轮没有把所有逻辑塞进一个 kernel 文件，而是按“接口定义、shape/dtype 推导、tiling、kernel dispatch、GMM 调度、epilogue”拆开。这个拆法的好处是每一层的职责比较单一：def 负责 schema，infershape 负责输出推导，tiling 负责准入和参数生成，kernel dispatch 负责模板选择，公共 GMM kernel 负责 group/tile 调度，epilogue 负责 activation + quant。
 
 后续如果扩展 activation 类型，主要改动点应集中在 `activation_type` attr 校验、tiling data 传参和 `BlockEpilogueActivationQuant` 的 activation 分支；如果扩展 quant dtype 或 scale 算法，则主要影响 dtype/attr 准入、scale 生成逻辑和 STC golden。这个分层能让新增能力的影响范围比较清楚，不需要重新拆 GMM 主体。
 
-## 8. UT 设计
+## 6. UT 设计
 
-### 8.1 UT 目标与边界
+### 6.1 UT 目标与边界
 
 本轮 UT 以 tiling 白盒校验为主，目标是确认 host 侧 schema 顺序、dtype/format/shape/attr 准入、tiling key 和核心 compileInfo 约束符合设计。UT 不执行 AICore kernel，因此不覆盖 GeluTanh 数值精度、MX quant bit 级一致性和性能指标；这些内容需要后续 STC 或端到端精度测试补齐。
 
@@ -698,7 +587,7 @@ Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合
 | compileInfo | Ascend950，AIC/AIV 1:2 核比例 |
 | kernel 数值 | 不在本 UT 覆盖范围内 |
 
-### 8.2 UT 文件结构
+### 6.2 UT 文件结构
 
 | 文件 | 职责 |
 | --- | --- |
@@ -709,7 +598,7 @@ Kernel 侧的设计主线是“BasicAPI 负责算 matmul，epilogue 负责融合
 
 UT 章节不画类图或流程图，仅说明 CSV 字段、执行逻辑和覆盖点。
 
-### 8.3 CSV 字段设计
+### 6.3 CSV 字段设计
 
 CSV 采用“固定 scalar 字段 + 固定 tensor 字段”的方式，避免 C++ 侧为每类 case 写重复样板。
 
@@ -755,7 +644,7 @@ tensor 字段顺序如下：
 | 7 | `y` | `y_origin/y_storage/y_dtype/y_format` | OUTPUT 0 |
 | 8 | `y_scale` | `yscale_origin/yscale_storage/yscale_dtype/yscale_format` | OUTPUT 1 |
 
-### 8.4 UT 执行逻辑
+### 6.4 UT 执行逻辑
 
 | 步骤 | 说明 |
 | --- | --- |
@@ -765,7 +654,7 @@ tensor 字段顺序如下：
 | 执行成功用例 | `expectSuccess=true` 时，执行 tiling 并检查 `tilingKey` |
 | 定位失败 | 使用 `prefix/caseName` 标识失败用例，CSV 解析异常输出行号 |
 
-### 8.5 当前 CSV 用例覆盖
+### 6.5 当前 CSV 用例覆盖
 
 | case | 类型 | 关键输入 | 期望 |
 | --- | --- | --- | --- |
@@ -783,7 +672,7 @@ tensor 字段顺序如下：
 | `invalid_xscale_shape` | 非法 shape | `x_scale[1] != ceil(K/64)` | `GRAPH_FAILED` |
 | `invalid_core_ratio` | 非法 compileInfo | AIC/AIV 不是 1:2 | `GRAPH_FAILED` |
 
-### 8.6 建议补充用例
+### 6.6 建议补充用例
 
 | 覆盖点 | 建议用例 | 目的 |
 | --- | --- | --- |
@@ -795,13 +684,13 @@ tensor 字段顺序如下：
 | group 数边界 | `group_list` shape 过大或空 group | 补充 group 调度边界 |
 | mixed FP8 | `x`/`weight` 使用不同 FP8 dtype | 覆盖 dtype 组合矩阵 |
 
-### 8.7 UT 小结
+### 6.7 UT 小结
 
 当前 CSV UT 可以证明两类事情：一是 schema 顺序和 attr/input index 与实现一致，二是 host tiling 对不支持的输入组合会提前失败。它不能证明 kernel 数值正确，也不能证明 epilogue 中 OCP/cuBLAS scale byte 与参考实现逐 bit 一致。
 
 因此 UT 和 STC 的分工应保持清楚：UT 负责“能不能进 kernel”，STC 负责“进 kernel 后算得对不对”。后续补测优先级建议是先补 `x_scale` 缺失、`weight_scale` 转置维错误、`y_scale` dtype 错误和 weight ND format 负例，再补 mixed FP8 数值链路和非空 bias 策略用例。
 
-## 9. 外部依赖
+## 7. 外部依赖
 
 | 依赖项 | 依赖内容 | 影响 |
 | --- | --- | --- |
@@ -811,48 +700,3 @@ tensor 字段顺序如下：
 | MX quant 约定 | `FLOAT8_E8M0` scale、`ceil(K/64)`、`ceil(N/64)`、pair dim = 2 | 高 |
 | Dynamic MX Quant 参考实现 | tail-axis FP8 dynamic quant 的 max exponent、scale、cast 思路 | 中 |
 | UT 框架 | `TilingContextPara`、CSV parse util、`ExecuteTiling` | 中 |
-
-## 10. 待确认事项
-
-1. `x_scale` 在 def 中为 optional，但当前 MX kernel/tiling 实际要求必传；是否需要在接口文档中显式声明“optional but required for MX path”。
-2. `bias` 当前按 schema 预留为 dynamic input，但 kernel 不使用；后续是否需要支持 matmul bias 或 activation 前/后 bias。
-3. `activation_type` 当前只支持 GELU_TANH=2；后续若增加 ReLU/Silu/FastGelu，需要扩展 epilogue 分支和 STC。
-4. `rowLen`、`ubAvail` tiling 字段当前预留未写入；是否保留或清理。
-5. 性能交付阈值和精度容差需要 STC/benchmark 补齐。
-6. 当前本地环境缺少 CMake，UT 需在 CI 或标准开发环境中执行确认。
-
-## 11. 总结
-
-`GroupedMatmulActivationQuant` 的本轮设计是一条收敛后的融合路径：输入和 weight 限定在 MX FP8 场景，weight 使用 `FRACTAL_NZ`，GMM 使用低阶 BasicAPI，activation 固定为 GeluTanh，quant 固定为 MX dynamic FP8 输出。这个范围看起来窄，但适合第一轮交付，因为它把主要工程风险集中在 epilogue 融合和 scale layout 上，而不是同时展开多 dtype、多 activation、多接口通路。
-
-整体链路可以按下面四句话理解：
-
-- Host schema 明确字段顺序，保留 `x_scale` optional 和 `bias` dynamic 的接口形态，但当前 MX path 对 `x_scale` 实际必传、对 `bias` 实际忽略。
-- Tiling 负责把不满足 MX FP8/NZ/GeluTanh 的 case 拦在 kernel 外，并复用 `GroupedQmmBasicApiTiling` 生成 matmul tile 参数。
-- Kernel 负责按 group 调度 BasicAPI matmul，把 L0C fp32 tile 交给 AIV epilogue。
-- Epilogue 负责 GeluTanh、OCP/cuBLAS MX scale、FP8 sat+rint cast、`y/y_scale` 写回。
-
-当前 SRS 的评审重点建议放在三处：
-
-- 接口和实现是否一致：尤其是 `activation_type` 必选、`x_scale` optional 但实际必传、`bias` 预留不消费、dynamic input 只消费第 0 个 tensor。
-- shape 和 layout 是否闭合：尤其是 `weight.storage` NZ 尾维、`x_scale/weight_scale/y_scale` 的 block 维和 pair dim。
-- 测试闭环是否足够：tiling UT 已覆盖主要准入；STC 仍需补 GeluTanh 数值、OCP/cuBLAS scale byte、mixed FP8、trans weight 和边界 group。
-
-如果后续继续演进，建议按“先数值闭环，再扩展能力”的顺序推进。先把当前 GeluTanh + MX FP8 链路和参考实现对齐，再考虑新增 activation 类型、bias 支持、更多 dynamic weight list、以及对外 aclnn/op_api 通路。
-
-## 附录 A. UT/STC 交叉检查清单
-
-| 检查域 | 设计约束 | 当前 CSV UT | 后续 STC/精度建议 |
-| --- | --- | --- | --- |
-| schema 顺序 | 输入、输出、attr 按第 4.1 节顺序声明和解析 | 通过 50 列 CSV 固定顺序覆盖 | aclnn/op_api 若后续补交付，需要同步接口文档 |
-| activation | 仅 `activation_type=2` | 正例和非法 attr 已覆盖 | 端到端校验 GeluTanh 公式近似误差 |
-| FP8 dtype | `x/weight/y/quant_dtype` 仅 E4M3/E5M2 | E4M3、E5M2、非法 quant、y mismatch 已覆盖 | 增加 mixed FP8 数值 case |
-| scale dtype | `x_scale/weight_scale/y_scale` 为 E8M0 | 正例覆盖，`y_scale` dtype 负例待补 | STC 对齐 dynamic MX quant scale byte |
-| weight format | 仅 FP8 `FRACTAL_NZ` | NZ tail dim 负例已覆盖 | 增加 ND format 负例 |
-| transpose | `x` 不转置，`weight` 支持转置/非转置 | key 0/key 1 已覆盖 | STC 分别跑 no-trans/trans 数值 |
-| group_list | 支持 offset 模式和 count 模式 | `group_list_type=0/1` 已覆盖 | 增加空 group、极端 group 数 |
-| MX shape | `x_scale`、`weight_scale` rank 和块维匹配 | `x_scale` shape 负例已覆盖 | 增加 trans 下 `weight_scale` 维度负例 |
-| core ratio | AIC:AIV 必须为 1:2 | 非法 core ratio 已覆盖 | CI 环境确认真实 Ascend950 compileInfo |
-| bias | 当前 kernel 忽略 `bias` | 当前 CSV 使用 `NONE/UNDEFINED` | 非空 bias 的产品策略需确认后补测 |
-| quant 数值 | OCP/cuBLAS 两条 scale 分支 | tiling 仅覆盖 `scale_alg` 准入 | STC 比对参考链路输出 `y/y_scale` |
-| 性能 | 本轮只给融合方向，不给阈值 | 不适用 | benchmark 定义 GM 读写收益和性能阈值 |
