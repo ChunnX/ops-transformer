@@ -468,11 +468,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(
 
     ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLen);
     Duplicate<int16_t>(signMaskTensor, XOR_OP_VALUE_16, curTileLen);
+    PipeBarrier<PIPE_V>();
     Or(tempTensor, tempTensor, signMaskTensor, calcLen);
+    PipeBarrier<PIPE_V>();
 
     And(temp1, xLocalInt16, tempTensor, calcLen);
     Or(xLocalInt16, xLocalInt16, tempTensor, calcLen);
+    PipeBarrier<PIPE_V>();
     Not(temp1, temp1, calcLen);
+    PipeBarrier<PIPE_V>();
     And(xLocalInt16, xLocalInt16, temp1, calcLen);
 }
 
