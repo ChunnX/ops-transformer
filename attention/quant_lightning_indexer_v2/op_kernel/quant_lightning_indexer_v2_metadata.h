@@ -9,12 +9,12 @@
  */
 
 /*!
-* \file quant_lightning_indexer_metadata.h
+* \file quant_lightning_indexer_v2_metadata.h
 * \brief
 */
 
-#ifndef QUANT_LIGHTNING_INDEXER_METADATA_H
-#define QUANT_LIGHTNING_INDEXER_METADATA_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_METADATA_H
+#define QUANT_LIGHTNING_INDEXER_V2_METADATA_H
 
 #include <cstdint>
 
@@ -76,4 +76,4 @@ namespace detail {
 static_assert(QLIV2_META_SIZE * sizeof(QLIV2_METADATA_T) >= sizeof(detail::Qliv2Metadata));
 };
 
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_METADATA_H

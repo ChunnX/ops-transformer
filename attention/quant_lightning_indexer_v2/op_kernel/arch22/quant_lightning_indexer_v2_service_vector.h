@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_service_vector.h
+ * \file quant_lightning_indexer_v2_service_vector.h
  * \brief
  */
-#ifndef QUANT_LIGHTNING_INDEXER_SERVICE_VECTOR_H
-#define QUANT_LIGHTNING_INDEXER_SERVICE_VECTOR_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H
+#define QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -623,4 +623,4 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
 }
 
 }  // namespace QLIV2Kernel
-#endif // QUANT_LIGHTNING_INDEXER_SERVICE_VECTOR_H
+#endif // QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H

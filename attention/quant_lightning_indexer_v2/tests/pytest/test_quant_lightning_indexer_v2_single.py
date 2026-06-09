@@ -13,9 +13,9 @@
 import itertools
 import torch
 import torch_npu
-from test_quant_lightning_indexer_paramset import ENABLED_PARAMS
+from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
-import quant_lightning_indexer_golden
+import quant_lightning_indexer_v2_golden
 import pytest
 
 for _, params in enumerate(ENABLED_PARAMS):
@@ -112,7 +112,7 @@ for _, params in enumerate(ENABLED_PARAMS):
                     k_scale_datarange, cmp_ratio, return_value
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qliv2_output_single(test_data)
+        cpu_result, npu_result, topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比

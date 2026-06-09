@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file lightning_indexer_service_cube.h
+ * \file quant_lightning_indexer_v2_service_cube.h
  * \brief use 5 buffer for matmul l1, better pipeline
  */
-#ifndef quant_lightning_indexer_SERVICE_CUBE_H
-#define quant_lightning_indexer_SERVICE_CUBE_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_SERVICE_CUBE_H
+#define QUANT_LIGHTNING_INDEXER_V2_SERVICE_CUBE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -434,4 +434,4 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
 }
 } // namespace QLIV2Kernel
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_SERVICE_CUBE_H

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_lightning_indexer_kernel.h
+ * \file quant_lightning_indexer_v2_kernel.h
  * \brief
  */
 
-#ifndef quant_lightning_indexer_KERNEL_H
-#define quant_lightning_indexer_KERNEL_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_KERNEL_H
+#define QUANT_LIGHTNING_INDEXER_V2_KERNEL_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -713,4 +713,4 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessDecode()
 }
 
 }  // namespace QLIV2Kernel
-#endif  // quant_lightning_indexer_KERNEL_H
+#endif  // QUANT_LIGHTNING_INDEXER_V2_KERNEL_H

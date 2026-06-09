@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_lightning_indexer_service_vector.h
+ * \file quant_lightning_indexer_v2_service_vector.h
  * \brief
  */
-#ifndef quant_lightning_indexer_SERVICE_VECTOR_H
-#define quant_lightning_indexer_SERVICE_VECTOR_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H
+#define QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -750,4 +750,4 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 }  // namespace QLIV2Kernel
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_SERVICE_VECTOR_H

@@ -13,7 +13,7 @@
 import itertools
 import torch
 import result_compare_method
-from batch import quant_lightning_indexer_pt_loadprocess
+from batch import quant_lightning_indexer_v2_pt_loadprocess
 import pytest
 import random
 import pandas as pd
@@ -43,7 +43,7 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def qliv2(testcase_files):   # 初始化参数和tensor
-    cpu_result, npu_result, topk_value, params = quant_lightning_indexer_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
+    cpu_result, npu_result, topk_value, params = quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(testcase_files, device_id=0)
     if npu_result != None:
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, params)
     else:
