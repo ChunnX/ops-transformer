@@ -21,8 +21,7 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *bufferHandle, const aclTensor *indices,
                                                        aclTensor *fetched, int32_t hiddenSize,
-                                                       int64_t numEntriesPerRank, const char *group,
-                                                       int64_t outputDtype,
+                                                       int64_t numEntriesPerRank, int64_t outputDtype,
                                                        uint64_t *workspaceSize, aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
