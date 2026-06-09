@@ -741,11 +741,14 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
 void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
 {
     int64_t actualExpertNum = expertEnd_ - expertStart_;
-    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N || k_ != PERFORMANCE_MODE_TOP_K) {
+    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N) {
         return;
     }
-    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER &&
-        (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX) {
+
+    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER && ep_== 1 &&
+        (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX && quantMode_ == UN_QUANT &&
+        k_ == PERFORMANCE_MODE_TOP_K && dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT &&
+        actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) {
         return;
     }
 
@@ -758,6 +761,7 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
         filterPerCoreTokens, coreEntries, expertCountStride, filterNeedCoreNum, actualExpertNum);
 
     countingSortFullLoad_ = (fullLoadUB <= ubSize - LENGTH_1024 && ep_== 1 && quantMode_ == UN_QUANT &&
+                            k_ == PERFORMANCE_MODE_TOP_K &&
  	                        dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT && 
                             actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) ? 1 : 0;
     int64_t filterChunkSize = (countingSortFullLoad_ == 1) ? 0 : COUNTING_SORT_FILTER_CHUNK_SIZE;
@@ -827,8 +831,45 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     phaseBSize += Ops::Base::CeilAlign(expertCountStride * SIZE_INT32, ONE_BLOCK_BYTE);
     phaseBSize += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)), ONE_BLOCK_BYTE);
 
-    // Phase C: compute colsLoops/perLoopCols
-    int64_t maxPerLoopColsBytes = COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES;
+    // Phase C: compute colsLoops/perLoopCols based on remaining UB space
+    // When actualExpertNum is large (up to 10240), persistentSize grows significantly,
+    // so compute maxPerLoopCols from actual Phase C budget rather than fixed constant
+    int64_t phaseCBudget = static_cast<int64_t>(aicoreParams_.ubSize) - persistentSize;
+
+    // Fixed Phase C overhead (independent of perLoopCols)
+    int64_t phaseCFixedOverhead =
+        Ops::Base::CeilAlign(2048 * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE); // pairsBuf
+    phaseCFixedOverhead += ONE_BLOCK_BYTE; // idxBuf (32B)
+    if (dropPadMode_ != DROP_PAD) {
+        // Non-droppad: 3 stack arrays newPosArr/srcRowArr/origFlatIdxArr (int32_t[2048] each)
+        phaseCFixedOverhead += NUM_THREE * static_cast<int64_t>(2048) * SIZE_INT32;
+    }
+
+    // Per-element byte cost for all perLoopCols-dependent buffers
+    // 2 xBuf slots (double buffer) + quant buffers per mode
+    int64_t colBytesPerElement = NUM_TWO * inuptXDtypeSize_;
+    if (quantMode_ == STATIC_QUANT) {
+        colBytesPerElement += SIZE_FP32 + SIZE_INT8; // quantFloat + quantInt8
+    } else if (quantMode_ == DYNAMIC_QUANT) {
+        colBytesPerElement += NUM_TWO * SIZE_FP32 + SIZE_INT8; // quantFloat + quantTemp + quantInt8
+        if (smoothType_ != 0) {
+            // smooth buffer sized by perLoopCols (only curLoopCols loaded per iteration)
+            colBytesPerElement += SIZE_FP32 * NUM_TWO; // 2 smooth slots (non-droppad)
+        }
+    } else if (isInputScale_) {
+        // unquant with inputScale: 2 scale slots (fixed 32B each)
+        phaseCFixedOverhead += Ops::Base::CeilAlign(ONE_BLOCK_ELEMENT * SIZE_FP32, ONE_BLOCK_BYTE) * NUM_TWO;
+    }
+
+    // Compute max perLoopCols from remaining budget (with alignment margin)
+    int64_t remainingForCols = phaseCBudget - phaseCFixedOverhead - LENGTH_1024;
+    int64_t dynamicMaxPerLoopCols = remainingForCols / colBytesPerElement;
+    // Align down to block boundary for element alignment
+    dynamicMaxPerLoopCols =
+        (dynamicMaxPerLoopCols * inuptXDtypeSize_ / ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+    int64_t maxPerLoopColsBytes =
+        std::min(dynamicMaxPerLoopCols * inuptXDtypeSize_, COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES);
+
     int64_t csPerLoopCols =
         (cols_ * inuptXDtypeSize_ > maxPerLoopColsBytes) ? (maxPerLoopColsBytes / inuptXDtypeSize_) : cols_;
     int64_t csColsLoops = Ops::Base::CeilDiv(cols_, csPerLoopCols);
@@ -836,10 +877,19 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     int64_t csPerLoopColsAligned =
         Ops::Base::CeilDiv(csPerLoopCols * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
 
-    int64_t phaseCSize = Ops::Base::CeilAlign(chunkAligned * NUM_TWO * SIZE_INT32, ONE_BLOCK_BYTE);
-    phaseCSize += ONE_BLOCK_BYTE + Ops::Base::CeilAlign(csPerLoopColsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE);
-    if (isInputScale_) {
-        phaseCSize += Ops::Base::CeilAlign(ONE_BLOCK_ELEMENT * SIZE_FP32, ONE_BLOCK_BYTE);
+    // Phase C size (accurate estimation matching kernel layout)
+    int64_t phaseCSize = phaseCFixedOverhead;
+    phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE) * NUM_TWO;
+    if (quantMode_ == STATIC_QUANT) {
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE);
+    } else if (quantMode_ == DYNAMIC_QUANT) {
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE);
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+        if (smoothType_ != 0) {
+            phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
+        }
     }
 
     int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});

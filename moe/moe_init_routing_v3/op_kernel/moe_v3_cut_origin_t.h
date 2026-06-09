@@ -278,7 +278,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     // ===== UB layout: persistent region + max(phaseA, phaseB, phaseC) =====
 
     // Short path: maxChunks_==1 means all pairs fit in one chunk
-    shortPath_ = (maxChunks_ == 1) && (ep_ == 1);
+    // shortPath_ = (maxChunks_ == 1) && (ep_ == 1);
+    shortPath_ = (coreEntries_ <= 2048) && (ep_ == 1);
 
     // Persistent region
     int64_t ubOff = 0;
@@ -287,9 +288,9 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     if (shortPath_) {
         // Gathered data survives from Phase A to Phase C
         gatheredIdxLocalOffset_ = ubOff;
-        ubOff += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+        ubOff += OpsBaseCeilAlign(2048 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
         gatheredExpertLocalOffset_ = ubOff;
-        ubOff += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+        ubOff += OpsBaseCeilAlign(2048 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     }
     persistentSize_ = ubOff;
 
@@ -330,7 +331,9 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
 
     // Phase C shared size (from persistentSize_)
     int64_t phaseCSize = 0;
-    phaseCSize += OpsBaseCeilAlign(chunkAligned_ * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    if (!shortPath_) {
+        phaseCSize += OpsBaseCeilAlign(chunkAligned_ * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    }
     phaseCSize += BLOCK_BYTES; // idxBuf: 32B
     phaseCSize += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) * 2;
     // Quantization buffer layout per mode
@@ -845,7 +848,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
     // Phase C shared layout (from persistentSize_) — double buffer for xBuf/scaleBuf
     int64_t off = persistentSize_;
     int64_t pairsOff = off;
-    int64_t pairsBufCapacity = chunkAligned_;
+    int64_t pairsBufCapacity = 2048;
     if (useWorkspace) {
         off += OpsBaseCeilAlign(pairsBufCapacity * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     }
@@ -940,7 +943,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
         LocalTensor<int32_t> gatheredExpertLocal;
         if (useWorkspace) {
             gatheredIdxLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t)];
-            gatheredExpertLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t) + chunkAligned_];
+            gatheredExpertLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t) + 2048];
             DataCopyPadExtParams<int32_t> intPadParams{false, 0, 0, 0};
             DataCopyExtParams pairLoadParams{
                 static_cast<uint16_t>(1), static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
@@ -1281,7 +1284,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 
     int64_t off = persistentSize_;
     int64_t pairsOff = off;
-    int64_t pairsBufCapacity = chunkAligned_;
+    int64_t pairsBufCapacity = 2048;
     if (useWorkspace) {
         off += OpsBaseCeilAlign(pairsBufCapacity * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     }
@@ -1354,7 +1357,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
     LocalTensor<int32_t> gatheredIdxLocal;
     LocalTensor<int32_t> gatheredExpertLocal;
     gatheredIdxLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t)];
-    gatheredExpertLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t) + chunkAligned_];
+    gatheredExpertLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t) + 2048];
 
     int64_t pairCursor = 0;
     while (pairCursor < totalPairCount_) {
