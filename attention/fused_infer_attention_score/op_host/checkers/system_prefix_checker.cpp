@@ -253,9 +253,10 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     };
     std::string layout(fiaInfo.opParamInfo.layOut);
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", layout.c_str(),
- 	        "The value of input_layout must be in BSH, BSND, BNSD, and BNSD_BSND "
-            "when system prefix is enabled.");
+        std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, and BNSD_BSND "
+            "when system prefix is enabled.";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
+            layout.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 

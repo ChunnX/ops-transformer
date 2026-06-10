@@ -218,8 +218,10 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         if (keyD0 != 16 || valueD0 != 16) {
             std::string valMsg = ToString(keyShape->GetStorageShape()) + " and " +
                 ToString(valueShape->GetStorageShape());
+            std::string reason = "The last axis of key and value must both be equal "
+                "to 16 when layout is PA_NZ."
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value",
-                valMsg.c_str(), "D0 of key and value must both be equal to 16.");
+                valMsg.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
         if (keyD1 != fiaInfo.qkHeadDim  / 16) {
@@ -384,7 +386,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 return false;
             }
             if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-                if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS) { // k_s != krope_s       
+                if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS) { // k_s != krope_s
                     std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                         ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                     std::string reason = "S of key must be equal to S of key_rope.";
@@ -1197,9 +1199,10 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
         };
         if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
+            std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, "
+                "TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND in the Prefill MLA scenario.";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
-                inputLayout.c_str(), "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, "
-                    "NTD_TND, BNSD_BSND in the Prefill MLA scenario.");
+                inputLayout.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         } else {
             OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&

@@ -91,7 +91,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     bool    isTND      = false;
 
     if (layoutQStr == "BSND") {
-        if (qShape->GetDimNum() < 4) {
+        if (qShape->GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 4 when layout_q is BSND.");
@@ -102,7 +102,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         numHeadsQ = qShape->GetDim(2);
         headDim   = qShape->GetDim(3);
     } else if (layoutQStr == "BNSD") {
-        if (qShape->GetDimNum() < 4) {
+        if (qShape->GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 4 when layout_q is BNSD.");
@@ -113,7 +113,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         seqLenQ   = qShape->GetDim(2);
         headDim   = qShape->GetDim(3);
     } else if (layoutQStr == "TND") {
-        if (qShape->GetDimNum() < 3) {
+        if (qShape->GetDimNum() != 3) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
                 std::to_string(qShape->GetDimNum()).c_str(),
                 "The shape dim of q must be 3 when layout_q is TND.");
