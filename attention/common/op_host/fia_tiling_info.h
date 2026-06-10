@@ -231,7 +231,13 @@ public:
     std::vector<gert::StorageShape *> vCache = {};
     std::vector<int32_t> qSize = {};
     std::vector<int32_t> kvSize = {};
-
+    // 增加strides参数和tensorv1的标志位
+    const gert::Stride *keyStrides = nullptr;
+    const gert::Stride *valueStrides = nullptr;
+    const gert::Stride *kRopeStrides = nullptr;
+    const gert::Stride *kScaleStrides = nullptr;
+    const gert::Stride *vScaleStrides = nullptr;
+    bool isTensorV1 = false;
     // empty Tensor
     bool emptyTensorFlag = false;
     uint64_t totalOutputSize = 0;

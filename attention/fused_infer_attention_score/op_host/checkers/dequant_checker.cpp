@@ -510,7 +510,7 @@ ge::graphStatus DequantChecker::CheckFeaturePertensorFullquant(const FiaTilingIn
     if (!enableQKVPertensorQuant_) {
         return ge::GRAPH_SUCCESS;
     }
-
+    
     // 不支持后量化
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
                 OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, postquant is not supported."),
@@ -627,7 +627,7 @@ ge::graphStatus DequantChecker::CheckFeatureMLAFullquant(const FiaTilingInfo &fi
     return ge::GRAPH_SUCCESS;
 }
 
-// 不支持左padding、tensorlist、prefix、pse、alibipse、rope
+// 不支持左padding、tensorlist、prefix、pse、alibipse
 ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &fiaInfo)
 {
     if (!enableQKVMxfp8FullQuant_) {
@@ -775,9 +775,27 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
     }
     // key
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+    const uint32_t keyAntiquantScaleDimNum = keyAntiquantScaleShape.GetDimNum();
     // value
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+    const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
     const uint32_t mxfp8BlockSize = 64;
+
+    // pa场景 BnNBsD支持0/1轴非连续
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1)),
+        OP_LOGE(fiaInfo.opName,
+                "In BnNBsD scenarios, kscale only supports non-contiguous tensors in dimensions 0 or 1, " 
+                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1)),
+        OP_LOGE(fiaInfo.opName,
+                "In BnNBsD scenarios, vscale only supports non-contiguous tensors in dimensions 0 or 1, " 
+                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        return ge::GRAPH_FAILED);
+
     // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj] 
     OP_CHECK_IF((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
@@ -819,11 +837,30 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
     }
     // key
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+    const uint32_t keyAntiquantScaleDimNum = keyAntiquantScaleShape.GetDimNum();
     // value
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+    const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
+
     const uint32_t mxfp8BlockSize = 64;
     const uint32_t d0 = 16;
     const int32_t d0Temp = 16;
+
+    // pa场景 NZ支持0/1轴非连续
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1)),
+        OP_LOGE(fiaInfo.opName,
+                "In NZ scenarios, kscale only supports non-contiguous tensors in dimensions 0 or 1, " 
+                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1)),
+        OP_LOGE(fiaInfo.opName,
+                "In NZ scenarios, vscale only supports non-contiguous tensors in dimensions 0 or 1, " 
+                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        return ge::GRAPH_FAILED);
+
     // NZ pa key --[blocknum, kv_n, blocksize/16, k_D/64, 16, 2]
     OP_CHECK_IF((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
                     (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
@@ -887,6 +924,17 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     uint32_t scaleKVDim = fiaInfo.pageAttentionFlag ? ((fiaInfo.kvLayout == FiaLayout::NZ) ? 6 : 5) : 4;
     bool enableMxfp8Decode = (fiaInfo.gSize * fiaInfo.s1Size <= 80);
 
+    // 非pa场景 不支持kv kvscale不连续
+    int32_t dimIndex = 0;  // 占位，非pa场景用不到
+    OP_LOGE(fiaInfo.opName, "check non-PA scenarios, kv kvscale contiguous.");
+    OP_CHECK_IF((!fiaInfo.pageAttentionFlag && 
+        ((CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+        (CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex) != ge::GRAPH_SUCCESS))),
+            OP_LOGE(fiaInfo.opName, "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
+            return ge::GRAPH_FAILED); 
+    
     // qscale dim支持4维[T, N, D//64, 2]和5维[N2, T, G, D//64, 2]
     OP_CHECK_IF((dequantScaleQueryDimNum != 4 && dequantScaleQueryDimNum != 5),
                 OP_LOGE(fiaInfo.opName,
@@ -958,6 +1006,19 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                         "In MXFP8 fullquant scenario, "
                         "the layout of key(%s) only support BnNBsD/NZ when PA enabled.",
                         LayoutToSerialString(fiaInfo.kvLayout).c_str()),
+                return ge::GRAPH_FAILED);
+        // pa场景 BNBD/NZ支持0/1轴非连续
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                OP_LOGE(fiaInfo.opName,
+                        "In BnNBsD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, " 
+                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                OP_LOGE(fiaInfo.opName,
+                        "In BnNBsD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, " 
+                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
                 return ge::GRAPH_FAILED);
         if (ge::GRAPH_SUCCESS != CheckDequantScaleBnNBsDShapeMXFP8(fiaInfo)) {
             return ge::GRAPH_FAILED;
