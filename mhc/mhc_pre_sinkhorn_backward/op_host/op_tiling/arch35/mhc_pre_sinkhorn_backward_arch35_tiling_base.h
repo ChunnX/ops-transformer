@@ -19,7 +19,8 @@
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_struct.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_data_arch35.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_key_arch35.h"
 #include "err/ops_err.h"
 #include "op_host/tiling_templates_registry.h"
 

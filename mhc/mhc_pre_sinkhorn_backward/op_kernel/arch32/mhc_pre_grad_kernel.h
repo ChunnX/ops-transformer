@@ -17,6 +17,8 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "mhc_pre_sinkhorn_backward_key_arch32.h"
+#include "mhc_pre_sinkhorn_backward_data_arch32.h"
 
 using namespace AscendC;
 

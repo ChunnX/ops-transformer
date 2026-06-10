@@ -15,6 +15,8 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "arch35/mhc_pre_sinkhorn_backward_one_stage.h"
+#include "mhc_pre_sinkhorn_backward_data_arch35.h"
+#include "mhc_pre_sinkhorn_backward_key_arch35.h"
 
 using namespace AscendC;
 using namespace MicroAPI;

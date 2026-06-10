@@ -17,6 +17,8 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "mhc_pre_sinkhorn_backward_tiling.h"
 #include "log/log.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_data_arch32.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_key_arch32.h"
 
 #define CHECK_NULLPTR(ptr)                                                                                             \
     if (ptr == nullptr) {                                                                                              \
@@ -316,7 +318,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
+ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
 {
     if (context == nullptr) {
         OP_LOGE(context, "context is nullptr");
@@ -395,7 +397,9 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    MhcPreSinkhornBackwardTilingData tilingData;
+    // MhcPreSinkhornBackwardTilingData tilingData;
+    MhcPreSinkhornBackwardArch32TilingData* tilingData =
+    context->GetTilingData<MhcPreSinkhornBackwardArch32TilingData>();
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
@@ -424,27 +428,26 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    tilingData.set_n(n);
-    tilingData.set_batchSize(batchSize);
-    tilingData.set_seqLength(seqLength);
-    tilingData.set_c(c);
-    tilingData.set_cTail(cTail);
-    tilingData.set_n(n);
-    tilingData.set_c0(c0);
-    tilingData.set_c1(c1);
-    tilingData.set_aivNum(aivNum);
-    tilingData.set_ubSize(ubSize);
-    tilingData.set_skIterCount(skIterCount);
-    tilingData.set_eps(eps);
+    tilingData->n = n;
+    tilingData->batchSize = batchSize;
+    tilingData->seqLength = seqLength;
+    tilingData->c = c;
+    tilingData->cTail = cTail;
+    tilingData->n = n;
+    tilingData->c0 = c0;
+    tilingData->c1 = c1;
+    tilingData->aivNum = aivNum;
+    tilingData->ubSize = ubSize;
+    tilingData->skIterCount = skIterCount;
+    tilingData->eps = eps;
+    tilingData->tileSize = tile;
 
-    tilingData.set_tileSize(tile);
-
-    if (context->GetRawTilingData() == nullptr) {
-        OP_LOGE(context, "GetRawTilingData() is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
+    // if (context->GetRawTilingData() == nullptr) {
+    //     OP_LOGE(context, "GetRawTilingData() is nullptr");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    // context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float) * 2;
     size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
@@ -459,7 +462,8 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
 
     auto isDeterministic = (context->GetDeterministic() == 1);
     context->SetScheduleMode(1); // 1: batchmode模式
-    context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
+    GET_TPL_TILING_KEY(isDeterministic);
+    //context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
     if (isDeterministic) {
         currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize +
                               aicNum * (n * n + 2 * n) * (n * c) * sizeof(float) +
