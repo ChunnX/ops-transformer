@@ -24,7 +24,7 @@ namespace optiling {
 static ge::graphStatus Tiling4MhcPreSinkhornBackwardArch35(gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornBackward rt2.0 is running.");
-    auto compile_info = static_cast<const MhcPreSinkhornBackwardCompileInfo*>(context->GetCompileInfo());
+    auto compile_info = static_cast<const MhcPreSinkhornBackwardArch35CompileInfo*>(context->GetCompileInfo());
     OP_CHECK_NULL_WITH_CONTEXT(context, compile_info);
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornBackward compile info is ready, running tiling registry.");
     return TilingRegistry::GetInstance().DoTilingImpl(context);
@@ -33,7 +33,7 @@ static ge::graphStatus Tiling4MhcPreSinkhornBackwardArch35(gert::TilingContext* 
 static ge::graphStatus TilingPrepare4MhcPreSinkhornBackwardArch35(gert::TilingParseContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Start init TilingPrepare4MhcPreSinkhornBackward.");
-    auto ci = context->GetCompiledInfo<MhcPreSinkhornBackwardCompileInfo>();
+    auto ci = context->GetCompiledInfo<MhcPreSinkhornBackwardArch35CompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, ci);
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
@@ -53,5 +53,5 @@ static ge::graphStatus TilingPrepare4MhcPreSinkhornBackwardArch35(gert::TilingPa
 // register tiling interface of the IndexPutV2 op.
 IMPL_OP_OPTILING(MhcPreSinkhornBackward)
     .Tiling(Tiling4MhcPreSinkhornBackwardArch35)
-    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingPrepare4MhcPreSinkhornBackwardArch35);
+    .TilingParse<MhcPreSinkhornBackwardArch35CompileInfo>(TilingPrepare4MhcPreSinkhornBackwardArch35);
 } // namespace optiling

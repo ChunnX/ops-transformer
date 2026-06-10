@@ -112,7 +112,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
     n_ = xShape.GetDim(N_DIM_IDX);
     c_ = xShape.GetDim(C_DIM_IDX);
     OP_CHECK_IF(CheckShape(batchSize_, seqLength_, n_, c_) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "ShapeVerify failed"), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CheckShape failed"), return ge::GRAPH_FAILED);
     skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
 
     return ge::GRAPH_SUCCESS;
@@ -470,6 +470,31 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
 void MhcPreSinkhornBackwardArch35Tiling::DumpTilingInfo()
 {
 
+    mm1K_ = n_ * n_ + 2 * n_;
+    mm1M_ = tile_ * 2;
+    mm1N_ = n_ * c_;
+
+    mm2K_ = tile_ * 2;
+    mm2M_ = n_ * n_ + 2 * n_;
+    mm2N_ = n_ * c_;
+    std::ostringstream info;
+    info << "batchSize: " << batchSize_ << std::endl;
+    info << "seqLength: " << seqLength_ << std::endl;
+    info << "c: " << c_ << std::endl;
+    info << "n: " << n_ << std::endl;
+    info << "c0: " << c0_ << std::endl;
+    info << "c1: " << c1_ << std::endl;
+    info << "aivNum: " << coreNumAiv_ << std::endl;
+    info << "skIterCount: " << skIterCount_ << std::endl;
+    info << "tileSize: " << tile_ << std::endl;
+    info << "mm1K: " << mm1K_ << std::endl;
+    info << "mm1M: " << mm1M_ << std::endl;
+    info << "mm1N: " << mm1N_ << std::endl;
+    info << "mm2K: " << mm2K_ << std::endl;
+    info << "mm2M: " << mm2M_ << std::endl;
+    info << "mm2N: " << mm2N_ << std::endl;
+
+    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());    
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoLibApiTiling()
