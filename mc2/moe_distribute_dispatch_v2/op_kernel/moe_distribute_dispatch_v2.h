@@ -560,16 +560,18 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     totalUsedUB_ += maxSize_;
     gatherMaskTensor_ = gatherMaskTBuf_.Get<uint32_t>();
     workLocalTensor_ = gatherMaskTBuf_.Get<float>();
-    if (isExpertMaskFlag_ || (zeroComputeExpertNum_ != 0)) {
+    if (isExpertMaskFlag_) {
         uint32_t axisBSAlign = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(validBsIndexTBuf_, axisBSAlign);
         totalUsedUB_ += axisBSAlign;
-        uint32_t validBufferSize = expertIdsSize > xActivateMaskSize ? expertIdsSize : xActivateMaskSize;
-        tpipe_->InitBuffer(validExpertIndexBuf_, validBufferSize);
-        totalUsedUB_ += expertIdsSize;
-        validExpertIndexTensor_ = validExpertIndexBuf_.Get<int32_t>();
         validBsIndexTensor_ = validBsIndexTBuf_.Get<int32_t>();
     }
+    uint32_t validBufferSize = isExpertMaskFlag_ && (xActivateMaskSize > expertIdsSize)
+        ? xActivateMaskSize
+        : expertIdsSize;
+    tpipe_->InitBuffer(validExpertIndexBuf_, validBufferSize);
+    totalUsedUB_ += validBufferSize;
+    validExpertIndexTensor_ = validExpertIndexBuf_.Get<int32_t>();
 
     // The same size as TopK
     if (hasExpertScalesFlag_) {
@@ -924,7 +926,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Mask
     LocalTensor<uint8_t> maskTensorInt8 = validExpertIndexBuf_.Get<uint8_t>(); // bs*k*1
     LocalTensor<uint32_t> maskTensorInt32 = validExpertIndexBuf_.Get<uint32_t>(); // bs*k*1
     LocalTensor<half> expertIdsTensorCast = subExpBuf_.Get<half>(); // bs*k*4
-    int32_t moeExpertNumInt32 = static_cast<int32_t>(moeExpertNum_);
 
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
@@ -938,8 +939,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Mask
     Duplicate<uint32_t>(maskTensorInt32, 0, Ceil(expertIdsCnt_, UB_ALIGN));
     PipeBarrier<PIPE_V>();
     uint32_t calcCnt = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
-    // 逐元素比较一个tensor中的元素和另一个Scalar的大小，如果比较后的结果为真，则输出结果的对应比特位为1，否则为0。筛掉零计算量专家
-    CompareScalar(maskTensorInt8, expertIdsTensorCast, static_cast<half>(moeExpertNumInt32), AscendC::CMPMODE::LT, calcCnt);
+    // 逐元素比较一个tensor中的元素和另一个Scalar的大小，如果比较后的结果为真，则输出结果的对应比特位为1，否则为0。
+    CompareScalar(maskTensorInt8, expertIdsTensorCast, static_cast<half>(cond.compareVal), cond.compareMode, calcCnt);
     PipeBarrier<PIPE_V>();
     LocalTensor<uint16_t> maskTensorInt16 = validExpertIndexBuf_.Get<uint16_t>(); // 空间bs*k*1
     LocalTensor<uint16_t> gatherMaskTensorint16 = gatherMaskTBuf_.Get<uint16_t>(); // 空间bs*k*4
@@ -1028,6 +1029,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
         DataCopyExtParams expertScalesParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> expertScalesPadParams{false, 0U, 0U, 0U};
         DataCopyPad(expertScalesTensor_, expertScalesGMTensor_, expertScalesParams, expertScalesPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
     }
 
     // 后面的核向共享专家发数据
@@ -1036,9 +1038,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
         SendToSharedExpert();
     }
 
-    if (zeroComputeExpertNum_ != 0) {
-        isExpertMaskFlag_ = true;
-    }
+    isExpertMaskFlag_ = true;
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     if (isExpertMaskFlag_) {
