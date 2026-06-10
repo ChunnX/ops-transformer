@@ -37,8 +37,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(
         return;
     }
 
-    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardTilingData);
-    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardTilingData, tilingData, tiling);
+    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch35TilingData);
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch35TilingData, tilingData, tiling);
     TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     MhcPreSinkhornBackwardOneStage<DTYPE_PHI, DTYPE_GRAD_X> op;
