@@ -17,6 +17,8 @@ import socket
 import logging
 import traceback
 import time
+from math import ceil
+from typing import List, Tuple, Dict, Any
 import torch
 import torch_npu
 import torch.distributed as dist
@@ -24,8 +26,6 @@ import torch.multiprocessing as mp
 from torch.multiprocessing import Process, Manager
 import pandas as pd
 import numpy as np
-from math import ceil
-from typing import List, Tuple, Dict, Any
 
 import npu_ops_transformer
 
@@ -557,7 +557,7 @@ def run_bandwidth_test_npu(
     }
 
     torch.npu.synchronize()
-    logger.debug(f"[DEBUG] device_{rank} 开始调用算子")
+    logger.debug(f"[DEBUG] device_%s 开始调用算子", rank)
 
     # 根据模式执行
     if graph_type == 0:
@@ -673,7 +673,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         }
 
         torch.npu.synchronize()
-        logger.debug(f"[DEBUG] device_{rank} 开始调用算子")
+        logger.debug(f"[DEBUG] device_%s 开始调用算子", rank)
         dist.barrier()
 
         config_profiling_path = f'{profiling_path}_config_{config_index}'
