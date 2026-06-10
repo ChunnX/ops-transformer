@@ -381,6 +381,195 @@ __aicore__ inline void GroupMatmul2Combine(
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
+
+__aicore__ inline int64_t ComputeMaxTokensStride(uint64_t maxOutputSize, uint32_t blockAivNum, uint32_t expertPerRank)
+{
+    int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
+        static_cast<int64_t>(maxOutputSize), static_cast<int64_t>(expertPerRank));
+    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_256));
+    int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
+        static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
+    return Ops::Base::CeilAlign(maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
+}
+
+__aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
+    uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
+{
+    uint32_t baseSize = totalCores / numGroups;
+    uint32_t remainder = totalCores % numGroups;
+    uint32_t boundary = remainder * (baseSize + 1);
+    if (coreId < boundary) {
+        myGroup = coreId / (baseSize + 1);
+        myIdxInGrp = coreId % (baseSize + 1);
+        myGrpSize = baseSize + 1;
+    } else {
+        uint32_t adjusted = coreId - boundary;
+        myGroup = remainder + adjusted / baseSize;
+        myIdxInGrp = adjusted % baseSize;
+        myGrpSize = baseSize;
+    }
+}
+
+__aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, uint32_t totalCores,
+    uint32_t& groupCoreStart, uint32_t& groupCoreSize)
+{
+    uint32_t baseSize = totalCores / numGroups;
+    uint32_t remainder = totalCores % numGroups;
+    if (groupIdx < remainder) {
+        groupCoreSize = baseSize + 1;
+        groupCoreStart = groupIdx * (baseSize + 1);
+    } else {
+        groupCoreSize = baseSize;
+        groupCoreStart = remainder * (baseSize + 1) + (groupIdx - remainder) * baseSize;
+    }
+}
+
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+__aicore__ inline void GroupMatmul2Quant(
+    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, uint32_t groupIdx)
+{
+    uint32_t m = Get<M_VALUE>(problemShape);
+    uint32_t n = Get<K_VALUE>(problemShape);
+    uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+
+    uint32_t blockNum = GetBlockNum();
+    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t blockAivNum = GetBlockNum() * 2;
+
+    GlobalTensor<int32_t> groupFlagListGm;
+    groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
+
+    GlobalTensor<int32_t> rowGroupComplete;
+    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrRowGroupComplete);
+
+    int64_t maxRowGroupsStride = ComputeMaxTokensStride(
+        params.tilingData->maxOutputSize, blockAivNum, params.tilingData->expertPerRank);
+
+    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+
+    constexpr bool transA = false;
+    constexpr bool transB = true;
+
+    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
+    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
+    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
+    constexpr uint32_t c0SizeScale = 2U;
+
+    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutBias = Te::NDExtLayoutPtn;
+    using LayoutC = Te::NDExtLayoutPtn;
+
+    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
+    using MakeLayoutScaleA = Std::conditional_t<
+        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
+        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
+    using MakeLayoutScaleB = Std::conditional_t<
+        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
+        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
+    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
+
+    auto layoutA = MakeLayoutA{}(m, k);
+    auto layoutB = MakeLayoutB{}(k, n);
+    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
+    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
+    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
+    auto layoutC = MakeLayoutC{}(m, n);
+
+    using BiasType = float;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias, void>;
+    BlockMmad blockMmad;
+    bool enableL0CPingPong = false;
+    typename BlockMmad::L1Params l1Params{
+        .kL1 = L1_TILE_K,
+        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
+        .l1BufNum = 2
+    };
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_128, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::TupleShape matmulShape{m, n, k};
+    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
+
+    auto gmC = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layoutScaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layoutScaleB);
+    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
+
+    BlockScheduler scheduler(
+        {m, n, k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_128), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+    uint32_t tileNum = scheduler.GetTileNum();
+
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t kLoc = Get<K_VALUE>(blockCoord);
+
+        if (loopIdx == startLoopIdx) {
+            BlockScheduler gmmBlockScheduler(
+                {m, k, n},
+                BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
+                    static_cast<int64_t>(L1_TILE_N))});
+            uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
+            __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
+            while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+            }
+        }
+
+        auto gmBlockA = gmA.Slice(
+            Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA = gmScaleA.Slice(
+            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+
+        auto gmBlockC = gmC.Slice(
+            Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+
+        auto gmBlockB = gmB.Slice(
+            Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(
+            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+
+        typename BlockMmad::BlockShape singleShape{
+            Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
+        SetFlag<HardEvent::FIX_S>(0);
+        WaitFlag<HardEvent::FIX_S>(0);
+
+        uint32_t rowGroupIdx = mLoc / L1_TILE_M_256;
+        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_256);
+        uint32_t groupCoreStart, groupCoreSize;
+        ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
+        int64_t baseOffset = static_cast<int64_t>(groupIdx) * maxRowGroupsStride
+            + static_cast<int64_t>(rowGroupIdx) * blockAivNum * INT_CACHELINE;
+        for (uint32_t aivIdx = groupCoreStart; aivIdx < groupCoreStart + groupCoreSize; aivIdx++) {
+            AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr()
+                + baseOffset + aivIdx * INT_CACHELINE, int32_t(1));
+        }
+    }
+    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+}
+
 } // namespace MegaMoeImpl
 
 #endif
