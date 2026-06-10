@@ -35,7 +35,7 @@ public:
     int64_t seqLength = 0;
     int64_t c = 0;
     int64_t n = 0;
-    int64_t c0= 0;
+    int64_t c0 = 0;
     int64_t c1 = 0;
     int64_t cTail = 0;
     int64_t aivNum = 0;
@@ -49,4 +49,4 @@ public:
     TCubeTiling mm2TilingData;
 };
 
-#endif
+#endif  //  MHC_PRE_SINKHORN_BACKWARD_STRUCT_H

@@ -26,7 +26,7 @@
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 
-struct MhcPreSinkhornBackwardCompileInfo {
+struct MhcPreSinkhornBackwardArch35CompileInfo {
   int64_t core_numAiv{1};
   int64_t core_numAic{1};
   int64_t ub_size{1};
