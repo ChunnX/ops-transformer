@@ -85,7 +85,7 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
 {
     // mxfp8全量化场景检查krope连续性
-    if (!enableFullQuant_ || fiaInfo.fullQuantMode != FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (!enableFullQuant_ || fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         return ge::GRAPH_SUCCESS;
     }
     const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
