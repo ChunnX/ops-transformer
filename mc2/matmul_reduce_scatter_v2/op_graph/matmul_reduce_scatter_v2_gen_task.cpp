@@ -46,6 +46,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
         OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", comm_mode.GetString());
+        return ge::GRAPH_FAILED;
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5");
     return ge::GRAPH_FAILED;
