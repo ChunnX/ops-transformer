@@ -20,6 +20,10 @@ VECTOR_BASEN = 256
 DQUERY = 512
 DQUERY_INDEX = 128
 
+_kernel_cache = {}
+_workspace_cache = {}
+
+
 pass_configs = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
@@ -196,15 +200,12 @@ def tilelang_grad_kl_loss_single_kernel(
             # K dim: DQuery + d_rope, split into d_num_total chunks
             # ============================================================
             with T.Scope("C"):
-                T.barrier_all()
-
                 Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
                 GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         for d_idx in T.serial(d_num_total):
                             if d_idx < d_num_query:
                                 T.copy(
@@ -217,7 +218,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                     QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
                                     Q_L1,
                                 )
-                            T.barrier_all()
                             if d_idx < d_num_query:
                                 T.copy(
                                     GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
@@ -229,14 +229,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                     GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
                                     GK_L1,
                                 )
-                            T.barrier_all()
                             T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
-                            T.barrier_all()
                         T.copy(
                             C_L0C,
                             bmm1Res[bz, s1_row, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.barrier_all()
 
                 QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
                 GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
@@ -244,26 +241,21 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         for k_idx in T.serial(d_num_query_index):
                             T.copy(
                                 QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
                                 QI_L1,
                             )
-                            T.barrier_all()
                             T.copy(
                                 GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GKI_L1,
                             )
-                            T.barrier_all()
                             T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
-                            T.barrier_all()
                         T.copy(
                             C2_L0C,
                             bmm2Res[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                             enable_relu=True,
                         )
-                        T.barrier_all()
 
                 T.set_cross_flag("FIX", 1)
 
@@ -273,6 +265,10 @@ def tilelang_grad_kl_loss_single_kernel(
             # All vector ops on FP32 buffers.
             # range() for UB row indexing (compile-time constant).
             # T.serial() for GM indexing (runtime variable).
+            # Barrier rules: tile ops are async, need barrier between dependent
+            # tile ops and before copy/reduce that reads tile output.
+            # copy is sync, no barrier needed after copy.
+            # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(1)
 
@@ -314,15 +310,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    T.barrier_all()
                     T.tile.fill(ones_ub, 1.0)
-                    T.barrier_all()
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
-                    T.barrier_all()
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
-                    T.barrier_all()
                     T.tile.abs(sm_sum_ub, sm_sum_ub)
-                    T.barrier_all()
                     T.tile.fill(eps_sm_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
@@ -330,18 +321,15 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     # --- Pass 1: compute P_reduced and reduceSumY per K chunk ---
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         T.copy(
                             bmm1Res[bz, s1_id, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
                             bmm1_ub,
                         )
-                        T.barrier_all()
 
                         T.tile.fill(p_reduced_tmp_ub, 0)
                         T.barrier_all()
 
                         for g_id in range(G):
-                            T.barrier_all()
                             T.tile.mul(bmm1_ub[g_id, :], bmm1_ub[g_id, :], scale_value)
                             T.barrier_all()
                             T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
@@ -357,68 +345,54 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                         T.barrier_all()
 
-
                         T.copy(
                             p_reduced_tmp_ub,
                             PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.barrier_all()
 
                         T.copy(
                             bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                             bmm2_ub,
                         )
-                        T.barrier_all()
 
                         T.tile.fill(rsy_reduce_ub, 0)
                         T.barrier_all()
 
                         for g_id in range(g_num):
-                            T.barrier_all()
                             T.copy(
                                 Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
                                 weight_half_ub,
                             )
-                            T.barrier_all()
                             T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
                             T.barrier_all()
                             T.tile.fill(rsy_tmp_ub, 0)
                             T.barrier_all()
                             for i in range(vector_baseg):
-                                T.barrier_all()
                                 T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
-                                T.barrier_all()
                             T.barrier_all()
                             for i in range(vector_baseg):
-                                T.barrier_all()
                                 T.tile.add(rsy_reduce_ub, rsy_reduce_ub, rsy_tmp_ub[i, :])
                                 T.barrier_all()
 
-                        T.barrier_all()
                         T.copy(
                             rsy_reduce_ub,
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.barrier_all()
 
                     # --- Global softmax on reduceSumY -> softmaxI ---
                     T.tile.fill(rsy_max_ub, -1e30)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         T.copy(
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             rsy_chunk_ub,
                         )
-                        T.barrier_all()
                         for i in range(16):
-                            T.barrier_all()
                             T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
-                            T.barrier_all()
+                        T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
                         T.tile.mul(max_pair_ub[0, :], rsy_max_ub, 1.0)
-                        T.barrier_all()
                         T.tile.mul(max_pair_ub[1, :], rsy_chunk_max_ub, 1.0)
                         T.barrier_all()
                         T.reduce_max(max_pair_ub, rsy_max_ub, 0)
@@ -427,12 +401,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(rsy_sum_ub, 0)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         T.copy(
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             rsy_chunk_ub,
                         )
-                        T.barrier_all()
                         T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_max_ub[0])
                         T.barrier_all()
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
@@ -441,11 +413,9 @@ def tilelang_grad_kl_loss_single_kernel(
                             rsy_chunk_ub,
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.barrier_all()
                         for i in range(16):
-                            T.barrier_all()
                             T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
-                            T.barrier_all()
+                        T.barrier_all()
                         T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
                         T.barrier_all()
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
@@ -453,19 +423,16 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     rsy_sum_eps_ub = T.alloc_ub(16, calc_dtype)
                     T.tile.abs(rsy_sum_ub, rsy_sum_ub)
-                    T.barrier_all()
                     T.tile.fill(rsy_sum_eps_ub, 1e-8)
                     T.barrier_all()
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, rsy_sum_eps_ub)
                     T.barrier_all()
 
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         T.copy(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             rsy_chunk_ub,
                         )
-                        T.barrier_all()
                         T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
                         T.barrier_all()
 
@@ -473,16 +440,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             rsy_chunk_ub,
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.barrier_all()
 
                     # --- Pass 2: compute dWeight and reluGrad ---
                     for g_id in range(g_num):
-                        T.barrier_all()
                         T.copy(
                             Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
                             weight_half_ub,
                         )
-                        T.barrier_all()
                         T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
                         T.barrier_all()
 
@@ -490,41 +454,34 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
 
                         for n_idx in T.serial(n_num):
-                            T.barrier_all()
                             T.copy(
                                 bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 bmm2_ub,
                             )
-                            T.barrier_all()
 
                             T.copy(
                                 SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                                 softmax_i_chunk_ub,
                             )
-                            T.barrier_all()
                             T.copy(
                                 PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                                 p_reduced_chunk_ub,
                             )
-                            T.barrier_all()
 
                             T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_chunk_ub)
                             T.barrier_all()
 
                             for i in range(vector_baseg):
-                                T.barrier_all()
                                 g_row = g_id * vector_baseg + i
                                 T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
-                                T.barrier_all()
                                 T.tile.mul(mask_ub, bmm2_ub[g_row, :], 10000.0)
+                                T.tile.mul(rg_ub[i, :], diff_ub, weight_ub[i])
                                 T.barrier_all()
                                 T.tile.mul(mask_ub, mask_ub, -1.0)
                                 T.barrier_all()
                                 T.tile.exp(mask_ub, mask_ub)
                                 T.barrier_all()
                                 T.tile.sub(mask_ub, ones_ub, mask_ub)
-                                T.barrier_all()
-                                T.tile.mul(rg_ub[i, :], diff_ub, weight_ub[i])
                                 T.barrier_all()
                                 T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub)
                                 T.barrier_all()
@@ -537,13 +494,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.tile.cast(rg_half_ub, rg_ub, "CAST_ROUND", vector_baseg * n_block)
                             T.barrier_all()
                             for i in range(vector_baseg):
-                                T.barrier_all()
                                 g_row = g_id * vector_baseg + i
                                 T.copy(
                                     rg_half_ub[i, :],
                                     reluGradRes[bz, s1_id, g_row, n_idx * n_block:(n_idx + 1) * n_block],
                                 )
-                                T.barrier_all()
 
                         T.tile.cast(dw_half_ub, dw_accum_ub, "CAST_ROUND", vector_baseg)
                         T.barrier_all()
@@ -551,10 +506,8 @@ def tilelang_grad_kl_loss_single_kernel(
                             dw_half_ub,
                             dWeight[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
                         )
-                        T.barrier_all()
 
                     # --- Pass 3: compute KL Loss = sum(P_reduced * (log(P_reduced) - log(softmaxI))) ---
-                    # loss_accum: 16 elements for reduce_sum, then atomic_add to LossOut
                     loss_accum_ub = T.alloc_ub(16, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
@@ -565,17 +518,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
 
                     T.tile.fill(eps_ub, 1e-8)
-                    T.barrier_all()
                     T.tile.fill(loss_accum_ub, 0)
                     T.barrier_all()
 
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
                         T.copy(
                             PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             loss_chunk_ub,
                         )
-                        T.barrier_all()
                         T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_p_ub, loss_chunk_ub)
@@ -585,7 +535,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             loss_chunk_ub,
                         )
-                        T.barrier_all()
                         T.tile.add(loss_chunk_ub, loss_chunk_ub, eps_ub)
                         T.barrier_all()
                         T.tile.ln(loss_log_si_ub, loss_chunk_ub)
@@ -595,16 +544,14 @@ def tilelang_grad_kl_loss_single_kernel(
                             PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             loss_chunk_ub,
                         )
-                        T.barrier_all()
                         T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
                         T.barrier_all()
                         T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
                         T.barrier_all()
 
                         for i in range(16):
-                            T.barrier_all()
                             T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
-                            T.barrier_all()
+                        T.barrier_all()
                         T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
                         T.barrier_all()
                         T.tile.add(loss_accum_ub, loss_accum_ub, loss_sum_ub)
@@ -614,7 +561,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         loss_accum_ub,
                         LossOut[bz, s1_id, 0:16],
                     )
-                    T.barrier_all()
 
                 T.set_cross_flag("V", 2)
 
@@ -635,24 +581,19 @@ def tilelang_grad_kl_loss_single_kernel(
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         for n_idx in T.serial(n_num):
-                            T.barrier_all()
                             T.copy(
                                 reluGradRes[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 RG_L1,
                             )
-                            T.barrier_all()
                             T.copy(
                                 GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
                                 GKIT_L1,
                             )
-                            T.barrier_all()
                             T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
-                            T.barrier_all()
                         T.copy(
                             DQ_L0C,
                             dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
-                        T.barrier_all()
 
                 T.set_cross_flag("FIX", 3)
 
@@ -667,19 +608,16 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
-                        T.barrier_all()
                         T.copy(
                             dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                             dq_fp32_ub,
                         )
-                        T.barrier_all()
                         T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", Nidx1 * k_block)
                         T.barrier_all()
                         T.copy(
                             dq_fp16_ub,
                             dQueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
-                        T.barrier_all()
 
     return main
 
@@ -692,17 +630,17 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     dtype = key.dtype
 
     sparse_idx_3d = sparse_indices[:, :, 0, :]
-    valid_mask = sparse_idx_3d >= 0
+    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
-    gather_key = key[batch_idx, sparse_idx_safe, 0, :]
-    gather_key_index = key_index[batch_idx, sparse_idx_safe, 0, :]
+    gather_key = key[batch_idx, sparse_idx_safe, 0, :].contiguous()
+    gather_key_index = key_index[batch_idx, sparse_idx_safe, 0, :].contiguous()
 
-    gather_key = gather_key * valid_mask.unsqueeze(-1).to(dtype)
-    gather_key_index = gather_key_index * valid_mask.unsqueeze(-1).to(dtype)
+    gather_key.mul_(valid_mask)
+    gather_key_index.mul_(valid_mask)
 
-    return gather_key.contiguous(), gather_key_index.contiguous()
+    return gather_key, gather_key_index
 
 
 # ==============================================================================
@@ -763,14 +701,16 @@ def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx
 
     d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
     sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
+    valid_mask = sparse_indices[:, :, 0, :] >= 0
 
     for b in range(B):
-        for s in range(S1):
-            valid_mask = sparse_indices[b, s, 0, :] >= 0
-            k_indices = sparse_idx[b, s, valid_mask]
-            sa_values = scatter_add[b, s, valid_mask]
-            if k_indices.numel() > 0:
-                d_key_index[b, k_indices, 0, :] += sa_values
+        flat_idx = sparse_idx[b].reshape(-1)
+        flat_valid = valid_mask[b].reshape(-1)
+        flat_vals = scatter_add[b].reshape(-1, DQueryIndex)
+        idx_v = flat_idx[flat_valid]
+        vals_v = flat_vals[flat_valid]
+        if idx_v.numel() > 0:
+            d_key_index[b, :, 0, :].scatter_add_(0, idx_v.unsqueeze(-1).expand_as(vals_v), vals_v)
 
     return d_key_index.to(dtype)
 
@@ -864,7 +804,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             gather_key_rope = key_rope[torch.arange(B, device=query.device).view(B, 1, 1),
                                        _sparse_idx_rope, 0, :].contiguous()
             _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
-            gather_key_rope = gather_key_rope * _valid_mask_rope
+            gather_key_rope.mul_(_valid_mask_rope)
         else:
             gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
 
@@ -877,23 +817,36 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             gather_key_rope = torch.nn.functional.pad(gather_key_rope, (0, pad_len))
 
-        func = tilelang_grad_kl_loss_single_kernel(
-            B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-            d_rope, input_dtype_str, calc_dtype_str, scale_value,
-        )
+        cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
+                     d_rope, input_dtype_str, calc_dtype_str, scale_value)
+        if cache_key in _kernel_cache:
+            func = _kernel_cache[cache_key]
+        else:
+            func = tilelang_grad_kl_loss_single_kernel(
+                B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
+                d_rope, input_dtype_str, calc_dtype_str, scale_value,
+            )
+            _kernel_cache[cache_key] = func
 
-        bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
-        bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
-        p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
-        reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
-        softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
-        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-        d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
-        d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=query.device)
-        relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
-        loss_out = torch.zeros(B, S1, 16, dtype=torch.float32, device=query.device)
+        ws_key = (B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, input_dtype, query.device)
+        if ws_key in _workspace_cache:
+            ws = _workspace_cache[ws_key]
+            bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
+                d_query_index_ws, d_query_index_out, d_weight_out, relu_grad_out, loss_out = ws
+        else:
+            bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
+            bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
+            p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+            reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+            softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
+            d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
+            d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
+            d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=query.device)
+            relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
+            loss_out = torch.zeros(B, S1, 16, dtype=torch.float32, device=query.device)
+            _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
+                                        d_query_index_ws, d_query_index_out, d_weight_out, relu_grad_out, loss_out)
 
-        torch.npu.synchronize()
         results = func(
             query, query_rope, gather_key, gather_key_rope,
             query_index, gather_key_index, gather_key_index_t,
@@ -903,7 +856,6 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_out, d_weight_out, relu_grad_out, loss_out,
             d_query_index_ws,
         )
-        torch.npu.synchronize()
 
         d_query_index = results[0]
         d_weight = results[1]
