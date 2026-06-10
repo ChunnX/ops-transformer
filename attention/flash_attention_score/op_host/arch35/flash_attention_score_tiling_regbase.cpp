@@ -10,6 +10,7 @@
 
 #include "flash_attention_score_tiling_regbase.h"
 #include "../flash_attention_score_tiling_common.h"
+#include "op_common/log/log.h"
 
 namespace optiling {
 namespace FA {
@@ -112,8 +113,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDtype()
             isHighPercision = false;
             break;
         default:
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "not support input dtype: %s for now",
-                                        ge::TypeUtils::DataTypeToSerialString(inputDtype).c_str());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query, key and value",
+                Ops::Base::ToString(inputDtype).c_str(),
+                "The dtype of input query, key and value is not supported for now");
             return false;
     }
 
@@ -216,8 +218,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttrs()
     if (attrs->GetAttrNum() > idx) {
         auto outDtypePtr = attrs->GetAttrPointer<int64_t>(idx++);
         outDtype = *outDtypePtr;
-        OP_CHECK_IF(outDtype < 0 || outDtype >= 2,
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "outDtype value is out of range"), return false);
+    OP_CHECK_IF(outDtype < 0 || outDtype >= 2,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "out_dtype", std::to_string(outDtype).c_str(),
+                "The value of attr out_dtype must be in the range of [0, 1]"), return false);
         outDtype = outDtype + 1; // 外部合法是0或1, 内部对应使用1和2,如果没有量化参数, 后面会刷成0, 1表示fp16, 2表示bf16
     }
     if (attrs->GetAttrNum() > idx) {
@@ -242,7 +245,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     auto keyRope = context_->GetOptionalInputShape(KEY_ROPE_INDEX);
     bool hasKeyRope = keyRope != nullptr && keyRope->GetStorageShape().GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
-        OP_LOGE(opName, "query_rope and key_rope should be present or absent at the same time, check this.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "queryRope and keyRope",
+            "The value of queryRope and keyRope must be present or absent at the same time");
         return false;
     }
     dSizeRope = 0; // init dSizeRope
@@ -253,25 +257,49 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_LOGD(context_, "get input_layout [%s].", inputLayout);
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
                valueShape.GetDimNum() != layoutLen,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid layout[%s].", inputLayout), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                    "The value of layout string length must be equal to "
+                    "dims of input query, key and value"),
+                return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
                !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "get unsupported layout: %s", inputLayout), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                   "The value of input layout must be in BSH, SBH, BSND, BNSD or TND"), return false);
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
-        OP_LOGE(context_, "s1Size[%ld] and s2Size[%ld] config error, both should not greater than max int value.",
-            s1Size, s2Size);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " +
+            std::to_string(s2Size),
+            "The value of s1Size and s2Size cannot be greater than max int value");
         return false;
     }
-    OP_CHECK_IF(gSize == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSize is zero"), return false);
-    OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
+    OP_CHECK_IF(gSize == 0,
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(gSize).c_str(),
+                   "The value of gSize must be greater than 0"),
+               return false);
+    OP_CHECK_IF(n2Size == 0,
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(n2Size).c_str(),
+                   "The value of n2Size must be greater than 0"),
+               return false);
     OP_CHECK_IF(dSize <= 0L,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "query or key dSize is not support <= 0"), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(dSize).c_str(),
+                   "The value of dSize must be greater than 0"),
+               return false);
     OP_CHECK_IF(dSizeV <= 0L,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "value's dSize is not support <= 0"), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                   std::to_string(dSizeV).c_str(),
+                   "The value of dSizeV must be greater than 0"),
+               return false);
     OP_CHECK_IF(dSizeV > dSize,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "value's dSize is larger than query's dSize"), return false);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                std::to_string(dSizeV).c_str(),
+                "The value of input dSize must be greater than the query dSize"),
+            return false);
     OP_CHECK_IF(n1Size % n2Size != 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "n1Size [%ld] should be a multiple of n2Size [%ld]", n1Size, n2Size),
+               OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "head_num",
+                   (std::to_string(n1Size) + " and " + std::to_string(n2Size)).c_str(),
+                   "The value of attr head_num must be a multiple of n2 size derived from input query and key shapes"),
                return false);
     return true;
 }
@@ -324,24 +352,28 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
     std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen)) {
-        OP_LOGE(opName, "Get actual_seq_qlen failed.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName,
+            "actual_seq_qlen", "The value of actual_seq_qlen cannot be bullptr");
         return false;
     }
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen)) {
-        OP_LOGE(opName, "Get actual_seq_kvlen failed.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName,
+            "actual_seq_kvlen", "The value of actual_seq_kvlen cannot be bullptr");
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "VarLen scene, q is not equal kv."), return false);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+            "actual_seq_qlen and actual_seq_kvlen",
+            (std::to_string(actualSeqQLen) + " and " + std::to_string(actualSeqKVLen)).c_str(),
+            "The Value of q must be equal to kv with VarLen scene."), return false);
     bSize = actualSeqQLen;
     accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
     accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
     OP_CHECK_IF(
         t1Size < accumS1 || t2Size < accumS2,
-        OPS_REPORT_VECTOR_INNER_ERR(
-            opName,
-            "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
-            t1Size, t2Size, accumS1, accumS2),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
+            (std::to_string(t1Size) + ", " + std::to_string(t2Size)).c_str(),
+            "The dim of query and key must be greater than the sum of actual_seq_qlen and actual_seq_kvlen"),
         return false);
     uint32_t firstValidIndex = 0;
     uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1);
@@ -368,10 +400,15 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     s1Size = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
     s2Size = *std::max_element(actualSeqLenKvData.begin(), actualSeqLenKvData.end());
     OP_CHECK_IF(s1Size <= 0,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "s1Size should be larger than 0."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "actual_seq_qlen",
+                    std::to_string(s1Size).c_str(),
+                    "The value of max value of actual_seq_qlen (s1Size) must be greater than 0"),
+                return false);
     OP_CHECK_IF(n1Size != queryShape.GetDim(1),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
-                                            queryShape.GetDim(1)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
+                    std::to_string(n1Size).c_str(),
+                    "The value of attr head_num must be equal to the 1st dim "
+                    "of input query in TND layout"),
                 return false);
     n2Size = keyShape.GetDim(1);
     OP_CHECK_IF(n2Size == 0,
@@ -423,7 +460,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             tilingKeyLayout = LayoutType::LAYOUT_SBH;
         } else if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[DIM_NUM_2] == 'D') {
             OP_CHECK_IF(!AnalyzeTndLayout(queryShape, keyShape, valueShape),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze tnd layout error."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", "TND",
+                   "Failed to analyze TND layout, the shapes of input query, key and value are invalid"), return false);
             h1 = n1Size * dSize;
             h2 = n2Size * dSize;
             h3 = n2Size * dSizeV;
@@ -443,7 +481,9 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
                 "The value of H(Hidden_Size of Q,K,V) must be greater than 0"),
             return false);
         OP_CHECK_IF(h1 % n1Size != 0,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "h1 [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
+                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query",
+                       std::to_string(h1).c_str(),
+                       "The value of H dimension size of input query must be a multiple of the value of attr head_num"),
                    return false);
         OP_CHECK_IF(hRope % n1Size != 0,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "hRope(Hidden_Size of QRope)", std::to_string(hRope).c_str(),
@@ -476,9 +516,10 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
                     "The value of n2Size(Head num of KV) must be greater than 0"),
                 return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(2),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim2 [%ld].", n1Size,
-                                                   queryShape.GetDim(2)),
-                       return false);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
+                            std::to_string(n1Size).c_str(),
+                            "The value of attr head_num must be equal to the 2nd dim of input query in BSND layout"),
+                        return false);
             gSize = queryShape.GetDim(2) / n2Size; // 2: N idx
             dSize = queryShape.GetDim(3);          // 3: D idx
             dSizeV = valueShape.GetDim(3);          // 3: D idx
@@ -499,9 +540,11 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
                     "The value of n2Size must be greater than 0"),
                 return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
-                                                   queryShape.GetDim(1)),
-                       return false);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "head_num",
+                            std::to_string(n1Size).c_str(),
+                            "The value of attr head_num must be equal to the 1st dim "
+                            "of input query when the layout is BNSD"),
+                        return false);
             gSize = queryShape.GetDim(1) / n2Size;
             s1Size = queryShape.GetDim(2); // 2: S idx
             s2Size = keyShape.GetDim(2);   // 2: S idx
@@ -532,17 +575,55 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout() || !AnalyzeOptionalInput(),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF((inputDtype == ge::DT_HIFLOAT8) && (hasAttenMask || hasPse || hasDropOut || hasRope ||
-                tilingKeyLayout != LayoutType::LAYOUT_BSND ||
-                bSize != 1 || n1Size != n2Size || dSize != 128 || dSizeV != 128 ||
-                !((s1Size == 57600 && s2Size == 57600 && n1Size == 5) || (s1Size == 7200 && s2Size == 512 && n1Size == 40))),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
-                "and the input shape must be: "
-                "query:[1, 57600, 5, 128] key:[1, 57600, 5, 128] value:[1, 57600, 5, 128] or "
-                "query:[1, 7200, 40, 128] key:[1, 512, 40, 128] value:[1, 512, 40, 128]."
-                "[hasAttenMask:%d, hasPse:%d, hasDropOut:%d, hasRope:%d, input_layout:%s, bSize:%d, s1Size:%d, s2Size:%d, "
-                "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
-                bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+    if (inputDtype == ge::DT_HIFLOAT8) {
+        if (hasAttenMask || hasPse || hasDropOut || hasRope) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "query, key and value",
+                Ops::Base::ToString(inputDtype).c_str(),
+                "The dtype of input query, key and value should not be HIFLOAT8 "
+                "when optional inputs atten_mask, pse, drop_mask or rope are provided");
+            return ge::GRAPH_FAILED;
+        }
+        if (tilingKeyLayout != LayoutType::LAYOUT_BSND) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "input_layout", inputLayout, "BSND");
+            return ge::GRAPH_FAILED;
+        }
+        if (bSize != 1) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query",
+                std::to_string(bSize).c_str(),
+                "The shape of input query should be [1, S1, N1, D] when input dtype is HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (n1Size != n2Size) {
+            std::string nValueMsg = std::to_string(n1Size) + " and " + std::to_string(n2Size);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
+                nValueMsg.c_str(),
+                "The shape of input query should be the same as the shape of input key "
+                "at the N dim when input dtype is HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (dSize != 128) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query",
+                std::to_string(dSize).c_str(),
+                "The shape of input query should have D=128 when input dtype is HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (dSizeV != 128) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                std::to_string(dSizeV).c_str(),
+                "The shape of input value should have D=128 when input dtype is HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+        if (!((s1Size == 57600 && s2Size == 57600 && n1Size == 5) ||
+              (s1Size == 7200 && s2Size == 512 && n1Size == 40))) {
+            std::string sValueMsg = std::to_string(s1Size) + ", " + std::to_string(s2Size) + " and " +
+                std::to_string(n1Size);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "query, key and value",
+                sValueMsg.c_str(),
+                "The shape of input query, key and value should be "
+                "[1, 57600, 5, 128] or [1, 7200, 40, 128] when input dtype is HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     if (hasRope && (dSize != 128 || dSizeRope != 64)) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "D(Head Dimension of Q) and dSizeRope(Head Dimension of rope)",
@@ -591,7 +672,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndPseOptionalInput(PseShapeType &
                pseShapeDims.GetDim(DIM_NUM_3) == s2Size) {
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(context_, "get unsupported pse shape");
+        std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+        std::string reason = "The shape of pse shape must be [B, N1, S1, S2], "
+            "[B, N1, 1, S2] or [B, N1, ALIBI_S, S2] in TND mode";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+            "pse shape", pseShapeStr.c_str(), reason);
         return false;
     }
     return true;
@@ -602,11 +687,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
                                                                     size_t pseDimNum, int64_t pseBSize)
 {
     if (pseDimNum != PSE_DIM_NUM) {
-        OP_LOGE(context_, "pse dim should be 4, but got %zu", pseDimNum);
+        std::string dimStr = std::to_string(pseDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "pseDimNum", dimStr.c_str(), "4");
         return false;
     }
     if (pseBSize != bSize && pseBSize != 1) {
-        OP_LOGE(context_, "pse batchsize should be 1 or %ld, but got %ld", bSize, pseBSize);
+        std::string reason = "The value of B dim of input pse must be 1 or the same as " + std::to_string(bSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "pse batch size", std::to_string(pseBSize).c_str(), reason);
         return false;
     }
 
@@ -620,19 +708,23 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
-            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld], "
-                    "expected Sq[%ld] should be greater than %ld",
-                    pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, s1Size, pseDim2Size);
+            std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+            std::string reason = "The S1 dim of input pse shape must be greater than " +
+                std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse shape", pseShapeStr.c_str(), reason.c_str());
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(opName, "unsupported pse shape[%ld, %ld, %ld, %ld], expected [%ld, %ld, %ld, %ld] or "
-            "[%ld, %ld, 1, %ld] or [%ld, %ld, %ld, %ld]",
-            pseBSize, pseDim1Size, pseDim2Size, pseDim3Size,
-            pseBSize, n1Size, s1Size, s2Size,
-            pseBSize, n1Size, s2Size,
-            pseBSize, n1Size, static_cast<int64_t>(PSE_ALIBI_S_SIZE), s2Size);
+        std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
+        std::string expected1 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " +
+            std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", 1, " +
+            std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " +
+            std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE)) + ", " + std::to_string(s2Size) + "]";
+        std::string reason = "The shape of real_shift must be " + expected1 + ", " + expected2 + " or " + expected3;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "real_shift", pseShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -651,7 +743,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzePseOptionalInput()
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
             if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
-                OP_LOGE(context_, "pse inner mode, unsupported pse shape");
+                std::string dimStr = std::to_string(pseDimNum) + "D";
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "pse shape",
+                    dimStr.c_str(), "The shape dims of input pse shape must be 2D (B, N2) or "
+                    "1D (N2) when it is pse inner mode");
                 return false;
             }
             pseShapeType = PseShapeType::PSE_B_N2_G_SLOPE;
@@ -692,8 +787,17 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimAttenOptionalInput(AttenMaskSh
                 attenMaskDim3Size == s2Size) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(context_, "get unsupported atten_mask shape, the shape is [%ld, %ld, %ld, %ld]",
-                    attenMaskDim0Size, attenMaskDim1Size, attenMaskDim2Size, attenMaskDim3Size);
+        std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
+        std::string expected1 = "[1, 1, " + std::to_string(s1Size) + ", " +
+            std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(bSize) + ", 1, " +
+            std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected3 = "[" + std::to_string(bSize) + ", " +
+            std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string reason = "The shape of atten_mask must be " +
+            expected1 + ", " + expected2 + " or " + expected3;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+            "atten_mask", attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -710,8 +814,12 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
     } else if (attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_1_1_1_T_T;
     } else {
-        OP_LOGE(context_, "get unsupported atten_mask shape, the shape is [%ld, %ld]", attenMaskDim0Size,
-                    attenMaskDim1Size);
+        std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
+        std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
+        std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
+        std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
+            attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -724,14 +832,18 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
          attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) &&
         ((attenMaskStorageShape.GetDim(attenMaskDimNum - ATTEN_MASK_S1_REV_INDEX) != ATTEN_MASK_COMPRESS_LIMIT) ||
          (attenMaskStorageShape.GetDim(attenMaskDimNum - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
-        OP_LOGE(context_, "In the attenmask compression, please set the atten_mask_shape to [2048,2048].");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+            "atten_mask", Ops::Base::ToString(attenMaskStorageShape).c_str(),
+            "The shape of input atten_mask should be [2048,2048] when the atten_mask mode is compression mode");
         return false;
     }
     if (attenMaskCompressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE) &&
         ((attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - ATTEN_MASK_S1_REV_INDEX) !=
           ATTEN_MASK_COMPRESS_PREFIX_LIMIT) ||
          (attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
-        OP_LOGE(context_, "In the prefix attenmask compression, please set the atten_mask_shape to [3072,2048].");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
+            Ops::Base::ToString(attenMaskStorageShape).c_str(),
+            "The shape of input atten_mask should be [3072,2048]  when the atten_mask mode is compression mode");
         return false;
     }
     return true;
@@ -745,9 +857,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
         hasAttenMask = true;
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid attenMask dtype[%s], only support bool or uint8.",
-                                               ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
-                   return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "atten_mask", Ops::Base::ToString(attenMaskType).c_str(),
+                "The dtype of input atten_mask must be BOOL or UINT8"),
+            return false);
 
         inputParamsRegbase_->set_attenMaskDataType(1);
         // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
@@ -763,7 +876,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
                        OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze dim 2 attenmask shape fail."),
                        return false);
         } else {
-            OP_LOGE(context_, "atten mask dim should be 2 or 4, but got %zu", attenMaskDimNum);
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "atten_mask",
+                "2D or 4D", (std::to_string(attenMaskDimNum) + "D").c_str());
             return false;
         }
 
@@ -782,14 +896,16 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
     auto dropMaskInput = context_->GetOptionalInputDesc(DROP_MASK_INPUT_INDEX);
     if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0) {
         if (!hasDropOut) {
-            OP_LOGE(context_, "Dropmask parameter is invalid, please check keepProb.");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "dropMaskOptional",
+                "The value of dropMaskOptional must be nullptr when keepProb is 1.0.");
             return false;
         }
         auto dropMaskDtype = dropMaskInput->GetDataType();
         OP_CHECK_IF(dropMaskDtype != ge::DT_UINT8,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dropMask dtype[%s], only support uint8.",
-                                               ge::TypeUtils::DataTypeToSerialString(dropMaskDtype).c_str()),
-                   return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "drop_mask", Ops::Base::ToString(dropMaskDtype).c_str(),
+                "The dtype of input drop_mask must be UINT8"),
+            return false);
         int64_t dimNum = dropMaskShape->GetStorageShape().GetDimNum();
         int64_t dropMaskShapeSize = 1;
         int64_t shapeSize = 0;
@@ -808,8 +924,9 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
         }
         shapeSize = AlignUp(shapeSize, BYTE_BIT_NUM) / BYTE_BIT_NUM;
         if (dropMaskShapeSize < shapeSize) {
-            OP_LOGE(context_, "Input dropMask shapeSize is invalid, it should not be less than %ld, but got %ld",
-                      shapeSize, dropMaskShapeSize);
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), "drop_mask",
+                std::to_string(dropMaskShapeSize).c_str(),
+                "The shape size of drop_mask must be less than " + std::to_string(shapeSize));
             return false;
         }
         dropMaskOuter = true;
@@ -832,12 +949,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     if (dScaleQInput != nullptr && dScaleQShape != nullptr && dScaleQShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleQDtype = dScaleQInput->GetDataType();
         OP_CHECK_IF(dScaleQDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleQ dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleQDtype).c_str()),
-                   return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "d_scale_q", Ops::Base::ToString(dScaleQDtype).c_str(),
+                "The dtype of input d_scale_q must be FLOAT"),
+            return false);
         int64_t dimNum = dScaleQShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleQ dimNum [%ld], only support 4 dims.", dimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "d_scale_q",
+                    (std::to_string(dimNum) + "D").c_str(), "4D"),
                 return false);
         int64_t dimValue0 = dScaleQShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
         int64_t dimValue1 = dScaleQShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_1);
@@ -845,8 +964,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
         int64_t dimValue3 = dScaleQShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_3);
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n1Size ||
         (dimValue2 != (s1Size + QUANT_BLOCK_SIZE - 1) / QUANT_BLOCK_SIZE) || dimValue3 != D_SCALE_DIM_NUM_1,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleQ dimNump[%ld][%ld][%ld][%ld], only support [B, N1, ceil(S1/128), 1]",
-                dimValue0, dimValue1, dimValue2, dimValue3),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_q",
+                    ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
+                     std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
+                    "The shape of input d_scale_q must be [B, N1, ceil(S1/128), 1]"),
                 return false);
     }
 
@@ -855,12 +976,14 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     if (dScaleKInput != nullptr && dScaleKShape != nullptr && dScaleKShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleKDtype = dScaleKInput->GetDataType();
         OP_CHECK_IF(dScaleKDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleK dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleKDtype).c_str()),
-                   return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "d_scale_k", Ops::Base::ToString(dScaleKDtype).c_str(),
+                "The dtype of input d_scale_k must be FLOAT"),
+            return false);
         int64_t dimNum = dScaleKShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleK dimNum [%ld], only support 4 dims.", dimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "d_scale_k",
+                    (std::to_string(dimNum) + "D").c_str(), "4D"),
                 return false);
         int64_t dimValue0 = dScaleKShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
         int64_t dimValue1 = dScaleKShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_1);
@@ -869,8 +992,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
         
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n2Size ||
             (dimValue2 != (s2Size + QUANT_K_BLOCK_SIZE  - 1) / QUANT_K_BLOCK_SIZE ) || dimValue3 != D_SCALE_DIM_NUM_1,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleK dimNump[%ld][%ld][%ld][%ld], only support [B, N2, ceil(S2/256), 1]",
-                    dimValue0, dimValue1, dimValue2, dimValue3),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_k",
+                        ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
+                         std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
+                        "The shape of input d_scale_k must be [B, N2, ceil(S2/256), 1]"),
                     return false);
     }
 
@@ -879,21 +1004,25 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     if (dScaleVInput != nullptr && dScaleVShape != nullptr && dScaleVShape->GetStorageShape().GetDimNum() != 0) {
         auto dScaleVDtype = dScaleVInput->GetDataType();
         OP_CHECK_IF(dScaleVDtype != ge::DT_FLOAT,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(dScaleVDtype).c_str()),
-                   return false);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                "d_scale_v", Ops::Base::ToString(dScaleVDtype).c_str(),
+                "The dtype of input d_scale_v must be FLOAT"),
+            return false);
         int64_t dimNum = dScaleVShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_4,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dimNum [%ld], only support 4 dims.", dimNum),
-                return false);
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "d_scale_v",
+                (std::to_string(dimNum) + "D").c_str(), "4D"),
+            return false);
         int64_t dimValue0 = dScaleVShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
         int64_t dimValue1 = dScaleVShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_1);
         int64_t dimValue2 = dScaleVShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_2);
         int64_t dimValue3 = dScaleVShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_3);
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n2Size ||
             (dimValue2 != (s2Size + QUANT_V_BLOCK_SIZE - 1) / QUANT_V_BLOCK_SIZE) || dimValue3 != D_SCALE_DIM_NUM_1,
-                    OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dimNum [%ld][%ld][%ld][%ld], only support [B, N2, ceil(S2/512), 1]",
-                    dimValue0, dimValue1, dimValue2, dimValue3),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_v",
+                        ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
+                         std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
+                        "The shape of input d_scale_v must be [B, N2, ceil(S2/512), 1]"),
                     return false);
     }
 
@@ -902,16 +1031,19 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
     if (pScaleInput != nullptr && pScaleShape != nullptr && pScaleShape->GetStorageShape().GetDimNum() != 0) {
         auto pScaleDtype = pScaleInput->GetDataType();
         OP_CHECK_IF(pScaleDtype != ge::DT_FLOAT,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dtype[%s], only support float32.",
-                                               ge::TypeUtils::DataTypeToSerialString(pScaleDtype).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName,
+                    "p_scale", Ops::Base::ToString(pScaleDtype).c_str(),
+                    "The dtype of input p_scale must be FLOAT"),
                 return false);
         int64_t dimNum = pScaleShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_1,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dimNum [%ld], only support 1 dim.", dimNum),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "p_scale",
+                    (std::to_string(dimNum) + "D").c_str(), "1D"),
                 return false);
         int64_t dimValue0 = pScaleShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
         OP_CHECK_IF(dimValue0 != D_SCALE_DIM_NUM_1,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale shape[0] [%ld], only support [1].", dimValue0),
+                OP_LOGE_FOR_INVALID_SHAPE(opName, "p_scale",
+                    ("[" + std::to_string(dimValue0) + "]").c_str(), "[1]"),
                 return false);
     }
     return true;
@@ -926,10 +1058,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
         auto shape = sinkShapePtr->GetStorageShape();
         int64_t dimNum = shape.GetDimNum();
         auto sinkDtype = sinkInputPtr->GetDataType();
-        OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
-            OP_LOGE(opName, "invalid sink dtype[%s], only support float.",
-                ge::TypeUtils::DataTypeToSerialString(sinkDtype).c_str()),
-            return false);
+        if (sinkDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "sink",
+                Ops::Base::ToString(sinkDtype).c_str(), "The dtype of input sink must be FLOAT");
+            return false;
+        }
 
         std::string sinkShape = "";
         for (int i = 0; i < dimNum; ++i) {
@@ -938,20 +1071,25 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
                 sinkShape += ", ";
             }
         }
-        OP_CHECK_IF(dimNum != 1, OP_LOGE(opName, "invalid sink shape [%s], sink only support [n,].",
-            sinkShape.c_str()),
+        OP_CHECK_IF(dimNum != 1, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "sink",
+            ("[" + sinkShape + "]").c_str(),
+            "The shape of input sink must be 1D format [n,]"),
             return false);
 
         int64_t expectedSinkSize = n1Size;
         auto actualSinkShapeSize = shape.GetShapeSize();
-        OP_CHECK_IF(actualSinkShapeSize != expectedSinkSize, OP_LOGE(context_,
-            "invalid sink shapeSize, expect [%ld], but got [%ld].",
-            expectedSinkSize, actualSinkShapeSize),
+        OP_CHECK_IF(actualSinkShapeSize != expectedSinkSize, OP_LOGE_FOR_INVALID_SHAPESIZE(context_->GetNodeName(),
+            "sink",
+            std::to_string(actualSinkShapeSize).c_str(),
+            std::to_string(expectedSinkSize).c_str()),
             return false);
 
-        OP_CHECK_IF(!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16),
-            OP_LOGE(opName, "invalid input dtype, other tensor`s dtype only support float16 and bf16."),
-            return false);
+        if (!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16)) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, "query, key and value",
+                Ops::Base::ToString(inputDtype).c_str(),
+                "The dtypes of input query, key and value must be FLOAT16 or BF16 when sink is supported");
+            return false;
+        }
     }
     return true;
 }
@@ -1002,9 +1140,15 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
 {
     OP_LOGD(context_, "try template[%s]", templateName);
     OP_CHECK_IF(dSize > HEAD_DIM_MAX_VALUE,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "query or key dSize is not in range:(0, 768]"), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(dSize).c_str(),
+                   "The value of dSize must be within range (0, 768]"),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF(dSizeV > HEAD_DIM_MAX_VALUE,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "value dSize is not in range:(0, 768]"), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                   std::to_string(dSizeV).c_str(),
+                   "The value of dSizeV must be within range (0, 768]"),
+               return ge::GRAPH_FAILED);
     CalcDBasicBlock();
     CalcDVBasicBlock();
     CalcS1S2BasicBlock();
@@ -1086,7 +1230,9 @@ void FlashAttentionScoreTilingRegbase::CalcThresholdForS2Size()
     int64_t n2Num = std::min(2 * actualUsedCoreNum, bSize * n2Size);
     int64_t dataTypeSize = ge::GetSizeByDataType(inputDtype);
     if (n2Num == 0 || dataTypeSize == 0) {
-        OP_LOGE(context_, "The n2Num[%ld] and dataTypeSize[%ld] cann not be zero.", n2Num, dataTypeSize);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "n2Num, dataTypeSize",
+            std::to_string(n2Num) + ", " + std::to_string(dataTypeSize),
+            "The value of n2Num and dataTypeSize cannot be 0.");
         return;
     }
 
@@ -1294,8 +1440,9 @@ bool FlashAttentionScoreTilingRegbase::SparseBandModeCheck(int64_t maxS1Val, int
     }
 
     if (preTokens < 0 && nextTokens < 0) {
-        OP_LOGE(context_, "PreTokens[%ld] and nextTokens[%ld] config error, there is no valid data block.",
-                  oriPreTokens, oriNextTokens);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "preTokens, nextTokens",
+            std::to_string(oriPreTokens) + ", " + std::to_string(oriNextTokens),
+            "The value of preTokens and nextTokens cannot be less than 0.");
         return false;
     }
 
@@ -1408,7 +1555,8 @@ bool FlashAttentionScoreTilingRegbase::GetSparseInfo(SparseEnum &sparseType)
 bool FlashAttentionScoreTilingRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray, int64_t bIdx)
 {
     OP_CHECK_IF(sparseValidArray.empty(),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
+                   "The value of sparseValidArray size must be greater than 0"), return false);
     uint8_t sparseType = inputParamsRegbase_->get_sparseType();
     if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
         for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++) {
@@ -1450,10 +1598,13 @@ bool FlashAttentionScoreTilingRegbase::PartitionSparseData(const std::vector<int
                                                         int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult)
 {
     OP_CHECK_IF(partitionResult.empty(),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "partitionResult size should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "partitionResult", "0",
+                   "The value of size of partitionResult must be greater than 0"), return false);
 
     OP_CHECK_IF(sparseRollingArraySum <= 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "sparseRollingArraySum should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseRollingArraySum",
+                   std::to_string(sparseRollingArraySum).c_str(),
+                   "The value of sparseRollingArraySum should be greater than 0"), return false);
     int64_t s1OuterCutEachCore = loadMaxEachCore / sparseRollingArraySum;
     int64_t s1OuterLoadEachCore = s1OuterCutEachCore * sparseRollingArraySum;
     int64_t s1OuterNumEachCore = s1OuterCutEachCore * sparseRollingArray.size();
@@ -1579,7 +1730,8 @@ bool FlashAttentionScoreTilingRegbase::SetSparseStartIdx(const std::vector<int64
     std::vector<int64_t> lastValidPartitionResult(validAivNum, totalSize);
     int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
     int64_t loadTotal = sparseArraySum * (totalSize / sparseValidArray.size());
-    OP_CHECK_IF(validAivNum <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "validAivNum should be larger than 0."),
+    OP_CHECK_IF(validAivNum <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "validAivNum",
+               std::to_string(validAivNum).c_str(), "The value of validAivNum must be greater than 0"),
                return false);
     int64_t loadEachCoreLowerBound = loadTotal / validAivNum - 1;
     int64_t loadEachCoreUpperBound =
@@ -1752,8 +1904,11 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::SetQKVStartIdx() {
         }
     }
     // 当kvStartIdx - qStartIdx超出范围后，由于编译器不支持大数值类型转换，kernel侧int_64转float类型时可能发生截断。
-    OP_CHECK_IF(kvStartIdx - qStartIdx > INT32_MAX || kvStartIdx - qStartIdx < INT32_MIN, OPS_REPORT_VECTOR_INNER_ERR(opName,
-        "kvStartIdx - qStartIdx should >= %d and <= %d, but qStartIdx = %ld, kvStartIdx = %ld.", INT32_MIN, INT32_MAX, qStartIdx, kvStartIdx),
+    OP_CHECK_IF(kvStartIdx - qStartIdx > INT32_MAX || kvStartIdx - qStartIdx < INT32_MIN,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+            "kvStartIdx and qStartIdx",
+            std::to_string(kvStartIdx - qStartIdx).c_str(),
+            "The difference between kvStartIdx and qStartIdx must be within the range [INT32_MIN, INT32_MAX]."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

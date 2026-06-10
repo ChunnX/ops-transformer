@@ -1,0 +1,1204 @@
+[2026-06-10 16:17:45] Warning: The current environment is configured for ascend950, Please use Ascend 950PR/Ascend 950DT series hardware for optimal performance.
+[2026-06-10 16:17:45] [2026-06-10 16:17:45] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=flash_attention_score -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/mnt/workspace/errmsg/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/local/bin/ccache -DASCEND_COMPUTE_UNIT=ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-06-10 16:17:47] -- The C compiler identification is GNU 9.4.0
+[2026-06-10 16:17:47] -- The CXX compiler identification is GNU 9.4.0
+[2026-06-10 16:17:47] -- Detecting C compiler ABI info
+[2026-06-10 16:17:47] -- Detecting C compiler ABI info - done
+[2026-06-10 16:17:47] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-10 16:17:47] -- Detecting C compile features
+[2026-06-10 16:17:47] -- Detecting C compile features - done
+[2026-06-10 16:17:47] -- Detecting CXX compiler ABI info
+[2026-06-10 16:17:47] -- Detecting CXX compiler ABI info - done
+[2026-06-10 16:17:47] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-10 16:17:47] -- Detecting CXX compile features
+[2026-06-10 16:17:47] -- Detecting CXX compile features - done
+[2026-06-10 16:17:47] -- Initialization summary: Found ccache, TARGET_ARCH: aarch64
+[2026-06-10 16:17:47] -- ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0
+[2026-06-10 16:17:47] -- compile project with library
+[2026-06-10 16:17:47] -- Find opbase source dir: /mnt/workspace/errmsg/third_party/opbase
+Previous HEAD position was ee5334d 修改tiling文件名
+HEAD is now at cd48c60 fix EZ0037
+[2026-06-10 16:17:47] D	aicpu_common/context/common/async_cpu_kernel.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/async_event_util.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/context.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/cpu_kernel_cache.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/cpu_kernel_register.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/cpu_kernel_utils.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/device.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/device_cpu_kernel.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/device_sharder.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/eigen_threadpool.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/host_sharder.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/common/node_def_builder.cpp
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/attr_value.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/node_def.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/node_def_impl.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/tensor.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/tensor_impl.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/tensor_shape.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cust_op/cust_dlog_record.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/cust_op/cust_dlog_record.h
+[2026-06-10 16:17:47] D	aicpu_common/context/cust_op/cust_op_log.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/utils/bcast.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/utils/eigen_tensor.cc
+[2026-06-10 16:17:47] D	aicpu_common/context/utils/kernel_util.cc
+[2026-06-10 16:17:47] -- Find ops-tensor source dir: /mnt/workspace/errmsg/third_party/ops-tensor
+[2026-06-10 16:17:48] -- ops-tensor fetched f2e975775ca754c04084dece850dd6cc76bfbc5b
+[2026-06-10 16:17:48] -- Found Python3: /home/developer/miniconda3/bin/python3.1 (found version "3.13.13") found components: Interpreter 
+[2026-06-10 16:17:48] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/local/bin/ccache
+[2026-06-10 16:17:48] -- CCACHE_PROGRAM=/usr/local/bin/ccache
+[2026-06-10 16:17:48] -- ASCEND_COMPUTE_UNIT=ascend950
+[2026-06-10 16:17:48] -- ASCEND_OP_NAME=flash_attention_score
+[2026-06-10 16:17:48] -- TILING_KEY=
+[2026-06-10 16:17:48] -- TESTS_UT_OPS_TEST=
+[2026-06-10 16:17:48] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-06-10 16:17:48] -- CMAKE_BUILD_TYPE=Release
+[2026-06-10 16:17:48] -- VERSION=
+HEAD is now at cd48c60 fix EZ0037
+[ThirdParty][eigen] package needs to be downloaded.
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] Runtime protobuf lib:
+[ThirdParty][protobuf] PROTOC_PATH : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.3.13.0.0.
+[ThirdParty][protobuf] GE protobuf lib:
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIBRARY : ASCEND_PROTOBUF_SHARED_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIBRARY : /mnt/workspace/errmsg/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] PROTOBUF_STATIC_LIBRARY : PROTOBUF_STATIC_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] need build protobuf
+[ThirdParty][protobuf] /mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz not found, need download.
+[ThirdParty][protobuf] protobuf headers only build.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_static] static depend protobuf_headers_target.
+[ThirdParty][protobuf_host_static] host static build.
+LIBASAN_PATH = 
+/mnt/workspace/errmsg/cmake/scripts/util/ascendc_impl_build.py:237: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-06-10 16:17:51] -- Found json: /mnt/workspace/errmsg/third_party/json/include  
+[2026-06-10 16:17:51] -- [ThirdPartyLib][json] build json end, JSON_SOURCE_PATH: /mnt/workspace/errmsg/third_party/json.
+[2026-06-10 16:17:51] -- Start building custom package.
+[2026-06-10 16:17:51] -- Search libs under install path /home/developer/Ascend/cann-9.1.0
+[2026-06-10 16:17:51] -- CMAKE_MODULE_PATH            :/mnt/workspace/errmsg/cmake/modules;/home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[2026-06-10 16:17:51] -- compile option:   -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-06-10 16:17:51] -- Found dlog: /home/developer/Ascend/cann-9.1.0/pkg_inc/base  
+[2026-06-10 16:17:51] -- Transformer Variables in dlog module:
+[2026-06-10 16:17:51] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-10 16:17:51] -- dlog_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:51] -- 
+[2026-06-10 16:17:51]  Properties for TARGET dlog:
+[2026-06-10 16:17:51]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-10 16:17:51]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-06-10 16:17:51]    dlog.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:51] 
+[2026-06-10 16:17:51] -- 
+[2026-06-10 16:17:51]  Properties for TARGET dlog_headers:
+[2026-06-10 16:17:51]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-10 16:17:51] 
+[2026-06-10 16:17:51] -- Found securec: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-10 16:17:51] -- Found OPBASE: /mnt/workspace/errmsg/third_party/opbase/include  
+[2026-06-10 16:17:51] -- Found OPABSE include:/mnt/workspace/errmsg/third_party/opbase/include
+[ThirdParty][eigen] package needs to be downloaded.
+[2026-06-10 16:17:51] -- Found OPABSE lib:
+[2026-06-10 16:17:51] -- Found platform: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-10 16:17:51] -- Found platform include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-10 16:17:51] -- Found register library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libregister.so
+[2026-06-10 16:17:51] -- Found opp_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libopp_registry.so
+[2026-06-10 16:17:51] -- Found exe_graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libexe_graph.so
+[2026-06-10 16:17:51] -- Found graph_base library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph_base.so
+[2026-06-10 16:17:51] -- Found error_manager library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/liberror_manager.so
+[2026-06-10 16:17:51] -- Found metadef library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmetadef.so
+[2026-06-10 16:17:51] -- Found rt2_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/librt2_registry.a
+[2026-06-10 16:17:51] -- Found metadef: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-10 16:17:51] -- Found source metadef include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/exe_graph
+[2026-06-10 16:17:51] -- Found graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph.so
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] Runtime protobuf lib:
+[ThirdParty][protobuf] PROTOC_PATH : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.3.13.0.0.
+[ThirdParty][protobuf] GE protobuf lib:
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIBRARY : ASCEND_PROTOBUF_SHARED_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIBRARY : /mnt/workspace/errmsg/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] PROTOBUF_STATIC_LIBRARY : PROTOBUF_STATIC_LIBRARY-NOTFOUND.
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/errmsg/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] need build protobuf
+[ThirdParty][protobuf] /mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz not found, need download.
+[2026-06-10 16:17:52] -- Found mmpa library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmmpa.so
+[2026-06-10 16:17:52] -- Found source acl include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-10 16:17:52] -- [transformer]Found source npuruntime include dir: /home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/runtime
+[2026-06-10 16:17:52] -- Found aclnn include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-10 16:17:52] -- Found opdev include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn
+[2026-06-10 16:17:52] -- Found tilingapi include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[ThirdParty][protobuf] protobuf headers only build.
+[2026-06-10 16:17:52] -- TILINGAPI_INC_DIRS: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/lib;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/impl;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/tiling
+[2026-06-10 16:17:52] -- Found tilingapi lib:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libtiling_api.a
+[2026-06-10 16:17:52] -- Using AICPU include dirs: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/cce;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/msprof;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu
+[2026-06-10 16:17:52] -- Finding gen es pkg
+[2026-06-10 16:17:52] -- [add_es_library] Module loaded from: /home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[ThirdParty][protobuf_shared] shared build.
+[2026-06-10 16:17:52] -- Found abseil-cpp: /mnt/workspace/errmsg/third_party/lib_cache/abseil-cpp  
+[2026-06-10 16:17:52] -- [ThirdPartyLib][abseil-cpp] Found abseil-cpp in: /mnt/workspace/errmsg/third_party/lib_cache/abseil-cpp
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_static] static depend protobuf_headers_target.
+[ThirdParty][protobuf_host_static] host static build.
+[2026-06-10 16:17:52] -- Found alog: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-10 16:17:52] -- Variables in alog module:
+[2026-06-10 16:17:52] -- alog_a_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/include"
+[2026-06-10 16:17:52] -- slog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:52] -- alog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52]  Properties for TARGET slog_a:
+[2026-06-10 16:17:52]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-10 16:17:52]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-10 16:17:52]    slog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52]  Properties for TARGET alog_a:
+[2026-06-10 16:17:52]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-10 16:17:52]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-10 16:17:52]    alog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52]  Properties for TARGET alog_headers:
+[2026-06-10 16:17:52]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/include;/home/developer/Ascend/cann-9.1.0/include/base"
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-06-10 16:17:52] -- Generated helper script: /mnt/workspace/errmsg/build/cmake/run_gen_esb_with_lock.sh
+[2026-06-10 16:17:52] -- Using existing Python3: /home/developer/miniconda3/bin/python3.1
+[2026-06-10 16:17:52] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/errmsg/build/es_packages_math
+[2026-06-10 16:17:52] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-10 16:17:52] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] --   - Created standard OPP path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:52] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-10 16:17:52] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-10 16:17:52] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-10 16:17:52] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-10 16:17:52] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:52] -- add_es_package: Module name for gen_esb: math
+[2026-06-10 16:17:52] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/math, skipping
+[2026-06-10 16:17:52] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-10 16:17:52] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-10 16:17:52] -- Configuring ES package: es_math
+[2026-06-10 16:17:52] --   - Exported target: es_math (public interface)
+[2026-06-10 16:17:52] --   - Internal .obj target: es_math_obj (compile once)
+[2026-06-10 16:17:52] --   - Internal .so target: es_math_so
+[2026-06-10 16:17:52] --   - Internal .a target: es_math_a
+[2026-06-10 16:17:52] --   - Module name (for gen_esb): math
+[2026-06-10 16:17:52] --   - OPP proto target: proto_math (type: SHARED_LIBRARY)
+[2026-06-10 16:17:52] --   - OPP proto path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:52] --   - Output path: /mnt/workspace/errmsg/build/es_packages_math (artifacts will be copied)
+[2026-06-10 16:17:52] --   - Library files: libes_math.so, libes_math.a
+[2026-06-10 16:17:52] --   - Python package: es_math
+[2026-06-10 16:17:52] -- ES package 'es_math' using single-file compilation mode
+[2026-06-10 16:17:52] --   - Wrapper file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-10 16:17:52] --   - Module name: math
+[2026-06-10 16:17:52] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-10 16:17:52] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-10 16:17:52] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-10 16:17:52] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-10 16:17:52] -- add_es_library: Found c_sec target
+[2026-06-10 16:17:52] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-10 16:17:52] -- add_es_package: 'build_es_math' is the first ES package (will be built first)
+[2026-06-10 16:17:52] -- ES package 'es_math' configured successfully (single-file mode):
+[2026-06-10 16:17:52] --   - Exported target (for linking): es_math
+[2026-06-10 16:17:52] --   - Build target: build_es_math
+[2026-06-10 16:17:52] --   - Wrapper file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-10 16:17:52] --   - Internal targets:
+[2026-06-10 16:17:52] --     * Code generation: generate_es_math_code
+[2026-06-10 16:17:52] --     * Object library: es_math_obj (compiled once)
+[2026-06-10 16:17:52] --     * Shared library: es_math_so
+[2026-06-10 16:17:52] --     * Static library: es_math_a
+[2026-06-10 16:17:52] --     * Wheel generation: generate_es_math_whl
+[2026-06-10 16:17:52] --     * Install: install_es_math
+[2026-06-10 16:17:52] --   - Library files: libes_math.so, libes_math.a
+[2026-06-10 16:17:52] --   - Python package: es_math
+[2026-06-10 16:17:52] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52] -- Quick start:
+[2026-06-10 16:17:52] --   1. Link:    target_link_libraries(your_target PRIVATE es_math)
+[2026-06-10 16:17:52] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-10 16:17:52] -- 
+LIBASAN_PATH = 
+[2026-06-10 16:17:52] -- Update proto header path: /mnt/workspace/errmsg/attention/flash_attention_score/op_graph/flash_attention_score_proto.h
+[2026-06-10 16:17:52] -- Start Generating es transformer for custom pkg
+[2026-06-10 16:17:52] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/errmsg/build/es_packages
+[2026-06-10 16:17:52] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-10 16:17:52] -- add_es_package: Using default output directory: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] --   - Created standard OPP path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:52] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-10 16:17:52] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-10 16:17:52] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-10 16:17:52] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-10 16:17:52] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:52] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-06-10 16:17:52] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/transformer_cust, skipping
+[2026-06-10 16:17:52] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-10 16:17:52] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-10 16:17:52] -- Configuring ES package: es_transformer_cust
+[2026-06-10 16:17:52] --   - Exported target: es_transformer_cust (public interface)
+[2026-06-10 16:17:52] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-06-10 16:17:52] --   - Internal .so target: es_transformer_cust_so
+[2026-06-10 16:17:52] --   - Internal .a target: es_transformer_cust_a
+[2026-06-10 16:17:52] --   - Module name (for gen_esb): transformer_cust
+[2026-06-10 16:17:52] --   - OPP proto target: proto_transformer_cust (type: SHARED_LIBRARY)
+[2026-06-10 16:17:52] --   - OPP proto path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:52] --   - Output path: /mnt/workspace/errmsg/build/es_packages (artifacts will be copied)
+[2026-06-10 16:17:52] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-10 16:17:52] --   - Python package: es_transformer_cust
+[2026-06-10 16:17:52] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-06-10 16:17:52] --   - Wrapper file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-10 16:17:52] --   - Module name: transformer_cust
+[2026-06-10 16:17:52] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-10 16:17:52] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-10 16:17:52] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-10 16:17:52] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-10 16:17:52] -- add_es_library: Found c_sec target
+[2026-06-10 16:17:52] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-10 16:17:52] -- add_es_package: 'build_es_transformer_cust' depends on 'build_es_math' to avoid concurrent builds of shared dependencies
+[2026-06-10 16:17:52] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-06-10 16:17:52] --   - Exported target (for linking): es_transformer_cust
+[2026-06-10 16:17:52] --   - Build target: build_es_transformer_cust
+[2026-06-10 16:17:52] --   - Wrapper file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-10 16:17:52] --   - Internal targets:
+[2026-06-10 16:17:52] --     * Code generation: generate_es_transformer_cust_code
+[2026-06-10 16:17:52] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-06-10 16:17:52] --     * Shared library: es_transformer_cust_so
+[2026-06-10 16:17:52] --     * Static library: es_transformer_cust_a
+[2026-06-10 16:17:52] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-06-10 16:17:52] --     * Install: install_es_transformer_cust
+[2026-06-10 16:17:52] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-10 16:17:52] --   - Python package: es_transformer_cust
+[2026-06-10 16:17:52] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52] -- Quick start:
+[2026-06-10 16:17:52] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-06-10 16:17:52] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-10 16:17:52] -- 
+[2026-06-10 16:17:52] -- Detected architecture: ARM64
+[2026-06-10 16:17:52] -- End building custom package.
+[2026-06-10 16:17:52] -- create aclnn master header file: /mnt/workspace/errmsg/build/aclnn_ops_transformer_custom.h
+[2026-06-10 16:17:52] -- no operator info to generate
+[2026-06-10 16:17:52] -- Start building custom package.
+[2026-06-10 16:17:52] -- No aicpu opdef/json files to merge, skipping.
+[2026-06-10 16:17:52] -- No aicpu cust obj targets found, skipping.
+[2026-06-10 16:17:52] -- Configuring done
+[2026-06-10 16:17:52] -- Generating done
+[2026-06-10 16:17:52] -- Build files have been written to: /mnt/workspace/errmsg/build
+[2026-06-10 16:17:52] [  1%] Generating op_host_aclnn_stub.cpp
+[2026-06-10 16:17:52] [  2%] Generating op_host_aclnn_exc_stub.cpp
+[2026-06-10 16:17:52] [  3%] Generating scripts/install.sh, scripts/upgrade.sh
+[2026-06-10 16:17:52] [  4%] Copying update proto /mnt/workspace/errmsg/attention/flash_attention_score/op_graph/flash_attention_score_proto.h to /mnt/workspace/errmsg/build/autogen/updateproto/flash_attention_score_proto.cpp
+[2026-06-10 16:17:52] [  6%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/flash_attention_score_tiling.cpp.o
+[2026-06-10 16:17:52] [  6%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/attention/flash_attention_score/op_host/flash_attention_score_def.cpp.o
+[2026-06-10 16:17:52] [  7%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/flash_attention_score_infershape.cpp.o
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp: In function ‘ge::graphStatus ops::InferDataTypeFlashAttentionScore(gert::InferDataTypeContext*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:182:17: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  182 |         int64_t outDtype = *outDtypePtr;
+      |                 ^~~~~~~~
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/flash_attention_score_tiling.cpp:22:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-10 16:17:52] [  9%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm.cpp.o
+[2026-06-10 16:17:52] [  9%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_basic.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-10 16:17:52] [ 11%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/runtime_kb_api.cpp.o
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp: In member function ‘bool optiling::FA::FlashAttentionScoreTilingVarLen::SparseNoMaskModeCheck(int64_t, int64_t, int64_t, optiling::SparseEnum&)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_varlen.cpp:438:76: warning: unused parameter ‘minS2Val’ [-Wunused-parameter]
+  438 |     bool SparseNoMaskModeCheck(int64_t maxS1Val, int64_t maxS2Val, int64_t minS2Val,
+      |                                                                    ~~~~~~~~^~~~~~~~
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_dropmask.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-10 16:17:52] [ 12%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_varlen.cpp.o
+[2026-06-10 16:17:52] [ 12%] Creating directories for 'external_eigen'
+[2026-06-10 16:17:52] [ 12%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/op_host/tiling_util.cpp.o
+[2026-06-10 16:17:52] [ 13%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_dropmask.cpp.o
+[2026-06-10 16:17:52] [ 14%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
+[2026-06-10 16:17:52] [ 18%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm_2stages.cpp.o
+[2026-06-10 16:17:52] [ 18%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/tbe_tiling_api.cpp.o
+[2026-06-10 16:17:52] [ 18%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_basic.cpp.o
+[2026-06-10 16:17:52] [ 18%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
+[2026-06-10 16:17:52] [ 18%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
+[2026-06-10 16:17:52] [ 19%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_regbase.cpp.o
+[2026-06-10 16:17:52] [ 19%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
+[2026-06-10 16:17:52] [ 22%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
+[2026-06-10 16:17:52] [ 22%] Generating version.ops-transformer.info
+[2026-06-10 16:17:52] [ 22%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
+[2026-06-10 16:17:52] [ 25%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
+[2026-06-10 16:17:52] [ 25%] Generating binary/ascend950/bin/flash_attention_score_apt
+[2026-06-10 16:17:52] [ 26%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
+[2026-06-10 16:17:52] [ 26%] Built target abseil_build
+[2026-06-10 16:17:52] [ 27%] Building CXX object common/stub/op_graph/CMakeFiles/proto_math.dir/math_proto_stub.cpp.o
+[2026-06-10 16:17:52] [ 27%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+[2026-06-10 16:17:52] [ 28%] Generating version.info
+[2026-06-10 16:17:52] [ 28%] Generating binary/ascend950/src/flash_attention_score_apt/FlashAttentionScore.py
+[2026-06-10 16:17:52] [ 29%] Generating binary/ascend950/src/ascendc/common/.utils_copy.stamp
+[2026-06-10 16:17:52] [ 30%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
+[2026-06-10 16:17:52] [ 31%] Generating binary/ascend950/src/common/.all_common_copy.stamp
+[2026-06-10 16:17:52] [ 32%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
+[2026-06-10 16:17:52] [ 32%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
+[2026-06-10 16:17:52] [ 34%] Building CXX object CMakeFiles/op_host_aclnnExc.dir/op_host_aclnn_exc_stub.cpp.o
+/mnt/workspace/errmsg/cmake/scripts/util/ascendc_impl_build.py:237: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-06-10 16:17:52] [ 35%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-06-10 16:17:52] [ 36%] Building update proto files
+[2026-06-10 16:17:52] [ 36%] Built target flash_attention_score_apt_ascend950_mkdir
+[2026-06-10 16:17:52] [ 36%] Built target flash_attention_score_apt_ascend950_py_copy
+[2026-06-10 16:17:52] [ 36%] Built target update_proto_target
+[2026-06-10 16:17:52] [ 36%] Linking CXX shared library libop_host_aclnnExc.so
+[2026-06-10 16:17:52] [ 36%] Linking CXX shared library libop_host_aclnn.so
+[2026-06-10 16:17:52] [ 37%] Creating directories for 'protobuf_src'
+[2026-06-10 16:17:52] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-10 16:17:52] [ 37%] Built target gen_version_info
+[2026-06-10 16:17:52] [ES-GEN] Lock file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-06-10 16:17:52] [ 38%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-06-10 16:17:52] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-10 16:17:52] [ 39%] Built target common_transformer_obj
+[2026-06-10 16:17:52] [ES-GEN] OPP path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:52] [ 39%] Linking CXX shared library ../../../libproto_math.so
+[2026-06-10 16:17:52] [ES-GEN] Output dir: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code
+[2026-06-10 16:17:52] [ 39%] Built target common_transformer_fallback_obj
+[2026-06-10 16:17:52] [ES-GEN] Module: math
+[2026-06-10 16:17:52] [ 39%] Built target ophost_transformer_infer_obj
+[2026-06-10 16:17:52] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-10 16:17:52] [ES-GEN] Exclude ops: 
+[2026-06-10 16:17:52] [ 40%] Linking CXX shared library ../../../libopapi_math.so
+[2026-06-10 16:17:52] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-10 16:17:52] [ 40%] Built target modify_vendor
+[2026-06-10 16:17:52] [ES-GEN] Using flock file locking mechanism
+[2026-06-10 16:17:52] [ 42%] Linking CXX shared library ../../../liboptiling.so
+[2026-06-10 16:17:52] [ 42%] Built target ops_utils_inc_kernel_ascend950
+[2026-06-10 16:17:52] [ES-GEN] [flock] Acquired lock immediately
+[2026-06-10 16:17:52] [ 43%] Performing download step (download, verify and extract) for 'external_eigen'
+[2026-06-10 16:17:52] [ 43%] Built target version_ops-transformer_info
+[2026-06-10 16:17:52] [ES-GEN] Waiting for filesystem sync...
+[2026-06-10 16:17:52] [ 43%] Built target common_src_copy
+[2026-06-10 16:17:52] -- Downloading...
+[2026-06-10 16:17:52]    dst='/mnt/workspace/errmsg/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-06-10 16:17:52]    timeout='none'
+[2026-06-10 16:17:52]    inactivity timeout='none'
+[2026-06-10 16:17:52] -- Using src='https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz'
+[2026-06-10 16:17:52] [ 44%] Performing download step (download, verify and extract) for 'protobuf_src'
+[2026-06-10 16:17:52] [ 45%] Generating binary/ascend950/src/flash_attention_score_apt/flash_attention_score_apt_ascend950_src_copy.done
+[2026-06-10 16:17:52] [ 45%] Built target op_host_aclnnExc
+[2026-06-10 16:17:52] [ 45%] Built target op_host_aclnn
+[2026-06-10 16:17:52] -- File already exists but no hash specified (use URL_HASH):
+[2026-06-10 16:17:52]   file='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-10 16:17:52] Old file will be removed and new file downloaded from URL.
+[2026-06-10 16:17:52] -- Downloading...
+[2026-06-10 16:17:52]    dst='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-10 16:17:52] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-10 16:17:52]    timeout='none'
+[2026-06-10 16:17:52] [ES-GEN] Lock file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-06-10 16:17:52]    inactivity timeout='none'
+[2026-06-10 16:17:52] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-10 16:17:52] -- Using src='https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/protobuf/protobuf-25.1.tar.gz'
+[2026-06-10 16:17:52] [ES-GEN] OPP path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:52] [ 45%] Built target opbuild_gen_exc
+[2026-06-10 16:17:52] [ES-GEN] Output dir: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code
+[2026-06-10 16:17:52] [ 45%] Built target opbuild_gen_default
+[2026-06-10 16:17:52] [ES-GEN] Module: transformer_cust
+[2026-06-10 16:17:52] [ 45%] Built target flash_attention_score_apt_ascend950_src_copy
+[2026-06-10 16:17:52] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-10 16:17:52] [ 45%] Built target opapi_math
+[2026-06-10 16:17:52] [ES-GEN] Exclude ops: 
+[2026-06-10 16:17:52] [ 45%] Built target op_host_aclnnInner
+[2026-06-10 16:17:52] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-10 16:17:52] [ 45%] Built target optiling
+[2026-06-10 16:17:52] [ES-GEN] Using flock file locking mechanism
+[2026-06-10 16:17:52] [ 45%] Built target proto_math
+[2026-06-10 16:17:52] [ 45%] Built target opbuild_gen_inner
+[2026-06-10 16:17:52] [ES-GEN] [flock] Acquired lock immediately
+[2026-06-10 16:17:52] [ 46%] Copying OPP proto library to standard path...
+[2026-06-10 16:17:52] [ 47%] Generating autogen/aic-ascend950-ops-info.json
+[2026-06-10 16:17:52] [ES-GEN] Waiting for filesystem sync...
+[2026-06-10 16:17:52] [ 47%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_flash_attention_score.cpp.o
+[2026-06-10 16:17:52] [ 48%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/updateproto/flash_attention_score_proto.cpp.o
+[2026-06-10 16:17:52] [ 48%] Filtering proto srcs from update files
+[2026-06-10 16:17:52] [ 50%] Built target generate_proto_filtered_target
+[2026-06-10 16:17:52] [ 51%] Linking CXX static library libops_aclnn.a
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] ==============check valid for ops info start==============
+[2026-06-10 16:17:52] ==============check valid for ops info end================
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] 
+[2026-06-10 16:17:52] Compile op info cfg successfully.
+[2026-06-10 16:17:52] [ 51%] Generating ES API code for 'es_math' using run package gen_esb...
+[2026-06-10 16:17:52] [ 52%] Linking CXX shared library libproto_transformer_cust.so
+[2026-06-10 16:17:52] Generating ES code for package: es_math
+[2026-06-10 16:17:52] [ 52%] Built target generate_ops_info_ascend950
+[2026-06-10 16:17:52] [ 53%] Built target ops_aclnn
+[2026-06-10 16:17:52] INFO: /mnt/workspace/errmsg/build/autogen/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-10 16:17:52] [ 53%] Built target generate_ops_info
+[2026-06-10 16:17:52] [ 54%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_flash_attention_score.cpp.o
+[2026-06-10 16:17:52] [ 54%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/flash_attention_score.cpp.o
+[2026-06-10 16:17:52] [ 54%] Built target proto_transformer_cust
+[2026-06-10 16:17:52] [ 55%] Copying OPP proto library to standard path...
+[2026-06-10 16:17:52] [ 55%] Generating ES API code for 'es_transformer_cust' using run package gen_esb...
+[2026-06-10 16:17:52] Generating ES code for package: es_transformer_cust
+[2026-06-10 16:17:52] [ 55%] Built target generate_transformer_adapt_py
+[2026-06-10 16:17:52] INFO: /mnt/workspace/errmsg/build/autogen/exc/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-10 16:17:52] [ 55%] Built target generate_compile_cmd_ascend950
+[2026-06-10 16:17:52] [ 55%] Built target generate_compile_cmd
+[2026-06-10 16:17:52] [ 55%] Built target prepare_build
+[2026-06-10 16:17:53] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-10 16:17:53] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""     
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] ES Graph Builder Generator v1.0
+[2026-06-10 16:17:53] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] Starting code generation...
+[2026-06-10 16:17:53] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:53] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/errmsg/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-06-10 16:17:53] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-10 16:17:53] Output directory: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-10 16:17:53] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-10 16:17:53] Module name: math
+[2026-06-10 16:17:53] ASCEND_OPP_PATH is: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-10 16:17:53] ops proto path: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+[2026-06-10 16:17:53] Get ops num: 1
+[2026-06-10 16:17:53] Generate done, generated num 1, unsupported: 
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-10 16:17:53] Generated C generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-10 16:17:53] Generated C++ generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-10 16:17:53] Generated Python generator aggregate file: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-10 16:17:53] Generated aggregate files:
+[2026-06-10 16:17:53]   C generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-10 16:17:53]   C++ generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-10 16:17:53]   Python generator: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-10 16:17:53] Generated util files:
+[2026-06-10 16:17:53]   Utils generator:
+[2026-06-10 16:17:53]     /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+[2026-06-10 16:17:53] Generated files in: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-10 16:17:53] 
+[2026-06-10 16:17:53] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-06-10 16:17:53] Code generation completed!
+[2026-06-10 16:17:53] Module name: math
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] -- [ES Wrapper] Generated: /mnt/workspace/errmsg/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-10 16:17:53] -- [ES Wrapper] Total operators included: 1
+[2026-06-10 16:17:53] [ 55%] Built target generate_es_math_code
+[2026-06-10 16:17:53] [ 56%] Building CXX object common/stub/op_graph/CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+[2026-06-10 16:17:53] [ 57%] Building Python wheel package for 'es_math'...
+[2026-06-10 16:17:53] Building Python wheel for package: es_math
+[2026-06-10 16:17:53] [ 57%] Built target es_math_obj
+[2026-06-10 16:17:53] -- Copied: es_Transpose.py
+[2026-06-10 16:17:53] -- Copied: es_math_ops.py
+[2026-06-10 16:17:53] [ 59%] Linking CXX shared library ../../../libes_math.so
+[2026-06-10 16:17:53] [ 59%] Linking CXX static library libes_math.a
+[2026-06-10 16:17:53] -- Created setup.py for package 'es_math'
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-10 16:17:53] ES Graph Builder Generator v1.0
+[2026-06-10 16:17:53] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-10 16:17:53] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] Starting code generation...
+[2026-06-10 16:17:53] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:53] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/errmsg/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-06-10 16:17:53] Output directory: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/
+[2026-06-10 16:17:53] Module name: transformer_cust
+[2026-06-10 16:17:53] ASCEND_OPP_PATH is: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-10 16:17:53] ops proto path: /mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/custom/:/mnt/workspace/errmsg/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/built-in/
+[2026-06-10 16:17:53] Get ops num: 1
+[2026-06-10 16:17:53] Generate done, generated num 1, unsupported: 
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-10 16:17:53] Generated C generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-10 16:17:53] Generated C++ generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-10 16:17:53] Write to file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-10 16:17:53] Generated Python generator aggregate file: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-10 16:17:53] Generated aggregate files:
+[2026-06-10 16:17:53]   C generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-10 16:17:53]   C++ generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-10 16:17:53]   Python generator: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-10 16:17:53] Generated util files:
+[2026-06-10 16:17:53]   Utils generator:
+[2026-06-10 16:17:53]     /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_log.h
+[2026-06-10 16:17:53] Generated files in: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/
+[2026-06-10 16:17:53] 
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] Code generation completed!
+[2026-06-10 16:17:53] Module name: transformer_cust
+[2026-06-10 16:17:53] ==========================================
+[2026-06-10 16:17:53] [ 59%] Built target es_math_a
+[2026-06-10 16:17:53] -- [ES Wrapper] Generated: /mnt/workspace/errmsg/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-10 16:17:53] -- [ES Wrapper] Total operators included: 1
+[2026-06-10 16:17:53] [ 59%] Built target generate_es_transformer_cust_code
+[2026-06-10 16:17:53] [ 60%] Skipping Python wheel package generation for 'es_transformer_cust'
+[2026-06-10 16:17:53] [ 61%] Building CXX object CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+[2026-06-10 16:17:53] Skipping wheel generation
+[2026-06-10 16:17:53] [ 61%] Built target generate_es_transformer_cust_whl
+[2026-06-10 16:17:53] [ 61%] Built target es_math_so
+[2026-06-10 16:17:53] [ 61%] Built target es_transformer_cust_obj
+[2026-06-10 16:17:53] -- [download 0% complete]
+[2026-06-10 16:17:53] [ 62%] Linking CXX shared library libes_transformer_cust.so
+[2026-06-10 16:17:53] [ 62%] Linking CXX static library libes_transformer_cust.a
+[2026-06-10 16:17:53] -- [download 1% complete]
+[2026-06-10 16:17:53] [ 62%] Built target es_transformer_cust_a
+[2026-06-10 16:17:53] -- [download 2% complete]
+[2026-06-10 16:17:53] -- [download 3% complete]
+[2026-06-10 16:17:53] -- [download 4% complete]
+[2026-06-10 16:17:53] [ 62%] Built target es_transformer_cust_so
+[2026-06-10 16:17:53] [ 62%] Installing ES package 'es_transformer_cust' to /mnt/workspace/errmsg/build/es_packages
+[2026-06-10 16:17:53] -- [download 5% complete]
+[2026-06-10 16:17:53] Installing ES package: es_transformer_cust
+[2026-06-10 16:17:53] -- Copied header: es_FlashAttentionScore.h
+[2026-06-10 16:17:53] -- Copied header: es_FlashAttentionScore_c.h
+[2026-06-10 16:17:53] -- Copied header: es_log.h
+[2026-06-10 16:17:53] -- Copied header: es_transformer_cust_ops.h
+[2026-06-10 16:17:53] -- Copied header: es_transformer_cust_ops_c.h
+[2026-06-10 16:17:53] -- [download 6% complete]
+[2026-06-10 16:17:53] [ 62%] Built target install_es_transformer_cust
+[2026-06-10 16:17:53] -- [download 7% complete]
+[2026-06-10 16:17:53] -- [download 8% complete]
+[2026-06-10 16:17:53] -- [download 9% complete]
+[2026-06-10 16:17:53] -- [download 10% complete]
+[2026-06-10 16:17:53] -- [download 11% complete]
+[2026-06-10 16:17:53] -- [download 12% complete]
+[2026-06-10 16:17:53] -- [download 13% complete]
+[2026-06-10 16:17:53] [ 62%] Built target opbase_util_objs
+[2026-06-10 16:17:53] -- [download 14% complete]
+[2026-06-10 16:17:53] -- [download 15% complete]
+[2026-06-10 16:17:53] -- [download 16% complete]
+[2026-06-10 16:17:53] -- [download 17% complete]
+[2026-06-10 16:17:53] -- [download 18% complete]
+[2026-06-10 16:17:53] -- [download 19% complete]
+[2026-06-10 16:17:53] -- [download 20% complete]
+[2026-06-10 16:17:53] Looking in indexes: https://repo.huaweicloud.com/repository/pypi/simple
+[2026-06-10 16:17:53] Processing ./.
+[2026-06-10 16:17:53]   Installing build dependencies: started
+[2026-06-10 16:17:53] -- [download 21% complete]
+[2026-06-10 16:17:53] -- [download 22% complete]
+[2026-06-10 16:17:53] -- [download 23% complete]
+[2026-06-10 16:17:53] -- [download 24% complete]
+[2026-06-10 16:17:53] -- [download 25% complete]
+[2026-06-10 16:17:53] -- [download 26% complete]
+[2026-06-10 16:17:53] -- [download 27% complete]
+[2026-06-10 16:17:53] -- [download 28% complete]
+[2026-06-10 16:17:53] -- [download 29% complete]
+[2026-06-10 16:17:53] -- [download 30% complete]
+[2026-06-10 16:17:53] -- [download 31% complete]
+[2026-06-10 16:17:53] -- [download 32% complete]
+[2026-06-10 16:17:53] -- [download 33% complete]
+[2026-06-10 16:17:53] -- [download 34% complete]
+[2026-06-10 16:17:53] -- [download 35% complete]
+[2026-06-10 16:17:53] -- [download 36% complete]
+[2026-06-10 16:17:53] -- [download 37% complete]
+[2026-06-10 16:17:53] [ 62%] Built target opbase_infer_objs
+[2026-06-10 16:17:53] -- [download 38% complete]
+[2026-06-10 16:17:53] -- [download 39% complete]
+[2026-06-10 16:17:53] -- [download 40% complete]
+[2026-06-10 16:17:53] -- [download 41% complete]
+[2026-06-10 16:17:53] -- [download 42% complete]
+[2026-06-10 16:17:53] -- [download 43% complete]
+[2026-06-10 16:17:53] -- [download 44% complete]
+[2026-06-10 16:17:53] -- [download 45% complete]
+[2026-06-10 16:17:53] -- [download 46% complete]
+[2026-06-10 16:17:53] -- [download 47% complete]
+[2026-06-10 16:17:53] -- [download 48% complete]
+[2026-06-10 16:17:53] -- [download 49% complete]
+[2026-06-10 16:17:53] -- [download 50% complete]
+[2026-06-10 16:17:53] -- [download 51% complete]
+[2026-06-10 16:17:53] -- [download 52% complete]
+[2026-06-10 16:17:53] -- [download 53% complete]
+[2026-06-10 16:17:53] -- [download 54% complete]
+[2026-06-10 16:17:53] -- [download 55% complete]
+[2026-06-10 16:17:53] -- [download 56% complete]
+[2026-06-10 16:17:53] -- [download 57% complete]
+[2026-06-10 16:17:53] -- [download 58% complete]
+[2026-06-10 16:17:53] -- [download 59% complete]
+[2026-06-10 16:17:53] -- [download 60% complete]
+[2026-06-10 16:17:53] -- [download 61% complete]
+[2026-06-10 16:17:53] -- [download 62% complete]
+[2026-06-10 16:17:53] -- [download 63% complete]
+[2026-06-10 16:17:53] -- [download 64% complete]
+[2026-06-10 16:17:53] -- [download 65% complete]
+[2026-06-10 16:17:53] -- [download 66% complete]
+[2026-06-10 16:17:53] -- [download 67% complete]
+[2026-06-10 16:17:53] -- [download 68% complete]
+[2026-06-10 16:17:53] -- [download 69% complete]
+[2026-06-10 16:17:53] -- [download 70% complete]
+[2026-06-10 16:17:53] -- [download 71% complete]
+[2026-06-10 16:17:53] -- [download 72% complete]
+[2026-06-10 16:17:53] -- [download 73% complete]
+[2026-06-10 16:17:53] -- [download 74% complete]
+[2026-06-10 16:17:53] -- [download 75% complete]
+[2026-06-10 16:17:53] -- [download 76% complete]
+[2026-06-10 16:17:54] -- [download 77% complete]
+[2026-06-10 16:17:54] -- [download 78% complete]
+[2026-06-10 16:17:54] -- [download 79% complete]
+[2026-06-10 16:17:54] -- [download 80% complete]
+[2026-06-10 16:17:54] -- [download 81% complete]
+[2026-06-10 16:17:54] -- [download 82% complete]
+[2026-06-10 16:17:54] -- [download 83% complete]
+[2026-06-10 16:17:54] -- [download 84% complete]
+[2026-06-10 16:17:54] -- [download 85% complete]
+[2026-06-10 16:17:54] -- [download 86% complete]
+[2026-06-10 16:17:54] -- [download 87% complete]
+[2026-06-10 16:17:54] -- [download 88% complete]
+[2026-06-10 16:17:54] -- [download 89% complete]
+[2026-06-10 16:17:54] -- [download 90% complete]
+[2026-06-10 16:17:54] -- [download 91% complete]
+[2026-06-10 16:17:54] -- [download 92% complete]
+[2026-06-10 16:17:54] -- [download 93% complete]
+[2026-06-10 16:17:54] -- [download 94% complete]
+[2026-06-10 16:17:54] -- [download 95% complete]
+[2026-06-10 16:17:54] -- [download 96% complete]
+[2026-06-10 16:17:54] -- [download 97% complete]
+[2026-06-10 16:17:54] -- [download 98% complete]
+[2026-06-10 16:17:54] -- [download 99% complete]
+[2026-06-10 16:17:54] -- [download 100% complete]
+[2026-06-10 16:17:54] -- Downloading... done
+[2026-06-10 16:17:54] -- extracting...
+[2026-06-10 16:17:54]      src='/mnt/workspace/errmsg/third_party/protobuf/protobuf-25.1.tar.gz'
+[2026-06-10 16:17:54]      dst='/mnt/workspace/errmsg/third_party/protobuf-src'
+[2026-06-10 16:17:54] -- extracting... [tar xfz]
+[2026-06-10 16:17:54] [ 62%] Built target opbase_tiling_objs
+[2026-06-10 16:17:54] -- [download 1% complete]
+[2026-06-10 16:17:54] -- [download 2% complete]
+[2026-06-10 16:17:54]   Installing build dependencies: finished with status 'done'
+[2026-06-10 16:17:54]   Getting requirements to build wheel: started
+[2026-06-10 16:17:54] -- extracting... [analysis]
+[2026-06-10 16:17:54] -- extracting... [rename]
+[2026-06-10 16:17:54] -- [download 3% complete]
+[2026-06-10 16:17:54] -- [download 4% complete]
+[2026-06-10 16:17:54] -- [download 5% complete]
+[2026-06-10 16:17:54] -- extracting... [clean up]
+[2026-06-10 16:17:54] -- extracting... done
+[2026-06-10 16:17:54] [ 62%] No update step for 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 6% complete]
+[2026-06-10 16:17:54] [ 63%] Performing patch step for 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 7% complete]
+[2026-06-10 16:17:54] patching file CMakeLists.txt
+[2026-06-10 16:17:54] patching file cmake/abseil-cpp.cmake
+[2026-06-10 16:17:54] patching file src/google/protobuf/arenastring.cc
+[2026-06-10 16:17:54] patching file src/google/protobuf/arenastring.h
+[2026-06-10 16:17:54] patching file src/google/protobuf/compiler/cpp/field_generators/string_field.cc
+[2026-06-10 16:17:54] patching file src/google/protobuf/compiler/cpp/helpers.cc
+[2026-06-10 16:17:54] patching file src/google/protobuf/compiler/cpp/helpers.h
+[2026-06-10 16:17:54] patching file src/google/protobuf/compiler/csharp/csharp_helpers.cc
+[2026-06-10 16:17:54] patching file src/google/protobuf/compiler/java/names.cc
+[2026-06-10 16:17:54] patching file src/google/protobuf/extension_set.h
+[2026-06-10 16:17:54] patching file src/google/protobuf/message_lite.h
+[2026-06-10 16:17:54] patching file src/google/protobuf/port_def.inc
+[2026-06-10 16:17:54] patching file src/google/protobuf/stubs/common.cc
+[2026-06-10 16:17:54] patching file third_party/utf8_range/CMakeLists.txt
+[2026-06-10 16:17:54] [ 64%] No configure step for 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 8% complete]
+[2026-06-10 16:17:54] [ 65%] No build step for 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 9% complete]
+[2026-06-10 16:17:54] [ 65%] No install step for 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 10% complete]
+[2026-06-10 16:17:54] -- [download 11% complete]
+[2026-06-10 16:17:54] [ 65%] Completed 'protobuf_src'
+[2026-06-10 16:17:54] -- [download 12% complete]
+[2026-06-10 16:17:54] [ 65%] Built target protobuf_src
+[2026-06-10 16:17:54] -- [download 13% complete]
+[2026-06-10 16:17:54] -- [download 14% complete]
+[2026-06-10 16:17:54] [ 67%] Creating directories for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 15% complete]
+[2026-06-10 16:17:54] -- [download 16% complete]
+[2026-06-10 16:17:54] -- [download 17% complete]
+[2026-06-10 16:17:54] [ 68%] No download step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 18% complete]
+[2026-06-10 16:17:54] -- [download 19% complete]
+[2026-06-10 16:17:54] [ 68%] No update step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 20% complete]
+[2026-06-10 16:17:54] [ 69%] No patch step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 21% complete]
+[2026-06-10 16:17:54] -- [download 22% complete]
+[2026-06-10 16:17:54] [ 70%] No configure step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 23% complete]
+[2026-06-10 16:17:54] [ 70%] No build step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 24% complete]
+[2026-06-10 16:17:54] [ 70%] Performing install step for 'protobuf_headers_only_build'
+[2026-06-10 16:17:54] -- [download 25% complete]
+[2026-06-10 16:17:54] -- [download 26% complete]
+[2026-06-10 16:17:54] -- [download 27% complete]
+[2026-06-10 16:17:54] -- [download 28% complete]
+[2026-06-10 16:17:54] -- [download 29% complete]
+[2026-06-10 16:17:54] -- [download 30% complete]
+[2026-06-10 16:17:54] -- [download 31% complete]
+[2026-06-10 16:17:54] -- [download 32% complete]
+[2026-06-10 16:17:54] -- [download 33% complete]
+[2026-06-10 16:17:54] -- [download 34% complete]
+[2026-06-10 16:17:54]   Getting requirements to build wheel: finished with status 'done'
+[2026-06-10 16:17:54] -- [download 35% complete]
+[2026-06-10 16:17:54]   Preparing metadata (pyproject.toml): started
+[2026-06-10 16:17:54] -- [download 36% complete]
+[2026-06-10 16:17:54] -- [download 37% complete]
+[2026-06-10 16:17:54] -- [download 38% complete]
+[2026-06-10 16:17:54] -- [download 39% complete]
+[2026-06-10 16:17:54] -- [download 40% complete]
+[2026-06-10 16:17:54] -- [download 41% complete]
+[2026-06-10 16:17:54] -- [download 42% complete]
+[2026-06-10 16:17:54] -- [download 43% complete]
+[2026-06-10 16:17:54] -- [download 44% complete]
+[2026-06-10 16:17:54] -- [download 45% complete]
+[2026-06-10 16:17:54] -- [download 46% complete]
+[2026-06-10 16:17:54] -- [download 47% complete]
+[2026-06-10 16:17:54] -- [download 48% complete]
+[2026-06-10 16:17:54] -- [download 49% complete]
+[2026-06-10 16:17:54] -- [download 50% complete]
+[2026-06-10 16:17:54] -- [download 51% complete]
+[2026-06-10 16:17:54] -- [download 52% complete]
+[2026-06-10 16:17:54] -- [download 53% complete]
+[2026-06-10 16:17:54] -- [download 54% complete]
+[2026-06-10 16:17:54] -- [download 55% complete]
+[2026-06-10 16:17:54] -- [download 56% complete]
+[2026-06-10 16:17:54] -- [download 57% complete]
+[2026-06-10 16:17:54] -- [download 58% complete]
+[2026-06-10 16:17:54] -- [download 59% complete]
+[2026-06-10 16:17:54] -- [download 60% complete]
+[2026-06-10 16:17:54]   Preparing metadata (pyproject.toml): finished with status 'done'
+[2026-06-10 16:17:54] Building wheels for collected packages: es_math
+[2026-06-10 16:17:54]   Building wheel for es_math (pyproject.toml): started
+[2026-06-10 16:17:54] -- [download 61% complete]
+[2026-06-10 16:17:54] -- [download 62% complete]
+[2026-06-10 16:17:54] -- [download 63% complete]
+[2026-06-10 16:17:54] -- [download 64% complete]
+[2026-06-10 16:17:54] -- [download 65% complete]
+[2026-06-10 16:17:54] -- [download 66% complete]
+[2026-06-10 16:17:54] -- [download 67% complete]
+[2026-06-10 16:17:54] -- [download 68% complete]
+[2026-06-10 16:17:54] -- [download 69% complete]
+[2026-06-10 16:17:54] -- [download 70% complete]
+[2026-06-10 16:17:54] -- [download 71% complete]
+[2026-06-10 16:17:54] -- [download 72% complete]
+[2026-06-10 16:17:54] -- [download 73% complete]
+[2026-06-10 16:17:54] -- [download 74% complete]
+[2026-06-10 16:17:54] -- [download 75% complete]
+[2026-06-10 16:17:54] -- [download 76% complete]
+[2026-06-10 16:17:54] -- [download 77% complete]
+[2026-06-10 16:17:54] -- [download 78% complete]
+[2026-06-10 16:17:54] -- [download 79% complete]
+[2026-06-10 16:17:54] -- [download 80% complete]
+[2026-06-10 16:17:54] -- [download 81% complete]
+[2026-06-10 16:17:54] -- [download 82% complete]
+[2026-06-10 16:17:54] -- [download 83% complete]
+[2026-06-10 16:17:54] -- [download 84% complete]
+[2026-06-10 16:17:54] -- [download 85% complete]
+[2026-06-10 16:17:54] -- [download 86% complete]
+[2026-06-10 16:17:54] -- [download 87% complete]
+[2026-06-10 16:17:54] -- [download 88% complete]
+[2026-06-10 16:17:54] -- [download 89% complete]
+[2026-06-10 16:17:54] -- [download 90% complete]
+[2026-06-10 16:17:54] -- [download 91% complete]
+[2026-06-10 16:17:54] -- [download 92% complete]
+[2026-06-10 16:17:54] -- [download 93% complete]
+[2026-06-10 16:17:54] -- [download 94% complete]
+[2026-06-10 16:17:54] -- [download 95% complete]
+[2026-06-10 16:17:54] -- [download 96% complete]
+[2026-06-10 16:17:54] -- [download 97% complete]
+[2026-06-10 16:17:54] -- [download 98% complete]
+[2026-06-10 16:17:54] -- [download 99% complete]
+[2026-06-10 16:17:54] -- [download 100% complete]
+[2026-06-10 16:17:54] -- Downloading... done
+[2026-06-10 16:17:54] -- extracting...
+[2026-06-10 16:17:54]      src='/mnt/workspace/errmsg/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-06-10 16:17:54]      dst='/mnt/workspace/errmsg/build/third_party/src/external_eigen'
+[2026-06-10 16:17:54] -- extracting... [tar xfz]
+[2026-06-10 16:17:54] -- extracting... [analysis]
+[2026-06-10 16:17:54] -- extracting... [rename]
+[2026-06-10 16:17:55] -- extracting... [clean up]
+[2026-06-10 16:17:55] -- extracting... done
+[2026-06-10 16:17:55]   Building wheel for es_math (pyproject.toml): finished with status 'done'
+[2026-06-10 16:17:55]   Created wheel for es_math: filename=es_math-1.0.0-py3-none-any.whl size=3844 sha256=a6e9d809e8209efc3f4e8a2b883f38c5a36ec31e036c4c7026de96d171f57282
+[2026-06-10 16:17:55]   Stored in directory: /tmp/pip-ephem-wheel-cache-16t9grkg/wheels/59/0b/38/8084aebcbf19106a3c2377e1a8f9f2150b699a721e24d65e53
+[2026-06-10 16:17:55] Successfully built es_math
+[2026-06-10 16:17:55] [ 71%] No update step for 'external_eigen'
+[2026-06-10 16:17:55] [ 72%] No patch step for 'external_eigen'
+[2026-06-10 16:17:55] [ 73%] Performing configure step for 'external_eigen'
+[2026-06-10 16:17:55] -- The C compiler identification is GNU 9.4.0
+[2026-06-10 16:17:55] [ 73%] Built target generate_es_math_whl
+[2026-06-10 16:17:55] [ 75%] Installing ES package 'es_math' to /mnt/workspace/errmsg/build/es_packages_math
+[2026-06-10 16:17:55] Installing ES package: es_math
+[2026-06-10 16:17:55] -- Copied header: es_Transpose.h
+[2026-06-10 16:17:55] -- Copied header: es_Transpose_c.h
+[2026-06-10 16:17:55] -- Copied header: es_log.h
+[2026-06-10 16:17:55] -- Copied header: es_math_ops.h
+[2026-06-10 16:17:55] -- Copied header: es_math_ops_c.h
+[2026-06-10 16:17:55] -- Copied wheel: es_math-1.0.0-py3-none-any.whl
+[2026-06-10 16:17:55] [ 75%] Built target install_es_math
+[2026-06-10 16:17:55] [ 75%] ES package 'es_math' build completed (single-file mode)
+[2026-06-10 16:17:55] [ 75%] Built target build_es_math
+[2026-06-10 16:17:55] -- The CXX compiler identification is GNU 9.4.0
+[2026-06-10 16:17:55] [ 76%] ES package 'es_transformer_cust' build completed (single-file mode)
+[2026-06-10 16:17:55] -- Detecting C compiler ABI info
+[2026-06-10 16:17:55] [ 76%] Built target build_es_transformer_cust
+[2026-06-10 16:17:55] -- Detecting C compiler ABI info - done
+[2026-06-10 16:17:55] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-10 16:17:55] -- Detecting C compile features
+[2026-06-10 16:17:55] -- Detecting C compile features - done
+[2026-06-10 16:17:55] -- Detecting CXX compiler ABI info
+[2026-06-10 16:17:55] -- Detecting CXX compiler ABI info - done
+[2026-06-10 16:17:55] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-10 16:17:55] -- Detecting CXX compile features
+[2026-06-10 16:17:55] -- Detecting CXX compile features - done
+[2026-06-10 16:17:55] -- The Fortran compiler identification is unknown
+[2026-06-10 16:17:55] -- Performing Test standard_math_library_linked_to_automatically
+[2026-06-10 16:17:55] -- Performing Test standard_math_library_linked_to_automatically - Success
+[2026-06-10 16:17:55] -- Standard libraries to link to explicitly: none
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_WERROR
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_WERROR - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_pedantic
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_pedantic - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wall
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wall - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wextra
+[2026-06-10 16:17:55] [ 77%] Completed 'protobuf_headers_only_build'
+[2026-06-10 16:17:55] [ 77%] Built target protobuf_headers_only_build
+[2026-06-10 16:17:55] [ 77%] Built target protobuf_headers_target
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wextra - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wundef
+[2026-06-10 16:17:55] [ 78%] Running C++ protocol buffer compiler on /home/developer/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+[2026-06-10 16:17:55] generate proto cpp_out onnx by /home/developer/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wundef - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wcastalign
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wcastalign - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wpointerarith
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wpointerarith - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wwritestrings
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wwritestrings - Success
+[2026-06-10 16:17:55] -- Performing Test COMPILER_SUPPORT_Wformatsecurity
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wformatsecurity - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wshorten64to32
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wshorten64to32 - Failed
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wlogicalop
+[2026-06-10 16:17:56] [ 78%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/embedding_bag_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 79%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/fillwindowcache_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 80%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/multi_head_attention_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 80%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_fwd_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 81%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_masked_softmax_with_relposbias_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 82%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 84%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/tfidf_vectorizer_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 84%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_scaled_masked_softmax_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] [ 85%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/__/__/__/attention/flash_attention_score/framework/npu_flash_attention_score_onnx_plugin.cpp.o
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wlogicalop - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wenumconversion
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wenumconversion - Failed
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions - Failed
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wshadow
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wshadow - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnopsabi
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnopsabi - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnolonglong
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_Wnolonglong - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fnocommon
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fnocommon - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fstrictaliasing
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fstrictaliasing - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_wd981
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_wd981 - Failed
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_wd2304
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_wd2304 - Failed
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fnochecknew
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_fnochecknew - Success
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_OPENMP
+[2026-06-10 16:17:56] -- Performing Test COMPILER_SUPPORT_OPENMP - Success
+[2026-06-10 16:17:56] -- Looking for pthread.h
+[2026-06-10 16:17:56] -- Looking for pthread.h - found
+[2026-06-10 16:17:56] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[2026-06-10 16:17:56] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+[2026-06-10 16:17:56] -- Looking for pthread_create in pthreads
+[2026-06-10 16:17:56] -- Looking for pthread_create in pthreads - not found
+[2026-06-10 16:17:56] -- Looking for pthread_create in pthread
+[2026-06-10 16:17:56] -- Looking for pthread_create in pthread - found
+[2026-06-10 16:17:56] -- Found Threads: TRUE  
+[2026-06-10 16:17:56] -- Could NOT find CHOLMOD (missing: CHOLMOD_INCLUDES CHOLMOD_LIBRARIES) 
+[2026-06-10 16:17:56] -- Could NOT find UMFPACK (missing: UMFPACK_INCLUDES UMFPACK_LIBRARIES) 
+[2026-06-10 16:17:56] -- Could NOT find KLU (missing: KLU_INCLUDES KLU_LIBRARIES) 
+[2026-06-10 16:17:56] -- Could NOT find SuperLU (missing: SUPERLU_INCLUDES SUPERLU_LIBRARIES SUPERLU_VERSION_OK) (Required is at least version "4.0")
+[2026-06-10 16:17:56] -- Checking for one of the modules 'hwloc'
+[2026-06-10 16:17:56] -- Performing Test HAVE_HWLOC_PARENT_MEMBER
+[2026-06-10 16:17:56] -- Performing Test HAVE_HWLOC_PARENT_MEMBER - Success
+[2026-06-10 16:17:56] -- Performing Test HAVE_HWLOC_CACHE_ATTR
+[2026-06-10 16:17:57] -- Performing Test HAVE_HWLOC_CACHE_ATTR - Success
+[2026-06-10 16:17:57] -- Performing Test HAVE_HWLOC_OBJ_PU
+[2026-06-10 16:17:57] -- Performing Test HAVE_HWLOC_OBJ_PU - Success
+[2026-06-10 16:17:57] -- Looking for hwloc_bitmap_free in hwloc
+[2026-06-10 16:17:57] -- Looking for hwloc_bitmap_free in hwloc - found
+[2026-06-10 16:17:57] -- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+[2026-06-10 16:17:57] -- Could NOT find SPQR (missing: SPQR_INCLUDES SPQR_LIBRARIES) 
+[2026-06-10 16:17:57] -- Could NOT find Accelerate (missing: Accelerate_INCLUDES Accelerate_LIBRARIES) 
+[2026-06-10 16:17:57] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-10 16:17:57] -- Performing Test COMPILER_SUPPORT_FASTMATH
+[2026-06-10 16:17:57] -- Performing Test COMPILER_SUPPORT_FASTMATH - Success
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-10 16:17:57] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-10 16:17:57] -- ************************************************************
+[2026-06-10 16:17:57] -- ***    Eigen's unit tests configuration summary          ***
+[2026-06-10 16:17:57] -- ************************************************************
+[2026-06-10 16:17:57] -- 
+[2026-06-10 16:17:57] -- Build type:        Release
+[2026-06-10 16:17:57] -- Build site:        ea7dd44a051e4ca28c7799ee31116922
+[2026-06-10 16:17:57] -- Build string:      linux-5.10.0-182.0.0.95.r2220_156.hce2.aarch64-_-9.4.0-sse2-64bit
+[2026-06-10 16:17:57] -- Enabled backends:  Boost.Multiprecision, 
+[2026-06-10 16:17:57] -- Disabled backends: CHOLMOD,  UMFPACK,  KLU,  SuperLU,  PaStiX,  METIS,  SPQR,  Accelerate,  Qt4 support, 
+[2026-06-10 16:17:57] -- Default order:     Column-major
+[2026-06-10 16:17:57] -- Maximal matrix/vector size: 320
+[2026-06-10 16:17:57] -- SSE2:              Using architecture defaults
+[2026-06-10 16:17:57] -- SSE3:              Using architecture defaults
+[2026-06-10 16:17:57] -- SSSE3:             Using architecture defaults
+[2026-06-10 16:17:57] -- SSE4.1:            Using architecture defaults
+[2026-06-10 16:17:57] -- SSE4.2:            Using architecture defaults
+[2026-06-10 16:17:57] -- AVX:               Using architecture defaults
+[2026-06-10 16:17:57] -- AVX2:              Using architecture defaults
+[2026-06-10 16:17:57] -- FMA:               Using architecture defaults
+[2026-06-10 16:17:57] -- AVX512:            Using architecture defaults
+[2026-06-10 16:17:57] -- AVX512DQ:          Using architecture defaults
+[2026-06-10 16:17:57] -- Altivec:           Using architecture defaults
+[2026-06-10 16:17:57] -- VSX:               Using architecture defaults
+[2026-06-10 16:17:57] -- MIPS MSA:          Using architecture defaults
+[2026-06-10 16:17:57] -- ARM NEON:          Using architecture defaults
+[2026-06-10 16:17:57] -- ARMv8 NEON:        Using architecture defaults
+[2026-06-10 16:17:57] -- S390X ZVECTOR:     Using architecture defaults
+INFO  DUCCFFT-NOTFOUND
+[2026-06-10 16:17:57] -- LSX:               Using architecture defaults
+[2026-06-10 16:17:57] -- SYCL:              OFF
+[2026-06-10 16:17:57] -- CUDA:              OFF
+[2026-06-10 16:17:57] -- HIP:               OFF
+[2026-06-10 16:17:57] -- 
+[2026-06-10 16:17:57] CXX:               /usr/bin/c++
+[2026-06-10 16:17:57]  CXX_VERSION:       c++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0
+[2026-06-10 16:17:57]  CXX_FLAGS:          -pedantic -Wall -Wextra -Wundef -Wcast-align -Wchar-subscripts -Wnon-virtual-dtor -Wunused-local-typedefs -Wpointer-arith -Wwrite-strings -Wformat-security -Wlogical-op -Wdouble-promotion -Wshadow -Wno-psabi -Wno-variadic-macros -Wno-long-long -fno-common -fstrict-aliasing -fno-check-new
+[2026-06-10 16:17:57]  Sparse lib flags:   
+[2026-06-10 16:17:57] 
+[2026-06-10 16:17:57] -- ************************************************************
+[2026-06-10 16:17:57] -- Could NOT find GoogleHash (missing: GOOGLEHASH_INCLUDES GOOGLEHASH_COMPILE) 
+[2026-06-10 16:17:57] -- Could NOT find Adolc (missing: ADOLC_INCLUDES ADOLC_LIBRARIES) 
+[2026-06-10 16:17:57] -- Could NOT find MPFR (missing: MPFR_INCLUDES MPFR_LIBRARIES MPFR_VERSION_OK) (Required is at least version "1.0.0")
+[2026-06-10 16:17:57] -- Found PkgConfig: /usr/bin/pkg-config (found version "0.29.1") 
+[2026-06-10 16:17:57] -- Could NOT find FFTW (missing: FFTW_INCLUDES FFTW_LIBRARIES) 
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-10 16:17:57] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-10 16:17:57] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-10 16:17:57] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-10 16:17:57] -- Qt4 not found, so disabling the mandelbrot and opengl demos
+[2026-06-10 16:17:57] -- Available targets (use: make TARGET):
+[2026-06-10 16:17:57] -- ------------+--------------------------------------------------------------
+[2026-06-10 16:17:57] -- Target      |   Description
+[2026-06-10 16:17:57] -- ------------+--------------------------------------------------------------
+[2026-06-10 16:17:57] -- install     | Install Eigen. Headers will be installed to:
+[2026-06-10 16:17:57] --             |     <CMAKE_INSTALL_PREFIX>/<INCLUDE_INSTALL_DIR>
+[2026-06-10 16:17:57] --             |   Using the following values:
+[2026-06-10 16:17:57] --             |     CMAKE_INSTALL_PREFIX: /usr/local
+[2026-06-10 16:17:57] --             |     INCLUDE_INSTALL_DIR:  include/eigen3
+[2026-06-10 16:17:57] --             |   Change the install location of Eigen headers using:
+[2026-06-10 16:17:57] --             |     cmake . -DCMAKE_INSTALL_PREFIX=yourprefix
+[2026-06-10 16:17:57] --             |   Or:
+[2026-06-10 16:17:57] --             |     cmake . -DINCLUDE_INSTALL_DIR=yourdir
+[2026-06-10 16:17:57] -- uninstall   | Remove files installed by the install target
+[2026-06-10 16:17:57] -- doc         | Generate the API documentation, requires Doxygen & LaTeX
+[2026-06-10 16:17:57] -- install-doc | Install the API documentation
+[2026-06-10 16:17:57] -- check       | Build and run the unit-tests. Read this page:
+[2026-06-10 16:17:57] --             |   http://eigen.tuxfamily.org/index.php?title=Tests
+[2026-06-10 16:17:57] -- ------------+--------------------------------------------------------------
+[2026-06-10 16:17:57] -- 
+[2026-06-10 16:17:57] -- 
+[2026-06-10 16:17:57] -- Configured Eigen 5.0.0-dev
+[2026-06-10 16:17:57] -- 
+[2026-06-10 16:17:57] -- Configuring done
+[2026-06-10 16:17:58] [ 85%] Built target oponnx_plugin_transformer_obj
+[2026-06-10 16:17:59] -- Generating done
+[2026-06-10 16:17:59] -- Build files have been written to: /mnt/workspace/errmsg/build/third_party/src/external_eigen-build
+[2026-06-10 16:17:59] [ 85%] No build step for 'external_eigen'
+[2026-06-10 16:17:59] [ 85%] Performing install step for 'external_eigen'
+[2026-06-10 16:17:59] [ 86%] Completed 'external_eigen'
+[2026-06-10 16:17:59] [ 86%] Built target external_eigen
+In file included from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:21,
+                 from /mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h: In member function ‘void optiling::InputParamsRegbase::set_antiquantPageAttentionFlag(uint8_t)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:289:5: warning: declaration of ‘antiquantPageAttentionFlag’ shadows a member of ‘optiling::InputParamsRegbase’ [-Wshadow]
+  289 |     {
+      |     ^
+/mnt/workspace/errmsg/attention/flash_attention_score/op_host/arch35/../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h:136:13: note: shadowed declaration is here
+  136 |     uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[2026-06-10 16:17:59] [ 86%] Built target ophost_transformer_tiling_obj
+[2026-06-10 16:17:59] [ 88%] Building CXX object CMakeFiles/cust_proto.dir/autogen/updateproto/flash_attention_score_proto.cpp.o
+[2026-06-10 16:17:59] [ 88%] Linking CXX shared library libcust_opmaster_rt2.0.so
+/mnt/workspace/errmsg/build/autogen/updateproto/flash_attention_score_proto.cpp:113:1: warning: macro "FLASH_ATTENTION_SCORE_PROTO_H_" is not used [-Wunused-macros]
+  113 | }  // namespace ge
+      | ^
+[2026-06-10 16:17:59] [ 89%] Linking CXX shared library libcust_opsproto_rt2.0.so
+[2026-06-10 16:18:00] [ 89%] Built target cust_proto
+[2026-06-10 16:18:00] [ 89%] Built target cust_opmaster
+[2026-06-10 16:18:00] [ 89%] Generating compat/liboptiling.so
+[2026-06-10 16:18:00] [ 89%] Built target optiling_compat
+[2026-06-10 16:18:00] [ 89%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_6.done
+[2026-06-10 16:18:00] [ 90%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_0.done
+[2026-06-10 16:18:00] [ 92%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_7.done
+[2026-06-10 16:18:00] [ 93%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_1.done
+[2026-06-10 16:18:00] [ 93%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_2.done
+[2026-06-10 16:18:00] [ 93%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_3.done
+[2026-06-10 16:18:00] [ 94%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_8.done
+[2026-06-10 16:18:00] [ 95%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_4.done
+[2026-06-10 16:18:00] [ 96%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_5.done
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_2713efb6da0b1818de4e336c9b1a5797 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_f13062768a34c80f914d861d804e1dd9 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_9d6a04df15c0ec6754a9d9860ceb8208 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_643870ea4f8bc6c1e93de65cf55d3f9f ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_fa7b6be74ff4dd68661d2b32ea199c85 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_ebbad589462def4957c1042c3e292bb3 ...
+[2026-06-10 16:18:00] [ascend950] Generating FlashAttentionScore_569ffd4c4d0d40275bf7583939fbe90c ...
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::InputDtypeCheckQuant(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:470:10: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  470 |     auto outDtype = attentionOut->GetDataType();
+      |          ^~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnQuantFlashAttentionScoreGetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, double, int64_t, int64_t, int64_t, char*, int64_t, aclTensor*, aclTensor*, aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1612:92: warning: unused parameter ‘attenMaskOptional’ [-Wunused-parameter]
+ 1612 |     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
+      |                                                                           ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1614:32: warning: unused parameter ‘preTokens’ [-Wunused-parameter]
+ 1614 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                        ~~~~~~~~^~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1614:51: warning: unused parameter ‘nextTokens’ [-Wunused-parameter]
+ 1614 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                                           ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1615:13: warning: unused parameter ‘sparseMode’ [-Wunused-parameter]
+ 1615 |     int64_t sparseMode, aclTensor *softmaxMaxOut, aclTensor *softmaxSumOut, aclTensor *softmaxOutout,
+      |     ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**, bool)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2023:86: warning: unused parameter ‘softmaxOutOut’ [-Wunused-parameter]
+ 2023 |     const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *softmaxOutOut,
+      |                                                                     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2153:22: warning: unused parameter ‘dropMaskOptional’ [-Wunused-parameter]
+ 2153 |     const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/errmsg/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2157:70: warning: unused parameter ‘keepProb’ [-Wunused-parameter]
+ 2157 |     const aclIntArray *kvStartIdxOptional, double scaleValue, double keepProb,
+      |                                                               ~~~~~~~^~~~~~~~
+[2026-06-10 16:18:00] [ 96%] Built target ophost_transformer_opapi_obj
+[2026-06-10 16:18:00] [ 96%] Generating cust_opapi_stub.cpp
+[2026-06-10 16:18:00] [ 97%] Building CXX object CMakeFiles/cust_opapi.dir/cust_opapi_stub.cpp.o
+[2026-06-10 16:18:00] [ 98%] Linking CXX shared library libcust_opapi.so
+[2026-06-10 16:18:00] [ 98%] Built target cust_opapi
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_569ffd4c4d0d40275bf7583939fbe90c Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_5
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_2713efb6da0b1818de4e336c9b1a5797 Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_6
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_ebbad589462def4957c1042c3e292bb3 Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_fa7b6be74ff4dd68661d2b32ea199c85 Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_4
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_8
+[2026-06-10 16:18:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_f13062768a34c80f914d861d804e1dd9 Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_7
+[2026-06-10 16:18:02] [ascend950] Generating FlashAttentionScore_643870ea4f8bc6c1e93de65cf55d3f9f Done
+[2026-06-10 16:18:02] /usr/bin/make
+[2026-06-10 16:18:02] [ 98%] Built target flash_attention_score_apt_ascend950_3
+[2026-06-10 16:18:12] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:18:12] [ascend950] Generating FlashAttentionScore_9d6a04df15c0ec6754a9d9860ceb8208 Done
+[2026-06-10 16:18:12] /usr/bin/make
+[2026-06-10 16:18:12] [ 98%] Built target flash_attention_score_apt_ascend950_2
+[2026-06-10 16:19:02] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:19:02] [ascend950] Generating FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4 Done
+[2026-06-10 16:19:02] /usr/bin/make
+[2026-06-10 16:19:02] [ 98%] Built target flash_attention_score_apt_ascend950_0
+[2026-06-10 16:19:03] Opc tool start working now, please wait for a moment.
+[2026-06-10 16:19:03] [ascend950] Generating FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5 Done
+[2026-06-10 16:19:03] /usr/bin/make
+[2026-06-10 16:19:03] [ 98%] Built target flash_attention_score_apt_ascend950_1
+[2026-06-10 16:19:03] [ 98%] Built target flash_attention_score_apt_ascend950
+[2026-06-10 16:19:03] [ 98%] Built target flash_attention_score_apt
+[2026-06-10 16:19:03] [100%] Generating binary/ascend950/bin/binary_info_config.json
+[2026-06-10 16:19:03] [100%] Built target ops_config_ascend950
+[2026-06-10 16:19:03] [100%] Built target ops_transformer_config
+[2026-06-10 16:19:03] [100%] Built target ops_transformer_kernel
+[2026-06-10 16:19:03] Run CPack packaging tool...
+[2026-06-10 16:19:03] CPack: Create package using External
+[2026-06-10 16:19:03] CPack: Install projects
+[2026-06-10 16:19:03] CPack: - Run preinstall target for: cann_ops-transformer
+[2026-06-10 16:19:04] CPack: - Install project: cann_ops-transformer []
+[2026-06-10 16:19:05] CPack: Create package
+[2026-06-10 16:19:05] 
+[2026-06-10 16:19:05] About to compress 187492 KB of data...
+[2026-06-10 16:19:05] Adding files to archive named "cann-ops-transformer-custom_linux-aarch64.run"...
+[2026-06-10 16:19:11] CRC: 4057976521
+[2026-06-10 16:19:11] SHA256: 2d7ab0f01d1735fe2d573aabbbf040ed234e129a53e62c3f2c21618ada819523
+[2026-06-10 16:19:11] Skipping md5sum at user request
+[2026-06-10 16:19:11] 
+[2026-06-10 16:19:11] Self-extractable archive "cann-ops-transformer-custom_linux-aarch64.run" successfully created.
+[2026-06-10 16:19:11] Copy /mnt/workspace/errmsg/build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-aarch64.run/cann-ops-transformer-custom_linux-aarch64.run to /mnt/workspace/errmsg/build/
+[2026-06-10 16:19:11] Copy /mnt/workspace/errmsg/build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-aarch64.run/cann-ops-transformer-custom_linux-aarch64.run to /mnt/workspace/errmsg/build_out/
+[2026-06-10 16:19:11] CPack: - package: /mnt/workspace/errmsg/build/cann-ops-transformer-custom_linux-aarch64.run.json generated.
+[2026-06-10 16:19:11] CPack: - package: /mnt/workspace/errmsg/build/cann-ops-transformer-custom_linux-aarch64.run generated.
