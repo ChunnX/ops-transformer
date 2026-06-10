@@ -692,11 +692,15 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     dtype = key.dtype
 
     sparse_idx_3d = sparse_indices[:, :, 0, :]
-    sparse_idx_3d = sparse_idx_3d.clamp(min=0)
+    valid_mask = sparse_idx_3d >= 0
+    sparse_idx_safe = sparse_idx_3d.clamp(min=0)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
-    gather_key = key[batch_idx, sparse_idx_3d, 0, :]
-    gather_key_index = key_index[batch_idx, sparse_idx_3d, 0, :]
+    gather_key = key[batch_idx, sparse_idx_safe, 0, :]
+    gather_key_index = key_index[batch_idx, sparse_idx_safe, 0, :]
+
+    gather_key = gather_key * valid_mask.unsqueeze(-1).to(dtype)
+    gather_key_index = gather_key_index * valid_mask.unsqueeze(-1).to(dtype)
 
     return gather_key.contiguous(), gather_key_index.contiguous()
 
@@ -856,8 +860,11 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Gather rope key
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         if query_rope is not None and key_rope is not None:
+            _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
             gather_key_rope = key_rope[torch.arange(B, device=query.device).view(B, 1, 1),
-                                       sparse_indices[:, :, 0, :].clamp(min=0), 0, :].contiguous()
+                                       _sparse_idx_rope, 0, :].contiguous()
+            _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
+            gather_key_rope = gather_key_rope * _valid_mask_rope
         else:
             gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
 

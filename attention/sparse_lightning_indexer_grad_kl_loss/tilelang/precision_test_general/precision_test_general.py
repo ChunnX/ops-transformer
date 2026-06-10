@@ -187,10 +187,17 @@ def gen_inputs_corrected(case_config, seed=42):
             q_full = torch.cat([query, query_rope], dim=-1)
             k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
             k_full_t = k_full.transpose(-1, -2)
-            bmm1_full = torch.matmul(q_full, k_full_t)
-            bmm1_scaled = bmm1_full.float() * scale_value
-            sm_max_val = bmm1_scaled.max(dim=-1).values
-            sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
+            sm_max_list = []
+            sm_sum_list = []
+            for s1_idx in range(S1):
+                row = torch.matmul(q_full[s1_idx:s1_idx+1], k_full_t)
+                row_scaled = row.float() * scale_value
+                row_max = row_scaled.max(dim=-1).values
+                row_sum = torch.exp(row_scaled - row_max.unsqueeze(-1)).sum(dim=-1)
+                sm_max_list.append(row_max)
+                sm_sum_list.append(row_sum)
+            sm_max_val = torch.cat(sm_max_list, dim=0)
+            sm_sum_val = torch.cat(sm_sum_list, dim=0)
             softmax_max = sm_max_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
             softmax_sum = sm_sum_val.reshape(1, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
             softmax_max = softmax_max.squeeze(0)
@@ -201,10 +208,17 @@ def gen_inputs_corrected(case_config, seed=42):
             q_full = torch.cat([query, query_rope], dim=-1)
             k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
             k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
-            bmm1_full = torch.matmul(q_full, k_full_t)
-            bmm1_scaled = bmm1_full.float() * scale_value
-            sm_max_val = bmm1_scaled.max(dim=-1).values
-            sm_sum_val = torch.exp(bmm1_scaled - sm_max_val.unsqueeze(-1)).sum(dim=-1)
+            sm_max_list = []
+            sm_sum_list = []
+            for s1_idx in range(S1):
+                row = torch.matmul(q_full[:, s1_idx:s1_idx+1], k_full_t)
+                row_scaled = row.float() * scale_value
+                row_max = row_scaled.max(dim=-1).values
+                row_sum = torch.exp(row_scaled - row_max.unsqueeze(-1)).sum(dim=-1)
+                sm_max_list.append(row_max)
+                sm_sum_list.append(row_sum)
+            sm_max_val = torch.cat(sm_max_list, dim=1)
+            sm_sum_val = torch.cat(sm_sum_list, dim=1)
             softmax_max = sm_max_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
             softmax_sum = sm_sum_val.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
 
