@@ -817,21 +817,33 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
+        // 进入 FD 前：彻底排干 AIV 侧 FA 路径上残留的所有流水。
+        // 原因：FD 与 FA 共享同一段 UB（attenMaskBuf↔fdLseMaxUbBuf, stage2OutBuf↔fdSum/Max/LseExp,
+        //       stage1OutBuf↔fdMm2Res/fdReduce/fdOutput），且 FA 写 accumOutGm 后 FD 立即读取该 GM。
+        // 静态 Tensor 模式下没有 TQue 的 EnQue/DeQue 隐式同步保护，必须显式 PipeBarrier 排空：
+        //   - PIPE_MTE2: FA 最后一轮 AttenMaskCopyIn / mm2In 等 MTE2 DMA 可能还在进行
+        //   - PIPE_MTE3: FA 最后一轮 Bmm2ResForFDCopyOut / BroadCastAndCopyOut 写 accumOutGm 的 MTE3 DMA 必须完成
+        //   - PIPE_V   : FA 最后一轮 ProcessVec1/ProcessVec2 的向量运算可能还在 reg/UB 上未刷出
+        //   - PIPE_ALL : 兜底，确保进入 FD 时整个 AIV 流水处于干净状态
+        // 不排空会导致 FD 的 InitBuffers/AllocEventID/FlashDecode 在使用 UB 时遭遇 scalar OOB（errcode 271）
+        // 或 timeout/trap（subErrType 0x4），表现为所有 FD 用例 aicore。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                // 消费并重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+                // 配合后续 FreeEventID 仍能正确等到该 flag
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
+        }
+        // 此时 AIV 侧 FA 残留流水已全部排空，可以安全初始化 FD 的 UB 句柄和事件 ID
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                AscendC::PipeBarrier<PIPE_MTE3>();
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
         // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
         // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
@@ -839,6 +851,10 @@ public:
         //   不会触发 aicore subErrType 0x4 timeout-trap。
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
+        // FD 结束后：排空 FD 主循环可能残留的 UB→GM DMA（CopyFinalResOut 的 MTE3 写）
+        // 防止后续 section 或外层流程读到未完成的 GM 数据。
+        AscendC::PipeBarrier<PIPE_MTE3>();
+        AscendC::PipeBarrier<PIPE_V>();
         AscendC::SyncAll();
         vecFdBlock.FreeEventID();
     }
