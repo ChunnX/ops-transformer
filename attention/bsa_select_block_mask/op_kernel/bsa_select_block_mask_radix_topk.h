@@ -404,6 +404,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         }
 
         WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+        MTE3ToMTE2Sync();
 
         // f. CopyOutHistToWs<false>
         CopyOutHistToWs<false>(numValue_, GetBlockIdx() * numValue_);
