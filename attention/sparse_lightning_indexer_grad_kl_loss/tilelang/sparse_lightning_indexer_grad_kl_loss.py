@@ -33,8 +33,7 @@ def _clear_caches():
 pass_configs = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
+
 }
 
 
@@ -214,7 +213,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
-                        for d_idx in T.Pipelined(d_num_total, num_stages=2):
+                        for d_idx in T.serial(d_num_total):
                             if d_idx < d_num_query:
                                 T.copy(
                                     Query[bz, s1_row, 0:N1, d_idx * k_block:(d_idx + 1) * k_block],
@@ -237,12 +236,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                     GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
                                     GK_L1,
                                 )
-                            T.barrier_all()
-                            if d_idx == 0:
-                                T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=True)
-                            else:
-                                T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True)
-                            T.barrier_all()
+                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                         T.copy(
                             C_L0C,
                             bmm1Res[bz, s1_row, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
@@ -254,7 +248,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
-                        for k_idx in T.Pipelined(d_num_query_index, num_stages=2):
+                        for k_idx in T.serial(d_num_query_index):
                             T.copy(
                                 QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
                                 QI_L1,
@@ -263,12 +257,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GKI_L1,
                             )
-                            T.barrier_all()
-                            if k_idx == 0:
-                                T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=True)
-                            else:
-                                T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True)
-                            T.barrier_all()
+                            T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                         T.copy(
                             C2_L0C,
                             bmm2Res[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
@@ -576,7 +565,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
-                        for n_idx in T.Pipelined(n_num, num_stages=2):
+                        for n_idx in T.serial(n_num):
                             T.copy(
                                 reluGradRes[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 RG_L1,
@@ -585,12 +574,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
                                 GKIT_L1,
                             )
-                            T.barrier_all()
-                            if n_idx == 0:
-                                T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
-                            else:
-                                T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True)
-                            T.barrier_all()
+                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                         T.copy(
                             DQ_L0C,
                             dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
