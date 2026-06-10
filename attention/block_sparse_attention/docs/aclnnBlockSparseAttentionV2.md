@@ -134,8 +134,9 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
-        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
-        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul>
+        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li>
+        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li>
+        </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
