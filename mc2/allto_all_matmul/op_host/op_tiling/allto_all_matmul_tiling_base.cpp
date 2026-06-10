@@ -13,6 +13,7 @@
  * \brief
  */
 #include "allto_all_matmul_tiling_base.h"
+
 #include "mc2_log.h"
 
 using namespace AscendC;
@@ -125,7 +126,7 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
         nowSocVersion = SocVersion::SOC910_93;
     }
     AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                            nowSocVersion, true);
+                                           nowSocVersion, true);
     alltoallMatmulTileFormulate.GetTiling();
     return alltoallMatmulTileFormulate.tilingM_.cutRes;
 }
@@ -184,10 +185,10 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckAlltoAllOutShape(const gert::Tili
     uint64_t outDim0 = allToAllOutShape->GetStorageShape().GetDim(0);
     uint64_t outDim1 = allToAllOutShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(x1Dim0 != (outDim0 * rankDim),
-                    OP_LOGE(opName,
-                            "The x1 first dim should be %ld times of allToAllOUt first dim,"
-                            "but actual the allToAllOut first dim is %lu, the x1 first dim is %lu",
-                            rankDim, outDim0, x1Dim0),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1 and allToAllOut",
+                        (Ops::Base::ToString(x1Shape->GetStorageShape()) + " and " +
+                            Ops::Base::ToString(allToAllOutShape->GetStorageShape())).c_str(),
+                        "The first dim of x1 should be rankSize times of allToAllOut first dim"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

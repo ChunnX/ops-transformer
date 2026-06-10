@@ -432,12 +432,19 @@ protected:
     {
         LocalTensor<SINK_T> sinkCopyInBuf =
             fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
-        uint32_t copySize = Align(constInfo.gSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T))); // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处32
-                                                                                                        // byte对齐
+
         uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
+        DataCopyExtParams sinkCopyParams;
+        sinkCopyParams.blockCount = 1;
+        sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
+        sinkCopyParams.srcStride = 0;
+        sinkCopyParams.dstStride = 0;
+        DataCopyPadExtParams<SINK_T> sinkPadParams;
+        sinkPadParams.isPad = true;
+        sinkPadParams.paddingValue = static_cast<SINK_T>(0);
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-        DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
+        DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 

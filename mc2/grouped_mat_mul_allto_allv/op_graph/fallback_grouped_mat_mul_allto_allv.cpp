@@ -15,16 +15,18 @@
 #include "mc2_common_log.h"
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
-
+#include <cstring>
 namespace fallback
 {
+constexpr size_t K_COMM_MODE = 6;
 // 输入参数和属性的校验
 static ge::graphStatus CheckInputsAndAttrs(
     const gert::Tensor* gmmX,
     const gert::Tensor* gmmWeight,
     const char* group,
     const bool* transGmmWeight,
-    const int64_t* epWorldSize)
+    const int64_t* epWorldSize,
+    const char* commMode)
 {
     OPS_ERR_IF(gmmX == nullptr,
         OP_LOGE_WITH_INVALID_INPUT("GroupedMatMulAlltoAllvFallback", "gmmX"), return ge::GRAPH_FAILED);
@@ -36,7 +38,8 @@ static ge::graphStatus CheckInputsAndAttrs(
         OP_LOGE_WITH_INVALID_INPUT("GroupedMatMulAlltoAllvFallback", "epWorldSize"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(transGmmWeight == nullptr,
         OP_LOGE_WITH_INVALID_INPUT("GroupedMatMulAlltoAllvFallback", "transGmmWeight"), return ge::GRAPH_FAILED);
-
+    OPS_ERR_IF(commMode == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT("GroupedMatMulAlltoAllvFallback", "commMode"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -112,9 +115,10 @@ static ge::graphStatus GroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext*
         GetBool(static_cast<size_t>(ops::GroupedMatMulAlltoAllvAttrIdx::K_TRANS_GMM_WEIGHT));
     const bool* transMmWeight = attrs->
         GetBool(static_cast<size_t>(ops::GroupedMatMulAlltoAllvAttrIdx::K_TRANS_MM_WEIGHT));
+    const char* commMode = attrs->GetStr(static_cast<size_t>(K_COMM_MODE));
 
     // 输入参数和属性的校验
-    ge::graphStatus ret = CheckInputsAndAttrs(gmmX, gmmWeight, group, transGmmWeight, epWorldSize);
+    ge::graphStatus ret = CheckInputsAndAttrs(gmmX, gmmWeight, group, transGmmWeight, epWorldSize, commMode);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -135,14 +139,12 @@ static ge::graphStatus GroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext*
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-
-    // 计算
-    const auto apiRet = EXEC_OPAPI_CMD(aclnnGroupedMatMulAlltoAllv,
+    const auto apiRet = EXEC_OPAPI_CMD(aclnnGroupedMatMulAlltoAllvV2,
                                        gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
-                                       group, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
+                                       group, commMode, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
                                        *transGmmWeight, *transMmWeight, y, mmY);
     OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
-        OP_LOGE("GroupedMatMulAlltoAllvFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
+                OP_LOGE("GroupedMatMulAlltoAllvFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

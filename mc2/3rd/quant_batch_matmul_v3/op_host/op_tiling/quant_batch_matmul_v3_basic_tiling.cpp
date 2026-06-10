@@ -312,8 +312,8 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
 
         OP_TILING_CHECK(inputParams_.batchA > 1 || inputParams_.batchB > 1 || inputParams_.batchC > 1,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
-                            "",
-                            "Cannot support non-continuous M with batch axis."),
+                            (std::to_string(inputParams_.batchA) + ", " + std::to_string(inputParams_.batchB) + ", " + std::to_string(inputParams_.batchC)).c_str(),
+                            "The value of M must be continuous when batch axis is used."),
                         return false);
         return true;
     }
@@ -669,8 +669,8 @@ bool Mc2QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
         }
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseK",
-        "",
-        "Cannot find any valid baseK.");
+        std::to_string(baseK).c_str(),
+        "The value of baseK must be valid.");
     return false;
 }
 

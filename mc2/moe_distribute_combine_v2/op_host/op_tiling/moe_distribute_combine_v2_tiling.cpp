@@ -774,18 +774,18 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
         auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
         OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"elasticInfoDesc"), return false);
         auto elasticInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat()));
-    if (elasticInfoDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elasticInfo", Ops::Base::ToString(elasticInfoDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (elasticInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "elasticInfo format is invalid.");
+            return false;
+        }
     }
     if (isPerformance) {
         auto performanceInfoDesc = context->GetOptionalInputDesc(config.performanceInfoIndex);
- 	    auto performanceInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat()));
-    if (performanceInfoDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "performanceInfoDesc", Ops::Base::ToString(performanceInfoDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        auto performanceInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat()));
+        if (performanceInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "performanceInfoDesc format is invalid.");
+            return false;
+        }
     }
     auto sharedExpertXDesc = context->GetOptionalInputDesc(config.sharedExpertXIndex);
     OP_TILING_CHECK((sharedExpertXDesc != nullptr) &&

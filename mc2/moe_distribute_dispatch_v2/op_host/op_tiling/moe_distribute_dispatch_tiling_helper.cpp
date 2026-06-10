@@ -380,16 +380,16 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
     auto xDesc = context->GetInputDesc(X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
     auto xDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
-    if (xDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xDescFormat).c_str(), "FRACTAL_NZ");
+    if (xDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "x format is invalid.");
         return false;
     }
 
     auto expertIdDesc = context->GetInputDesc(EXPERT_IDS_INDEX);
     OP_TILING_CHECK(expertIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdDesc"), return false);
     auto expertIdDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat()));
-    if (expertIdDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertId", Ops::Base::ToString(expertIdDescFormat).c_str(), "FRACTAL_NZ");
+    if (expertIdDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expertId format is invalid.");
         return false;
     }
 
@@ -397,17 +397,17 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
         OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scalesDesc"), return false);
         auto scalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat()));
-    if (scalesDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "scales", Ops::Base::ToString(scalesDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (scalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "scales format is invalid.");
+            return false;
+        }
     }
 
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc"), return false);
     auto expandXDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
-    if (expandXDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandX", Ops::Base::ToString(expandXDescFormat).c_str(), "FRACTAL_NZ");
+    if (expandXDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expandX format is invalid.");
         return false;
     }
 
@@ -416,17 +416,17 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
         OP_TILING_CHECK(dynamicScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesDesc"), return false);
         auto dynamicScalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(dynamicScalesDesc->GetStorageFormat()));
-    if (dynamicScalesDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "dynamicScales", Ops::Base::ToString(dynamicScalesDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (dynamicScalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "dynamicScales format is invalid.");
+            return false;
+        }
     }
 
     auto expandIdxDesc = context->GetOutputDesc(OUTPUT_EXPAND_IDX_INDEX);
     OP_TILING_CHECK(expandIdxDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandIdxDesc"), return false);
     auto expandIdxDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandIdxDesc->GetStorageFormat()));
-    if (expandIdxDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandIdx", Ops::Base::ToString(expandIdxDescFormat).c_str(), "FRACTAL_NZ");
+    if (expandIdxDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expandIdx format is invalid.");
         return false;
     }
 
@@ -434,24 +434,24 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
     OP_TILING_CHECK(expertTokenNumsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertTokenNumsDesc"),
         return false);
     auto expertTokenNumsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat()));
-    if (expertTokenNumsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertTokenNums", Ops::Base::ToString(expertTokenNumsDescFormat).c_str(), "FRACTAL_NZ");
+    if (expertTokenNumsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expertTokenNums format is invalid.");
         return false;
     }
 
     auto epRecvCountsDesc = context->GetOutputDesc(OUTPUT_EP_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(epRecvCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epRecvCountsDesc"), return false);
     auto epRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(epRecvCountsDesc->GetStorageFormat()));
-    if (epRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epRecvCounts", Ops::Base::ToString(epRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
+    if (epRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "epRecvCounts format is invalid.");
         return false;
     }
 
     auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(tpRecvCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountsDesc"), return false);
     auto tpRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat()));
-    if (tpRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpRecvCounts", Ops::Base::ToString(tpRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
+    if (tpRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "tpRecvCounts format is invalid.");
         return false;
     }
 
@@ -506,8 +506,8 @@ bool MoeDistributeDispatchTilingHelper::CheckTokenMask(const gert::TilingContext
                             Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str()),
                     return false);
     auto xActiveMaskDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat()));
-    if (xActiveMaskDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "xActiveMask", Ops::Base::ToString(xActiveMaskDescFormat).c_str(), "FRACTAL_NZ");
+    if (xActiveMaskDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "xActiveMask format is invalid.");
         return false;
     }
 

@@ -12,12 +12,13 @@
  * \file allto_all_mx_quant_matmul_tiling_base.cpp
  * \brief
  */
-#include "common/utils/op_mc2.h"
-#include "common/utils/mc2_comm_utils.h"
-#include "mc2_log.h"
-#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
-#include "../allto_all_matmul_tiling_base.h"
 #include "allto_all_mx_quant_matmul_tiling_base.h"
+
+#include "../allto_all_matmul_tiling_base.h"
+#include "common/utils/mc2_comm_utils.h"
+#include "common/utils/op_mc2.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "mc2_log.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -139,8 +140,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const int64_t *groupSizePtr = attrs->GetAttrPointer<int64_t>(ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX);
-    OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "groupSize"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "groupSize"), return ge::GRAPH_FAILED);
     uint64_t groupSize = static_cast<uint64_t>(*groupSizePtr);
     OP_LOGI(opName, "groupSize=%lu", groupSize);
     mc2tiling::Mc2MatmulShapeInfo shapeInfo = {context_->GetInputShape(INPUT_X1_INDEX),
@@ -155,15 +155,15 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
     uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
     shapeInfo.isMxfp = true;
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-                    OP_LOGE(opName, "Failed to execute inferGroupSize in mx scene."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) ||
-                        (groupSizeK != MX_SCALE_BLOCK_K),
-                    OP_LOGE_WITH_INVALID_ATTR(opName, "groupSize",
-                        (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
-                         std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]").c_str(),
-                        "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName, "Failed to execute inferGroupSize in mx scene."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) || (groupSizeK != MX_SCALE_BLOCK_K),
+        OP_LOGE_WITH_INVALID_ATTR(opName, "groupSize",
+                                  (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
+                                   std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]")
+                                      .c_str(),
+                                  "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -423,8 +423,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetMxDataTypeInfo(const gert::T
  */
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
@@ -497,18 +497,21 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
     } else {
         hcclDtype = contextInfo_.args_.geAType;
     }
-    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, hcclDtype) ==
-                        mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                                                   static_cast<int32_t>(hcclDtype)),
-                    return ge::GRAPH_FAILED;);
+    OP_TILING_CHECK(
+        mc2tiling::ConvertGeTypeToHcclType(opName_, hcclDtype) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
+        OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(hcclDtype)),
+        return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder allToAllMatmulBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
-    // 根据环境变量判断使用的通信引擎的类型
-    uint8_t hcclServerEngine =
-        Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_CCU ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t hcclServerEngine = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllMatmulBuilder.withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype, hcclDtype)
@@ -585,11 +588,9 @@ ge::graphStatus AlltoAllMxQuantMatmulHelper::GetShapeAttrsInfo()
     auto x1ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x1scale tensor"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x1scale tensor"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x2scale tensor"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x2scale tensor"), return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = x1ScaleTensorDesc->GetDataType();
     inputParams_.perTokenScaleDtype = x2ScaleTensorDesc->GetDataType();
     inputParams_.cDtype = static_cast<ge::DataType>(yDType);
@@ -814,7 +815,12 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
     uint8_t biasDType = DTYPE_BIAS_FP32;
-    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    // 获取commMode
+    uint8_t hcclServerType = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
     OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE: [%d,%d,%d,0,%d], TilingKey is [%lu].",
             MX_QUANT_MODE, x2TransposeFlag, biasDType, hcclServerType, tilingKey);

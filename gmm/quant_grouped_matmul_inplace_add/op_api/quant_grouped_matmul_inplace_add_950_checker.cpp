@@ -21,6 +21,7 @@ template class AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>;
 
 namespace {
 constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAdd";
+constexpr size_t DIM_NUM_2D = 2U;
 
 #define QGMM_INPLACE_ADD_CHECK_REPORT(cond, retExpr, reportExpr) \
     do {                                                         \
@@ -191,7 +192,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         const auto *scaleTensor = GetInputTensor(gmmParams_.scaleOptional, i);
 
         // 校验 scale1 (perTokenScale)
-        if (!(perTokenDimNumber == 1 || perTokenDimNumber == 2)) {
+        if (!(perTokenDimNumber == 1 || perTokenDimNumber == DIM_NUM_2D)) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_,
                                          std::to_string(perTokenDimNumber), "1 or 2");
             return ACLNN_ERR_PARAM_INVALID;
@@ -202,7 +203,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
                 QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_, ViewShapeToString(perTokenScaleTensor),
                 "in T-T/T-C mode, first dim of perTokenScale must be equal to groupnum [" +
                     std::to_string(groupNum) + "]"));
-        if (perTokenDimNumber == 2) {
+        if (perTokenDimNumber == DIM_NUM_2D) {
             auto perTokenLastDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
             QGMM_INPLACE_ADD_CHECK_REPORT(perTokenLastDim == 1, return ACLNN_ERR_PARAM_INVALID,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -210,7 +211,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
                     "in T-T/T-C mode, last dim of perTokenScale must be equal to 1"));
         }
 
-        if (!(scaleDimNumber == 1 || scaleDimNumber == 2)) {
+        if (!(scaleDimNumber == 1 || scaleDimNumber == DIM_NUM_2D)) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, scaleName_,
                                          std::to_string(scaleDimNumber), "1 or 2");
             return ACLNN_ERR_PARAM_INVALID;
@@ -221,7 +222,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
                                                   ViewShapeToString(scaleTensor),
                                                   "in T-T mode, first dim of scale must be equal to groupnum [" +
                                                       std::to_string(groupNum) + "]"));
-        if (scaleDimNumber == 2) {
+        if (scaleDimNumber == DIM_NUM_2D) {
             auto n = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(1);
             auto scaleLastDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1);
             QGMM_INPLACE_ADD_CHECK_REPORT(scaleLastDim == 1 || scaleLastDim == n, return ACLNN_ERR_PARAM_INVALID,

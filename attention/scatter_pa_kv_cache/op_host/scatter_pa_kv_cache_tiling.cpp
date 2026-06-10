@@ -564,26 +564,25 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
     auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
     auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
 
+    bool isViewKCache = context_->InputIsView(DIM_1);
+    bool isViewVCache = context_->InputIsView(DIM_4);
+    if (isViewKCache) {
+        auto *kCacheStride = context_->GetInputStride(DIM_1);
+        if (kCacheStride != nullptr) {
+            params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
+        }
+    }
+    if (isViewVCache) {
+        auto *VCacheStride = context_->GetInputStride(DIM_4);
+        if (VCacheStride != nullptr) {
+            params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
+        }
+    }
     if (params_.templateType == TEMPLATE_NORM_NCT || params_.templateType == TEMPLATE_SISO_NCT) {
         params_.kStride = strides->GetData()[0];
         params_.vStride = strides->GetData()[1];
         params_.kOffset = offsets->GetData()[0];
         params_.vOffset = offsets->GetData()[1];
-        // auto kvCacheStrides = attrs->GetListInt(INPUT_KV_CACHE_STRIDES_INDEX);
-        bool isViewKCache = context_->InputIsView(DIM_1);
-        bool isViewVCache = context_->InputIsView(DIM_4);
-        if (isViewKCache) {
-            auto *kCacheStride = context_->GetInputStride(DIM_1);
-            if (kCacheStride != nullptr) {
-                params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
-            }
-        }
-        if (isViewVCache) {
-            auto *VCacheStride = context_->GetInputStride(DIM_4);
-            if (VCacheStride != nullptr) {
-                params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
-            }
-        }
     }
     return ge::GRAPH_SUCCESS;
 }

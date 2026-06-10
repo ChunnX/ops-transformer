@@ -26,6 +26,12 @@
 
 namespace optiling {
 // ------------------公共定义--------------------------
+enum class DataLayout : uint32_t {
+    BSND = 0,
+    TND = 1,
+    BnBsND = 2
+};
+
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
@@ -34,12 +40,6 @@ struct TilingRequiredParaInfo {
 struct TilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
-};
-
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    BnBsND = 2
 };
 
 // ------------------算子原型索引常量定义----------------
@@ -138,12 +138,12 @@ public:
     int64_t s2Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
+    // Mask
+    int32_t sparseMode = 0;
     // PageAttention
     bool pageAttentionFlag = false;
     int32_t blockSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
-    // Mask
-    int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
     int64_t preTokens = INT64_MAX;
@@ -170,8 +170,8 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                        const std::string &actualSeqLenName) const;
+    ge::graphStatus GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+                                        const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();

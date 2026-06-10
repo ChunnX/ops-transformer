@@ -183,7 +183,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_COMM_QUANT_MODE_INDEX));
 
     OP_TILING_CHECK(CheckCommAttrValuesValid(context, nodeName, groupTp) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "ep/tp attrs", "invalid", "attrs should be valid"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "ep/tp attrs", "invalid", "The value of ep/tp attrs must be valid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*expertShardPtr != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", std::to_string(*expertShardPtr).c_str(), "0"),
         return ge::GRAPH_FAILED);

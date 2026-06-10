@@ -66,6 +66,7 @@ void WeightQuantMatmulAllReduceTiling310P::UpdateCommOffset()
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     weightQuantMatmulAllReduceTilingData_.tilematmulTiling.cubeBlockDimM = 1;

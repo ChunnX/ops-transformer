@@ -44,7 +44,7 @@ if (BUILD_OPEN_PROJECT)
         if(UT_TEST_ALL OR OP_HOST_UT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
-    endif() 
+    endif()
     file(GLOB COMMON_UTILS_SRCS
         utils/mc2_platform_info.cpp
     )

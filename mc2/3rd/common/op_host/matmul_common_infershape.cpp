@@ -511,7 +511,7 @@ bool GetBatchIntersection(
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "batch range",
             (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
              std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
-            "The value of batch range is not supported.");
+            "The value of batch range must be within the supported range.");
         return false;
     }
     return true;
@@ -529,7 +529,7 @@ bool GetKNIntersection(
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "KN range",
             (std::to_string(a.first) + ", " + std::to_string(a.second) + " and " +
              std::to_string(b.first) + ", " + std::to_string(b.second)).c_str(),
-            "The value of KN range is not supported.");
+            "The value of KN range must be within the supported range.");
         return false;
     }
     return true;

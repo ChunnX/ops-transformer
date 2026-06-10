@@ -224,12 +224,15 @@ public:
     {
         uint32_t innerOGmOffset = 0;
         uint32_t innerGOUbOffset = 0;
+        uint32_t blockLen = embedV * sizeof(float);
+        uint32_t blockLenAligned = (blockLen + 31) / 32 * 32;
+        uint32_t srcStride = (embedRoundV * sizeof(float) - blockLenAligned) / 32;
         if (proTokenNum != 0U) {
             AscendC::DataCopyPad(
                 gOutput[innerOGmOffset + proTokenIdx * oHiddenSize],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    proTokenNum, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    proTokenNum, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
             innerOGmOffset += embedV;
             innerGOUbOffset += proTokenNum * embedRoundV;
         }
@@ -238,7 +241,7 @@ public:
                 gOutput[innerOGmOffset],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    qSThisSubBlock, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    qSThisSubBlock, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
             innerOGmOffset += embedV;
             innerGOUbOffset += qSThisSubBlock * embedRoundV;
         }
@@ -247,7 +250,7 @@ public:
                 gOutput[innerOGmOffset],
                 goUbTensor32[innerGOUbOffset],
                 AscendC::DataCopyExtParams(
-                    epiTokenNum, embedV * sizeof(float), 0, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
+                    epiTokenNum, blockLen, srcStride, (oHiddenSize_gmlo - embedV) * sizeof(float), 0));
         }
     }
 
@@ -721,37 +724,41 @@ public:
                         lse32_ubuf_tensor.ReinterpretCast<uint32_t>(),
                         NpuArch::Detail::Alignment::CeilDiv(totalRowNum, FLOAT_BLOCK_SIZE),
                         AscendC::BrcbRepeatParams(1, 8));
-                    InvalidLineLSEProcess(qNThisSubBlock, delStartRow, qSBlockIdx,
-                            inRowOffsetThisSubBlock, totalRowNum, delEndRow, qSeqlen, qSThisSubBlock);
-                    AscendC::PipeBarrier<PIPE_V>();
+                    if (!splitParams.isSplitkv) {
+                        InvalidLineLSEProcess(qNThisSubBlock, delStartRow, qSBlockIdx,
+                                inRowOffsetThisSubBlock, totalRowNum, delEndRow, qSeqlen, qSThisSubBlock);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
-                    
+
                     if (qNThisSubBlock == 0U) {
                         if (splitParams.isSplitkv) {
                             AscendC::DataCopyPad(
                                 splitParams.gCombineLse, tvUbTensor,
                                 AscendC::DataCopyExtParams(
                                     totalRowNum, sizeof(float), 0, (qHeads_gmlse - 1) * sizeof(float), 0));
+                        } else {
+                            AscendC::DataCopyPad(
+                                gLse, tvUbTensor,
+                                AscendC::DataCopyExtParams(
+                                    totalRowNum, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                         }
-                        AscendC::DataCopyPad(
-                            gLse, tvUbTensor,
-                            AscendC::DataCopyExtParams(
-                                totalRowNum, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                     } else {
                         for (uint32_t qNIdx = 0; qNIdx < qNThisSubBlock; qNIdx++) {
                             if (splitParams.isSplitkv) {
                                 AscendC::DataCopyPad(
-                                    splitParams.gCombineLse[qNIdx], 
+                                    splitParams.gCombineLse[qNIdx],
                                     tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
                                     AscendC::DataCopyExtParams(
                                         qSBlockSize, sizeof(float), 0, (qHeads_gmlse - 1) * sizeof(float), 0));
+                            } else {
+                                AscendC::DataCopyPad(
+                                    gLse[qNIdx],
+                                    tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
+                                    AscendC::DataCopyExtParams(
+                                        qSBlockSize, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                             }
-                            AscendC::DataCopyPad(
-                                gLse[qNIdx],
-                                tvUbTensor[qNIdx * qSBlockSize * FLOAT_BLOCK_SIZE],
-                                AscendC::DataCopyExtParams(
-                                    qSBlockSize, sizeof(float), 0, (qHeads - 1) * sizeof(float), 0));
                         }
                     }
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);

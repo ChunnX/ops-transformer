@@ -53,7 +53,10 @@ ge::graphStatus TTQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
 
 uint64_t TTQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
         localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,

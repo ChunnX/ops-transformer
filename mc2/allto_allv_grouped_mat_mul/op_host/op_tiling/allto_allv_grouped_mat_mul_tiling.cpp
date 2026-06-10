@@ -35,6 +35,7 @@ constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t E_MAX_VALUE_NON_QUANT = 48;
 constexpr uint32_t MAX_BSK = 52428800;
 constexpr uint32_t MAX_SHAPE_SIZE = 65536;
+static const size_t ATTR_COMM_MODE_INDEX = 7;
 
 static inline bool IsShapePresent(const gert::StorageShape* shape)
 {
@@ -593,6 +594,36 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* 
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
+    int64_t rankDim = *epWorldSizePtr;
+    const size_t maxLength = 6UL;
+    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (strncmp(commModeStr, "", maxLength) == 0) {
+        if (rankDim <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* context) const
 {
     auto attrs = context->GetAttrs();
@@ -620,18 +651,23 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
-
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint8_t commMode = 0;
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     OP_LOGD(context->GetNodeName(), "CommMode is %u.", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
-
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(), "HCCL init tiling config failed, expected success."),
         return ge::GRAPH_FAILED);
@@ -718,11 +754,15 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    uint8_t commMode = 0;
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;

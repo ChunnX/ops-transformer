@@ -64,12 +64,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     uint64_t timeStamp = NnopbaseMsprofSysTime();

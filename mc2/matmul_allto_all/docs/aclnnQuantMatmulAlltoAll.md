@@ -201,7 +201,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -211,7 +211,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>左矩阵的量化方式。</td>
     <td>根据设备型号对取值有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
-    <td>INT</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>右矩阵的量化方式。</td>
     <td>根据设备型号对取值有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
-    <td>INT</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>低比特通信的量化方式。</td>
     <td>预留参数，当前仅支持配置为0，表示不量化。</td>
-    <td>INT</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>低比特通信的量化类型。</td>
     <td>预留参数，当前仅支持配置为-1，表示ACL_DT_UNDEFINED。</td>
-    <td>INT</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>用于Matmul计算三个方向上的量化分组大小，由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效）。</td>
     <td><ul><li>mx量化场景下仅支持[groupSizeM, groupSizeN, groupSizeK] = [1, 1, 32]，对应的groupSize具体取值详细参见<a href="#约束说明">约束说明</a>。其余量化场景默认配置为0，取值不生效。</li><li>支持参数自动推导，当根据计算公式分解的groupSizeM，groupSizeN，groupSizeK任一或多个参数为0时，算子自动推导这些参数值，具体规则详细参见<a href="#约束说明">约束说明</a></li></ul></td>
-    <td>INT</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -261,7 +261,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>标识左矩阵是否转置过。</td>
     <td>暂不支持配置为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -271,7 +271,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>输入</td>
     <td>标识右矩阵是否转置过。</td>
     <td>配置为True时右矩阵Shape为(H2, H1)。mx量化模式下必须配置为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>output</td>
     <td>输出</td>
     <td>最终的计算结果。</td>
-    <td></td>
+    <td>-</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>2维，shape为(BS*rankSize, H2/rankSize)</td>
@@ -290,8 +290,8 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
-    <td></td>
-    <td>UINT64</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -300,8 +300,8 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td></td>
-    <td>aclOpExecutor*</td>
+    <td>-</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -413,7 +413,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
 
 ## 约束说明
 
-* 默认支持确定性计算。
+* aclnnQuantMatmulAlltoAll默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
@@ -513,7 +513,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。由于CCU通信域存在限制，可能出现HCCL集合通信库自动降级使用AI\_CPU通信引擎从而导致报错的场景，如出现此种报错请使用aclnnMatmulAlltoAllV2接口，并指定commMode参数为ai\_cpu。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。由于CCU通信域存在限制，可能出现HCCL集合通信库自动降级使用AI\_CPU通信引擎从而导致报错的场景，如出现此种报错请使用aclnnQuantMatmulAlltoAllV2接口，并指定commMode参数为ai\_cpu。
 
 ## 调用示例
 

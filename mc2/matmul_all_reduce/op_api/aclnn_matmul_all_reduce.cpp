@@ -55,10 +55,11 @@ aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
-        const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
+        const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn,
+        antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commModePtr), output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduce, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -88,12 +89,7 @@ aclnnStatus aclnnMatmulAllReduce(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);

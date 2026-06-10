@@ -198,7 +198,7 @@ bool MatmulAllReduceCheckShape(
     if (x1->GetViewShape().GetDim(x1_len - 1) != x2->GetViewShape().GetDim(0)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " +
+            std::string("The last dim of x1 must be equal to the first dim of x2, but x2 shape is " +
                 std::string(op::ToString(x2->GetViewShape()).GetString())).c_str());
         return false;
     }
@@ -401,7 +401,7 @@ bool QuantMatmulAllReduceCheckShape(
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("MatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
-            std::string("last dim should equal first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
+            std::string("The last dim of x1 must be equal to the first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
     // output的最后一维与x2的最后一维相同
@@ -535,19 +535,15 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commModePtr),
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -566,6 +562,28 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
     }
     return ret;
+}
+
+// 检查commMode入参是否合法
+bool IsCommModeValid(const char* commModePtr)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (commModePtr == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Its new Aclnn interface for A5, commModePtr should not be nullptr!");
+            return false;
+        }
+        if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "For A5, commMode only support 'ccu', 'ai_cpu' or '', but it is '%s'.", commModePtr);
+    } else {
+        if (commModePtr == nullptr) return true;
+        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "For A2, commMode only support nullptr or '', but it is '%s'.", commModePtr);
+    }
+    return false;
 }
 
 #ifdef __cplusplus

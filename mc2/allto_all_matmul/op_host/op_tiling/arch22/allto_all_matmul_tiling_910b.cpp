@@ -12,14 +12,16 @@
  * \file allto_all_matmul_tiling_910b.cpp
  * \brief
  */
-#include "vector"
-#include "tiling/tiling_api.h"
-#include "mc2_log.h"
+#include "allto_all_matmul_tiling_910b.h"
+
+#include <map>
+
 #include "common/utils/op_mc2.h"
 #include "mc2_hcom_topo_info.h"
+#include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include <map>
-#include "allto_all_matmul_tiling_910b.h"
+#include "tiling/tiling_api.h"
+#include "vector"
 
 using namespace AscendC;
 using namespace ge;
@@ -117,22 +119,22 @@ struct BaseBlock {
     static constexpr size_t size = SIZE / sizeof(T);
 
     static __aicore__ inline size_t Count(size_t len)
-    {
+{
         return (len + size - 1) / size;
     }
 
     static __aicore__ inline bool IsAligned(size_t len)
-    {
+{
         return len % size == 0;
     }
 
     static __aicore__ inline size_t AlignUp(size_t len)
-    {
+{
         return (len + size - 1) & ~(size - 1);
     }
 
     static __aicore__ inline size_t AlignDown(size_t len)
-    {
+{
         return len & ~(size - 1);
     }
 };
@@ -1027,7 +1029,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         std::string dtypeMsg = Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype) +
                                ", " + Ops::Base::ToString(biasDtype) + " and " + Ops::Base::ToString(yDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2, bias and y",
-            dtypeMsg.c_str(), "The dtypes of x1, x2, bias and y are not supported in combination");
+            dtypeMsg.c_str(), "The dtypes of x1, x2, bias and y must be one of the supported combinations.");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -1040,7 +1042,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         std::string dtypeMsg = Ops::Base::ToString(x1Dtype) + ", " + Ops::Base::ToString(x2Dtype) +
                                " and " + Ops::Base::ToString(yDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "x1, x2 and y",
-            dtypeMsg.c_str(), "The dtypes of x1, x2 and y are not supported in combination");
+            dtypeMsg.c_str(), "The dtypes of x1, x2 and y must be one of the supported combinations.");
         return ge::GRAPH_FAILED;
     }
 
@@ -1135,12 +1137,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
             const gert::StorageShape *x1ScaleShape = context_->GetOptionalInputShape(INPUT_X1_SCALE_INDEX);
             uint64_t x1ScaleShapeDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
             uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(0);
-            OP_TILING_CHECK(
-                (x1ScaleDim0 != tokenSize),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
-                    Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                    "The shape of x1Scale dim0 must be " + std::to_string(tokenSize)),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK((x1ScaleDim0 != tokenSize),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
+                                Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
+                                "The dim0 of x1Scale should be " + std::to_string(tokenSize)),
+                            return ge::GRAPH_FAILED);
         }
         const gert::StorageShape *x2ScaleShape = context_->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
         uint64_t x2ScaleShapeDimNum = x2ScaleShape->GetStorageShape().GetDimNum();

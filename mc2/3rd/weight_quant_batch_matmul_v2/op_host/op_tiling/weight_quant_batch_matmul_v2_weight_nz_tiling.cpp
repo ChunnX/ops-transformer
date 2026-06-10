@@ -509,7 +509,9 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeBiasShape(const gert::StorageSh
             bool biasBatchValid = biasWithBatch3 == inputParams_.batchY3 && biasWithBatch2 == inputParams_.batchY2 &&
                                   biasWithBatch1 == inputParams_.batchY1 && biasWithBatch0 == inputParams_.batchY0;
             if (!biasBatchValid) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias batch", "",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "bias batch",
+                    (std::to_string(biasWithBatch0) + "x" + std::to_string(biasWithBatch1) + "x" +
+                     std::to_string(biasWithBatch2) + "x" + std::to_string(biasWithBatch3)).c_str(),
                     "The value of bias batch must be equal to Out.");
                 return false;
             }
@@ -592,7 +594,11 @@ bool Mc2WeightQuantBatchMatmulV2WeightNz::AnalyzeInputShape(
     bool batch0Invalid = inputParams_.batchX0 != inputParams_.batchWeight0 && inputParams_.batchX0 != 1 &&
                          inputParams_.batchWeight0 != 1;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "batch dims", "",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "batch dims",
+            (std::string("x[") + std::to_string(inputParams_.batchX0) + "," + std::to_string(inputParams_.batchX1) +
+             "," + std::to_string(inputParams_.batchX2) + "," + std::to_string(inputParams_.batchX3) +
+             "] weight[" + std::to_string(inputParams_.batchWeight0) + "," + std::to_string(inputParams_.batchWeight1) +
+             "," + std::to_string(inputParams_.batchWeight2) + "," + std::to_string(inputParams_.batchWeight3) + "]").c_str(),
             "The value of batch dims of x and weight must be broadcastable.");
         return false;
     }
@@ -649,14 +655,14 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2WeightNz::GetShapeAttrsInfo()
     OPS_LOG_D(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     OP_TILING_CHECK(
         CheckContext() != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context", "",
-            "The value of context is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context", "check failed",
+            "The value of context must be valid."),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         !AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context info", "",
-            "The value of context info is invalid."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "context info", "check failed",
+            "The value of context info must be valid."),
         return ge::GRAPH_FAILED);
 
     bool maxDimCheck = inputParams_.kSize > MAX_SHAPE_DIM || inputParams_.nSize > MAX_SHAPE_DIM;

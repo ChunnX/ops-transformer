@@ -169,13 +169,16 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckShape()
     inputParams_.aFormat = Mc2GetInputStorageFormat(context_, 0);
     inputParams_.bFormat = Mc2GetInputStorageFormat(context_, 1);
     OP_TILING_CHECK(!CheckInputShape(xShape, weightShape),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x/weight shape", "",
-                        "The shape of x/weight is invalid."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x/weight shape",
+                        (Ops::Base::ToString(xShape->GetStorageShape()) + ", " +
+                         Ops::Base::ToString(weightShape->GetStorageShape())).c_str(),
+                        "The shape of x/weight must be valid."),
                     return false);
     // check antiquant scale, antiquant offset
     OP_TILING_CHECK(!CheckAntiQuantShape(antiQuantScaleShape, antiQuantOffsetShape),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "antiquant shape", "",
-                        "The shape of antiquant is invalid."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "antiquant shape",
+                        Ops::Base::ToString(antiQuantScaleShape->GetStorageShape()).c_str(),
+                        "The shape of antiquant must be valid."),
                     return false);
     // check quant scale, quant offset
     OP_TILING_CHECK(quantScaleShape != nullptr,
@@ -320,18 +323,23 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::Check()
     }
     // check the input and output dtype: x, weight, antiquant_scale, y.
     OP_TILING_CHECK(!CheckDtype(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input dtype", "",
-                        "The dtype of input is invalid."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input dtype",
+                        ge::TypeUtils::DataTypeToAscendString(inputParams_.aDtype).GetString(),
+                        "The dtype of input must be within the supported range."),
                     return ge::GRAPH_FAILED);
     // check attrs: transA, transB, group_size, dtype, innerPrecise
     OP_TILING_CHECK(!CheckAttr(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "attr", "",
-                        "The value of attr is invalid."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "attr",
+                        (std::string(inputParams_.transA ? "transA=true" : "transA=false") + ", " +
+                         std::string(inputParams_.transB ? "transB=true" : "transB=false")).c_str(),
+                        "The value of attr must be within the supported range."),
                     return ge::GRAPH_FAILED);
     // check the input and output shape: all
     OP_TILING_CHECK(!CheckShape(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "shape", "",
-                        "The shape is invalid."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "shape",
+                        (std::to_string(inputParams_.mSize) + "x" + std::to_string(inputParams_.kSize) + ", " +
+                         std::to_string(inputParams_.kSize) + "x" + std::to_string(inputParams_.nSize)).c_str(),
+                        "The shape must be valid."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

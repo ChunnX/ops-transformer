@@ -422,84 +422,84 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
 {
     auto xDesc = context->GetInputDesc(config.xIndex); // nullptr前面已check过
     auto xDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
-    if (xDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xDescFormat).c_str(), "FRACTAL_NZ");
+    if (xDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "x format is invalid.");
         return false;
     }
     auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
     auto expertIdDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat()));
-    if (expertIdDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertId", Ops::Base::ToString(expertIdDescFormat).c_str(), "FRACTAL_NZ");
+    if (expertIdDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expertId format is invalid.");
         return false;
     }
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
         auto scalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat()));
-    if (scalesDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "scales", Ops::Base::ToString(scalesDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (scalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "scales format is invalid.");
+            return false;
+        }
     }
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
         auto xActiveMaskDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat()));
-    if (xActiveMaskDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "xActiveMask", Ops::Base::ToString(xActiveMaskDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (xActiveMaskDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "xActiveMask format is invalid.");
+            return false;
+        }
     }
     if (hasElasticInfo) {
         auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
         auto elasticInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat()));
-    if (elasticInfoDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elasticInfo", Ops::Base::ToString(elasticInfoDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (elasticInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "elasticInfo format is invalid.");
+            return false;
+        }
     }
     if (isPerformance) {
         auto performanceInfoDesc = context->GetOptionalInputDesc(config.performanceInfoIndex);
         auto performanceInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat()));
-    if (performanceInfoDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "performanceInfoDesc", Ops::Base::ToString(performanceInfoDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (performanceInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "performanceInfoDesc format is invalid.");
+            return false;
+        }
     }
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     auto expandXDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
-    if (expandXDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandX", Ops::Base::ToString(expandXDescFormat).c_str(), "FRACTAL_NZ");
+    if (expandXDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expandX format is invalid.");
         return false;
     }
     if (quantMode >= static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
         auto dynamicScalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(dynamicScalesDesc->GetStorageFormat()));
-    if (dynamicScalesDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "dynamicScales", Ops::Base::ToString(dynamicScalesDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
+        if (dynamicScalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
+            OP_LOGE(nodeName, "dynamicScales format is invalid.");
+            return false;
+        }
     }
     auto assistInfoDesc = context->GetOutputDesc(OUTPUT_ASSIST_INFO_INDEX);
     auto assistInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoDesc->GetStorageFormat()));
-    if (assistInfoDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "assistInfoForCombine", Ops::Base::ToString(assistInfoDescFormat).c_str(), "FRACTAL_NZ");
+    if (assistInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "assistInfoForCombine format is invalid.");
         return false;
     }
     auto expertTokenNumsDesc = context->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     auto expertTokenNumsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat()));
-    if (expertTokenNumsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertTokenNums", Ops::Base::ToString(expertTokenNumsDescFormat).c_str(), "FRACTAL_NZ");
+    if (expertTokenNumsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "expertTokenNums format is invalid.");
         return false;
     }
     auto epRecvCountsDesc = context->GetOutputDesc(OUTPUT_EP_RECV_COUNTS_INDEX);
     auto epRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(epRecvCountsDesc->GetStorageFormat()));
-    if (epRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epRecvCounts", Ops::Base::ToString(epRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
+    if (epRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "epRecvCounts format is invalid.");
         return false;
     }
     auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
     auto tpRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat()));
-    if (tpRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpRecvCounts", Ops::Base::ToString(tpRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
+    if (tpRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(nodeName, "tpRecvCounts format is invalid.");
         return false;
     }
     return true;

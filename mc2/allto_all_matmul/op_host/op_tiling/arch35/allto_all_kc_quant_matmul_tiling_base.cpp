@@ -12,10 +12,11 @@
  * \file allto_all_kc_quant_matmul_tiling_base.cpp
  * \brief
  */
-#include "common/utils/op_mc2.h"
-#include "common/utils/mc2_comm_utils.h"
-#include "mc2_log.h"
 #include "allto_all_kc_quant_matmul_tiling_base.h"
+
+#include "common/utils/mc2_comm_utils.h"
+#include "common/utils/op_mc2.h"
+#include "mc2_log.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -150,8 +151,8 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
  */
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetKcDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     contextInfo_.quantMode = QuantMode::KC_QUANT;
@@ -224,15 +225,20 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                                                   static_cast<int32_t>(contextInfo_.args_.geCType)),
+                            static_cast<int32_t>(contextInfo_.args_.geCType)),
                     return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
-    // 根据环境变量判断使用的通信引擎的类型
-    uint8_t hcclServerEngine =
-        Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_CCU ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(opName_, "SetHcclTiling failed");
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t hcclServerEngine = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllBuilder
@@ -305,8 +311,7 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::GetShapeAttrsInfo()
     inputParams_.bDtype = tilingArgs.geBType;
     int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((scaleTensorDesc == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),
+    OP_TILING_CHECK((scaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = scaleTensorDesc->GetDataType();
     inputParams_.cDtype = static_cast<ge::DataType>(yDType);
@@ -553,7 +558,11 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     bool isSmallK = sizeOfSmallKUsed < sizeOfUB ? true : false;
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t quantMode = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
-    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    uint8_t hcclServerType = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE: [%d,%d,%d,%d,%d], TilingKey is [%lu].",
             quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType, tilingKey);

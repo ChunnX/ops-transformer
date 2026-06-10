@@ -81,8 +81,10 @@ bool Mc2WeightQuantBatchMatmulV2TilingAS::IsCapable()
     OP_TILING_CHECK(
         (matmulInfoPtr_->bDtype == ge::DT_INT4 && matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
             (matmulInfoPtr_->transA || matmulInfoPtr_->transB),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transpose/format",
-            "", "The value of transpose/format is not supported for A16W4 transA or transB when weight layout is FRACTAL_NZ on NpuArch 3510."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transA, transB",
+            (std::string(matmulInfoPtr_->transA ? "true" : "false") + ", " +
+             std::string(matmulInfoPtr_->transB ? "true" : "false")).c_str(),
+            "The value of transA and transB must be false when weight layout is FRACTAL_NZ on NpuArch 3510."),
         return false);
 
     // PS 从RegBase模板迁移的场景: pergroup int4 Nz groupsize(32, 64, 128, 256)

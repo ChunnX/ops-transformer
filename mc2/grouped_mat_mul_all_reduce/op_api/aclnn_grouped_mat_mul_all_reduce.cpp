@@ -228,7 +228,7 @@ static aclnnStatus CheckDimK(const GroupedMatMulAllReduceParams& gmmParams)
     auto xTensor = (*gmmParams.x)[0]; // 0: first x tensor
     if (xTensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatMulAllReduce", "x[0]", "nullptr",
-            "x[0] should not be empty");
+            "x[0] cannot be an empty tensor.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     for (size_t i = 0; i < gmmParams.weight->Size(); ++i) {

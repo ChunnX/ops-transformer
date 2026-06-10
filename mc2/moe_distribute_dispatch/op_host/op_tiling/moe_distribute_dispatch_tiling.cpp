@@ -589,7 +589,7 @@ ge::graphStatus MoeDistributeDispatchTilingBase::MoeDistributeDispatchA3A5Tiling
     OP_TILING_CHECK(quantMode == STATIC_SCALES, OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", "static", "dynamic"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((isScales && (quantMode == NO_SCALES)) || ((!isScales) && (quantMode == STATIC_SCALES)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode/scales", (std::to_string(static_cast<int32_t>(isScales)) + "/" + std::to_string(quantMode)).c_str(), "quant mode and scales should match"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode/scales", (std::to_string(static_cast<int32_t>(isScales)) + "/" + std::to_string(quantMode)).c_str(), "The values of quantMode and scales must match."), return ge::GRAPH_FAILED);
     // 检查输入输出的dim、format、dataType
     OP_TILING_CHECK(MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatch(
         context, nodeName, isScales, quantMode) != ge::GRAPH_SUCCESS,
