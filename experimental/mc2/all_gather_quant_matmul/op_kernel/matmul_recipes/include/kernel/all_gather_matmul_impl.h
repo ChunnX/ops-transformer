@@ -27,10 +27,6 @@ namespace allGatherMatmulImpl {
 #define TemplateMC2TypeClass typename X1Type, typename X2Type, typename ScaleType, uint32_t SyncMode
 #define TemplateMC2TypeFunc X1Type, X2Type, ScaleType, SyncMode
 
-#ifndef FLOAT_OVERFLOW_MODE_CTRL
-#define FLOAT_OVERFLOW_MODE_CTRL 60
-#endif
-
 using namespace AscendC;
 using namespace AllGatherImpl;
 
@@ -89,7 +85,6 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::Init(
     }
     winContext_ = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     context_ = (__gm__ Mc2Kernel::HcclOpParam*)winContext_;
-    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 
     InitBaseParams(&tilingData->allGatherTiling);
 
@@ -126,7 +121,7 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::InitBaseParams(
 template<TemplateMC2TypeClass>
 __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::MatmulProcess()
 {
-    using TypeA = X2Type;
+    using TypeA = X1Type;
     using TypeB = X2Type;
     using TypeC = bfloat16_t;
     constexpr int32_t SCALE_C0 = 2;
