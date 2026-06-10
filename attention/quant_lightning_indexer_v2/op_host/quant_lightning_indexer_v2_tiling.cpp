@@ -101,10 +101,10 @@ ge::graphStatus QLIV2InfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if ((npuArch_ != NpuArch::DAV_2201) &&
+        (npuArch_ != NpuArch::DAV_3510)) {
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
@@ -205,8 +205,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                         "but now layout_key is %s.", layout_key.c_str()),
                         return ge::GRAPH_FAILED);
 
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
-        (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
+    if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
                        SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
@@ -215,7 +214,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2,"
                     " but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
                        SPARSE_LIMIT, *opParamInfo_.sparseCount), return ge::GRAPH_FAILED);
@@ -235,12 +234,10 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
                 OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3, but now sparseMode is %d.",
                        *opParamInfo_.sparseMode), return ge::GRAPH_FAILED);
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
-        (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
+    if (npuArch_ == NpuArch::DAV_2201) {
             OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                return ge::GRAPH_FAILED);
-    }
-    else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(*opParamInfo_.quantMode != 1, OP_LOGE(opName_, "input attr quant_mode only supported 1."),
                return ge::GRAPH_FAILED);
     }
@@ -273,9 +270,6 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     inputKeyScaleType_ = opParamInfo_.key_dequant_scale.desc->GetDataType();
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
-    socVersion_ = ascendcPlatform.GetSocVersion();
-
     OP_CHECK_IF(!(inputQType_ == inputKType_),
                OP_LOGE(opName_, "The data types of the input query and key must be the same."),
                return ge::GRAPH_FAILED);
@@ -284,15 +278,14 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         !(inputQueryScaleType_ == inputKeyScaleType_),
         OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
         return ge::GRAPH_FAILED);
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
-        (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
+    if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(inputQType_ != ge::DT_INT8,
                OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
             return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
                return ge::GRAPH_FAILED);
@@ -302,11 +295,10 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
             return ge::GRAPH_FAILED);
     }
 
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
-        (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
+    if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
                 OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
                 OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
     }
@@ -787,6 +779,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.platformInfo = platformInfo_;
     QLIV2Info.opParamInfo = opParamInfo_;
     QLIV2Info.socVersion = socVersion_;
+    QLIV2Info.npuArch = npuArch_;
 
     QLIV2Info.bSize = bSize_;
     QLIV2Info.n1Size = n1Size_;

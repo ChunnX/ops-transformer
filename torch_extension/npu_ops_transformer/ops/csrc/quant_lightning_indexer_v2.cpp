@@ -73,7 +73,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_lightning_indexer_v2(
     const c10::optional<at::Tensor> &block_table,
     const c10::optional<at::Tensor> &output_idx_offset,
     const c10::optional<at::Tensor> &metadata,
-    c10::string_view layout_q, c10::string_view layout_k, int64_t max_seqlen_q,
+    int64_t max_seqlen_q, c10::string_view layout_q, c10::string_view layout_k,
     int64_t mask_mode, int64_t cmp_ratio, int64_t return_value)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
@@ -95,7 +95,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_lightning_indexer_v2(
     ACLNN_CMD(aclnnQuantLightningIndexerV2, query, key,
         weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
         cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
-        query_layout_ptr, key_layout_ptr, max_seqlen_q, mask_mode, cmp_ratio, return_value,
+        max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
         sparse_indices_out, sparse_values_out);
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
