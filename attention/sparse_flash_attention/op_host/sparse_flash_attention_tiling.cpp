@@ -388,7 +388,6 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
     tilingData_.baseParams.set_isActualLenDimsNull(sfaInfo_->actualQSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_isActualLenDimsKVNull(sfaInfo_->actualSeqLenFlag ? 0U : 1U);
-    tilingData_.baseParams.set_kvMerge(sfaInfo_->kvMerge ? 1U : 0U);
 }
 
 // for flash decode
@@ -1656,15 +1655,8 @@ void SFAInfoParser::GetInputParaInfo()
     opParamInfo_.key.shape = context_->GetInputShape(KEY_INPUT_INDEX);
     opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
     opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
-    opParamInfo_.value.desc = context_->GetOptionalInputDesc(VALUE_INPUT_INDEX);
-    opParamInfo_.value.shape = context_->GetOptionalInputShape(VALUE_INPUT_INDEX);
-    opParamInfo_.kvMerge = (opParamInfo_.value.desc == nullptr || opParamInfo_.value.shape == nullptr);
-    if (opParamInfo_.value.desc == nullptr) {
-        opParamInfo_.value.desc = opParamInfo_.key.desc;
-    }
-    if (opParamInfo_.value.shape == nullptr) {
-        opParamInfo_.value.shape = opParamInfo_.key.shape;
-    }
+    opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
+    opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
     GetOptionalInputParaInfo();
 }
 
@@ -2037,7 +2029,6 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.nextTokens = *opParamInfo_.nextTokens;
     sfaInfo.attentionMode = *opParamInfo_.attentionMode;
     sfaInfo.returnSoftmaxLse = *opParamInfo_.returnSoftmaxLse;
-    sfaInfo.kvMerge = opParamInfo_.kvMerge;
 
     sfaInfo.qLayout = qLayout_;
     sfaInfo.topkLayout = topkLayout_;
