@@ -164,8 +164,9 @@ public:
         uint64_t n = params.gmmParams.matmulTiling->N;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
-            if (outRow % coreNumVec != GetBlockIdx())
+            if (outRow % coreNumVec != GetBlockIdx()) {
                 continue;
+            }
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
             PipeBarrier<PIPE_MTE3>();
         }
