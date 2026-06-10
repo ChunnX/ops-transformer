@@ -25,6 +25,9 @@
 
 ## 参数说明
 
+> **说明：**<br>
+> 参数维度含义：B表示Batch Size、Q_S和K_S分别表示query和key的Sequence Length、Q_N和K_N分别表示query和key的Head Num、D表示Head Dim（Q_D和K_D取值相等为128）、Q_T和K_T分别表示query和key的Total Tokens、sparse_count表示最后选取的索引个数（topK）、block_num和block_size分别表示PageAttention场景下的block总数和每个block的token数。K_N仅支持1。
+
   <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
   <col style="width: 200px">
   <col style="width: 150px">
@@ -48,7 +51,7 @@
           <ul>
                 <li>公式中的输入Q。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1,D)；layout_query为TND时，shape为(T1,N1,D)。</li>
+                <li>layout_query为BSND时，shape为[B, Q_S, Q_N, D]；layout_query为TND时，shape为[Q_T, Q_N, D]。</li>
           </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -61,7 +64,7 @@
           <ul>
                 <li>公式中的输入K。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)，其中block_num为PageAttention时block总数、block_size为一个block的token数；layout_key为BSND时，shape为(B, S2, N2, D)；layout_key为TND时，shape为(T2, N2, D)。</li>
+                <li>layout_key为PA_BSND时，shape为[block_num, block_size, K_N, D]，其中block_num为PageAttention时block总数、block_size为一个block的token数；layout_key为BSND时，shape为[B, K_S, K_N, D]；layout_key为TND时，shape为[K_T, K_N, D]。</li>
           </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -74,7 +77,7 @@
           <ul>
                 <li>公式中的输入W。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1)；layout_query为TND时，shape为(T1,N1)。</li>
+                <li>layout_query为BSND时，shape为[B, Q_S, Q_N]；layout_query为TND时，shape为[Q_T, Q_N]。</li>
           </ul>
       </td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
@@ -87,8 +90,8 @@
           <ul>
                 <li>每个Batch中Query的有效token数。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>可传入None表示与query的S长度相同。</li>
-                <li>支持长度为B的一维tensor，且每个Batch的有效token数不超过query中的维度S大小且不小于0。layout_query为TND时该入参必须传入，并以元素数量作为B值。</li>
+                <li>可传入None表示与query的Q_S长度相同。</li>
+                <li>支持长度为B的一维tensor，且每个Batch的有效token数不超过query中的Q_S大小且不小于0。layout_query为TND时该入参必须传入，并以元素数量作为B值。</li>
                 <li>每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
           </ul>
       </td>
@@ -102,8 +105,8 @@
           <ul>
                 <li>每个Batch中Key的有效token数。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>可传入None表示与key的S长度相同。</li>
-                <li>支持长度为B的一维tensor，且每个Batch的有效token数不超过key/value中的维度S大小且不小于0。</li>
+                <li>可传入None表示与key的K_S长度相同。</li>
+                <li>支持长度为B的一维tensor，且每个Batch的有效token数不超过key中的K_S大小且不小于0。</li>
                 <li>layout_key为TND或PA_BSND时该入参必须传入；其中layout_key为TND时，每个元素表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
           </ul>
       </td>
@@ -118,7 +121,7 @@
                 <li>表示PageAttention中KV存储使用的block映射表。</li>
                 <li>不支持空tensor和非连续。</li>
                 <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（每个batch中最大actual_seq_lengths_key对应的block数量）。</li>
-                <li>shape支持(B,S2/block_size)。</li>
+                <li>shape支持[B, K_S/block_size]。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -208,7 +211,7 @@
           <ul>
                 <li>公式中的Indices输出。</li>
                 <li>不支持空tensor和非连续。</li>
-                <li>layout_query为BSND时输出shape为[B, S1, N2, sparseCount]；layout_query为TND时输出shape为[T1, N2, sparseCount]。</li>
+                <li>layout_query为BSND时输出shape为[B, Q_S, K_N, sparse_count]；layout_query为TND时输出shape为[Q_T, K_N, sparse_count]。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -233,16 +236,16 @@
 ## 约束说明
 
 - 该接口支持图模式。
-- 参数key中的N2支持1。
+- 参数key中的K_N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
 - Ascend 950PR/Ascend 950DT：
-  - query N1仅支持8、16、24、32、64。
+  - query Q_N仅支持8、16、24、32、64。
   - 参数weights不支持`float32`类型。
 - A3 训练系列产品/Atlas A3 推理系列产品：
-  - query N1支持小于等于64。
+  - query Q_N支持小于等于64。
 
 ## 调用示例
 

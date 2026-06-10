@@ -18,9 +18,6 @@
 
 #include "util.h"
 #include "kernel_operator_list_tensor_intf.h"
-// #include "flash_attn_common_def.h"
-// #include "../../../common/op_kernel/vector_common.h"
-// #include "../../../common/op_kernel/memory_copy.h"
 
 using AscendC::LocalTensor;
 using namespace AscendC;

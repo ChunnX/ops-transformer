@@ -43,8 +43,8 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                              char* group, char* reduceOp, int64_t worldSize,
-                                                              const aclTensor* output, uint64_t* workspaceSize,
+                                                              const char* group, const char* reduceOp,
+                                                              aclTensor* output, uint64_t* workspaceSize,
                                                               aclOpExecutor** executor);
 
 /**
@@ -56,7 +56,7 @@ ACLNN_API aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                              aclrtStream stream);
+                                              const aclrtStream stream);
 
 #ifdef __cplusplus
 }

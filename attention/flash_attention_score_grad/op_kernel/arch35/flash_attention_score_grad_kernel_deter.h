@@ -509,8 +509,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
             int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
             if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
                 int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
-                int64_t m = this->constInfo.s1Outer;
-                int64_t n = this->constInfo.s2Outer;
+                int64_t m = this->bandInfo.m;
+                int64_t n = this->bandInfo.n;
                 CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
             } else {
                 CalBandIndex(this->bandInfo, j, r, coordinateInfo);
@@ -608,7 +608,24 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
         if constexpr (BaseClass::IS_N_EQUAL) {
             if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
-                return Max(m * Ceil<int64_t>((n * NUM_TWO - m + NUM_THREE) * (b >> 1), k), n * NUM_TWO - m + NUM_THREE);
+                int64_t mNew = 0;
+                int64_t nNew = 0;
+                if (m < n) {
+                    mNew = m;
+                    nNew = (n << 1) - m + NUM_THREE;
+                    this->bandInfo.m = m;
+                    this->bandInfo.n = n;
+                } else {
+                    mNew = n + 1;
+                    nNew = n + NUM_TWO;
+                    this->bandInfo.m = mNew;
+                    this->bandInfo.n = mNew;
+                    InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, m - n - 1, 0,
+                                       this->coordinateInfos[0]);
+                    InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, m - n - 1, 0,
+                                       this->coordinateInfos[1]);
+                }
+                return Max(mNew * Ceil<int64_t>(nNew * (b >> 1), k), nNew);
             }
         }
         int64_t s1Outer = this->constInfo.s1Outer;

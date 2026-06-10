@@ -28,6 +28,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -36,6 +37,8 @@ extern "C" {
 #endif
 
 namespace {
+
+static constexpr const char* kOpName = "aclnnScatterPaKvCache";
 
 static const std::initializer_list<op::DataType> KEY_VALUE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT16, DataType::DT_FLOAT, DataType::DT_BF16,
@@ -92,41 +95,71 @@ static aclnnStatus CheckDtypeValid(
     bool isArch35 = (socVersion == NpuArch::DAV_3510);
     auto dtypeSupportList = isArch35 ? KEY_VALUE_DTYPE_SUPPORT_LIST : KEY_VALUE_DTYPE_SUPPORT_LIST_910;
 
-    OP_CHECK_DTYPE_NOT_SUPPORT(key, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(keyCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(slotMapping, INDEX_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    if (!CheckType(key->GetDataType(), dtypeSupportList)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "key",
+            op::ToString(key->GetDataType()).GetString(),
+            std::string("The dtype of key must be within the range ") +
+                op::ToString(dtypeSupportList).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!CheckType(keyCacheRef->GetDataType(), dtypeSupportList)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "keyCacheRef",
+            op::ToString(keyCacheRef->GetDataType()).GetString(),
+            std::string("The dtype of keyCacheRef must be within the range ") +
+                op::ToString(dtypeSupportList).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!CheckType(slotMapping->GetDataType(), INDEX_DTYPE_SUPPORT_LIST)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "slotMapping",
+            op::ToString(slotMapping->GetDataType()).GetString(),
+            std::string("The dtype of slotMapping must be within the range ") +
+                op::ToString(INDEX_DTYPE_SUPPORT_LIST).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     auto keyDtype = key->GetDataType();
     auto keyCacheDtype = keyCacheRef->GetDataType();
     if (keyDtype != keyCacheDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The data type of key[%s] and keyCacheRef[%s] are not equal.",
-                op::ToString(DataType(keyDtype)).GetString(),
-                op::ToString(DataType(keyCacheDtype)).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "key, keyCacheRef",
+            (op::ToString(DataType(keyDtype)).GetString() + std::string(", ") +
+                op::ToString(DataType(keyCacheDtype)).GetString()).c_str(),
+            "The data type of key and keyCacheRef must be equal");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (value != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(value, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT(valueCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
+        if (!CheckType(value->GetDataType(), dtypeSupportList)) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "value",
+                op::ToString(value->GetDataType()).GetString(),
+                std::string("The dtype of value must be within the range ") +
+                    op::ToString(dtypeSupportList).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (!CheckType(valueCacheRef->GetDataType(), dtypeSupportList)) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "valueCacheRef",
+                op::ToString(valueCacheRef->GetDataType()).GetString(),
+                std::string("The dtype of valueCacheRef must be within the range ") +
+                    op::ToString(dtypeSupportList).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
         auto valueDtype = value->GetDataType();
         auto valueCacheDtype = valueCacheRef->GetDataType();
         bool isPaNz = (cacheModeOptional != nullptr && strcmp(cacheModeOptional, "PA_NZ") == 0);
 
         if (valueDtype != valueCacheDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of value[%s] and valueCacheRef[%s] are not equal.",
-                    op::ToString(DataType(valueDtype)).GetString(),
-                    op::ToString(DataType(valueCacheDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "value, valueCacheRef",
+                (op::ToString(DataType(valueDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(valueCacheDtype)).GetString()).c_str(),
+                "The data type of value and valueCacheRef must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         if (!isPaNz && keyDtype != valueDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of key[%s] and value[%s] are not equal when cacheMode is not PA_NZ.",
-                    op::ToString(DataType(keyDtype)).GetString(),
-                    op::ToString(DataType(valueDtype)).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "key, value",
+                (op::ToString(DataType(keyDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(valueDtype)).GetString()).c_str(),
+                "The data type of key and value must be equal when cacheMode is not PA_NZ");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -134,30 +167,30 @@ static aclnnStatus CheckDtypeValid(
     auto slotMappingDtype = slotMapping->GetDataType();
     if (compressLensOptional != nullptr) {
         if (slotMappingDtype != compressLensOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and compressLensOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(compressLensOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, compressLensOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(compressLensOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and compressLensOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
     if (compressSeqOffsetOptional != nullptr) {
         if (slotMappingDtype != compressSeqOffsetOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and compressSeqOffsetOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(compressSeqOffsetOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, compressSeqOffsetOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(compressSeqOffsetOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and compressSeqOffsetOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
     if (seqLensOptional != nullptr) {
         if (slotMappingDtype != seqLensOptional->GetDataType()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of slotMapping[%s] and seqLensOptional[%s] are not equal.",
-                    op::ToString(DataType(slotMappingDtype)).GetString(),
-                    op::ToString(DataType(seqLensOptional->GetDataType())).GetString());
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(kOpName, "slotMapping, seqLensOptional",
+                (op::ToString(DataType(slotMappingDtype)).GetString() + std::string(", ") +
+                    op::ToString(DataType(seqLensOptional->GetDataType())).GetString()).c_str(),
+                "The data type of slotMapping and seqLensOptional must be equal");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -171,16 +204,14 @@ static aclnnStatus CheckShape(const aclTensor *key, const aclTensor *value)
     auto valueDimNum = value != nullptr ? value->GetViewShape().GetDimNum() : 0;
 
     if (keyDimNum != 3 && keyDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The dim num of key must be 3 or 4, but got %ld.",
-                keyDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key",
+            std::to_string(keyDimNum).c_str(), "The dim num of key must be 3 or 4");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (value != nullptr && valueDimNum != 0 && valueDimNum != 3 && valueDimNum != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The dim num of value must be 0, 3 or 4, but got %ld.",
-                valueDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value",
+            std::to_string(valueDimNum).c_str(), "The dim num of value must be 0, 3 or 4");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

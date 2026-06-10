@@ -302,7 +302,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                         L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params colMajorParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
                                                      reinterpret_cast<GM_ADDR>(cGM_),
@@ -313,8 +313,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel colMajorMatmulOp;
+                colMajorMatmulOp(colMajorParams);
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
@@ -322,7 +322,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                     L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
                 using MatmulKernel =
                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                typename MatmulKernel::Params colMajorParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
                                                      layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
                                                      reinterpret_cast<GM_ADDR>(cGM_),
@@ -333,8 +333,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
-                matmul_op(params);
+                MatmulKernel colMajorMatmulOp;
+                colMajorMatmulOp(colMajorParams);
             }
         }
     }
@@ -537,10 +537,10 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                 EndFirstStep();
             }
 
+            SetAndWaitAivSync(flag_idx);
+            CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
+            SetAndWaitAivSync(flag_idx);
             if (cal_idx < cal_count - MAX_BLOCK_COUNT) { // 最后两次不进行同步
-                SetAndWaitAivSync(flag_idx);
-                CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
-                SetAndWaitAivSync(flag_idx);
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }

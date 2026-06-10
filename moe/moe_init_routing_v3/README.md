@@ -60,7 +60,7 @@
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
 
-        - 当expandedXOut数据类型为INT4时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
+        - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
 
   5.对quantResult取前NUM\_ROWS个sortedRowIdx的对应位置的值，得出expandedXOut：
 
@@ -108,7 +108,7 @@
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• 动态量化场景下，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)。当quantMode为1且expandedXOut为INT4时，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0。</td>
+        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• quantMode为1的INT8动态量化场景下，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)。<br>• quantMode为13的INT4动态量化场景下，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
@@ -164,7 +164,7 @@
       <tr>
         <td>quantMode</td>
         <td>属性</td>
-        <td>取值为0、1、-1、2、3、6、7、8、9、11、12。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。<br>• 9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1。<br>• 11：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E5M2，expandedScaleOut为FLOAT32三维布局。<br>• 12：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E4M3FN，expandedScaleOut为FLOAT32三维布局。</td>
+        <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景，expandedXOut量化到INT8。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。<br>• 9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1。<br>• 11：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E5M2，expandedScaleOut为FLOAT32三维布局。<br>• 12：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E4M3FN，expandedScaleOut为FLOAT32三维布局。<br>• 13：表示INT4动态量化场景，expandedXOut量化到INT4。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -185,7 +185,7 @@
       <tr>
         <td>expandedXOut</td>
         <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为1且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。
+        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为13且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。
         <br>• Dropless场景shape为[NUM_ROWS * K, H]。<br>• DropPad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</td>
         <td>FLOAT32、FLOAT16、BFLOAT16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
         <td>ND</td>
@@ -225,8 +225,8 @@
   - quantMode:
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
-      - 支持-1、1、2、3、6、7、8、9、11、12，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1，FP8 PerBlock量化到FLOAT8_E5M2，FP8 PerBlock量化到FLOAT8_E4M3FN。
-      - 支持quantMode为1且expandedXOut为INT4的动态量化场景，需同时满足：
+      - 支持-1、1、2、3、6、7、8、9、11、12、13，分别表示不量化、动态量化到INT8、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1，FP8 PerBlock量化到FLOAT8_E5M2，FP8 PerBlock量化到FLOAT8_E4M3FN，INT4动态量化。
+      - 支持quantMode为13的INT4动态量化场景，需同时满足：
         - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
         - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
         - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。

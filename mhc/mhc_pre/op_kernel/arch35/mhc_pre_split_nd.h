@@ -139,7 +139,7 @@ public:
 
 private:
     static constexpr uint32_t kXInQueueBufferBytes = 80 * 1024;
-    static constexpr uint32_t kOutQueueBufferBytes = 32 * 1024;
+    static constexpr uint32_t kOutQueueBufferBytes = 16 * 1024;
     static constexpr uint32_t kTmpBufferBytes = 20 * 1024;
     static constexpr uint32_t kMinTForN4 = 2;
     static constexpr uint32_t kMinTForN6 = 4;

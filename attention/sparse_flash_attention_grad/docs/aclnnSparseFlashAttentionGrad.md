@@ -243,7 +243,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T1保持一致。</li>
+                <li>累加和与T1保持一致(EOD场景下累加和可以小于T1)。</li>
                 <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T2保持一致。</li>
+                <li>累加和与T2保持一致(EOD场景下累加和可以小于T2)。</li>
             </ul>
             </td>
             <td>INT32</td>

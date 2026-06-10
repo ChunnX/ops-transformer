@@ -194,7 +194,7 @@
 
 ## 约束说明
 
-* 增量场景不使能MC2，全量场景使能MC2
+* 增量场景不开启MC2，全量场景开启MC2
 * 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k的范围为[1, 65535]，n的范围为[0, 65535]。bias若非空，bias为一维，其shape为(n)。bias可选，可为空，非空时当前版本仅支持一维输入。
 * 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的s，不支持非连续的tensor。输入gamma必须是一维，其shape为(n)，不支持非连续的tensor。
 * antiquant_scale满足pertensor场景shape为(1)，perchannel场景shape为(1,n)/(n)，pergroup场景shape为(ceil(k,antiquant_group_size),n)。antiquant_offset可选，可为空，非空时shape与antiquant_scale一致。

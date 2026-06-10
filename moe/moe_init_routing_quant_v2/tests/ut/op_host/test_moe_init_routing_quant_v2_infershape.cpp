@@ -518,6 +518,344 @@ TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_16)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
 }
 
+// expertTokensCountOrCumsumFlag out of range
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_17)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// dropPadMode=1 && expertCapacity > xShape.dim(0)
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_18)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// x shape 3D (dim != 2D)
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_19)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5, 3}, {2, 5, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// expertIdx shape 3D (dim != 2D)
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_20)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3, 1}, {2, 3, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// scale 1D with dim != -2/-1/1, quantMode=0
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_21)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{5}, {5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// x shape dim(0) < -1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_26)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{-2, 5}, {-2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-2, 3}, {-2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// expertIdx shape dim(0) < -1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_27)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{-2, 3}, {-2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// scale 1D with dim != -2, quantMode=1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_28)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// scale 3D (not 1D or 2D), quantMode=1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_29)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1, 5, 2}, {1, 5, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// scale first dim invalid (not -1, 1, or expertNum), quantMode=1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_22)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{3, 5}, {3, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// scale second dim != cols, quantMode=1
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_23)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{4, 3}, {4, 3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// x shape 1D with dim != -2
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_24)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{5}, {5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{5, 3}, {5, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+// offset 1D with dim != -2/-1/1, quantMode=0
+TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_shape_25)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeInitRoutingQuantV2",
+        {{{{2, 5}, {2, 5}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{5}, {5}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {
+            {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
 TEST_F(MoeInitRoutingQuantV2, moe_init_routing_quant_v2_infer_datatype_01)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();

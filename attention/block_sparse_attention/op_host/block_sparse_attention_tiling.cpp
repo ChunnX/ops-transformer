@@ -794,10 +794,6 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag is nullptr.");
         return ge::GRAPH_FAILED;
     } else if (*softmaxLsePtr == LSE_OUT) {
-        if (socVer_ == SOC_VER_950_CODE) {
-            OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 on chip 950.");
-            return ge::GRAPH_FAILED;
-        }
         softmaxLseFlag_ = true;
     } else if (*softmaxLsePtr == LSE_NO_OUT) {
         softmaxLseFlag_ = false;

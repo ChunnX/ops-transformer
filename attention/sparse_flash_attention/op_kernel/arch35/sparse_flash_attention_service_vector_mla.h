@@ -67,7 +67,7 @@ public:
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
-    static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
+    static constexpr uint32_t sfaDTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 576;
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
@@ -133,11 +133,11 @@ private:
     using VEC2_RES_T = T;
     template <typename VEC2_RES_T>
     __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
+        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t sfaVec2CalcSize = 0);
     template <typename VEC2_RES_T>
     __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo,
         ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
-        int64_t vec2S1Idx, int64_t vec2CalcSize);
+        int64_t vec2S1Idx, int64_t sfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
@@ -182,7 +182,7 @@ private:
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
 
-    int64_t sparseCalSize;
+    int64_t sfaSparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
 };
@@ -372,30 +372,30 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const R
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2: Vector split size for first core (first half)
+                sfaSparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2: Vector split size for first core (first half)
                 sparseS2Start = 0;
             } else {
                 // 2: Vector split size for first core (second half)
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
+                sfaSparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
                 sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2); // 2: Start offset for second half of first core
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
+                sfaSparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
+                sfaSparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
                 sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
             }
         }
-        sparseS2End = sparseS2Start + sparseCalSize;
+        sparseS2End = sparseS2Start + sfaSparseCalSize;
     } else {
         int64_t s2PerVecLoop = 2LL;
         int64_t vecNum = 2LL;
         int64_t s2Loops = CeilDiv(CeilDiv(runInfo.s2RealSize, vecNum), s2PerVecLoop);
         sparseS2Start = GetSubBlockIdx() == 0 ? 0 : Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize);
         sparseS2End = GetSubBlockIdx() == 0 ? Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize) : runInfo.s2RealSize;
-        sparseCalSize = sparseS2End - sparseS2Start;
+        sfaSparseCalSize = sparseS2End - sparseS2Start;
     }
 }
 
@@ -422,7 +422,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    if (sparseCalSize == 0) {
+    if (sfaSparseCalSize == 0) {
         return;
     }
     bool meetEnd = false;
@@ -437,7 +437,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         // 1、copy kv in, gm ->ub
         LocalTensor<Q_T> stage0OutUb = this->stage0OutBuf[pingPong].template Get<Q_T>();
         WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-        while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
+        while (dealRow < Min(16, sfaSparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
             GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
             s2 += 2; // 每次搬运2行
             if (token0Idx == -1 && token1Idx == -1) {
@@ -473,7 +473,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+    LocalTensor<float> sfaExpUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
     int64_t stage1Offset = runInfo.taskIdMod2;
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<Q_T>();
 
@@ -530,7 +530,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     outputBuf.SetCrossCore();
     if (runInfo.s2LoopCount != 0) {
-        SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
+        SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, sfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
     if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         CopyFALseToGm(runInfo, constInfo);
@@ -549,23 +549,25 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
-    int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+    int64_t sfaVec2CalcSize = runInfo.vec2MRealSize * sfaDTemplateAlign64;
 
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
 
     WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        DataCopy(vec2ResUb, mmRes, sfaVec2CalcSize);
     } else {
-        LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+        LocalTensor<T> sfaExpUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+            FlashUpdateNew<T, Q_T, OUTPUT_T, sfaDTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, sfaExpUb, sfaExpUb, runInfo.vec2MRealSize,
+                sfaDTemplateAlign64, 1.0, 1.0);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, sfaDTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, sfaExpUb, sfaExpUb, sumUb, runInfo.vec2MRealSize,
+                sfaDTemplateAlign64, 1.0, 1.0);
         }
     }
 
@@ -573,11 +575,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
+            LastDivNew<T, Q_T, OUTPUT_T, sfaDTemplateAlign64, false>(
+                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, sfaDTemplateAlign64, 1.0);
         }
 
-        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, sfaVec2CalcSize);
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
 }
@@ -585,13 +587,13 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &runInfo, ConstInfo &constInfo,
-    LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+    LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t sfaVec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
-    int64_t dSizeAligned64 = (int64_t)dTemplateAlign64;
+    int64_t dSizeAligned64 = (int64_t)sfaDTemplateAlign64;
 
     attenOut.SetAddr(vec2ResUb.address_);
-    Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
+    Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, sfaVec2CalcSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
     WaitFlag<HardEvent::V_MTE3>(vToMte3AttnOutId);
 
@@ -607,9 +609,10 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+    int64_t sfaVec2CalcSize)
 {
-    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, sfaVec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
@@ -756,7 +759,7 @@ void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &co
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * sfaDTemplateAlign64 * sizeof(T));
 
     mte3ToVAttnOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
