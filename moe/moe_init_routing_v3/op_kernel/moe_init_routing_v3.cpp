@@ -32,6 +32,8 @@
 #include "moe_v3_row_idx_gather_droppad.h"
 #include "moe_v3_gather_out_droppad.h"
 #include "moe_v3_gather_droppad_static_quant.h"
+#include "moe_v3_full_load_cut_origin_t.h"
+#include "moe_v3_cut_origin_t.h"
 
 
 /*
@@ -240,6 +242,47 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
         return;
     }
+
+    // Counting sort optimization: intercept gather-first four tiling keys
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER)) {
+        bool useCountingSort =
+            (t->dropPadMode == 0 && t->expertTokensNumType == EXERPT_TOKENS_COUNT && t->quantMode == -1 &&
+             t->actualExpertNum <= 128 &&
+             !(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
+               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
+        if (useCountingSort) {
+            // FullLoad counting sort (decode small T)
+            TPipe countSortPipe;
+            MoeV3FullLoadCutOriginT<DTYPE_X> op;
+            op.Init(
+                x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                &countSortPipe);
+            op.Process();
+            countSortPipe.Destroy();
+            return;
+        }
+    }
+
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER)) {
+        bool useCountingSort =
+            (!(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER && t->quantMode == -1 && t->expertTokensNumType == EXERPT_TOKENS_COUNT &&
+               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX && t->k == 8 && t->expertNum == 256));
+        if (useCountingSort) {
+            // Non-FullLoad counting sort (prefill large T)
+            TPipe countSortPipe;
+            MoeV3CutOriginT<DTYPE_X> op;
+            op.Init(
+                x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS, t,
+                &countSortPipe);
+            op.Process();
+            countSortPipe.Destroy();
+            return;
+        }
+    }
+
+    // Fall through to original gather-first flow if counting sort not applicable
 
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER)) {
