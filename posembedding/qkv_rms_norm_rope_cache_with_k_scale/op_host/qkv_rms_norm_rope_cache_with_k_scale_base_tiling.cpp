@@ -66,11 +66,6 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::IsShape4D(
            shape.dim3 == d3;
 }
 
-bool QkvRmsNormRopeCacheWithKScaleTiling::HasDtype(const TensorContractInfo &tensor, ge::DataType expected)
-{
-    return tensor.dtype == expected;
-}
-
 bool QkvRmsNormRopeCacheWithKScaleTiling::IsCacheStrideValid(const TensorStrideInfo &stride, uint64_t headDim)
 {
     return stride.present && stride.rank == 4 && stride.stride0 > 0 && stride.stride1 >= headDim &&
@@ -133,15 +128,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractHeadNums(
     tiling.numQkvHeads = tiling.numQkHeads + tiling.numVHeads;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateHeadNums(
     const ContractInput &input, const std::string &opName)
 {
-    OP_CHECK_IF(input.totalTokens == 0,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input.batch == 0,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: batch is 0."),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(input.numQHeads == 0 || input.numKHeads == 0 || input.numVHeads == 0,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: invalid head nums Nq=%lu Nk=%lu Nv=%lu.",
@@ -151,6 +140,18 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: numVHeads[%lu] != numKHeads[%lu].",
                         input.numVHeads, input.numKHeads),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(
+    const ContractInput &input, const std::string &opName)
+{
+    OP_CHECK_IF(input.totalTokens == 0,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(input.batch == 0,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: batch is 0."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(input.headDim != kHeadDimFast,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: unsupported headDim=%lu.",
@@ -175,21 +176,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractHeadNums(
-    const ContractTiling &tiling, const std::string &opName)
-{
-    OP_CHECK_IF(tiling.numQkHeads == 0 || tiling.numQkvHeads == 0,
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: derived Nqk=%lu Nqkv=%lu.",
-                        tiling.numQkHeads, tiling.numQkvHeads),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtype(
     const std::string &opName, const char *tensorName, const TensorContractInfo &tensor, ge::DataType expected)
 {
-    OP_CHECK_IF(!HasDtype(tensor, expected),
+    OP_CHECK_IF(tensor.dtype != expected,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: %s dtype check failed, got %s(%u), "
                         "expected %s(%u).",
@@ -199,72 +189,34 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtype(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateRequiredDtypes(
-    const ContractInput &input, const std::string &opName)
-{
-    OP_CHECK_IF(ValidateDtype(opName, "qkv", input.qkv, ge::DT_BF16) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale qkv dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "qGamma", input.qGamma, ge::DT_FLOAT) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale qGamma dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "kGamma", input.kGamma, ge::DT_FLOAT) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale kGamma dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "cosSin", input.cosSin, ge::DT_FLOAT) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale cosSin dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "slotMapping", input.slotMapping, ge::DT_INT32) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale slotMapping dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "cuSeqLen", input.cuSeqLen, ge::DT_INT32) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale cuSeqLen dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateCacheDtypes(
-    const ContractInput &input, const std::string &opName)
-{
-    OP_CHECK_IF(ValidateDtype(opName, "kCache", input.kCache, ge::DT_FLOAT8_E4M3FN) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale kCache dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "vCache", input.vCache, ge::DT_FLOAT8_E4M3FN) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale vCache dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "kScaleCache", input.kScaleCache, ge::DT_FLOAT) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale kScaleCache dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateOptionalDtypes(
-    const ContractInput &input, const std::string &opName)
-{
-    OP_CHECK_IF(ValidateDtype(opName, "qRotation", input.qRotation, ge::DT_BF16) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale qRotation dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "kRotation", input.kRotation, ge::DT_BF16) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale kRotation dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateDtype(opName, "vScale", input.vScale, ge::DT_FLOAT) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale vScale dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtypes(
     const ContractInput &input, const std::string &opName)
 {
-    OP_CHECK_IF(ValidateRequiredDtypes(input, opName) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale required dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateCacheDtypes(input, opName) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale cache dtype validation failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateOptionalDtypes(input, opName) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale optional dtype validation failed."),
-                return ge::GRAPH_FAILED);
+    struct DtypeRule {
+        const char *tensorName;
+        const TensorContractInfo *tensor;
+        ge::DataType expected;
+    };
+    const DtypeRule rules[] = {
+        {"qkv", &input.qkv, ge::DT_BF16},
+        {"qGamma", &input.qGamma, ge::DT_FLOAT},
+        {"kGamma", &input.kGamma, ge::DT_FLOAT},
+        {"cosSin", &input.cosSin, ge::DT_FLOAT},
+        {"slotMapping", &input.slotMapping, ge::DT_INT32},
+        {"cuSeqLen", &input.cuSeqLen, ge::DT_INT32},
+        {"kCache", &input.kCache, ge::DT_FLOAT8_E4M3FN},
+        {"vCache", &input.vCache, ge::DT_FLOAT8_E4M3FN},
+        {"kScaleCache", &input.kScaleCache, ge::DT_FLOAT},
+        {"qRotation", &input.qRotation, ge::DT_BF16},
+        {"kRotation", &input.kRotation, ge::DT_BF16},
+        {"vScale", &input.vScale, ge::DT_FLOAT},
+    };
+    for (const auto &rule : rules) {
+        OP_CHECK_IF(ValidateDtype(opName, rule.tensorName, *rule.tensor, rule.expected) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale %s dtype validation failed.",
+                            rule.tensorName),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -478,17 +430,17 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractInput(
     const ContractInput &input, const std::string &opName)
 {
     OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
+    ge::graphStatus status = ValidateHeadNums(input, opName);
+    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale head nums validation failed."),
+                return ge::GRAPH_FAILED);
+
     ContractTiling tiling;
     FillContractHeadNums(input, tiling);
 
-    ge::graphStatus status = ValidateScalarInputs(input, opName);
+    status = ValidateScalarInputs(input, opName);
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale scalar validation failed."),
-                return ge::GRAPH_FAILED);
-
-    status = ValidateContractHeadNums(tiling, opName);
-    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract head validation failed."),
                 return ge::GRAPH_FAILED);
 
     status = ValidateDtypes(input, opName);
@@ -513,9 +465,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(
     OP_CHECK_IF(aicNum == 0, OP_LOGE(opName.c_str(), "aicNum must be greater than 0 to build tiling."),
                 return ge::GRAPH_FAILED);
     FillContractHeadNums(input, tiling);
-    OP_CHECK_IF(ValidateContractHeadNums(tiling, opName) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract head validation failed."),
-                return ge::GRAPH_FAILED);
     LogContractInputSummary(opName, input, aicNum, tiling);
     TokenTileSelection selection;
     OP_CHECK_IF(SelectTokenTile(tiling, opName, selection) != ge::GRAPH_SUCCESS,
@@ -587,16 +536,6 @@ TensorStrideInfo QkvRmsNormRopeCacheWithKScaleTiling::ToStrideInfo(const gert::S
         info.stride3 = static_cast<uint64_t>(stride.GetStride(3));
     }
     return info;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::HasUsableBlockDims(const TensorShapeInfo &shape)
-{
-    return shape.rank >= 4 && shape.dim0 > 0 && shape.dim2 > 0;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::BlockDimsMatch(const TensorShapeInfo &lhs, const TensorShapeInfo &rhs)
-{
-    return lhs.dim0 == rhs.dim0 && lhs.dim2 == rhs.dim2;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::MakeContiguousStrideInfo(
@@ -771,25 +710,14 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInput(
     LogTensorInfo(opName, "vScale", input.vScale);
 }
 
-size_t QkvRmsNormRopeCacheWithKScaleTiling::CalcOpWorkspaceSize(
-    const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo)
-{
-    return static_cast<size_t>(compileInfo.opWorkspaceSize);
-}
-
-size_t QkvRmsNormRopeCacheWithKScaleTiling::CalcWorkspaceSize(size_t opWorkspaceSize)
-{
-    return opWorkspaceSize + kReservedWorkspaceSize;
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SetWorkspace(
     gert::TilingContext *context, const std::string &opName,
     const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo, size_t &workspaceSize)
 {
     size_t *workspaces = context->GetWorkspaceSizes(kWorkspaceCount);
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(opName.c_str(), "get workspace failed."), return ge::GRAPH_FAILED);
-    const size_t opWorkspaceSize = CalcOpWorkspaceSize(compileInfo);
-    workspaceSize = CalcWorkspaceSize(opWorkspaceSize);
+    const size_t opWorkspaceSize = static_cast<size_t>(compileInfo.opWorkspaceSize);
+    workspaceSize = opWorkspaceSize + kReservedWorkspaceSize;
     workspaces[0] = workspaceSize;
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale workspace: opWorkspaceSize=%zu reservedWorkspaceSize=%zu total=%zu.",
@@ -833,7 +761,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ParseHeadNumsAttr(
                 return ge::GRAPH_FAILED);
     const auto *headNumsData = headNums->GetData();
     for (size_t i = 0; i < 3; ++i) {
-        OP_CHECK_IF(headNumsData[i] <= 0, OP_LOGE(opName.c_str(), "head_nums[%zu] must be positive.", i),
+        OP_CHECK_IF(headNumsData[i] < 0, OP_LOGE(opName.c_str(), "head_nums[%zu] must be non-negative.", i),
                     return ge::GRAPH_FAILED);
     }
 
@@ -851,12 +779,12 @@ float QkvRmsNormRopeCacheWithKScaleTiling::ParseEpsilonAttr(gert::TilingContext 
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::FillShapeDerivedFields(
-    const TensorContractInfo &qkv, const TensorContractInfo &cosSin, const TensorContractInfo &cuSeqLen,
-    ContractInput &input)
+    const std::string &opName, ContractInput &input)
 {
-    const auto &qkvShape = qkv.shape;
-    const auto &cosSinShape = cosSin.shape;
-    const auto &cuSeqLenShape = cuSeqLen.shape;
+    const auto &qkvShape = input.qkv.shape;
+    const auto &cosSinShape = input.cosSin.shape;
+    const auto &cuSeqLenShape = input.cuSeqLen.shape;
+    const auto &kCacheShape = input.kCache.shape;
     if (qkvShape.rank >= 3) {
         input.totalTokens = qkvShape.dim1;
         input.headDim = qkvShape.dim2;
@@ -867,45 +795,16 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillShapeDerivedFields(
     if (cosSinShape.rank >= 1) {
         input.maxSeqLen = cosSinShape.dim0;
     }
-}
-
-void QkvRmsNormRopeCacheWithKScaleTiling::DeriveBlockShape(const std::string &opName, ContractInput &input)
-{
-    const TensorShapeInfo *blockShape = nullptr;
-    const char *blockShapeSource = "none";
-    const bool kCacheHasBlockDims = HasUsableBlockDims(input.kCache.shape);
-    const bool vCacheHasBlockDims = HasUsableBlockDims(input.vCache.shape);
-    const bool kScaleCacheHasBlockDims = HasUsableBlockDims(input.kScaleCache.shape);
-    if (kCacheHasBlockDims && vCacheHasBlockDims && BlockDimsMatch(input.kCache.shape, input.vCache.shape)) {
-        blockShape = &input.kCache.shape;
-        blockShapeSource = "kCache/vCache";
-    } else if (kCacheHasBlockDims && kScaleCacheHasBlockDims &&
-               BlockDimsMatch(input.kCache.shape, input.kScaleCache.shape)) {
-        blockShape = &input.kCache.shape;
-        blockShapeSource = "kCache/kScaleCache";
-    } else if (vCacheHasBlockDims && kScaleCacheHasBlockDims &&
-               BlockDimsMatch(input.vCache.shape, input.kScaleCache.shape)) {
-        blockShape = &input.vCache.shape;
-        blockShapeSource = "vCache/kScaleCache";
-    } else if (kCacheHasBlockDims) {
-        blockShape = &input.kCache.shape;
-        blockShapeSource = "kCache";
-    } else if (vCacheHasBlockDims) {
-        blockShape = &input.vCache.shape;
-        blockShapeSource = "vCache";
-    } else if (kScaleCacheHasBlockDims) {
-        blockShape = &input.kScaleCache.shape;
-        blockShapeSource = "kScaleCache";
-    }
-    if (blockShape != nullptr) {
-        input.blockNum = blockShape->dim0;
-        input.blockSize = blockShape->dim2;
+    const bool kCacheHasBlockShape = kCacheShape.present && kCacheShape.rank >= 4;
+    if (kCacheHasBlockShape) {
+        input.blockNum = kCacheShape.dim0;
+        input.blockSize = kCacheShape.dim2;
     }
     OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale derived block shape: source=%s blockNum=%lu blockSize=%lu "
-            "hasBlockDims={k:%u,v:%u,kScale:%u}.",
-            blockShapeSource, input.blockNum, input.blockSize, kCacheHasBlockDims ? 1U : 0U,
-            vCacheHasBlockDims ? 1U : 0U, kScaleCacheHasBlockDims ? 1U : 0U);
+            "QkvRmsNormRopeCacheWithKScale derived block shape from kCache: hasBlockShape=%u "
+            "rank=%u shape={%lu,%lu,%lu,%lu} blockNum=%lu blockSize=%lu.",
+            kCacheHasBlockShape ? 1U : 0U, kCacheShape.rank, kCacheShape.dim0, kCacheShape.dim1,
+            kCacheShape.dim2, kCacheShape.dim3, input.blockNum, input.blockSize);
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::FillRequiredTensorInputs(
@@ -942,8 +841,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractInput(
     OP_CHECK_IF(FillRequiredTensorInputs(context, opName, input) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
 
-    FillShapeDerivedFields(input.qkv, input.cosSin, input.cuSeqLen, input);
-    DeriveBlockShape(opName, input);
+    FillShapeDerivedFields(opName, input);
     FillOptionalTensorInputs(context, input);
     epsilon = ParseEpsilonAttr(context);
     return ge::GRAPH_SUCCESS;

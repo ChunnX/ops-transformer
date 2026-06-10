@@ -162,7 +162,6 @@ private:
     static bool IsShape2D(const TensorShapeInfo &shape, uint64_t d0, uint64_t d1);
     static bool IsShape3D(const TensorShapeInfo &shape, uint64_t d0, uint64_t d1, uint64_t d2);
     static bool IsShape4D(const TensorShapeInfo &shape, uint64_t d0, uint64_t d1, uint64_t d2, uint64_t d3);
-    static bool HasDtype(const TensorContractInfo &tensor, ge::DataType expected);
     static bool IsCacheStrideValid(const TensorStrideInfo &stride, uint64_t headDim);
     static bool IsScaleStrideValid(const TensorStrideInfo &stride);
     static bool CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs, const TensorStrideInfo &rhs);
@@ -173,13 +172,10 @@ private:
                                       uint64_t rowTile, uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb,
                                       bool fitsL0a, bool fitsL0c, bool accepted);
     static void FillContractHeadNums(const ContractInput &input, ContractTiling &tiling);
+    static ge::graphStatus ValidateHeadNums(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateContractHeadNums(const ContractTiling &tiling, const std::string &opName);
     static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
                                          const TensorContractInfo &tensor, ge::DataType expected);
-    static ge::graphStatus ValidateRequiredDtypes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateCacheDtypes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateOptionalDtypes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateShapes(const ContractInput &input, const ContractTiling &tiling,
                                           const std::string &opName);
@@ -195,8 +191,6 @@ private:
     static TensorShapeInfo ToShapeInfo(const gert::Shape &shape);
     static TensorShapeInfo ToShapeInfo(const gert::StorageShape *shape);
     static TensorStrideInfo ToStrideInfo(const gert::Stride &stride);
-    static bool HasUsableBlockDims(const TensorShapeInfo &shape);
-    static bool BlockDimsMatch(const TensorShapeInfo &lhs, const TensorShapeInfo &rhs);
     static ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
                                                     TensorStrideInfo &strideInfo);
     static const char *DtypeName(ge::DataType dtype);
@@ -208,8 +202,6 @@ private:
     static void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info);
     static void LogContractInput(const std::string &opName, const ContractInput &input, uint64_t aicNum,
                                  float epsilon);
-    static size_t CalcOpWorkspaceSize(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo);
-    static size_t CalcWorkspaceSize(size_t opWorkspaceSize);
     static ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
                                         const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
                                         size_t &workspaceSize);
@@ -220,9 +212,7 @@ private:
     static ge::graphStatus ParseHeadNumsAttr(gert::TilingContext *context, const std::string &opName,
                                              ContractInput &input);
     static float ParseEpsilonAttr(gert::TilingContext *context);
-    static void FillShapeDerivedFields(const TensorContractInfo &qkv, const TensorContractInfo &cosSin,
-                                       const TensorContractInfo &cuSeqLen, ContractInput &input);
-    static void DeriveBlockShape(const std::string &opName, ContractInput &input);
+    static void FillShapeDerivedFields(const std::string &opName, ContractInput &input);
     static ge::graphStatus FillRequiredTensorInputs(gert::TilingContext *context, const std::string &opName,
                                                     ContractInput &input);
     static void FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input);
