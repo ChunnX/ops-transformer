@@ -27,10 +27,15 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     wl = wr = -1
     attn_mask = None
     is_causal = False
-    if mask_mode in (3,4):
+    if mask_mode == 3:
         is_causal = True
         mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
         attn_mask = mask.to(dtype=torch.int8, device=device)
+    elif mask_mode == 4:
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
     elif mask_mode != 0:
         wl = p.get("win_left", 2147483647)
         wr = p.get("win_right", 2147483647)
