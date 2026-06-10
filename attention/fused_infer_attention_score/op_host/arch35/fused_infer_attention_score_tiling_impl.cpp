@@ -61,7 +61,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetEmptyTensor(gert::TilingC
     int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
     uint32_t singleCoreSize;
     if (singleCoreRawSize > UINT32_MAX) {
-        OP_LOGI(context_, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
+        OP_LOGI(fiaInfo.opName, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
         singleCoreSize = UINT32_MAX;
     } else {
         singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
@@ -421,7 +421,7 @@ int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, in
     int64_t term1 = an % d + an;
     int64_t term2 = an / d + 1;
     if (term1 > INT64_MAX / term2){
-        OP_LOGI(context_, "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", term1, term2, an, d);
+        OP_LOGI("FusedInferAttentionScore", "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", term1, term2, an, d);
         return INT64_MAX;
     }
     return term1 * term2 / 2; //2：等差数列求和公式分母
@@ -2247,7 +2247,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
     uint32_t singleCoreSize;
     if (singleCoreRawSize > UINT32_MAX) {
-        OP_LOGI(context_, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
+        OP_LOGI(fiaInfo.opName, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
         singleCoreSize = UINT32_MAX;
     } else {
         singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
