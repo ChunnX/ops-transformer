@@ -24,10 +24,14 @@ _kernel_cache = {}
 _workspace_cache = {}
 
 
+def _clear_caches():
+    global _kernel_cache, _workspace_cache
+    _kernel_cache.clear()
+    _workspace_cache.clear()
+
+
 pass_configs = {
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 }
 
