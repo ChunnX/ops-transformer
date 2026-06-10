@@ -703,9 +703,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
 
     Duplicate(reduceSumDwResUb, static_cast<T>(0.0), PSY_SYNC_BLOCK_FLOAT_NUM);
-    uint32_t reduceShape[] = {1U, static_cast<uint32_t>(realKSizeAlign8)};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
-        reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, reduceShape, true);
+    SumParams sumPParams = {
+        static_cast<uint32_t>(1),
+        static_cast<uint32_t>(realKSizeAlign8),
+        static_cast<uint32_t>(runInfo.kRealSize)
+    };
+    AscendC::Sum(reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, sumPParams);
     PipeBarrier<PIPE_V>();
 
     DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
