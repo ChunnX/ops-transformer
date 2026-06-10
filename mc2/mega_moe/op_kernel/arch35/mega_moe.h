@@ -34,9 +34,9 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t>;
 
-// 预留：XType OutputType
-#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
+// 预留：XType OutputType Weight1Type
+#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, Weight1Type, TopkWeightsType, QuantMode
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
