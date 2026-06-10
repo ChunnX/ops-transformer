@@ -33,6 +33,7 @@ TestCasesFIA = {
         'seqused_q': [(9351, 9351, 9351)],
         'seqused_kv': [(24, 24, 24)],
         'scale': [0.0883883476483184],
+        'return_softmax_lse': [1],
     },
     'Prefill_FP16_FP16_FP16_Unquant_L0_5_142_142_75600_75600_64_64_BNSD_PA_Mask_000001': {
         'layout_q': ['BNSD'],
@@ -77,6 +78,7 @@ TestCasesFIA = {
         'block_size': [384],
         'block_table_shape': [(7, 197)],
         'scale': [0.0625],
+        'return_softmax_lse': [1],
     },
     'Prefill_FP16_FP16_FP16_Unquant_L0_6_5_5_89809_89809_64_64_BNSD_BSND_Mask_000003': {
         'layout_q': ['BNSD'],
@@ -118,6 +120,7 @@ TestCasesFIA = {
         'block_size': [384],
         'block_table_shape': [(3, 5)],
         'scale': [0.0883883476483184],
+        'return_softmax_lse': [1],
     },
     'Prefill_BF16_BF16_BF16_Unquant_L0_11_128_1_12288_10240_256_256_BNSD_PA_Mask_000005': {
         'layout_q': ['BNSD'],
@@ -161,6 +164,7 @@ TestCasesFIA = {
         'S2': [77],
         'seqused_q': [(25, 25, 25)],
         'scale': [0.125],
+        'return_softmax_lse': [1],
     },
     'Decode_FP16_FP16_FP16_Unquant_L0_4_168_56_4_88_128_128_BSND_PA_Mask_000007': {
         'layout_q': ['BSND'],
@@ -207,6 +211,7 @@ TestCasesFIA = {
         'block_size': [256],
         'block_table_shape': [(5, 16)],
         'scale': [0.0883883476483184],
+        'return_softmax_lse': [1],
     },
     'Decode_FP16_FP16_FP16_Unquant_L0_171_81_3_1_75600_64_64_TND_Mask_000009': {
         'layout_q': ['TND'],
@@ -254,6 +259,7 @@ TestCasesFIA = {
         'block_size': [128],
         'block_table_shape': [(6, 18)],
         'scale': [0.0625],
+        'return_softmax_lse': [1],
     },
     'Prefill_FP16_FP16_FP16_Unquant_L0_64_40_10_64_64_128_128_TND_PA_LSE_Mask_000011': {
         'layout_q': ['TND'],
@@ -278,6 +284,7 @@ TestCasesFIA = {
         'block_size': [256],
         'block_table_shape': [(64, 1)],
         'scale': [0.0883883476483184],
+        'return_softmax_lse': [1],
     },
 }
 
