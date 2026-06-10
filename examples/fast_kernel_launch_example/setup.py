@@ -116,7 +116,8 @@ class CMakeBuildCommand(Command):
                                 '-DCMAKE_BUILD_TYPE=Release',
                                 f'-DTorch_DIR={Torch_DIR}',
                                 f'-DTORCH_NPU_PATH={TORCH_NPU_PATH}',
-                                f'-DNPU_ARCH={NPU_ARCH}'
+                                f'-DNPU_ARCH={NPU_ARCH}',
+                                f'-DCANN_3RD_LIB_PATH={CANN_3RD_LIB_PATH}'
                                 ]
         subprocess.check_call(cmake_config_command, cwd=os.getcwd())
         subprocess.check_call(['cmake', '--build', build_temp, '--config', 'Release', '--parallel', num_jobs], cwd=os.getcwd())
