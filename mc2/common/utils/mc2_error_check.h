@@ -119,10 +119,8 @@ static inline bool Mc2CheckNCDimValid(const char *opName, const aclTensor *self,
     outDimN = out->GetViewShape().GetDim(MC2_NHWC_N_DIM);
     outDimC = out->GetViewShape().GetDim(MC2_NHWC_C_DIM);
   } else {
-    std::string formatStr = Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(self->GetStorageFormat()))).c_str();
     OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName, "self and out",
-        formatStr.c_str(),
-        "The formats of self and out must be within the range [NCHW, NHWC].");
+        "", "The formats of self and out must be within the range [NCHW, NHWC].");
     return false;
   }
   if ((selfDimN != outDimN) || (selfDimC != outDimC)) {
