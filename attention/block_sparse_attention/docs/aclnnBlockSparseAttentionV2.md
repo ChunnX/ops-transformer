@@ -134,10 +134,11 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
-        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
-        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul>
+        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li>
+        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li>
+        </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -153,7 +154,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
           <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -170,7 +171,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
           <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -611,7 +612,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>
