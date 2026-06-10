@@ -78,7 +78,6 @@ private:
     Params params_{};
 
     GlobalTensor<int32_t> groupFlagListGm_;
-    GlobalTensor<int32_t> groupFlagListGm2_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     GlobalTensor<int32_t> tripleGloablTensor_;
     GlobalTensor<int32_t> expertRevNumsGloablTensor_;
@@ -698,7 +697,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             int32_t rowEndLocal = rowStartLocal + rowsThisCore;
             int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
             int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-            __gm__ int32_t* flagBase = (__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr());
+            __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
             for (int32_t w = waveLo; w <= waveHi; ++w) {
                 int32_t waveStartLocal = w * L1_TILE_M_I32;
                 int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
@@ -815,7 +814,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                                 Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
-    groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 }
 
 // =============================================
