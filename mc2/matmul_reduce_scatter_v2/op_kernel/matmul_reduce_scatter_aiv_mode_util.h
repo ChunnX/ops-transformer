@@ -209,6 +209,7 @@ public:
         dequantSize = tilingData.matmulReduceScatterV2AivModeInfo.dequantSize;
         hasAAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasAAlign;
         hasBAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasBAlign;
+        biasConvertSize = tilingData.matmulReduceScatterV2AivModeInfo.biasConvertSize;
         dequant_type = tilingData.matmulReduceScatterV2AivModeInfo.dequant_type;
         is910C = tilingData.matmulReduceScatterV2AivModeInfo.is910C;
         isX2ScaleTypeInt64 = tilingData.matmulReduceScatterV2AivModeInfo.isX2ScaleTypeInt64;
@@ -451,6 +452,7 @@ public:
     uint64_t aAlignSize;
     uint64_t bAlignSize;
     uint64_t dequantSize;
+    uint64_t biasConvertSize;
     bool hasAAlign;
     bool hasBAlign;
     bool nAlign16;

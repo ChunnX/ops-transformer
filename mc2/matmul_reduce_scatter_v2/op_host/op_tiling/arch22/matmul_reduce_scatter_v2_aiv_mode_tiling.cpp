@@ -596,6 +596,10 @@ static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivMode
         auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
         if (biasDesc != nullptr) {
             biasDatatype = biasDesc->GetDataType();
+            // A2/A3非量化场景下，bias为bf16时强制使用fp32精度，使kernel模板实例化为DTYPEBIAS=float
+            if (!info.quantFlag && biasDatatype == ge::DT_BF16) {
+                biasDatatype = ge::DT_FLOAT;
+            }
         }
     }
     uint32_t biasDType = ConvertGeTypeToBiasDTypeKey(biasDatatype);
@@ -960,7 +964,7 @@ void GetUsrWorkSpaceSize(uint32_t elementSize, uint32_t numBlocks, uint64_t &use
                                                      cocTilingData.n0 * TWO * sizeof(int32_t));
         }
     }
-    userWorkSpaceSize += info.dequantSize;
+    userWorkSpaceSize += info.dequantSize + info.biasConvertSize;
 }
 
 static bool CheckDtype_X1(const gert::TilingContext *context)
@@ -1009,6 +1013,7 @@ static void PrintTilingDataInfo(MatmulReduceScatterV2AivModeInfo &info, CoCTilin
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.aAlignSize %lu", info.aAlignSize);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.bAlignSize %lu", info.bAlignSize);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.quantFlag %d", info.quantFlag);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.biasConvertSize %lu", info.biasConvertSize);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.is910C %d", info.is910C);
     OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.isX2ScaleTypeInt64 %d", info.isX2ScaleTypeInt64);
 
@@ -1119,7 +1124,24 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     } else {
         SetTilingData(tilingData->cocTiling, info, rankSize);
     }
-
+    
+    // 非量化场景下，bf16 bias需转为fp32，计算所需workspace大小
+    info.biasConvertSize = 0;
+    if (!info.quantFlag) {
+        const gert::StorageShape *biasShape = context->GetOptionalInputShape(BIAS_INDEX);
+        if (biasShape != nullptr) {
+            auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
+            if (biasDesc != nullptr && biasDesc->GetDataType() == ge::DT_BF16) {
+                auto shape = biasShape->GetStorageShape();
+                uint64_t biasElements = 1;
+                for (size_t i = 0; i < shape.GetDimNum(); i++) {
+                    biasElements *= shape.GetDim(i);
+                }
+                info.biasConvertSize = biasElements * sizeof(float);
+                OP_LOGD(K_INNER_DEBUG, "biasConvertSize=%lu, bias need cast bf16->fp32", info.biasConvertSize);
+            }
+        }
+    }
     uint32_t elementSize = D_TYPE_SIZE_MAP.at(aType);
     uint64_t userWorkSpaceSize = 0;
     GetUsrWorkSpaceSize(elementSize, numBlocks, userWorkSpaceSize, info, tilingData->cocTiling);
