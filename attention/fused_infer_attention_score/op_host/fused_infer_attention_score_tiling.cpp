@@ -1482,7 +1482,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
-        if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
+        if (false && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
             !(faInfo.maskType == MaskType::SWA_MASK) &&
             (!faInfo.learnableSinkFlag) &&
             !(faInfo.innerPrecise == 1) &&
@@ -1493,7 +1493,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
         }
-        if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
+        if (false && faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
             (batch >= aicoreNum) && (faInfo.blockSize == DECODING_PAGE_BLOCK_SIZE_128) &&
             !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) &&
             ((faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128)) {
@@ -1617,7 +1617,13 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
             context->SetBlockDim(needCoreNum);
         }
     } else {
-        context->SetBlockDim(fai_tiling.GetCoreNum());
+        auto needCoreNum = faiTilingData.get_needCoreNum();
+        if (needCoreNum == 0) {
+            context->SetBlockDim(fai_tiling.GetCoreNum());
+        } else {
+            context->SetBlockDim(needCoreNum);
+        }
+        // context->SetBlockDim(fai_tiling.GetCoreNum());
     }
     context->SetTilingKey(fai_tiling.GetTilingKey());
     return ge::GRAPH_SUCCESS;
