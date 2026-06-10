@@ -61,7 +61,7 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 }
 
 __aicore__ constexpr bool IsDn() {
-    return false;
+    return true;
 }
 
 __aicore__ constexpr TPosition GetC2Position() {
@@ -77,7 +77,7 @@ __aicore__ constexpr TPosition GetC2Position() {
     template <typename INPUT_T, typename T, BSALayout layout, BSALayout kvLayout, \
     S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType, \
     DTemplateType dVTemplateType, bool hasAtten,\
-    typename OUTPUT_T, bool isPa>
+    typename OUTPUT_T, bool isPa, bool useDn=true>
 
 #define TEMPLATE_INTF_ARGS \
     INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
