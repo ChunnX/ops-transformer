@@ -30,7 +30,10 @@ from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_n
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
+from .compressor import npu_compressor
+from .graph_convert.graph_convert_compressor import convert_npu_compressor
 from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
 from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
 from .lightning_indexer_v2 import npu_lightning_indexer_v2
 from .quant_lightning_indexer_v2 import npu_quant_lightning_indexer_v2
+
