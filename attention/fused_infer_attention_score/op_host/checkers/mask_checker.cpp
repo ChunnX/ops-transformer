@@ -102,7 +102,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             }
             if (!fiaInfo.attenMaskFlag && (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
                 std::string reasonMsg = "In MLA FullQuant Scenario, when the datatype of query is "
-                    "FLOAT8_E4M3FN, DT_HIFLOAT8, or DT_INT8, and attenMask is empty, sparseMode must be 0";
+                    "FLOAT8_E4M3FN, HIFLOAT8, or INT8, and attenMask is empty, sparseMode must be 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                     std::to_string(fiaInfo.sparseMode).c_str(), reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
@@ -348,7 +348,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
         }
     } else {
         std::string dimStr = std::to_string(attenMaskDim) + "D";
-        OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "atten_mask", dimStr.c_str(), "2D 3D or 4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "atten_mask", dimStr.c_str(), "2D, 3D or 4D");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

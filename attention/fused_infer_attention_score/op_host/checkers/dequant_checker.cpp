@@ -1506,7 +1506,7 @@ ge::graphStatus DequantChecker::CheckN1SizeFullquant(const FiaTilingInfo &fiaInf
     }
     OP_CHECK_IF((fiaInfo.n1Size % fiaInfo.n2Size != 0),
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "num_heads and num_key_value_heads",
-            std::to_string(fiaInfo.n1Size).c_str(),
+            (std::to_string(fiaInfo.n1Size) + " and " + std::to_string(fiaInfo.n2Size)).c_str(),
             "In fullquant scenario, num_heads must be a multiple of num_key_value_heads"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
