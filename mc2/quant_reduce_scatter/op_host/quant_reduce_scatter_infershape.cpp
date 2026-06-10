@@ -109,7 +109,7 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantReduce
  */
 static ge::graphStatus InferShapeQuantReduceScatter(gert::InferShapeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "Context"), return ge::GRAPH_FAILED);
     QuantReduceScatterShapeInfo shapeInfo;
     // get shape_info
     OPS_CHECK(GetShapeInfo(context, shapeInfo) != ge::GRAPH_SUCCESS,
@@ -160,7 +160,7 @@ static ge::graphStatus InferShapeQuantReduceScatter(gert::InferShapeContext *con
  */
 static ge::graphStatus InferDataTypeQuantReduceScatter(gert::InferDataTypeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "Context"), return ge::GRAPH_FAILED);
     OP_LOGD(INNER_DEBUG, "start to infer datatype for quant_reduce_scatter");
 
     const auto attrs = context->GetAttrs();

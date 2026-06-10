@@ -19,6 +19,7 @@
 #include "fa_l1_tensor.h"
 #include "gm_coord.h"
 #include "offset_calculator_v2.h"
+#include "../const_def.h"
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename T>
@@ -44,23 +45,20 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.dstNzMatrixStride = 0;
         DataCopy(l1Tensor, gmTensor, nd2nzPara);
     } else {
+        constexpr uint32_t BLOCK_ELEMENT_CNT =
+            IsSameType<T, int4b_t>::value ? 64 : AttentionCommon::BYTE_BLOCK / sizeof(T);
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
-        uint32_t srcNdMatrixNum = nValue;
-        uint32_t srcNdMatrixStride = srcDValue;
-        uint32_t dstNzMatrixStride = 16;
-        nValue = 1;
-        srcDValue = dValue;
-        for (uint32_t i = 0; i < srcNdMatrixNum; i++) {
+        for (uint32_t i = 0; i < nValue; i++) {
             nd2nzPara.ndNum = 1;
-            nd2nzPara.nValue = nValue; // nd矩阵的行数
+            nd2nzPara.nValue = 1;
             if constexpr (IsSameType<T, int4b_t>::value) {
                 constexpr uint32_t HALF_SIZE_DIVISOR = 2;
                 nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
+                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
             } else {
-                nd2nzPara.dValue = dValue;       // nd矩阵的列数
-                nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
+                nd2nzPara.dValue = dValue;
+                nd2nzPara.srcDValue = dValue;
             }
             nd2nzPara.dstNzC0Stride = dstNzC0Stride;
             nd2nzPara.dstNzNStride = 1;
@@ -68,8 +66,8 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             nd2nzPara.dstNzMatrixStride = 0;
             DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
 
-            gmOffset += srcNdMatrixStride;
-            l1Offset += dstNzMatrixStride;
+            gmOffset += srcDValue;
+            l1Offset += BLOCK_ELEMENT_CNT;
         }
     }
 }

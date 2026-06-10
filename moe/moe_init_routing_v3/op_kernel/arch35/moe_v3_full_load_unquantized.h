@@ -216,7 +216,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
     int64_t inFactor = Align(this->cols_, sizeof(T));
-    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
+    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
+ 	                     Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
 
@@ -306,7 +307,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     int64_t curIndex = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t k = 0;
-    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
+    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
+ 	                     Min(this->actualExpertIdxNum_, this->activeNum_);
 
     for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
@@ -327,9 +329,9 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
 {
-    int64_t perCoreRows = Ceil(this->activeNum_, this->needCoreNum_);
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
     int64_t startRow = this->blockIdx_ * perCoreRows;
-    int64_t endRow = Min(startRow + perCoreRows, this->activeNum_);
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
     if (startRow >= endRow) {
         return;
     }
@@ -360,9 +362,9 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
 {
-    int64_t perCoreRows = Ceil(this->activeNum_, this->needCoreNum_);
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
     int64_t startRow = this->blockIdx_ * perCoreRows;
-    int64_t endRow = Min(startRow + perCoreRows, this->activeNum_);
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
     if (startRow >= endRow) {
         return;
     }

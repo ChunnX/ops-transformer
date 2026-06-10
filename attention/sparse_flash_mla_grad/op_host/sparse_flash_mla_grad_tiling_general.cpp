@@ -100,7 +100,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoOpTiling()
     // Init
     int32_t selBlkCntAlign = CeilCommon(tilingData.opInfo.get_selectedBlockCount(), 8) * 8;
     tmpData.singleM = tmpData.mode == SMLAG_SCFA_MODE ? tilingData.opInfo.get_G() : SINGLE_M;
-    tmpData.singleN = tmpData.mode == SMLAG_SCFA_MODE ? CeilCommon(std::max(128, selBlkCntAlign), 128) * 128 : 128;
+    tmpData.singleN = 128;
     tmpData.s1BasicSize = tmpData.mode == SMLAG_SCFA_MODE ? 1 : tmpData.singleM / tilingData.opInfo.get_G();
 
     // setTilingData
@@ -138,11 +138,6 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoLibApiTiling()
     auto helpLenB = 2 * tmpData.singleM * tmpData.singleN * tmpData.dataTypeSize; // UB内数据类型 64KB
     AscendC::SoftMaxGradTilingFunc(softmaxGradShape, tmpData.dataTypeSize, helpLenB, tilingData.softmaxGradTilingData,
                                    true);
-
-    auto sftBaseM = tilingData.splitCoreParams.get_sftBaseM();
-    auto sftBaseN = tilingData.splitCoreParams.get_sftBaseN();
-    auto cmpSoftmaxShape = ge::Shape({sftBaseM, sftBaseN});
-    AscendC::SoftMaxTilingFunc(cmpSoftmaxShape, sizeof(float), sftBaseM * sftBaseN * sizeof(float), tilingData.cmpSoftmaxTilingData);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -187,8 +182,8 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     if (tmpData.mode == SMLAG_SCFA_MODE) {
         int64_t dAlign = (tilingData.opInfo.get_D() + 15) / 16 * 16;
         // 每个s1做完，做scatter add累加，workspace开DB
-        auto winLen = tilingData.opInfo.get_oriWinLeft() + tilingData.opInfo.get_oriWinRight() + 1;
-        workspaces[0] += 24 * PING_PONG_BUFFER * (tmpData.selected_block_count + winLen) * (dAlign + dAlign) * B32;
+        workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * (dAlign + dAlign) * B32;
+        workspaces[0] += tilingData.opInfo.get_additionalWorkspaceLen(); // 用于保存原先dk，在post阶段muls(scale)
     } else {
         workspaces[0] += dkWorkspaceLen; // 用于保存原先dk，在post阶段muls(scale)
     }
@@ -250,16 +245,17 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoSftTiling()
     constexpr int32_t maxUbSize = 191 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = (maxUbSize - sftBaseN * B32) / (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2 + 2 * B32);
+    uint32_t sftBaseNAlign = (tmpData.singleN + 8 - 1) / 8 * 8;
+    uint32_t sftBaseM = (maxUbSize - tilingData.opInfo.get_G() * 32 - sftBaseNAlign * B32) / (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2 + 2 * B32);
 
     uint32_t actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) + 
-                          ((sftBaseM + 8 - 1) / 8) * 8 * B32 * 2 +
-                          ((sftBaseN + 8 - 1) / 8 * 8) * B32;
+                          ((sftBaseM + 8 - 1) / 8 * 8) * B32 * 2 +
+                          sftBaseNAlign * B32 + tilingData.opInfo.get_G() * 32;
     while (actualUsed > maxUbSize) {
         sftBaseM -= 1;
         actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) + 
-                    ((sftBaseM + 8 - 1) / 8) * 8 * B32 * 2 +
-                    ((sftBaseN + 8 - 1) / 8 * 8) * B32;
+                    ((sftBaseM + 8 - 1) / 8 * 8) * B32 * 2 +
+                    sftBaseNAlign * B32 + tilingData.opInfo.get_G() * 32;
     }
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
@@ -298,7 +294,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoCastTiling()
 
     uint32_t postUbBaseSize = 0;
     uint32_t qPostBaseNum = 0;
-    int64_t curPostCoexNode = tmpData.mode == SMLAG_SCFA_MODE ? 3 : 7;
+    int64_t curPostCoexNode = 7;
     postUbBaseSize = aicoreParams_.ubSize / curPostCoexNode;
     qPostBaseNum = postUbBaseSize / typeSize / dAlign * tilingData.opInfo.get_D();
 
@@ -350,6 +346,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoCastTiling()
 
     tilingData.opInfo.set_dqWorkspaceLen((allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
     tilingData.opInfo.set_dkWorkspaceLen((allNumKey * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
+    if (tmpData.mode == SMLAG_SCFA_MODE) {
+        tilingData.opInfo.set_additionalWorkspaceLen((allNumOriKv * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
+    }
 
     return ge::GRAPH_SUCCESS;
 }

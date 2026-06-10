@@ -32,19 +32,19 @@ $$
 相较于`aclnnMoeDistributeCombineAddRmsNorm`接口，该接口变更如下：
 
 - 新增支持特殊专家场景：
-  - **zeroExpert ≠ 0**：通过传入大于0的`zeroExpertNum`参数使能。
+  - **zeroExpert ≠ 0**：通过传入大于0的`zeroExpertNum`参数开启。
 
     $$
         Moe(oriXOptional) = 0
     $$
 
-  - **copyExpert ≠ 0**：通过传入大于0的`copyExpertNum`参数使能，且需传入有效的`oriXOptional`参数。
+  - **copyExpert ≠ 0**：通过传入大于0的`copyExpertNum`参数开启，且需传入有效的`oriXOptional`参数。
 
     $$
         Moe(oriXOptional) = oriXOptional
     $$
 
-  - **constExpert ≠ 0**：通过传入大于0的`constExpertNum`参数使能，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
+  - **constExpert ≠ 0**：通过传入大于0的`constExpertNum`参数开启，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
 
     $$
         Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional

@@ -25,12 +25,13 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
-#include "aclnnInner_quant_reduce_scatter.h"
+#include "log/log.h"
+#include "mc2/common/op_kernel/mc2_quant_reduce_scatter_context.h"
 
 #ifdef BUILD_OPEN_PROJECT
 
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
@@ -109,15 +110,11 @@ static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, con
     bool isAllDtypesValid = false;
     isAllDtypesValid = CheckKGAllDtypesValid(x, scales, output) || CheckMXAllDtypesValid(x, scales, output);
     if (!isAllDtypesValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "In KG quantMode, x support [DT_INT8/DT_HIFLOAT8/DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], "
-            "scales support [DT_FLOAT] and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
-            "In MX quantMode, x support [DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2], scales support [DT_FLOAT8_E8M0]"
-            "and output support [DT_FLOAT16/DT_BF16/DT_FLOAT]."
-            "Input tensors x: %s, scales: %s and output: %s are not simultaneously supported.",
-            op::ToString(x->GetDataType()).GetString(),
-            op::ToString(scales->GetDataType()).GetString(),
-            op::ToString(output->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnQuantReduceScatter", "x/scales/output",
+            (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
+             op::ToString(scales->GetDataType()).GetString() + "/" +
+             op::ToString(output->GetDataType()).GetString()).c_str(),
+            "Tensors x, scales and output are not simultaneously supported");
     }
     return isAllDtypesValid;
 }
@@ -125,16 +122,15 @@ static bool CheckAllDtypesValid(const aclTensor* x, const aclTensor* scales, con
 static bool CheckGroupLength(const char* group)
 {
     if (group == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "QuantReduceScatter, group is nullptr !");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantReduceScatter", "group");
         return false;
     }
 
-    // group长度≥128字符, 返回HCCL_GROUP_NAME_LENGTH_MAX
-    size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX);
+    size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX); // group长度≥128字符, 返回HCCL_GROUP_NAME_LENGTH_MAX
     if (groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "QuantReduceScatter, Limit the length of the group to less than %lu characters.",
-                HCCL_GROUP_NAME_LENGTH_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantReduceScatter", "group",
+            "length exceeds " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX),
+            "Limit the length of the group to less than " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + " characters");
         return false;
     }
 
@@ -161,64 +157,69 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
 extern "C" aclnnStatus aclnnInnerQuantReduceScatterV2GetWorkspaceSize(const aclTensor *context, const aclTensor* x,
-                                                                      const aclTensor* scales, int64_t hcclBufferSize,
-                                                                      char* reduceOp, int64_t yDtype,
-                                                                      int64_t worldSize, const aclTensor* output,
+                                                                      const aclTensor* scales,
+                                                                      int64_t hcclBufferSize,
+                                                                      const char* reduceOp, int64_t yDtype,
+                                                                      int64_t worldSize, aclTensor* output,
                                                                       uint64_t* workspaceSize,
                                                                       aclOpExecutor** executor);
-extern "C" aclnnStatus aclnnInnerQuantReduceScatterV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                      aclrtStream stream);
+extern "C" aclnnStatus aclnnInnerQuantReduceScatterV2(void* workspace, uint64_t workspaceSize,
+                                                      aclOpExecutor* executor, const aclrtStream stream);
 
-#endif
+#else
 
 extern "C" aclnnStatus aclnnInnerQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                                    char* group, char* reduceOp,
+                                                                    const char* group, const char* reduceOp,
                                                                     int64_t yDtype, int64_t worldSize,
-                                                                    const aclTensor* output,
-                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
+                                                                    aclTensor* output, uint64_t* workspaceSize,
+                                                                    aclOpExecutor** executor);
 extern "C" aclnnStatus aclnnInnerQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                    aclrtStream stream);
-
+                                                    const aclrtStream stream);
+#endif
 
 extern "C" aclnnStatus aclnnQuantReduceScatterBaseGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                                   char* group, char* reduceOp, int64_t worldSize,
-                                                                   const aclTensor* output, uint64_t* workspaceSize,
+                                                                   const char* group, const char* reduceOp,
+                                                                   aclTensor* output, uint64_t* workspaceSize,
                                                                    aclOpExecutor** executor)
 {
     aclnnStatus retParam = CheckParams(x, scales, group, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    int64_t worldSize = -1;
 
+    aclnnStatus ret = ACL_SUCCESS;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     aclTensor *mc2Context = nullptr;
     uint64_t hcclBuffSize = 0;
     const char *opName = "quant_reduce_scatter_v2";
-    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensorForQrs(group, opName, hcclBuffSize, mc2Context);
+    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensorForQrs(group, opName, hcclBuffSize,
+                                                                    mc2Context, worldSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    aclnnStatus retV2 = aclnnInnerQuantReduceScatterV2GetWorkspaceSize(mc2Context, x, scales, hcclBuffSize,
-                                                                       reduceOp, yDtype, worldSize, output,
-                                                                       workspaceSize, executor);
-    OP_LOGD("QuantReduceScatterV2, aclnnGetWorkspaceSize ret %d.", retV2);
-    return retV2;
+    ret = aclnnInnerQuantReduceScatterV2GetWorkspaceSize(mc2Context, x, scales, hcclBuffSize,
+                                                         reduceOp, yDtype, worldSize, output,
+                                                         workspaceSize, executor);
+    OP_LOGD("Execute QuantReduceScatterContext, aclnnGetWorkspaceSize ret is: %d.", ret);
+#else
+    ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, group, reduceOp, yDtype,
+                                                       worldSize, output, workspaceSize, executor);
+    OP_LOGD("Execute QuantReduceScatter, aclnnGetWorkspaceSize ret is: %d.", ret);
 #endif
-    aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, group, reduceOp, yDtype,
-                                                                   worldSize, output, workspaceSize, executor);
-    OP_LOGD("QuantReduceScatter, aclnnGetWorkspaceSize ret %d.", ret);
     return ret;
 }
 
 extern "C" aclnnStatus aclnnQuantReduceScatterBase(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                   aclrtStream stream)
+                                                   const aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
 
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    OP_LOGD("inner QuantReduceScatterV2 start");
+    OP_LOGD("inner QuantReduceScatterContext start");
     return aclnnInnerQuantReduceScatterV2(workspace, workspaceSize, executor, stream);
-#endif
+#else
     OP_LOGD("inner QuantReduceScatter start");
     return aclnnInnerQuantReduceScatter(workspace, workspaceSize, executor, stream);
+#endif
 }
