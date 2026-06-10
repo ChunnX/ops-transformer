@@ -910,11 +910,11 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
     }
     // BnNBsD pa value --[blocknum, kv_n, blocksize/64, v_D, 2]
     if ((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                    (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                    (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                    (fiaInfo.vHeadDim) != valueAntiquantScaleShape.GetDim(DIM_NUM_3) ||
-                    (valueAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
+        (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+        (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
+            valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+        (fiaInfo.vHeadDim) != valueAntiquantScaleShape.GetDim(DIM_NUM_3) ||
+        (valueAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
         std::string shapeStr = ToString(valueAntiquantScaleShape);
         std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
@@ -1063,11 +1063,11 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         }
     } else {
         if (((fiaInfo.n2Size != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
-                    (queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
-                    (fiaInfo.gSize != dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
-                    (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
-                    dequantScaleQueryShape.GetDim(DIM_NUM_3)) ||
-                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_4)))) {
+            (queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
+            (fiaInfo.gSize != dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
+            (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
+            dequantScaleQueryShape.GetDim(DIM_NUM_3)) ||
+            (2 != dequantScaleQueryShape.GetDim(DIM_NUM_4)))) {
             std::string shapeStr = ToString(dequantScaleQueryShape);
             std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of query is " +
                 std::string(LayoutToSerialString(fiaInfo.qLayout)) +
@@ -1141,7 +1141,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
             (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
             std::string shapeStr = ToString(valueAntiquantScaleShape);
             std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
-                std::string(LayoutToSerialString(fiaInfo.kvLayout)) + 
+                std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
                 ", the shape of valueAntiquantScale should be [T/64, N, D, 2]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
                 shapeStr.c_str(), reasonMsg.c_str());
@@ -1495,7 +1495,6 @@ ge::graphStatus DequantChecker::CheckInputLayoutMLAFullquant(const FiaTilingInfo
     if ((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8) &&
         (std::find(supportedLayoutListFP8.begin(), supportedLayoutListFP8.end(), inputLayout) ==
         supportedLayoutListFP8.end())) {
-
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
             fiaInfo.opParamInfo.layOut,
             "In MLA fullquant scenario, when the datatype of query is FLOAT8_E4M3FN or HIFLOAT8, "
@@ -2260,7 +2259,7 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
                 "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token-PA mode and "
                 "keyAntiquant/valueAntiquant is in split mode"),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT), 
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
                 ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
                 "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-PA mode and "

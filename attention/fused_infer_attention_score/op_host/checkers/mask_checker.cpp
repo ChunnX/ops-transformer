@@ -138,7 +138,6 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                         shapeStr.c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
                 }
-
             } else {
                 // 当qs大于1时，仅支持传入sparsemode=3，且传入mask
                 if (fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN) {
@@ -233,7 +232,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             std::string reasonMsg = "In " + QuantModeToSerialString(fiaInfo.quantMode) +" scenario,"
                 " when sparse is " + std::to_string(sparseMode) + ", the datatype of attentionOut cannot be int8";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
-                    ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
+                ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -305,7 +304,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                 };
                 if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
                     == layoutSupportList.end()) {
-                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layoutStr.c_str(), 
+                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layoutStr.c_str(),
                         "In gqa noquant situation, when rope is not enabled, qkHeadDim = vHeadDim and "
                         "sparseMode is 0 or 1, the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
                     return ge::GRAPH_FAILED;
@@ -387,9 +386,9 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
             if ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) &&
                 fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "atten_mask", "2D",
-                        ("Attenmask does not support 2D when sparse mode is "
-                            + std::to_string(fiaInfo.sparseMode)
-                            + ". Please use 3D or 4D mask").c_str());
+                    ("Attenmask does not support 2D when sparse mode is "
+                        + std::to_string(fiaInfo.sparseMode)
+                        + ". Please use 3D or 4D mask").c_str());
                 return ge::GRAPH_FAILED;
             } else {
                 if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&

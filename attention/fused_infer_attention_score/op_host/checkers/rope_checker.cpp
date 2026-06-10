@@ -165,7 +165,6 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     const std::string inputRopeName = inputName + "_rope";
     const uint32_t dimNum = shape.GetDimNum();
     const uint32_t ropeDimNum = ropeShape.GetDimNum();
-
     if (dimNum != ropeDimNum) {
         std::string paramMsg = inputRopeName + " and " + inputName;
         std::string dimMsg = std::to_string(ropeDimNum) + " and " + std::to_string(dimNum);
