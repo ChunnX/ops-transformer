@@ -1131,7 +1131,6 @@ private:
     CATLASS_DEVICE
     void DispatchAndCombine(Params const &params)
     {
-
         icache_preload(8);
         int64_t localTokenPerExpertOffset =
             peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
