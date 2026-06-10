@@ -177,11 +177,11 @@ void QuantLightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitCo
         return;
     }
     validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B){
+    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
         if (maxS2Size_ > 2 * s2BaseSize_) {
             supportFd_ = true;
         }
-    } else if (validSocVersion_ == ValidSocVersion::ASCEND950){
+    } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
         if (maxS2Size_ > 5 * s2BaseSize_) {
             supportFd_ = true;
         }
