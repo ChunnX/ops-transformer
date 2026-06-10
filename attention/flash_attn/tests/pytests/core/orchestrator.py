@@ -1,5 +1,6 @@
 """编排器 — 串联数据生成 → 后端计算 → 精度对比。"""
 
+import gc
 import torch
 from typing import Any, Dict, List, Optional
 
@@ -72,7 +73,15 @@ def run_case(params: dict,
                          dev_out.float(), comp_cpu.float(),
                          except_label=primary.name, comp_label=comp.name)
 
-    return {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+    ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+
+    del inputs, cpu_inputs, primary_out, golden_out
+    del cpu_raw, dev_raw, cpu_out, dev_out
+    gc.collect()
+    if torch.npu.is_available():
+        torch.npu.empty_cache()
+
+    return ret
 
 
 def _to_stats(val) -> dict:

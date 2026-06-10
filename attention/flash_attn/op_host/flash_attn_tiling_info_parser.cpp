@@ -284,7 +284,7 @@ void FaInfoParser::GetKeyTSize()
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
 }
 
-ge::graphStatus FaInfoParser::GetQkHeadDim() 
+ge::graphStatus FaInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
@@ -299,19 +299,10 @@ ge::graphStatus FaInfoParser::GetQkHeadDim()
 ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenQ != nullptr) {
-            if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %lld", *opParamInfo_.maxSeqlenQ);
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenQ == -1) {
-                s1Size_ = queryTSize_;
-            } else {
-                s1Size_ = *opParamInfo_.maxSeqlenQ;
-            }
-        } else {
-            s1Size_ = queryTSize_;
-        }
+        OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
+                    OP_LOGE(opName_, "max_seqlen_q must be provided when layout_q is TND."),
+                    return ge::GRAPH_FAILED);
+        s1Size_ = *opParamInfo_.maxSeqlenQ;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -333,19 +324,10 @@ void FaInfoParser::GetKvStorageMode()
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenKV != nullptr) {
-            if (*opParamInfo_.maxSeqlenKV < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %lld", *opParamInfo_.maxSeqlenKV);
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenKV == -1) {
-                s2Size_ = keyTSize_;
-            } else {
-                s2Size_ = *opParamInfo_.maxSeqlenKV;
-            }
-        } else {
-            s2Size_ = keyTSize_;
-        }
+        OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
+                    OP_LOGE(opName_, "max_seqlen_kv must be provided when layout_kv is TND."),
+                    return ge::GRAPH_FAILED);
+        s2Size_ = *opParamInfo_.maxSeqlenKV;
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -473,6 +455,10 @@ void FaInfoParser::SetFaShape()
 ge::graphStatus FaInfoParser::GetGSize()
 {
     // 获取G基准值
+    if (n2Size_ == 0U) {
+        OP_LOGE(opName_, "Kv Heads(%ld) should not be zero.", n2Size_);
+        return ge::GRAPH_FAILED;
+    }
     if (n1Size_ % n2Size_ != 0U) {
         OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
