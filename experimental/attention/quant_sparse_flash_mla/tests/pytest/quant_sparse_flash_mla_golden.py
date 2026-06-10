@@ -192,7 +192,7 @@ class GeneralizedSFAQuant:
                     score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
                     score_max = cur_sinks.clone() if cur_sinks is not None else torch.ones((G,)).to(torch.float) * (-torch.inf)
                     acc_o = torch.zeros((G, self.D)).to(torch.float32)
-                    sumexp = torch.zeros((G,)).to(torch.float32)
+                    sumexp = torch.ones((G,)).to(torch.float32)
 
                     for i_S2 in range(total_s2_loop_time):
                         if i_S2 < ori_s2_loop_time:  # ori_kv
@@ -231,10 +231,10 @@ class GeneralizedSFAQuant:
                         sumexp_i = acc_s.sum(dim=-1)
                         sumexp = sumexp * score_max_pre + sumexp_i
 
+
                         acc_s_cast = acc_s * hifp8_max_value
                         acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
                         acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
-                        acc_s_cast = torch.tensor(acc_s_cast)
 
                         # MM2
                         mm2_res = torch.matmul(acc_s_cast, v_tile)
