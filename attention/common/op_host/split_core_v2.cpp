@@ -723,68 +723,69 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     // BAND prefill 简单分核：按有效行均分，不做S2方向拆分
     auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
     uint32_t s1Size0 = GetS1SeqSize(0U, baseInfo);
-    if (mode == SparseMode::INIT_SWA && s1Size0 >= param.mBaseSize) {
-        uint32_t totalBN2 = baseInfo.bSize * baseInfo.n2Size;
-        uint32_t s1GBaseNum = splitContext.splitInfo.s1GBaseNum[0];
-
-        // 计算每个bn2内的有效行范围 [validStart, s1GBaseNum)
-        // S1>S2时前若干行可能无效（s2Range为空），S1<=S2时全部有效
-        BatchCache bCache;
-        CalcBatchCache(0U, splitContext, bCache);
-        uint32_t validStart = 0U;
-        for (uint32_t s1GIdx = 0; s1GIdx < s1GBaseNum; s1GIdx++) {
-            auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
-            if (s2Range.second > s2Range.first) {
-                validStart = s1GIdx;
-                break;
+    if (mode == SparseMode::INIT_SWA) {
+        std::vector<uint32_t> validStartPerBatch(baseInfo.bSize, 0U);
+        uint32_t totalBaseNum = 0;
+        for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
+            BatchCache bCache;
+            CalcBatchCache(bIdx, splitContext, bCache);
+            uint32_t batchS1GNum = splitContext.splitInfo.s1GBaseNum[bIdx];
+            uint32_t batchValidStart = batchS1GNum;  // default: all invalid
+            for (uint32_t s1GIdx = 0; s1GIdx < batchS1GNum; s1GIdx++) {
+                auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
+                if (s2Range.second > s2Range.first) {
+                    batchValidStart = s1GIdx;
+                    break;
+                }
             }
-            if (s1GIdx == s1GBaseNum - 1U) {
-                validStart = s1GBaseNum;  // all rows invalid
-            }
+            validStartPerBatch[bIdx] = batchValidStart;
+            uint32_t validRows = (batchS1GNum > batchValidStart) ? (batchS1GNum - batchValidStart) : 0U;
+            totalBaseNum += validRows * baseInfo.n2Size;
         }
-        uint32_t validPerBN2 = s1GBaseNum - validStart;
-        uint32_t totalValidRows = totalBN2 * validPerBN2;
 
-        if (totalValidRows == 0U) {
+        if (totalBaseNum == 0U) {
             result.usedCoreNum = 1U;
-            result.bN2End[0] = totalBN2;
+            result.bN2End[0] = baseInfo.bSize * baseInfo.n2Size;
             result.mEnd[0] = 0U;
             result.s2End[0] = 0U;
             return;
         }
 
-        uint32_t usedCores = std::min(coreNum, totalValidRows);
-        uint32_t base = totalValidRows / usedCores;
-        uint32_t remainder = totalValidRows % usedCores;
-
-        result.usedCoreNum = usedCores;
-        result.maxCost = 0;
-        result.fdRes.fdNum = 0U;
-
-        for (uint32_t i = 0; i < usedCores; i++) {
-            // 有效行序号 → 全局行号
-            uint32_t endValidRow = (i + 1U) * base + std::min(i + 1U, remainder);
-            uint32_t endBN2 = endValidRow / validPerBN2;
-            uint32_t endLocalValid = endValidRow % validPerBN2;
-            // 映射回全局 s1g index：有效行从 validStart 开始
-            uint32_t endS1G = (endLocalValid == 0U) ? 0U : (validStart + endLocalValid);
-            // 当 endLocalValid==0 时，表示刚好到 bn2 边界
-            result.bN2End[i] = (endLocalValid == 0U) ? endBN2 : endBN2;
-            result.mEnd[i] = endS1G;
-            result.s2End[i] = 0U;
-            result.firstFdDataWorkspaceIdx[i] = 0U;
+        uint32_t avgBaseNum = 1;
+        if (totalBaseNum > coreNum) {
+            avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
         }
 
-        // OP_LOGI("FusedInferAttentionScore", "========== BAND prefill simple split ==========\n");
-        // OP_LOGI("FusedInferAttentionScore",
-        //         "totalBN2: %u, s1GBaseNum: %u, validStart: %u, validPerBN2: %u, "
-        //         "totalValidRows: %u, usedCores: %u\n",
-        //         totalBN2, s1GBaseNum, validStart, validPerBN2, totalValidRows, usedCores);
-        // for (uint32_t i = 0; i < usedCores; i++) {
-        //     OP_LOGI("FusedInferAttentionScore",
-        //             "core[%u]: bN2End=%u, mEnd=%u, s2End=%u\n",
-        //             i, result.bN2End[i], result.mEnd[i], result.s2End[i]);
-        // }
+        uint32_t accumBaseNum = 0;
+        uint32_t currCoreIdx = 0;
+        // 分核流程：只对有效行计数，分切点落在有效行上
+        for (uint32_t bN2Idx = 0; bN2Idx < baseInfo.bSize * baseInfo.n2Size; bN2Idx++) {
+            uint32_t bIdx = bN2Idx / baseInfo.n2Size;
+            for (uint32_t s1GIdx = 0; s1GIdx < splitContext.splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
+                if (s1GIdx < validStartPerBatch[bIdx]) {
+                    continue;  // 无效行不计入负载
+                }
+                accumBaseNum += 1;
+                uint32_t targetBaseNum = (currCoreIdx + 1) * avgBaseNum + 1;
+                if (accumBaseNum >= targetBaseNum && currCoreIdx < coreNum - 1) {
+                    result.bN2End[currCoreIdx] = bN2Idx;
+                    result.mEnd[currCoreIdx] = s1GIdx;
+                    result.s2End[currCoreIdx] = 0U;
+                    result.firstFdDataWorkspaceIdx[currCoreIdx] = 0U;
+                    currCoreIdx += 1;
+                }
+            }
+        }
+        // 设置最后一个核
+        result.bN2End[currCoreIdx] = baseInfo.bSize * baseInfo.n2Size;
+        result.mEnd[currCoreIdx] = 0;
+        result.s2End[currCoreIdx] = 0;
+        result.firstFdDataWorkspaceIdx[currCoreIdx] = 0;
+        currCoreIdx += 1;
+
+        result.maxCost = 0;
+        result.fdRes.fdNum = 0U;
+        result.usedCoreNum = currCoreIdx;
         return;
     }
 

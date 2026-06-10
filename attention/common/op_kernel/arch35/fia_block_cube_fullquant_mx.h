@@ -538,7 +538,76 @@ public:
                                        uint32_t subLoop)
     {
         uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
-        CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
+        uint32_t localSkip = 0U;
+        if (runInfo.bandHeadCopySkip > 0U) {
+            uint32_t subLoopBase = (subLoop % 2 == 0) ? 0U : s2SplitSize;
+            if (runInfo.bandHeadCopySkip > subLoopBase) {
+                localSkip = Min(runInfo.bandHeadCopySkip - subLoopBase, s2RealSize);
+            }
+        }
+
+        if (localSkip > 0U && localSkip < s2RealSize) {
+            uint32_t validSize = s2RealSize - localSkip;
+            uint32_t fullPadK = (s2RealSize + 31) >> 5 << 5;
+            InitKeyL1HeadRegion(dstTensor, localSkip, s2RealSize, constInfo.dSize); // 清零
+            CopyKVSlicePartial(dstTensor, s2Offset + localSkip, validSize,
+                                fullPadK, localSkip, 0, constInfo.dSize, runInfo, keyGm);
+        } else {
+            CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
+        }
+    }
+
+    __aicore__ inline void InitKeyL1HeadRegion(const LocalTensor<KV_T> &keyL1,
+        const uint32_t skipRows, const uint32_t totalRows, const uint32_t curD)
+    {
+        uint32_t curPadK = (totalRows + 31) >> 5 << 5;
+        if (skipRows == 0U || skipRows >= curPadK) {
+            return;
+        }
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = Align(curD, 16U) / 32U;
+        initParams.blockNum = skipRows;
+        initParams.dstGap = curPadK - skipRows;
+        initParams.initValue = 0;
+        InitConstValue(keyL1.template ReinterpretCast<half>()[0], initParams);
+    }
+
+    __aicore__ inline void InitValueL1HeadRegion(const LocalTensor<KV_T> &valueL1,
+        const uint32_t skipRows, const uint32_t totalRows, const uint32_t curN)
+    {
+        uint32_t curPadK = (totalRows + 63) >> 6 << 6;
+        if (skipRows == 0U || skipRows >= curPadK) {
+            return;
+        }
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = Align(curN, 16U) / 32U;
+        initParams.blockNum = skipRows;
+        initParams.dstGap = curPadK - skipRows;
+        initParams.initValue = 0;
+        InitConstValue(valueL1.template ReinterpretCast<half>()[0], initParams);
+    }
+
+    __aicore__ inline void CopyKVSlicePartial(const LocalTensor<KV_T> &dstTensor, uint32_t s2Offset, // KV共用部分搬运接口
+                                              uint32_t s2RealSize, uint32_t dstRowCount, uint32_t dstRowOffset,
+                                              uint32_t dOffset, uint32_t dRealSize, RunInfoX &runInfo,
+                                              FaGmTensor<KV_T, KV_FORMAT> &kvGm)
+    {
+        constexpr uint32_t NZ_N0 = 32 / sizeof(KV_T);
+        uint32_t nzElemOffset = dstRowOffset * NZ_N0;
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor {
+            .tensor = dstTensor[nzElemOffset],
+            .rowCount = dstRowCount
+        };
+
+        GmKvCoord gmCoord {
+            .bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            .n2Idx = runInfo.n2Idx,
+            .s2Idx = s2Offset,
+            .dIdx = dOffset,
+            .s2DealSize = s2RealSize,
+            .dDealSize = dRealSize
+        };
+        copyKvGmToL1(l1Tensor, kvGm, gmCoord);
     }
 
     // copy key scale with full s2
@@ -1026,7 +1095,22 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
             }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
+            uint32_t vLocalSkip = 0U;
+            if (runInfo.bandHeadCopySkip > 0U) {
+                uint32_t vSubLoopBase = k * baseK;
+                if (runInfo.bandHeadCopySkip > vSubLoopBase) {
+                    vLocalSkip = Min(runInfo.bandHeadCopySkip - vSubLoopBase, realK);
+                }
+            }
+            if (vLocalSkip > 0U && vLocalSkip < realK) {
+                uint32_t vValidSize = realK - vLocalSkip;
+                uint32_t fullPadK = (realK + 63) >> 6 << 6;
+                InitValueL1HeadRegion(mm2BTensor, vLocalSkip, realK, constInfo.dSizeV);
+                CopyKVSlicePartial(mm2BTensor, runInfo.s2Idx + k * baseK + vLocalSkip, vValidSize,
+                                      fullPadK, vLocalSkip, 0, constInfo.dSizeV, runInfo, valueGm);
+            } else {
+                CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
+            }
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
