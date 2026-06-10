@@ -800,8 +800,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleQueryMLAFullquant(const FiaTili
         }
 
         if ((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
-                        (queryInputShape.GetDim(DIM_NUM_1) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
-                        (*fiaInfo.opParamInfo.numHeads != dequantScaleQueryShape.GetDim(DIM_NUM_2))) {
+            (queryInputShape.GetDim(DIM_NUM_1) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
+            (*fiaInfo.opParamInfo.numHeads != dequantScaleQueryShape.GetDim(DIM_NUM_2))) {
             std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
             std::string reasonMsg = "In MLA fullquant scenario, the shape of dequantScaleQuery "
                 "should be equal to the shape of query (with the 2nd dim replaced by numHeads)";
@@ -896,10 +896,10 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
 
     // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj] 
     if ((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                    (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                    (fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                    (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
-                    (keyAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
+        (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+        (fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+        (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
+        (keyAntiquantScaleShape.GetDim(DIM_NUM_4) != 2)) {
         std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
         std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of key is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
@@ -958,11 +958,11 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
 
     // NZ pa key --[blocknum, kv_n, blocksize/16, k_D/64, 16, 2]
     if ((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                    (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                    (CeilDivision(fiaInfo.blockSize, d0Temp) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                    (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
-                    (d0 != keyAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
-                    (keyAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
+        (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+        (CeilDivision(fiaInfo.blockSize, d0Temp) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+        (CeilDivision(fiaInfo.qkHeadDim, mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
+        (d0 != keyAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
+        (keyAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
         std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
         std::string reasonMsg = "In MXFP8 fullquant decode scenario when layout of key is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
@@ -973,12 +973,12 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
     }
     // NZ pa value --[blocknum, kv_n, v_D/16, blocksize/64, D0, 2]
     if ((fiaInfo.totalBlockNum != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                    (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                    (CeilDivision(fiaInfo.vHeadDim, d0) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                    (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
-                        valueAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
-                    (d0 != valueAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
-                    (valueAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
+        (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+        (CeilDivision(fiaInfo.vHeadDim, d0) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+        (CeilDivision(fiaInfo.blockSize, static_cast<int32_t>(mxfp8BlockSize)) !=
+            valueAntiquantScaleShape.GetDim(DIM_NUM_3)) ||
+        (d0 != valueAntiquantScaleShape.GetDim(DIM_NUM_4)) ||
+        (valueAntiquantScaleShape.GetDim(DIM_NUM_5) != 2)) {
         std::string shapeStr = Ops::Base::ToString(valueAntiquantScaleShape);
         std::string reasonMsg = "In MXFP8 fullquant decode scenario, when layout of value is " +
             std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
@@ -1049,10 +1049,10 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     // prefill query -- [T, N, D//64, 2]; decode query -- [N2, T, G, D//64, 2]
     if (dequantScaleQueryDimNum == 4) {
         if (((queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
-                    (fiaInfo.n1Size != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
-                    (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
-                    dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
-                    (2 != dequantScaleQueryShape.GetDim(DIM_NUM_3)))) {
+            (fiaInfo.n1Size != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
+            (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
+            dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
+            (2 != dequantScaleQueryShape.GetDim(DIM_NUM_3)))) {
             std::string shapeStr = Ops::Base::ToString(dequantScaleQueryShape);
             std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of query is " +
                 std::string(LayoutToSerialString(fiaInfo.qLayout)) +
@@ -1120,9 +1120,9 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     } else {
         // key -- [T, N, D/64, 2]
         if ((keyInputShape.GetDim(DIM_NUM_0) != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                        (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                        (CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                        (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
+            (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+            (CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+            (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
             std::string shapeStr = Ops::Base::ToString(keyAntiquantScaleShape);
             std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of key is " +
                 std::string(LayoutToSerialString(fiaInfo.kvLayout)) +
@@ -1136,9 +1136,9 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
             return ge::GRAPH_SUCCESS;
         }
         if ((GetValueScaleActualKVlens4TNDNoPa(fiaInfo) != valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                        (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                        (valueInputShape.GetDim(DIM_NUM_2) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                        (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
+            (fiaInfo.n2Size != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
+            (valueInputShape.GetDim(DIM_NUM_2) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
+            (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2)) {
             std::string shapeStr = Ops::Base::ToString(valueAntiquantScaleShape);
             std::string reasonMsg = "In MXFP8 fullquant scenario, when layout of value is " +
                 std::string(LayoutToSerialString(fiaInfo.kvLayout)) + 
