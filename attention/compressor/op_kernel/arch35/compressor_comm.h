@@ -357,9 +357,9 @@ inline constexpr uint64_t BYTE_BLOCK = 32UL;
 inline constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 
 template <typename T>
-__aicore__ inline constexpr T BlockElementNum()
+__aicore__ inline constexpr uint32_t BlockElementNum()
 {
-    return BYTE_BLOCK / sizeof(T);
+    return static_cast<uint32_t>(BYTE_BLOCK / sizeof(T));
 }
 
 template <typename T>
