@@ -132,6 +132,12 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
+    // config:
+    //   config=0: D=64,  sOuter=64,  sInner=128
+    //   config=1: D=64,  sOuter=32,  sInner=256
+    //   config=2: D=128, sOuter=64,  sInner=128
+    //   config=3: D=128, sOuter=32,  sInner=256
+    //   config=4: D=256, sOuter=32,  sInner=256
     if (faInfo_->qkHeadDim == 64) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
     } else if (faInfo_->qkHeadDim == 128) {
@@ -174,7 +180,8 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3 || faInfo_->maskMode == 4) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
+                                   faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -258,7 +265,8 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3 || faInfo_->maskMode == 4)? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
+                                   faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) ? 1 : 0;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
@@ -310,18 +318,11 @@ void FlashAttnTilingImpl::SetFATilingData()
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
-    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
-        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+    if (faInfo_->winLeft == -1) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
-        tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
-    if(faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
-        if (faInfo_->winLeft ==-1) {
-            tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
-        }
-        if (faInfo_->winRight ==-1) {
-            tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
-        }
+    if (faInfo_->winRight == -1) {
+        tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
