@@ -68,6 +68,8 @@ public:
     static constexpr FixpipeConfig QLI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
+    // MXFP8: 每个 ping-pong buffer 尾部额外预留 D_BASIC_BLOCK 个元素存放 qScale
+    static constexpr uint64_t QUERY_L1_PINGPONG_STRIDE = M_BASIC_BLOCK * D_BASIC_BLOCK + (IS_MXFP8 ? D_BASIC_BLOCK : 0);
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
 
@@ -406,9 +408,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, u
 {
     if constexpr (!IS_MXFP8) return;
     // qScale 存储在当前 ping-pong buffer 的数据之后
-    // 每个 buffer 的 stride = M_BASIC_BLOCK * D_BASIC_BLOCK + D_BASIC_BLOCK
-    uint64_t bufStride = M_BASIC_BLOCK * D_BASIC_BLOCK + D_BASIC_BLOCK;
-    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * bufStride
+    // 使用 QUERY_L1_PINGPONG_STRIDE 保持与 InitBuffers/QueryNd2Nz/LoadQueryToL0a 一致
+    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE
                                 + s1gL1RealSize * D_BASIC_BLOCK;
     LocalTensor<bfloat16_t> scaleL1 = queryL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> scaleGmCast;
@@ -471,7 +472,8 @@ __aicore__ inline void QLIMatmul<QLIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint6
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+    // MXFP8: 使用 QUERY_L1_PINGPONG_STRIDE（含 scale 空间）而非 QUERY_BUFFER_OFFSET
+    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
 }
 
@@ -484,7 +486,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         LocalTensor<mx_fp8_e4m3_t> dstTensor =
             queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
         // qScale 存储在当前 queryL1_ ping-pong buffer 的数据之后
-        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET
+        // 使用 QUERY_L1_PINGPONG_STRIDE（含 scale 空间）保持与 InitBuffers/LoadQScaleToL1 一致
+        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE
                                     + s1gL1RealSize * D_BASIC_BLOCK;
         LocalTensor<fp8_e8m0_t> scaleL1 = queryL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
@@ -506,7 +509,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         loadAScaleParam.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
         loadAScaleParam.dstStride = loadAScaleParam.yStep;
         LoadData(dstTensor,
-                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
                  scaleL1, loadDataA2DParams, loadAScaleParam);
     } else {
         LoadData2DParamsV2 loadData2DParamsV2;

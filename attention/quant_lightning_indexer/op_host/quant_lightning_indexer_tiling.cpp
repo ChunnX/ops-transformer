@@ -99,7 +99,7 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t aivNum = aicNum;
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     npuArch_ = NpuArch::DAV_3510;
