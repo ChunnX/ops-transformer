@@ -62,7 +62,6 @@ struct ContractInput {
     uint64_t maxSeqLen = 0;
     uint64_t blockNum = 0;
     uint64_t blockSize = 0;
-    uint64_t aicNum = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -148,8 +147,10 @@ public:
     static constexpr uint64_t kDimTileFast = 128;
     static constexpr uint64_t kAivPerAic = 2;
 
-    static ge::graphStatus ValidateAndBuildTiling(
-        const ContractInput &input, ContractTiling &tiling,
+    static ge::graphStatus ValidateContractInput(
+        const ContractInput &input, const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
+    static ge::graphStatus BuildContractTiling(
+        const ContractInput &input, uint64_t aicNum, ContractTiling &tiling,
         const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
     static AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId);
 
@@ -182,8 +183,8 @@ private:
     static bool IsScaleStrideValid(const TensorStrideInfo &stride);
     static bool CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs, const TensorStrideInfo &rhs);
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
-    static void LogContractInputSummary(const std::string &opName, const ContractInput &input, uint64_t qkN,
-                                        uint64_t qkvN);
+    static void LogContractInputSummary(const std::string &opName, const ContractInput &input, uint64_t aicNum,
+                                        uint64_t qkN, uint64_t qkvN);
     static void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, uint64_t tokenTile,
                                       uint64_t rowTile, uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb,
                                       bool fitsL0a, bool fitsL0c, bool accepted);
@@ -204,7 +205,7 @@ private:
                                    TokenTileSelection &selection);
     static ge::graphStatus SelectTokenTile(const ContractInput &input, const DerivedHeadNums &nums,
                                            const std::string &opName, TokenTileSelection &selection);
-    static void FillContractTiling(const ContractInput &input, const DerivedHeadNums &nums,
+    static void FillContractTiling(const ContractInput &input, uint64_t aicNum, const DerivedHeadNums &nums,
                                    const TokenTileSelection &selection, ContractTiling &tiling);
     static void LogContractTilingResult(const std::string &opName, const ContractTiling &tiling);
     static TensorShapeInfo ToShapeInfo(const gert::Shape &shape);
@@ -222,7 +223,8 @@ private:
                                              TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);
     static void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info);
-    static void LogContractInput(const std::string &opName, const ContractInput &input, float epsilon);
+    static void LogContractInput(const std::string &opName, const ContractInput &input, uint64_t aicNum,
+                                 float epsilon);
     static size_t CalcOpWorkspaceSize(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo);
     static size_t CalcWorkspaceSize(size_t opWorkspaceSize);
     static ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
@@ -255,6 +257,7 @@ private:
     ContractInput input_;
     ContractTiling contractTiling_;
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
+    uint64_t aicNum_ = 0;
     float epsilon_ = 1e-6f;
     size_t tilingDataSize_ = 0;
 };

@@ -97,13 +97,13 @@ uint64_t QkvRmsNormRopeCacheWithKScaleTiling::CalcQkAlignedRows(
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInputSummary(
-    const std::string &opName, const ContractInput &input, uint64_t qkN, uint64_t qkvN)
+    const std::string &opName, const ContractInput &input, uint64_t aicNum, uint64_t qkN, uint64_t qkvN)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale contract input: T=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu qkN=%lu qkvN=%lu "
             "headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
             input.totalTokens, input.batch, input.numQHeads, input.numKHeads, input.numVHeads, qkN, qkvN,
-            input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, input.aicNum);
+            input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
             "ubOutputRowsPerAiv=%lu fp8NtdStagingRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
@@ -159,9 +159,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(
     OP_CHECK_IF(input.blockNum == 0 || input.blockSize == 0,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: blockNum=%lu blockSize=%lu.",
                         input.blockNum, input.blockSize),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input.aicNum == 0,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: aicNum is 0."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input.qRotation.shape.present,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: qRotation is missing."),
@@ -433,10 +430,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(
-    const ContractInput &input, const DerivedHeadNums &nums, const TokenTileSelection &selection,
+    const ContractInput &input, uint64_t aicNum, const DerivedHeadNums &nums, const TokenTileSelection &selection,
     ContractTiling &tiling)
 {
-    tiling.coreTokenTile = Ops::Base::CeilDiv(input.totalTokens, input.aicNum);
+    tiling.coreTokenTile = Ops::Base::CeilDiv(input.totalTokens, aicNum);
     tiling.coreGroupNum = Ops::Base::CeilDiv(input.totalTokens, tiling.coreTokenTile);
     tiling.tokenTilePerAiv = selection.tokenTilePerAiv;
     tiling.tokenTile = selection.tokenTile;
@@ -473,10 +470,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogContractTilingResult(
             tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateAndBuildTiling(
-    const ContractInput &input, ContractTiling &tiling, const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractInput(
+    const ContractInput &input, const std::string &opName)
 {
-    tiling = {};
     OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
     ge::graphStatus status = ValidateScalarInputs(input, opName);
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
@@ -484,7 +480,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateAndBuildTiling(
                 return ge::GRAPH_FAILED);
 
     const DerivedHeadNums nums = CalcDerivedHeadNums(input);
-    LogContractInputSummary(opName, input, nums.qkN, nums.qkvN);
     status = ValidateDerivedHeadNums(nums, opName);
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale derived head validation failed."),
@@ -502,14 +497,23 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateAndBuildTiling(
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale stride validation failed."),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(
+    const ContractInput &input, uint64_t aicNum, ContractTiling &tiling, const std::string &opName)
+{
+    tiling = {};
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(opName.c_str(), "aicNum must be greater than 0 to build tiling."),
+                return ge::GRAPH_FAILED);
+    const DerivedHeadNums nums = CalcDerivedHeadNums(input);
+    LogContractInputSummary(opName, input, aicNum, nums.qkN, nums.qkvN);
     TokenTileSelection selection;
-    status = SelectTokenTile(input, nums, opName, selection);
-    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(SelectTokenTile(input, nums, opName, selection) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale token tile selection failed."),
                 return ge::GRAPH_FAILED);
 
-    FillContractTiling(input, nums, selection, tiling);
+    FillContractTiling(input, aicNum, nums, selection, tiling);
     LogContractTilingResult(opName, tiling);
     return ge::GRAPH_SUCCESS;
 }
@@ -751,13 +755,13 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogTensorInfo(
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInput(
-    const std::string &opName, const ContractInput &input, float epsilon)
+    const std::string &opName, const ContractInput &input, uint64_t aicNum, float epsilon)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale parsed attrs/input summary: head_nums={%lu,%lu,%lu} epsilon=%f "
             "T=%lu batch=%lu headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
             input.numQHeads, input.numKHeads, input.numVHeads, epsilon, input.totalTokens, input.batch, input.headDim,
-            input.maxSeqLen, input.blockNum, input.blockSize, input.aicNum);
+            input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
     LogTensorInfo(opName, "qkv", input.qkv);
     LogTensorInfo(opName, "qGamma", input.qGamma);
     LogTensorInfo(opName, "kGamma", input.kGamma);
@@ -1030,6 +1034,7 @@ void QkvRmsNormRopeCacheWithKScaleTiling::Reset()
     input_ = {};
     contractTiling_ = {};
     tilingData_ = {};
+    aicNum_ = 0;
     epsilon_ = kDefaultEpsilon;
     tilingDataSize_ = 0;
     numBlocks_ = 0;
@@ -1048,6 +1053,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(BuildContractInput(context_, opName, input_, epsilon_) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateContractInput(input_, opName) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "invalid QkvRmsNormRopeCacheWithKScale contract input."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1059,16 +1067,16 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetPlatformInfo()
     OP_CHECK_IF(ValidateCompileInfo(opName, *compileInfo_) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "invalid QkvRmsNormRopeCacheWithKScale compile info."),
                 return ge::GRAPH_FAILED);
-    input_.aicNum = compileInfo_->aicNum;
-    LogContractInput(opName, input_, epsilon_);
+    aicNum_ = compileInfo_->aicNum;
+    LogContractInput(opName, input_, aicNum_, epsilon_);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::DoOpTiling()
 {
     const std::string opName = context_->GetNodeName();
-    OP_CHECK_IF(ValidateAndBuildTiling(input_, contractTiling_, opName) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation failed."),
+    OP_CHECK_IF(BuildContractTiling(input_, aicNum_, contractTiling_, opName) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract tiling build failed."),
                 return ge::GRAPH_FAILED);
     FillTilingData(input_, contractTiling_, epsilon_, tilingData_);
     numBlocks_ = static_cast<uint32_t>(contractTiling_.coreGroupNum);
