@@ -135,7 +135,7 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
     }
 }
 
-aclnnStatus CheckTensorContiguous(const aclTensorList *key, const aclTensorList *value)
+aclnnStatus CheckKVContiguous(const aclTensorList *key, const aclTensorList *value)
 {
     if (!IsContiguous((*key)[0]) || !IsContiguous((*value)[0])) {
         return ACLNN_ERR_PARAM_INVALID;
