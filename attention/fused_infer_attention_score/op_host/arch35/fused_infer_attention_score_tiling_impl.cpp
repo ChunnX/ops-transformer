@@ -59,7 +59,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetEmptyTensor(gert::TilingC
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
-    uint32_t singleCoreSize = singleCoreRawSize > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(singleCoreRawSize);
+    uint32_t singleCoreSize;
+    if (singleCoreRawSize > UINT32_MAX) {
+        OP_LOGI(context_, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
+        singleCoreSize = UINT32_MAX;
+    } else {
+        singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
+    }
     if (fiaInfo.isOutQuantEnable) {
         singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
     }
@@ -413,8 +419,9 @@ int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, in
         return 0;
     }
     int64_t term1 = an % d + an;
-    int64_t term2 = an /d + 1;
+    int64_t term2 = an / d + 1;
     if (term1 > INT64_MAX / term2){
+        OP_LOGI(context_, "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", term1, term2, an, d);
         return INT64_MAX;
     }
     return term1 * term2 / 2; //2：等差数列求和公式分母
@@ -2237,7 +2244,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-    uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
+    int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
+    uint32_t singleCoreSize;
+    if (singleCoreRawSize > UINT32_MAX) {
+        OP_LOGI(context_, "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u", singleCoreRawSize, outSize, platformInfo_.aivNum);
+        singleCoreSize = UINT32_MAX;
+    } else {
+        singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
+    }
     if (fiaInfo.isOutQuantEnable) {
         singleCoreSize = ((singleCoreSize + 1) / 2) * 2;
     }
