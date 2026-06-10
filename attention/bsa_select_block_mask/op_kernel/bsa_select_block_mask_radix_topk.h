@@ -1081,10 +1081,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
     // === DUMP 550: HandleLastRoundBoundary key values ===
-    if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] boundary reduce=%u cumPrev=%d remainCore=%d remainK=%lu boundary=%d prev=%d\n",
-            reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_, boundaryBin, boundaryBinPrev);
-    }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP550] HandleLastRoundBoundary: reduceSumValue=%u cumSumValuePrev=%d remainCoreBoundaryNum=%d remainK_=%lu\n",
             reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_);
@@ -1118,11 +1114,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 }
 
                 // === DUMP 560: Per-tile boundary allocation (core 0, first tile only) ===
-                if (GetBlockIdx() == 0 && tileId == 0) {
-                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] boundary tile0 curBoundary=%d remainCore=%d tileTopKBefore=%d\n",
-                        curTileBoundaryNum, remainCoreBoundaryNum,
-                        tileTopK.GetValue(tileId - static_cast<int32_t>(startTileId)));
-                }
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP560] tileId=%d curTileBoundaryNum=%d remainCoreBoundaryNum=%d tileTopK_before=%d\n",
                         tileId, curTileBoundaryNum, remainCoreBoundaryNum,
@@ -1178,9 +1169,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
     }
 
     // === DUMP 570: WriteCoreTopKFromWs totalTileTopKInCore ===
-    if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] coreTopK total=%d\n", totalTileTopKInCore);
-    }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP570] WriteCoreTopKFromWs: totalTileTopKInCore=%d\n", totalTileTopKInCore);
     }
