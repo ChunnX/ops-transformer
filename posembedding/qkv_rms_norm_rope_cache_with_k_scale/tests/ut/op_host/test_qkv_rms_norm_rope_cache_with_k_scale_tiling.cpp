@@ -20,20 +20,21 @@
 #include <thread>
 #include <vector>
 
+#include "op_common/op_host/util/math_util.h"
 #include "tiling_case_executor.h"
 
 #include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
 #include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 namespace {
-using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScaleTiling;
-using ContractDtype = QkvTiling::ContractDtype;
-using ContractInput = QkvTiling::ContractInput;
-using ContractTiling = QkvTiling::ContractTiling;
-using TensorShapeInfo = QkvTiling::TensorShapeInfo;
-using TensorStrideInfo = QkvTiling::TensorStrideInfo;
-using TileParam = QkvTiling::TileParam;
-using AivSlice = QkvTiling::AivSlice;
+using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleTiling;
+using ContractDtype = optiling::QkvRmsNormRopeCacheWithKScale::ContractDtype;
+using ContractInput = optiling::QkvRmsNormRopeCacheWithKScale::ContractInput;
+using ContractTiling = optiling::QkvRmsNormRopeCacheWithKScale::ContractTiling;
+using TensorShapeInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorShapeInfo;
+using TensorStrideInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorStrideInfo;
+using TileParam = optiling::QkvRmsNormRopeCacheWithKScale::TileParam;
+using AivSlice = optiling::QkvRmsNormRopeCacheWithKScale::AivSlice;
 
 constexpr uint32_t kDoubleBufferNum = 2U;
 constexpr uint64_t kTestBatch = 1U;
@@ -52,27 +53,7 @@ ge::graphStatus ValidateAndBuildTiling(
 
 uint64_t AlignUp(uint64_t value, uint64_t align)
 {
-    return QkvTiling::AlignUp(value, align);
-}
-
-uint64_t CalcTileNum(uint64_t totalTokens, uint64_t tokenTile)
-{
-    return QkvTiling::CalcTileNum(totalTokens, tokenTile);
-}
-
-uint64_t CalcCoreTokenTile(uint64_t totalTokens, uint64_t aicNum)
-{
-    return QkvTiling::CalcCoreTokenTile(totalTokens, aicNum);
-}
-
-uint64_t CalcCoreGroupNum(uint64_t totalTokens, uint64_t aicNum)
-{
-    return QkvTiling::CalcCoreGroupNum(totalTokens, aicNum);
-}
-
-uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize)
-{
-    return QkvTiling::CalcCubeHalfTokenSize(tokenSize);
+    return Ops::Base::CeilAlign(value, align);
 }
 
 AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId)
@@ -758,7 +739,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
     auto input = BuildInput(13, 16, 2, 2);
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
-    ASSERT_EQ(CalcTileNum(input.totalTokens, tiling.tokenTile), 3U);
+    ASSERT_EQ(Ops::Base::CeilDiv(input.totalTokens, tiling.tokenTile), 3U);
 
     auto firstTile = MakeTileParamForTest(0, 0, tiling.tokenTile, input.totalTokens, tiling);
     EXPECT_EQ(firstTile.tokenOffset, 0U);
@@ -818,7 +799,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
     EXPECT_EQ(tailAiv0.tokenSize, 3U);
     EXPECT_EQ(tailAiv0.rowOffset, 0U);
     EXPECT_EQ(tailAiv0.rowSize, 3U * tiling.qkHeadTile);
-    EXPECT_EQ(tailAiv1.tokenOffset, tailTile.tokenOffset + CalcCubeHalfTokenSize(tailTile.tokenSize));
+    EXPECT_EQ(tailAiv1.tokenOffset, tailTile.tokenOffset + tailAiv0.tokenSize);
     EXPECT_EQ(tailAiv1.tokenSize, 2U);
     EXPECT_EQ(tailAiv1.rowOffset, tailAiv0.rowSize);
     EXPECT_EQ(tailAiv1.rowSize, 2U * tiling.qkHeadTile);
@@ -837,9 +818,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
 
     ASSERT_EQ(tile.tokenOffset, 6U);
     ASSERT_EQ(tile.tokenSize, 5U);
-    EXPECT_EQ(CalcCubeHalfTokenSize(tile.tokenSize), 3U);
+    EXPECT_EQ(aiv0.tokenSize, 3U);
     EXPECT_EQ(aiv0.tokenOffset, tile.tokenOffset);
-    EXPECT_EQ(aiv1.tokenOffset, tile.tokenOffset + CalcCubeHalfTokenSize(tile.tokenSize));
+    EXPECT_EQ(aiv1.tokenOffset, tile.tokenOffset + aiv0.tokenSize);
     EXPECT_EQ(aiv0.tokenOffset + aiv0.tokenSize, aiv1.tokenOffset);
     EXPECT_EQ(aiv0.tokenSize + aiv1.tokenSize, tile.tokenSize);
 }
@@ -879,15 +860,6 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCorePr
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
 {
-    EXPECT_EQ(CalcCoreTokenTile(65, 32), 3U);
-    EXPECT_EQ(CalcCoreGroupNum(65, 32), 22U);
-    EXPECT_EQ(CalcCoreTokenTile(13, 32), 1U);
-    EXPECT_EQ(CalcCoreGroupNum(13, 32), 13U);
-    EXPECT_EQ(CalcCoreTokenTile(0, 32), 0U);
-    EXPECT_EQ(CalcCoreGroupNum(0, 32), 0U);
-    EXPECT_EQ(CalcCoreTokenTile(128, 0), 0U);
-    EXPECT_EQ(CalcCoreGroupNum(128, 0), 0U);
-
     ContractTiling tiling;
     auto input = BuildInput(65);
     ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);

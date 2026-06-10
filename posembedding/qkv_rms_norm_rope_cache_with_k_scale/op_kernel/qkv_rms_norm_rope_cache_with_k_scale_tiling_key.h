@@ -13,7 +13,8 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-namespace QkvRmsNormRopeCacheWithKScaleTiling {
+namespace optiling {
+namespace QkvRmsNormRopeCacheWithKScale {
 
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128 128
 
@@ -25,6 +26,7 @@ ASCENDC_TPL_ARGS_DECL(
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(HEAD_DIM, ASCENDC_TPL_UI_LIST, QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128)));
 
-} // namespace QkvRmsNormRopeCacheWithKScaleTiling
+} // namespace QkvRmsNormRopeCacheWithKScale
+} // namespace optiling
 
 #endif // QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_KEY_H_

@@ -18,6 +18,122 @@
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 namespace optiling {
+namespace QkvRmsNormRopeCacheWithKScale {
+
+enum class ContractDtype : uint32_t {
+    kUnknown = 0,
+    kBf16,
+    kFloat,
+    kInt32,
+    kFloat8E4M3fn
+};
+
+struct TensorShapeInfo {
+    uint32_t rank = 0;
+    uint64_t dim0 = 0;
+    uint64_t dim1 = 0;
+    uint64_t dim2 = 0;
+    uint64_t dim3 = 0;
+    bool present = true;
+};
+
+struct TensorStrideInfo {
+    uint32_t rank = 0;
+    uint64_t stride0 = 0;
+    uint64_t stride1 = 0;
+    uint64_t stride2 = 0;
+    uint64_t stride3 = 0;
+    bool present = true;
+};
+
+struct TensorContractInfo {
+    TensorShapeInfo shape;
+    TensorStrideInfo stride;
+    ContractDtype dtype = ContractDtype::kUnknown;
+};
+
+struct ContractInput {
+    uint64_t totalTokens = 0;
+    uint64_t batch = 0;
+    uint64_t numQHeads = 0;
+    uint64_t numKHeads = 0;
+    uint64_t numVHeads = 0;
+    uint64_t headDim = 0;
+    uint64_t maxSeqLen = 0;
+    uint64_t blockNum = 0;
+    uint64_t blockSize = 0;
+    uint64_t aicNum = 0;
+
+    TensorContractInfo qkv;
+    TensorContractInfo qGamma;
+    TensorContractInfo kGamma;
+    TensorContractInfo cosSin;
+    TensorContractInfo slotMapping;
+    TensorContractInfo kCache;
+    TensorContractInfo vCache;
+    TensorContractInfo kScaleCache;
+    TensorContractInfo cuSeqLen;
+    TensorContractInfo qRotation;
+    TensorContractInfo kRotation;
+    TensorContractInfo vScale;
+};
+
+struct ContractTiling {
+    uint64_t coreTokenTile = 0;
+    uint64_t coreGroupNum = 0;
+    uint64_t tokenTile = 0;
+    uint64_t tokenTilePerAiv = 0;
+    uint64_t rowTile = 0;
+    uint64_t rowTileAligned = 0;
+    uint64_t qkHeadTile = 0;
+    uint64_t vHeadTile = 0;
+    uint64_t dimTile = 0;
+    uint64_t kCacheStrideBlock = 0;
+    uint64_t kCacheStrideHead = 0;
+    uint64_t kCacheStrideToken = 0;
+    uint64_t vCacheStrideBlock = 0;
+    uint64_t vCacheStrideHead = 0;
+    uint64_t vCacheStrideToken = 0;
+    uint64_t kScaleCacheStrideBlock = 0;
+    uint64_t kScaleCacheStrideHead = 0;
+    uint64_t kScaleCacheStrideToken = 0;
+};
+
+struct TileParam {
+    uint64_t tileId = 0;
+    uint64_t bufferId = 0;
+    uint64_t tokenOffset = 0;
+    uint64_t tokenSize = 0;
+    uint64_t qkHeadOffset = 0;
+    uint64_t qkHeadSize = 0;
+    uint64_t vHeadOffset = 0;
+    uint64_t vHeadSize = 0;
+    uint64_t rowOffset = 0;
+    uint64_t rowSize = 0;
+};
+
+struct AivSlice {
+    uint64_t tokenOffset = 0;
+    uint64_t tokenSize = 0;
+    uint64_t rowOffset = 0;
+    uint64_t rowSize = 0;
+};
+
+struct HeadNumsAttr {
+    uint64_t numQHeads = 0;
+    uint64_t numKHeads = 0;
+    uint64_t numVHeads = 0;
+};
+
+struct DerivedHeadNums {
+    uint64_t qkN = 0;
+    uint64_t qkvN = 0;
+};
+
+struct TokenTileSelection {
+    uint64_t tokenTile = 0;
+    uint64_t tokenTilePerAiv = 0;
+};
 
 class __attribute__((visibility("default"))) QkvRmsNormRopeCacheWithKScaleTiling
     : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -32,115 +148,9 @@ public:
     static constexpr uint64_t kDimTileFast = 128;
     static constexpr uint64_t kAivPerAic = 2;
 
-    enum class ContractDtype : uint32_t {
-        kUnknown = 0,
-        kBf16,
-        kFloat,
-        kInt32,
-        kFloat8E4M3fn
-    };
-
-    struct TensorShapeInfo {
-        uint32_t rank = 0;
-        uint64_t dim0 = 0;
-        uint64_t dim1 = 0;
-        uint64_t dim2 = 0;
-        uint64_t dim3 = 0;
-        bool present = true;
-    };
-
-    struct TensorStrideInfo {
-        uint32_t rank = 0;
-        uint64_t stride0 = 0;
-        uint64_t stride1 = 0;
-        uint64_t stride2 = 0;
-        uint64_t stride3 = 0;
-        bool present = true;
-    };
-
-    struct TensorContractInfo {
-        TensorShapeInfo shape;
-        TensorStrideInfo stride;
-        ContractDtype dtype = ContractDtype::kUnknown;
-    };
-
-    struct ContractInput {
-        uint64_t totalTokens = 0;
-        uint64_t batch = 0;
-        uint64_t numQHeads = 0;
-        uint64_t numKHeads = 0;
-        uint64_t numVHeads = 0;
-        uint64_t headDim = 0;
-        uint64_t maxSeqLen = 0;
-        uint64_t blockNum = 0;
-        uint64_t blockSize = 0;
-        uint64_t aicNum = 0;
-
-        TensorContractInfo qkv;
-        TensorContractInfo qGamma;
-        TensorContractInfo kGamma;
-        TensorContractInfo cosSin;
-        TensorContractInfo slotMapping;
-        TensorContractInfo kCache;
-        TensorContractInfo vCache;
-        TensorContractInfo kScaleCache;
-        TensorContractInfo cuSeqLen;
-        TensorContractInfo qRotation;
-        TensorContractInfo kRotation;
-        TensorContractInfo vScale;
-    };
-
-    struct ContractTiling {
-        uint64_t coreTokenTile = 0;
-        uint64_t coreGroupNum = 0;
-        uint64_t tokenTile = 0;
-        uint64_t tokenTilePerAiv = 0;
-        uint64_t rowTile = 0;
-        uint64_t rowTileAligned = 0;
-        uint64_t qkHeadTile = 0;
-        uint64_t vHeadTile = 0;
-        uint64_t dimTile = 0;
-        uint64_t kCacheStrideBlock = 0;
-        uint64_t kCacheStrideHead = 0;
-        uint64_t kCacheStrideToken = 0;
-        uint64_t vCacheStrideBlock = 0;
-        uint64_t vCacheStrideHead = 0;
-        uint64_t vCacheStrideToken = 0;
-        uint64_t kScaleCacheStrideBlock = 0;
-        uint64_t kScaleCacheStrideHead = 0;
-        uint64_t kScaleCacheStrideToken = 0;
-    };
-
-    struct TileParam {
-        uint64_t tileId = 0;
-        uint64_t bufferId = 0;
-        uint64_t tokenOffset = 0;
-        uint64_t tokenSize = 0;
-        uint64_t qkHeadOffset = 0;
-        uint64_t qkHeadSize = 0;
-        uint64_t vHeadOffset = 0;
-        uint64_t vHeadSize = 0;
-        uint64_t rowOffset = 0;
-        uint64_t rowSize = 0;
-    };
-
-    struct AivSlice {
-        uint64_t tokenOffset = 0;
-        uint64_t tokenSize = 0;
-        uint64_t rowOffset = 0;
-        uint64_t rowSize = 0;
-    };
-
-    static uint64_t AlignUp(uint64_t value, uint64_t align);
-    static uint64_t CeilDiv(uint64_t value, uint64_t divisor);
-    static uint64_t CalcCubeTokenSize(uint64_t tokenSize);
-    static uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize);
     static ge::graphStatus ValidateAndBuildTiling(
         const ContractInput &input, ContractTiling &tiling,
         const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
-    static uint64_t CalcTileNum(uint64_t totalTokens, uint64_t tokenTile);
-    static uint64_t CalcCoreTokenTile(uint64_t totalTokens, uint64_t aicNum);
-    static uint64_t CalcCoreGroupNum(uint64_t totalTokens, uint64_t aicNum);
     static AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId);
 
     explicit QkvRmsNormRopeCacheWithKScaleTiling(gert::TilingContext *context) : TilingBaseClass(context)
@@ -161,22 +171,6 @@ protected:
     void DumpTilingInfo() override;
 
 private:
-    struct HeadNumsAttr {
-        uint64_t numQHeads = 0;
-        uint64_t numKHeads = 0;
-        uint64_t numVHeads = 0;
-    };
-
-    struct DerivedHeadNums {
-        uint64_t qkN = 0;
-        uint64_t qkvN = 0;
-    };
-
-    struct TokenTileSelection {
-        uint64_t tokenTile = 0;
-        uint64_t tokenTilePerAiv = 0;
-    };
-
     void Reset();
 
     static bool IsShape1D(const TensorShapeInfo &shape, uint64_t d0);
@@ -196,6 +190,11 @@ private:
     static DerivedHeadNums CalcDerivedHeadNums(const ContractInput &input);
     static ge::graphStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateDerivedHeadNums(const DerivedHeadNums &nums, const std::string &opName);
+    static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
+                                         const TensorContractInfo &tensor, ContractDtype expected);
+    static ge::graphStatus ValidateRequiredDtypes(const ContractInput &input, const std::string &opName);
+    static ge::graphStatus ValidateCacheDtypes(const ContractInput &input, const std::string &opName);
+    static ge::graphStatus ValidateOptionalDtypes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateShapes(const ContractInput &input, const DerivedHeadNums &nums,
                                           const std::string &opName);
@@ -260,6 +259,7 @@ private:
     size_t tilingDataSize_ = 0;
 };
 
+} // namespace QkvRmsNormRopeCacheWithKScale
 } // namespace optiling
 
 #endif // QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
