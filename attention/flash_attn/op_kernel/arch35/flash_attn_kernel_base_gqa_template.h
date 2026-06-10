@@ -396,6 +396,7 @@ public:
         GetFASectionInfo(sectionIdx);
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
+        // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
@@ -410,12 +411,14 @@ public:
         prevGS1Idx = gS1Cur;
 
         bool shouldDispatchTask = true;
-        uint32_t validTaskCount = 0;
+        uint32_t validTaskCount = 0; // 未执行(有效)的任务数
         while (shouldDispatchTask || validTaskCount) {
+            // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                    // 创建任务
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
@@ -431,6 +434,7 @@ public:
                     continue;
                 }
             }
+            // 执行任务
             if (validTaskCount) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;

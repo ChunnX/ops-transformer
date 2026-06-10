@@ -38,8 +38,6 @@ def _print_args(title, args_dict):
         print(f"  - {k}: {_summ_val(args_dict[k])}")
 
 
-a9a6f3cc816f2a1c9516254986888ec6d3b1637e
-
 device_id = 0
 device = torch.device(f"npu:{device_id}")
 
