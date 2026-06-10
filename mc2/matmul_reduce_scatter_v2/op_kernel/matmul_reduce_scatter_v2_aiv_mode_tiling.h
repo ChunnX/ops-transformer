@@ -37,6 +37,7 @@ struct MatmulReduceScatterV2AivModeInfo {
     uint64_t aAlignSize;
     uint64_t bAlignSize;
     uint64_t dequantSize;
+    uint64_t biasConvertSize;
     bool hasAAlign;
     bool hasBAlign;
     bool quantFlag;
