@@ -548,9 +548,10 @@ ge::graphStatus QSFATilingCheck::CompareShape(QSFATilingShapeCompareParam &param
     }
 
     if (shape.GetDimNum() != qsfaShapeExpected.GetDimNum()) {
-        OP_LOGE(opName_,
-            "%s dimension is %zu, expected dimension is %zu.",
-            name.c_str(), shape.GetDimNum(), qsfaShapeExpected.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(),
+            std::to_string(shape.GetDimNum()).c_str(),
+            "The shape dim of " + name + " must be " + std::to_string(qsfaShapeExpected.GetDimNum()) + ".");
+
         return ge::GRAPH_FAILED;
     }
 
@@ -576,8 +577,9 @@ void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expe
             qsfaOss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports dtype %s, but got %s",
-        name.c_str(), qsfaOss.str().c_str(), QSFADataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+        QSFADataTypeToSerialString(actualDtype).c_str(),
+        "The dtype of " + name + " must be " + qsfaOss.str() + ".");
 }
 
 ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
@@ -610,8 +612,8 @@ void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLi
         }
     }
 
-    OP_LOGE(opName_, "%s %s only supports %s, but got %s",
-            name.c_str(), subName.c_str(), qsfaOssNum.str().c_str(), std::to_string(actualValue).c_str());
+    OP_LOGE_FOR_INVALID_VALUE(opName_, (name + " " + subName).c_str(),
+        std::to_string(actualValue).c_str(), qsfaOssNum.str());
 }
 
 template <typename T>
@@ -659,8 +661,8 @@ void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expec
             qsfaOssLayout << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports layout %s, but got %s",
-        name.c_str(), qsfaOssLayout.str().c_str(), QSFALayoutToSerialString(actualLayout).c_str());
+    OP_LOGE_FOR_INVALID_FORMAT(opName_, name.c_str(),
+        QSFALayoutToSerialString(actualLayout).c_str(), qsfaOssLayout.str().c_str());
 }
 
 ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const
@@ -715,7 +717,8 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaKvHeadNums() const
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 {
     OP_CHECK_IF((*opParamInfo_.sparseMode != 3 && *opParamInfo_.sparseMode != 0),
-        OP_LOGE(opName_, "sparseMode must == 0/3, but got: %ld.", *opParamInfo_.sparseMode),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseMode",
+            std::to_string(*opParamInfo_.sparseMode).c_str(), "sparseMode must be 0 or 3."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -724,8 +727,9 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
     OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
-        OP_LOGE(opName_, "sparseBlockSize should be in range [1, 16] and be a power of 2, but got: %ld.",
-            *opParamInfo_.sparseBlockSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
+            std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
+            "sparseBlockSize must be in range [1, 16] and be a power of 2."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -772,7 +776,7 @@ ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::
         const std::string &qsfaAttrName = kv.first;
         const std::pair<const T *, T> &qsfaPointerValuePair = kv.second;
         if (qsfaPointerValuePair.first == nullptr) {
-            OP_LOGE(opName_, "Attr %s should not be nullptr", qsfaAttrName.c_str());
+            OP_LOGE_WITH_INVALID_INPUT(opName_, qsfaAttrName.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -798,14 +802,14 @@ ge::graphStatus QSFATilingCheck::CheckParaExistenceMlaAntiquant() const
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == QSFALayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_kv is TND, actualSeqLengthsKv must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsKv"),
                    return ge::GRAPH_FAILED);
     } else if (kvLayout_ == QSFALayout::PA_BSND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_kv is PA_BSND, actualSeqLengthsKv must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsKv"),
                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_kv is PA_BSND, blockTable must not be null"),
+                   OP_LOGE_WITH_INVALID_INPUT(opName_, "blockTable"),
                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -829,14 +833,14 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
     const QSFALayout &layout, const std::string &name, const char *opName)
 {
     if (tensor == nullptr) {
-        OP_LOGE(opName, "when layout of query is %s, %s must be provided.",
-            QSFALayoutToSerialString(layout).c_str(), name.c_str());
+        OP_LOGE_WITH_INVALID_INPUT(opName, name.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t qsfaShapeSize = tensor->GetShapeSize();
     if (qsfaShapeSize <= 0) {
-        OP_LOGE(opName, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), qsfaShapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(),
+            std::to_string(qsfaShapeSize).c_str(),
+            "The shape size of " + name + " should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(qsfaShapeSize);
@@ -864,8 +868,9 @@ ge::graphStatus QSFATilingCheck::CheckBlockTable() const
     
     uint32_t blockTableBatch = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(blockTableBatch != bSize_,
-        OP_LOGE(opName_, "%s's first dimension(%u) should be equal to batch size(%u)",
-            BLOCK_TABLE_NAME.c_str(), blockTableBatch, bSize_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, BLOCK_TABLE_NAME.c_str(),
+            Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+            "The first dim of " + BLOCK_TABLE_NAME + " should be equal to batch size " + std::to_string(bSize_) + "."),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
@@ -875,11 +880,11 @@ ge::graphStatus QSFATilingCheck::CheckDTypeConsistency(const ge::DataType &actua
     const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
-        OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            QSFADataTypeToSerialString(expectDtype).c_str(),
-            QSFADataTypeToSerialString(actualDtype).c_str());
-        return ge::GRAPH_FAILED;
-    }
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+            QSFADataTypeToSerialString(actualDtype).c_str(),
+            "The dtype of " + name + " must be " + QSFADataTypeToSerialString(expectDtype) + ".");
+            return ge::GRAPH_FAILED;
+        }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -995,14 +1000,14 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
-        OP_LOGE(opName_, "actualSeqLengthsQ is not empty,"
-            "but actualSeqLengthsQ's dtype is nullptr.");
-            return ge::GRAPH_FAILED;
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsQ's dtype");
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengthsQ's dtype is %s, it should be DT_INT32.",
-            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str());
-            return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengthsQ",
+            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengthsQ must be DT_INT32.");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1018,8 +1023,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQShape()
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSize != bSize_) {
-        OP_LOGE(opName_, "actualSeqLengthsQ shape size is %u, it should be equal to batch size[%u]",
-            qsfaShapeSize, bSize_);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengthsQ",
+            std::to_string(qsfaShapeSize).c_str(),
+            "The shape size of actualSeqLengthsQ should be equal to batch size " + std::to_string(bSize_) + ".");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1040,14 +1046,13 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengths.desc == nullptr) {
-        OP_LOGE(opName_, "actualSeqLengths is not empty,"
-            "but actualSeqLengths's dtype is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengths's dtype");
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengths's dtype is %s, it should be DT_INT32.",
-            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengths.desc->GetDataType()).c_str());
-            return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengths",
+            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengths must be DT_INT32.");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1063,8 +1068,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSizeKv != bSize_) {
-        OP_LOGE(opName_, "actualSeqLengths shape size is %u, it should be equal to batch size[%u].",
-            qsfaShapeSizeKv, bSize_);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengths",
+            std::to_string(qsfaShapeSizeKv).c_str(),
+            "The shape size of actualSeqLengths should be equal to batch size " + std::to_string(bSize_) + ".");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1137,11 +1143,13 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
     }
 
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
-        OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qHeadDim_",
+            std::to_string(qHeadDim_).c_str(), "q_head_dim only support 576."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
-        OP_LOGE(opName_, "k_head_dim only support 656, but got %u", kHeadDim_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kHeadDim_",
+            std::to_string(kHeadDim_).c_str(), "k_head_dim only support 656."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1156,7 +1164,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
     std::string layoutQuery = opParamInfo_.layoutQuery;
     OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(),
         qsfaLayoutSupportList.end(), layoutQuery) == qsfaLayoutSupportList.end(),
-        OP_LOGE(opName_, "layoutQuery only supports BSND/TND, but got %s", layoutQuery.c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", layoutQuery.c_str(), "BSND or TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1164,24 +1172,28 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 {
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            QSFADataTypeToSerialString(ge::DT_BF16).c_str(), QSFADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            QSFADataTypeToSerialString(inputQType_).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query",
+            QSFADataTypeToSerialString(inputQType_).c_str(),
+            "The dtype of query must be " + QSFADataTypeToSerialString(ge::DT_BF16) +
+            " and " + QSFADataTypeToSerialString(ge::DT_FLOAT16) + "."),
         return ge::GRAPH_FAILED);
     
     if (isA5_) {
         OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN &&
                     inputKvType_ != ge::DT_HIFLOAT8 &&
                     inputKvType_ != ge::DT_INT8,
-            OP_LOGE(opName_, "key and value dtype only support %s、 %s and %s, but got %s",
-                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN).c_str(), QSFADataTypeToSerialString(ge::DT_HIFLOAT8).c_str(),
-                QSFADataTypeToSerialString(ge::DT_INT8).c_str(), QSFADataTypeToSerialString(inputKvType_).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value",
+                QSFADataTypeToSerialString(inputKvType_).c_str(),
+                "The dtype of key and value must be " +
+                QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN) + ", " +
+                QSFADataTypeToSerialString(ge::DT_HIFLOAT8) + ", " +
+                QSFADataTypeToSerialString(ge::DT_INT8) + "."),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(inputKvType_ != ge::DT_INT8,
-            OP_LOGE(opName_, "key and value dtype only support %s, but got %s",
-                QSFADataTypeToSerialString(ge::DT_INT8).c_str(),
-                QSFADataTypeToSerialString(inputKvType_).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "key and value",
+                QSFADataTypeToSerialString(inputKvType_).c_str(),
+                "The dtype of key and value must be " + QSFADataTypeToSerialString(ge::DT_INT8) + "."),
             return ge::GRAPH_FAILED);
     }
 
@@ -1191,43 +1203,43 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
 {
     OP_CHECK_IF(attentionMode_ != 2, // 2:MLA-absorb
-        OP_LOGE(opName_, "attention_mode should be 2(MLA-absorb), but got %d",
-        attentionMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attention_mode",
+            std::to_string(attentionMode_).c_str(), "attention_mode should be 2(MLA-absorb)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
-        OP_LOGE(opName_, "key_quant_mode should be 2(per-tile), but got %d",
-        keyQuantMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode",
+            std::to_string(keyQuantMode_).c_str(), "key_quant_mode should be 2(per-tile)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(valueQuantMode_ != 2, // 2:per-tile
-        OP_LOGE(opName_, "value_quant_mode should be 2(per-tile), but got %d",
-        valueQuantMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "value_quant_mode",
+            std::to_string(valueQuantMode_).c_str(), "value_quant_mode should be 2(per-tile)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
-        OP_LOGE(opName_, "quant_scale_repo_mode should be 1(combine), but got %d",
-        quantScaleRepoMode_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_scale_repo_mode",
+            std::to_string(quantScaleRepoMode_).c_str(), "quant_scale_repo_mode should be 1(combine)."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(preTokens_ != INT64_MAX,
-        OP_LOGE(opName_, "preTokens_ should be INT64_MAX, but got %ld",
-        preTokens_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "preTokens_",
+            std::to_string(preTokens_).c_str(), "preTokens_ should be INT64_MAX."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(nextTokens_ != INT64_MAX,
-        OP_LOGE(opName_, "nextTokens_ should be INT64_MAX, but got %ld",
-        nextTokens_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nextTokens_",
+            std::to_string(nextTokens_).c_str(), "nextTokens_ should be INT64_MAX."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(tileSize_ != 128, // 128:当前不泛化
-        OP_LOGE(opName_, "tile_size should be 128, but got %ld",
-        tileSize_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tile_size",
+            std::to_string(tileSize_).c_str(), "tile_size should be 128."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64, // 64:当前不泛化
-        OP_LOGE(opName_, "rope_head_dim should be 64, but got %d",
-        ropeHeadDim_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rope",
+            std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1371,27 +1383,27 @@ static uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const
 
 ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor k"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor k"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndices.shape == nullptr,
-        OP_LOGE(opName_, "Shape of tensor sparseIndices is nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor sparseIndices"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndices.desc == nullptr,
-        OP_LOGE(opName_, "Desc of tensor sparseIndices is nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor sparseIndices"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1399,15 +1411,15 @@ ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus QSFAInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr, OP_LOGE(opName_, "attr layoutQuery is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layoutQuery"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OP_LOGE(opName_, "attr layoutKV is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layoutKV"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr, OP_LOGE(opName_, "attr sparseBlockSize is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparseBlockSize"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE(opName_, "attr scaleValue is nullptr"),
+    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "scaleValue"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE(opName_, "attr sparseMode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparseMode"),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1430,7 +1442,7 @@ ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 ge::graphStatus QSFAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("KvQuantSparseFlashAttention", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("KvQuantSparseFlashAttention", "opName");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1617,11 +1629,14 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
     if (it != layoutKVMap.end()) {
         kvLayout_ = it->second;
     } else {
-        OP_LOGE(opName_, "layoutKV is %s, it is unsupported.", layout.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV",
+            QSFALayoutToSerialString(kvLayout_).c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {
-        OP_LOGE(opName_, "When layoutKV is not PA_BSND, layoutKV must be the same as layoutQ.");
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "KV and Q",
+            QSFALayoutToSerialString(kvLayout_) + " and " + QSFALayoutToSerialString(qLayout_),
+            "When layoutKV is not PA_BSND, layoutKV and layoutQ must be same.");
         return ge::GRAPH_FAILED;
     }
     uint32_t keyDimNum = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
@@ -1645,18 +1660,20 @@ ge::graphStatus QSFAInfoParser::GetS2SizeForBatchContinuous()
 ge::graphStatus QSFAInfoParser::GetMaxBlockNumPerBatch()
 {
     if (opParamInfo_.blockTable.tensor == nullptr) {
-        OP_LOGE(opName_, "the layout_kv is %s, blockTable must be provided.",
-            QSFALayoutToSerialString(kvLayout_).c_str());
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "blockTable");
         return ge::GRAPH_FAILED;
     }
     uint32_t qsfaDimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
     if (qsfaDimNum != DIM_NUM_TWO) {
-        OP_LOGE(opName_, "the dim num of block_table is %u, it should be %lu.", qsfaDimNum, DIM_NUM_TWO);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "block_table",
+            std::to_string(qsfaDimNum),
+            "The shape dim of block_table must be " + std::to_string(DIM_NUM_TWO) + ".");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
-        OP_LOGE(opName_, "%s's second dimension(%ld) should be greater than 0",
-            BLOCK_TABLE_NAME.c_str(), opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
+            Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+            "block_table's second dim should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -1725,7 +1742,7 @@ ge::graphStatus QSFAInfoParser::GetQueryAndOutLayout()
         qLayout_ = qsfaLayoutIt->second.first;
         outLayout_ = qsfaLayoutIt->second.second;
     } else {
-        OP_LOGE(opName_, "layoutQuery is %s, it is unsupported.", qsfaLayout.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", qsfaLayout.c_str(), "BSND or TND");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1843,7 +1860,7 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
 ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE("KvQuantSparseFlashAttention", "tiling context is nullptr!");
+        OP_LOGE_WITH_INVALID_INPUT("KvQuantSparseFlashAttention", "tiling context");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetOpName() ||
