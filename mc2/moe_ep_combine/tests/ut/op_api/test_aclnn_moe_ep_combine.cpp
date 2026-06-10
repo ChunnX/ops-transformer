@@ -5,7 +5,7 @@
 #include <string>
 #include <cstdint>
 #include "gtest/gtest.h"
-#include "aclnn_moe_ep_combine.h"
+#include "../../../op_api/aclnn_moe_ep_combine.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -44,13 +44,12 @@ TEST_F(L2AclnnMoeEpCombineTest, TestCombineBasicPureSum) {
     TensorDesc combinedTopkWeightsDesc;
 
     auto ut = OP_API_UT(aclnnMoeEpCombine,
-        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, nullDesc, nullDesc, nullDesc),
-        ATTR(epWorldSize, 0, numExperts, 2048, cclBufferSize),
+        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, nullDesc, nullDesc, nullDesc,
+              epWorldSize, 0, numExperts, 2048, cclBufferSize),
         OUTPUT(combinedXDesc, combinedTopkWeightsDesc));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.GetWorkspaceSize(&workspaceSize, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
@@ -75,13 +74,12 @@ TEST_F(L2AclnnMoeEpCombineTest, TestCombineWithTopkWeights) {
     TensorDesc combinedTopkWeightsDesc = TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpCombine,
-        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, topkWeightsDesc, nullDesc, nullDesc),
-        ATTR(epWorldSize, 0, numExperts, 2048, cclBufferSize),
+        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, topkWeightsDesc, nullDesc, nullDesc,
+              epWorldSize, 0, numExperts, 2048, cclBufferSize),
         OUTPUT(combinedXDesc, combinedTopkWeightsDesc));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.GetWorkspaceSize(&workspaceSize, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
@@ -102,12 +100,11 @@ TEST_F(L2AclnnMoeEpCombineTest, TestCombineBiasRejected) {
     TensorDesc biasDesc = TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpCombine,
-        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, TensorDesc(), biasDesc, TensorDesc()),
-        ATTR(epWorldSize, 0, numExperts, 2048, cclBufferSize),
+        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, TensorDesc(), biasDesc, TensorDesc(),
+              epWorldSize, 0, numExperts, 2048, cclBufferSize),
         OUTPUT(TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND), TensorDesc()));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.GetWorkspaceSize(&workspaceSize, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }

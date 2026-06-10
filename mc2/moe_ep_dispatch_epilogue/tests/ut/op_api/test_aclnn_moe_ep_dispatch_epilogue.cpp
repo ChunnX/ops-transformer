@@ -5,7 +5,7 @@
 #include <string>
 #include <cstdint>
 #include "gtest/gtest.h"
-#include "aclnn_moe_ep_dispatch_epilogue.h"
+#include "../../../op_api/aclnn_moe_ep_dispatch_epilogue.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -49,13 +49,12 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic) {
 
     auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
         INPUT(contextDesc, dstSlotDesc, recvSrcMetaInternalDesc,
-              numRecvPerRankHpDesc, numRecvPerExpertHpDesc),
-        ATTR(epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
+              numRecvPerRankHpDesc, numRecvPerExpertHpDesc,
+              epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
         OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc,
                recvSrcMetadataDesc, numRecvPerRankDesc, numRecvPerExpertDesc));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.GetWorkspaceSize(&workspaceSize, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
