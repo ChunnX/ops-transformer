@@ -272,16 +272,16 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     }
     int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     if (actualSharedPrefixLenData > keySharedPrefixS) {
-        std::string reason = "The value of actual_shared_prefix_len cannot be greater than keySharedPrefixS: " +
-            std::to_string(keySharedPrefixS) + ".";
+        std::string reason = "The value of actual_shared_prefix_len cannot be greater than S of "
+            "key_shared_prefix: " + std::to_string(keySharedPrefixS) + ".";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_shared_prefix_len",
             std::to_string(actualSharedPrefixLenData).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (actualSharedPrefixLenData > valueSharedPrefixS) {
-        std::string reason = "The value of actualSharedPrefixLen cannot be greater than valueSharedPrefixS(" +
-            std::to_string(valueSharedPrefixS) + ").";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actualSharedPrefixLen",
+        std::string reason = "The value of actual_shared_prefix_len cannot be greater than S of "
+            "value_shared_prefix(" + std::to_string(valueSharedPrefixS) + ").";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_shared_prefix_len",
             std::to_string(actualSharedPrefixLenData).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }

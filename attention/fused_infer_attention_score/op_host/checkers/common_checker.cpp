@@ -841,7 +841,7 @@ ge::graphStatus CommonChecker::CheckQueryShape(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo.qLayout == FiaLayout::BSH && queryH % attrN != 0) {
-        std::string reason = "H of query must be an interger multiple of num_heads: " +
+        std::string reason = "H of query must be an integer multiple of num_heads: " +
             std::to_string(attrN) + " when layout is BSH.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(queryShape->GetStorageShape()).c_str(), reason.c_str());

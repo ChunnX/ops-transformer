@@ -231,7 +231,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (curSeqLengthData > sOfKeyValue) {
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
-                    "] must be greater than KV_S: " +
+                    "] cannot be greater than KV_S: " +
                     std::to_string(sOfKeyValue) + ".";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
