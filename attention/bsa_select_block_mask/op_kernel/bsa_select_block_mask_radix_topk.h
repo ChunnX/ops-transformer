@@ -410,10 +410,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
                 }
-                if (GetBlockIdx() == 0) {
-                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after tileHist ws write round=%d repeat=%d\n",
-                        roundId, repeatId);
-                }
             }
         }
 
@@ -427,10 +423,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
-        if (GetBlockIdx() == 0) {
-            BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after Update round=%d remainK=%lu total=%lu\n",
-                roundId, remainK_, totalDefinitelyInTopK_);
-        }
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
