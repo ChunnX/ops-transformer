@@ -368,6 +368,8 @@ namespace optiling{
             totalTaskNum += curTaskNum;
         }
         faTilingData.set_totalTaskNum(totalTaskNum);
+        uint32_t needBlockdim = std::min(blockNum_, totalTaskNum);
+        faTilingData.set_needCoreNum(needBlockdim);
     }
 
 
