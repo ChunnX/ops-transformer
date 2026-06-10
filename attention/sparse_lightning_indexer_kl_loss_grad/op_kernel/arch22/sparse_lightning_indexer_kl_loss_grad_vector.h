@@ -694,17 +694,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     AscendC::DataCopyPad(reduceSumPResUb, attnSoftmaxL1NormGm[softmaxOffset], copyParams, copyPadParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
-    Duplicate(reduceSumDwResUb, static_cast<T>(0.0), PSY_SYNC_BLOCK_FLOAT_NUM);
-    uint32_t reduceShape[] = {1U, static_cast<uint32_t>(realKSizeAlign8)};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
-        reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, reduceShape, true);
     PipeBarrier<PIPE_V>();
 
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyParams);
     DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumDwResUb, pSumCopyParams);
+    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumPResUb, pSumCopyParams);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
 }
 
