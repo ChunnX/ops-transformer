@@ -71,10 +71,7 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
         return ge::GRAPH_SUCCESS;
     }
     auto queryShape = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
-    auto valueShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
-    if (valueShape == nullptr) {
-        valueShape = context->GetInputShape(static_cast<size_t>(InputIndex::KEY));
-    }
+    auto valueShape = context->GetInputShape(static_cast<size_t>(InputIndex::VALUE));
     auto attentionInShapeDim = attentionInShape->GetStorageShape().GetDimNum();
     auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
     auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();

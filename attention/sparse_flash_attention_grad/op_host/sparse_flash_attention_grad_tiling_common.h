@@ -47,12 +47,12 @@ enum class InputLayout : uint32_t {
 enum class InputIndex : uint32_t {
     QUERY = 0,
     KEY,
+    VALUE,
     TOPK_INDICES,
     ATTENTION_OUT_GRAD,
     ATTENTION_OUT,
     SOFTMAX_MAX,
     SOFTMAX_SUM,
-    VALUE,
     ACTUAL_SEQ_Q_LEN,
     ACTUAL_SEQ_KV_LEN,
     Q_ROPE,

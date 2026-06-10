@@ -285,10 +285,6 @@ uint64_t SparseFlashAttentionGradBasicTiling::GetTilingKey() const
     if (tmpData.deterministic) {
         tilingKey += 1;
     }
-    tilingKey *= 10;
-    if (tmpData.kvMerge) {
-        tilingKey += 1;
-    }
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -443,7 +439,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr)),
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
                return ge::GRAPH_FAILED);
     // input
@@ -451,9 +448,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d2]   dy/attentionIn [b, s1, n1, d2]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
-    const gert::StorageShape *valueStorageShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
-    tmpData.kvMerge = (valueStorageShape == nullptr);
-    const gert::Shape &valueShape = (valueStorageShape == nullptr) ? keyShape : valueStorageShape->GetStorageShape();
+    const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
@@ -570,7 +565,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     tilingData.opInfo.set_selectedBlockSize(selected_block_size);
     bool deterministic =  (context_->GetDeterministic() == 1);
     tilingData.opInfo.set_deterministic(deterministic);
-    tilingData.opInfo.set_kvMerge(tmpData.kvMerge ? 1U : 0U);
 
     tmpData.d = tilingData.opInfo.get_D();
     tmpData.d2 = tilingData.opInfo.get_D2();
