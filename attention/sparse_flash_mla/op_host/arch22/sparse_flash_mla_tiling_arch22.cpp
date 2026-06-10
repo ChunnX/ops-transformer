@@ -1141,11 +1141,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
     OP_CHECK_IF(opParamInfo_.cmpResidualKv.desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(opName_, "cmp_residual_kv's dtype must be DT_INT32."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetShape().GetDimNum() != DIM_NUM_ONE,
+    OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetStorageShape().GetDimNum() != DIM_NUM_ONE,
                 OP_LOGE(opName_, "cmp_residual_kv's dim num must be 1."),
                 return ge::GRAPH_FAILED);
     uint32_t batchCount = (qLayout_ == SMLALayout::TND) ? (bSize_ - 1) : bSize_;
-    int64_t residualSize = opParamInfo_.cmpResidualKv.tensor->GetShape().GetShapeSize();
+    int64_t residualSize = opParamInfo_.cmpResidualKv.tensor->GetShapeSize();
     OP_CHECK_IF(residualSize != static_cast<int64_t>(batchCount),
                 OP_LOGE(opName_, "cmp_residual_kv's shape size should be %u, but got %ld.",
                         batchCount, residualSize),
