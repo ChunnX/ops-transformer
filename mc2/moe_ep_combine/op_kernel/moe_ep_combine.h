@@ -54,33 +54,6 @@ constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏
 constexpr uint32_t STATE_OFFSET = 32U; 
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 
-
-__aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
-{
-    uint32_t index = rankId > epRankId_ ? rankId - 1 : rankId;
-    return (GM_ADDR)hcommHandle_[index];
-}
-__aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId)
-{
-    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_);
-}
-__aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId)
-{
-    // return (GM_ADDR)(winRankAddr_[rankId] + dataState_ * WIN_STATE_OFFSET);
-    return (GM_ADDR)(winRankAddr_[rankId]);
-}
-
-__aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId)
-{
-    return (GM_ADDR)localUrmaWorkspace_ + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_ + 
-                totalWinSizeEp_ * rankId;
-}
-__aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
-{
-    // return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
-    return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId ;
-}
-
 template <TemplateMoeEpCombineTypeClass>
 class KernelMoeEpCombine {
 public:
@@ -104,6 +77,31 @@ private:
     __aicore__ inline void SendPhaseExpertToToken();
     __aicore__ inline void RecvPhaseReduce();
 
+    __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
+    {
+        uint32_t index = rankId > rankId_ ? rankId - 1 : rankId;
+        return (GM_ADDR)hcommHandle_[index];
+    }
+    __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId)
+    {
+        return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_);
+    }
+    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId)
+    {
+        // return (GM_ADDR)(winRankAddr_[rankId] + dataState_ * WIN_STATE_OFFSET);
+        return (GM_ADDR)(winRankAddr_[rankId]);
+    }
+
+    __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId)
+    {
+        return (GM_ADDR)localUrmaWorkspace_ + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_ + 
+                    totalWinSizeEp_ * rankId;
+    }
+    __aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
+    {
+        // return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId ;
+    }
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
@@ -117,7 +115,7 @@ private:
     uint32_t axisH_{0};
     uint32_t hAlignSize_{0};       // UB对齐后的hidden size
     uint32_t perSlotBytes_{0};
-    uint32_t actuallA{0};
+    uint32_t actualA{0};
     uint32_t aivNum_{0};
     uint32_t totalWinSizeEp_{0};
 
@@ -157,7 +155,7 @@ private:
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
 
-    GM_ADDR localUrmaWorkspace_{nullptr};;      // 工作空间的GM地址
+    GM_ADDR localUrmaWorkspace_{nullptr};      // 工作空间的GM地址
     uint32_t aivId_{0};
 };
 
@@ -193,7 +191,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         hcommHandle_[i] = (GM_ADDR)mc2Context_->hcommHandle_[i];
     }
 
-    actuallA = epWorldSize_ * numMaxTokensPerRank_ * topK_;
+    actualA = epWorldSize_ * numMaxTokensPerRank_ * topK_;
 
     xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)x);
     dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);
@@ -288,7 +286,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStat
 {
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
-    LocalTensor<float> statusTensor = readStateBuf_.AllocTensor<float>();
+    LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
     Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     GlobalTensor<int32_t> outStateTensor;
     outStateTensor.SetGlobalBuffer((__gm__ int32_t*)localRankStateAddr);
@@ -314,7 +312,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
         return; 
     }
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        for (uint32_t tokenIndex = 0; tokenIndex < actuallA; ++tokenIndex) {
+        for (uint32_t tokenIndex = 0; tokenIndex < actualA; ++tokenIndex) {
             int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 0);
             int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 1);
             int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 2);
@@ -387,7 +385,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process
 
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_) + ((tokenIndex - tStart_) * topK_ + topkId) * axisH_ * sizeof(bfloat16_t);
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_) + (tokenIndex * topK_ + topkId) * axisH_ * sizeof(bfloat16_t);
         GlobalTensor<bfloat16_t> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wAddr));
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
