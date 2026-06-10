@@ -375,7 +375,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             for i in range(vector_baseg):
                                 T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
                             T.barrier_all()
-                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 1, clear=False)
+                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
                             T.barrier_all()
 
                         T.copy(
