@@ -18,6 +18,7 @@
 
 #include <vector>
 #include "fia_tiling_base.h"
+#include "fia_tiling_shape.h"
 
 namespace optiling {
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";
@@ -72,49 +73,6 @@ constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 constexpr int32_t SPARSE_MODE_TREE = 9;
 
-enum class FiaLayout : uint32_t {
-    // stardard
-    BSH = 0,
-    BSND = 1,
-    BNSD = 2,
-    NZ = 3,
-    TND = 4,
-    NBSD = 5,
-    NTD = 6,
-    // for attention mask
-    // Qs != 1
-    S1S2 = 7,
-    // Qs = 1
-    BS2 = 8,
-    // PA
-    BnBsH = 11,
-    BnNBsD = 12,
-    BNS1S2 = 13,
-    INS1S2 = 14,
-    BNS11 = 15,
-    TN1 = 16,
-    BS1S2 = 18,
-    B1S1S2 = 19,
-    IS1S2 = 20,
-    I1S1S2 = 21,
-    S1S1 = 22,
-};
-
-enum class FiaAxis : uint32_t {
-    B = 0,
-    S = 1,
-    N = 2,
-    D = 3,
-    H = 4,
-    T = 5,
-    D1 = 6,
-    D0 = 7,
-    S1 = 8,
-    S2 = 9,
-    Bn = 10,
-    Bs = 11,
-    CONST = 12
-};
 
 enum class FiaQuantMode : uint32_t {
     NO_QUANT = 0,
@@ -178,8 +136,6 @@ enum class FiaFullQuantMode : uint32_t {
     Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT = 4,
 };
 
-std::string LayoutToSerialString(FiaLayout layout);
-std::string AxisToSerialString(FiaAxis axis);
 std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode);
 std::string SituationToSerialString(RopeMode ropeMode);
 

@@ -100,6 +100,7 @@ const static int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
 const static int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
 const static int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11LL;
 const static int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
+const static int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
 const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
@@ -248,6 +249,7 @@ private:
     // 各阶段TilingData计算函数
     MultipleParams GetMultipleParams();
     PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
+    void AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const;
     void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
                                          const int64_t perCoreIndicesElements);
     int64_t GetXBufferNum(const int additionalBufferNum);
@@ -296,12 +298,22 @@ private:
     bool IsSupportFullloadQuantMode() const
     {
         return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
-                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
+                (quantMode_ == QUANT_MODE_STATIC) || IsAnyDynamicQuantCase();
+    }
+
+    bool IsInt8DynamicQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_DYNAMIC;
     }
 
     bool IsInt4DynamicQuantCase() const
     {
-        return quantMode_ == QUANT_MODE_DYNAMIC && expandedXDtype_ == ge::DT_INT4;
+        return quantMode_ == QUANT_MODE_INT4_DYNAMIC;
+    }
+
+    bool IsAnyDynamicQuantCase() const
+    {
+        return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
     }
 
     // 辅助工具函数
@@ -509,6 +521,8 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     int64_t quantModeFactor = quantMode_ + 1;
 
     if (isFullload_ && IsSupportFullloadQuantMode()) {
+        // INT4动态量化全载模板复用INT8动态量化tilingkey，kernel通过quantMode区分。
+        quantModeFactor = IsInt4DynamicQuantCase() ? (QUANT_MODE_DYNAMIC - QUANT_MODE_UNQUANT) : quantModeFactor;
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
@@ -736,9 +750,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateQuantMode()
                 quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
                 quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
                 quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_FP8_PERBLOCK_E5M2 &&
-                quantMode_ != QUANT_MODE_FP8_PERBLOCK_E4M3FN,
+                quantMode_ != QUANT_MODE_FP8_PERBLOCK_E4M3FN && quantMode_ != QUANT_MODE_INT4_DYNAMIC,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quant_mode", std::to_string(quantMode_),
-                                          "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11 or 12"),
+                                          "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11, 12 or 13"),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
     return ge::GRAPH_SUCCESS;
@@ -856,6 +870,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = STATIC_QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         supportedDtypes = MXFP4QUANT_SUPPORTED_DTYPES;
+    } else if (IsInt4DynamicQuantCase()) {
+        supportedDtypes = {DataType::DT_FLOAT, DataType::DT_BF16};
     } else {
         //! 出于历史调用的兼容性，这里不拦截quant_mode=1（动态量化）下输入x为int8类型，仅资料说明此时算子输出expandedX、expandedScale无意义
         supportedDtypes = DYNAMIC_QUANT_SUPPORTED_DTYPES;
@@ -866,13 +882,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
                                                     ("unsupported under quant_mode " +
                                                     std::to_string(quantMode_))),
                 return ge::GRAPH_FAILED);
-
-    // INT4 dynamic quantization only supports FLOAT/BF16 input, not FLOAT16 or INT8
-    if (IsInt4DynamicQuantCase() && (xDtype_ != ge::DataType::DT_FLOAT && xDtype_ != ge::DataType::DT_BF16)) {
-        OP_LOGE(context_, "INT4 dynamic quantization only supports DT_FLOAT or DT_BF16 input, but got x dtype: %d.",
-                xDtype_);
-        return ge::GRAPH_FAILED;
-    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -955,17 +964,14 @@ MoeInitRoutingV3Arch35TilingClass::GetExpectedInputScaleShape() const
             expected.dim0 = xShape_.GetDim(0);
         }
     } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
-        if (IsInt4DynamicQuantCase()) {
-            // INT4 dynamic quantization: scale can be None or shape (1, H), dtype FLOAT
-            // Reject per-expert smooth scale (expertEnd - expertStart, H)
-            expected.rank = RANK_TWO;
-            expected.dim0 = 1;
-            expected.dim1 = xShape_.GetDim(1);
-        } else {
-            expected.rank = RANK_TWO;
-            expected.dim0 = expertEnd_ - expertStart_;
-            expected.dim1 = xShape_.GetDim(1);
-        }
+        expected.rank = RANK_TWO;
+        expected.dim0 = expertEnd_ - expertStart_;
+        expected.dim1 = xShape_.GetDim(1);
+    } else if (IsInt4DynamicQuantCase()) {
+        // INT4 dynamic quantization: scale can be None or shape (1, H), dtype FLOAT.
+        expected.rank = RANK_TWO;
+        expected.dim0 = 1;
+        expected.dim1 = xShape_.GetDim(1);
     }
     return expected;
 }
@@ -1161,6 +1167,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateExpandedXDtype()
                     return ge::GRAPH_FAILED);
     }
 
+    if (IsInt8DynamicQuantCase()) {
+        OP_CHECK_IF(
+            expandedXDtype_ != ge::DataType::DT_INT8,
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_x",
+                                      Ops::Base::ToString(expandedXDtype_).c_str(),
+                                      "DT_INT8"),
+            return ge::GRAPH_FAILED);
+    }
+
     if (IsInt4DynamicQuantCase()) {
         if (expandedXDtype_ != ge::DataType::DT_INT4) {
             OP_LOGE(context_,
@@ -1253,7 +1268,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpertTokensCountO
 void MoeInitRoutingV3Arch35TilingClass::CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0,
                                                                     int64_t &expectedDim1, int64_t &expectedDim2)
 {
-    if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
+    if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || IsAnyDynamicQuantCase()) {
         if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
             expectedDim0 = totalLength_;
@@ -1608,7 +1623,7 @@ MultipleParams MoeInitRoutingV3Arch35TilingClass::GetMultipleParams()
         // colMultiple = 2*inputXDtypeSize + 2*1 + 4 + 2 = 2*inputXDtypeSize + 8
         params.colMultiple = NUM_TWO * inputXDtypeSize_ + NUM_TWO + sizeof(float) + sizeof(uint16_t);
         params.rowMultiple = STATIC_QUANT_ROW_MULTIPLE;
-    } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
+    } else if (IsAnyDynamicQuantCase()) {
         params.colMultiple = DYNAMIC_QUANT_COLS_BUFFER;
         params.rowMultiple = NUM_FOUR;
     } else if (quantMode_ == QUANT_MODE_HIF8_CAST && xDtype_ == ge::DataType::DT_BF16) {
@@ -1663,6 +1678,15 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
         }
     }
     return perLoopParams;
+}
+
+void MoeInitRoutingV3Arch35TilingClass::AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const
+{
+    if (!IsInt4DynamicQuantCase() || perLoopParams.perLoopCols >= tilingDataPtr_->cols ||
+        perLoopParams.perLoopCols % NUM_TWO == 0) {
+        return;
+    }
+    perLoopParams.perLoopCols = std::max(perLoopParams.perLoopCols - 1, NUM_TWO);
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
@@ -1757,6 +1781,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
+    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
@@ -1925,7 +1950,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
         ep_ = 0;
-        if (quantMode_ != QUANT_MODE_DYNAMIC) {
+        if (!IsAnyDynamicQuantCase()) {
             int64_t perCoreTokensEst = n_ / aivCoreNum_;
             int64_t remainder = n_ % aivCoreNum_;
             perCoreTokens = remainder <= 1 ? perCoreTokensEst + 1 : perCoreTokensEst + NUM_TWO;
@@ -1955,7 +1980,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         int64_t xAlignedCount = Align(cols_, static_cast<int64_t>(sizeof(int8_t)));
         int64_t quantSpace = xAlignedCount * STATIC_QUANT_FULLLOAD_COLS_BUFFER * perCoreTokens;
         remainUb -= (gatherSpace + quantSpace);
-    } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
+    } else if (IsAnyDynamicQuantCase()) {
         if (IsInt4DynamicQuantCase()) {
             int64_t inputXInSpace = inputXDtypeSize_ == static_cast<int64_t>(sizeof(float)) ?
                                     AlignBytes(cols_, sizeof(float)) :
