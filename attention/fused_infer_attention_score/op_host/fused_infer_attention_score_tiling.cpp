@@ -1354,7 +1354,7 @@ static ge::graphStatus CheckFAILseOutput(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ValidateCacheNonFirstAxisContiguous(gert::TilingContext *context,
+static ge::graphStatus ValidateCacheNonFirstAxisContiguous(const gert::TilingContext *context,
                                                 const uint64_t inputIndex,
                                                 const gert::Shape &shape,
                                                 const char *tensorName)
