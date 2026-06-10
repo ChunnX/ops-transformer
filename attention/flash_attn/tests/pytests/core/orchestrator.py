@@ -35,7 +35,10 @@ def run_case(params: dict,
     # 3. CPU golden 后算
     print(f"  [golden] CPU 参考计算...")
     cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
-    golden_out = golden.compute(cpu_inputs, params)
+    cpu_params = dict(params)
+    if "block_table" in cpu_inputs:
+        cpu_params["block_table"] = cpu_inputs["block_table"]
+    golden_out = golden.compute(cpu_inputs, cpu_params)
 
     # 4. 精度对比 —— CPU golden 始终 BNSD，统一转 target layout
     cpu_raw = golden_out["out"]
