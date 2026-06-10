@@ -2,9 +2,12 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
@@ -249,7 +252,7 @@ cann_ops_transformer.mhc_post_backward(grad_output, x, h_res, h_out, h_post) -> 
 
 ## 确定性计算
 
-`mhc_post_backward`默认采用确定性实现，相同输入多次调用结果一致。
+`mhc_post_backward`默认确定性实现。
 
 ## 调用示例
 
