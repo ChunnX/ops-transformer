@@ -39,14 +39,6 @@
 #endif
 #define NPU_NAME_SPACE at_npu::native
 
-// torch_npu旧版acl头文件缺少以下函数声明，从CANN官方acl_rt.h补充，
-// 确保acl_rt_api.h中的inline wrapper能正确链接
-extern "C" {
-aclError aclrtHostRegisterV2(void *ptr, uint64_t size, uint32_t flag);
-aclError aclrtHostUnregister(void *ptr);
-aclError aclrtHostGetDevicePointer(void *pHost, void **pDevice, uint32_t flag);
-}
-
 using _HcclKfcAllocOpArgs = HcclResult (*)(void **);                                        // 通信配置对象创建
 using _HcclKfcOpArgsSetAlgConfig = HcclResult (*)(void *, char *);                          // 设置通信类型
 using _HcclKfcOpArgsSetCommEngine = HcclResult (*)(void *, uint8_t);                        // 设置通信方式

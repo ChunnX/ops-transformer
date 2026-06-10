@@ -13,7 +13,7 @@
  * \brief HCCL Channel (URMA) mode communication context implementation.
  */
 
-#include "comm_context_channel.h"
+#include "engram_embedding_utils.h"
 
 namespace op_api {
 
@@ -25,7 +25,7 @@ void CopyContextToTensor(const CommContext &context, at::Tensor &tensor)
     tensor.copy_(hostTensor);
 }
 
-CommContext HcclChannelContextBuilder::Build(const std::string &group, int64_t worldSize, uint64_t bufBytes)
+CommContext EngramEmbedingUtilsBuilder::Build(const std::string &group, uint64_t bufBytes)
 {
     bufBytes_ = bufBytes;
     InitHcclEngineCtxFunctions();
@@ -36,20 +36,20 @@ CommContext HcclChannelContextBuilder::Build(const std::string &group, int64_t w
     return commContextStruct;
 }
 
-void HcclChannelContextBuilder::Build(const std::string &group, int64_t worldSize, uint64_t bufBytes, at::Tensor &contextTensor)
+void EngramEmbedingUtilsBuilder::Build(const std::string &group, uint64_t bufBytes, at::Tensor &contextTensor)
 {
-    CommContext commContextStruct = Build(group, worldSize, bufBytes);
+    CommContext commContextStruct = Build(group, bufBytes);
     CopyContextToTensor(commContextStruct, contextTensor);
 }
 
-void HcclChannelContextBuilder::AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle)
+void EngramEmbedingUtilsBuilder::AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle)
 {
     auto aclnnRet = HcomGetCommHandleByGroupFunc(group.c_str(), &hcclHandle);
     TORCH_CHECK(aclnnRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", group.c_str(),
                 ", ret: ", aclnnRet);
 }
 
-void HcclChannelContextBuilder::BuildContext(const HcclComm &hcclHandle, const std::string &group,
+void EngramEmbedingUtilsBuilder::BuildContext(const HcclComm &hcclHandle, const std::string &group,
                       CommContext &commContextStruct)
 {
     std::string mc2ContextTag = std::string(group) + "moe_dispatch_ffn_combine";
@@ -60,7 +60,7 @@ void HcclChannelContextBuilder::BuildContext(const HcclComm &hcclHandle, const s
     CreateContext(hcclHandle, mc2ContextTag, engine, ctx, commContextStruct);
 }
 
-void HcclChannelContextBuilder::AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
+void EngramEmbedingUtilsBuilder::AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
                                     uint32_t rankId)
 {
     void *hostPtr = nullptr;
@@ -87,7 +87,7 @@ void HcclChannelContextBuilder::AllocateAndRegisterBuffer(const HcclComm &commHa
     selfBufDev_ = devPtr;
 }
 
-void HcclChannelContextBuilder::BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
+void EngramEmbedingUtilsBuilder::BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
                            std::vector<HcclChannelDesc> &channelDesc)
 {
     channelDesc.clear();
@@ -131,7 +131,7 @@ void HcclChannelContextBuilder::BuildChannelDescs(const HcclComm &commHandle, ui
     }
 }
 
-void HcclChannelContextBuilder::GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
+void EngramEmbedingUtilsBuilder::GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
                              ChannelHandle *channels, uint32_t length)
 {
     std::vector<HcclChannelDesc> descs;
@@ -145,7 +145,7 @@ void HcclChannelContextBuilder::GetHcclCommChannel(const HcclComm &commHandle, u
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelAcquire(AIV, UBC_CTP/UBC_TP, memHandles=1) failed, ret=", hcclRet);
 }
 
-void HcclChannelContextBuilder::GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine,
+void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine,
                               CommContext *commContextStruct, uint32_t rankSize)
 {
     uint32_t rankId = commContextStruct->epRankId;
@@ -180,7 +180,7 @@ void HcclChannelContextBuilder::GetHcclCommResource(const HcclComm &commHandle, 
     }
 }
 
-void HcclChannelContextBuilder::CreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag,
+void EngramEmbedingUtilsBuilder::CreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag,
                         const CommEngine &engine, void *&ctx,
                         CommContext &commContextStruct)
 {
@@ -191,23 +191,22 @@ void HcclChannelContextBuilder::CreateContext(const HcclComm &commHandle, const 
     hcclRet = HcclGetRankIdFunc(commHandle, &commContextStruct.epRankId);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
 
-    uint32_t rSize = 0;
-    hcclRet = HcclGetRankSizeFunc(commHandle, &rSize);
+    hcclRet = HcclGetRankSizeFunc(commHandle, &commContextStruct.rankSize);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
 
     AllocateAndRegisterBuffer(commHandle, mc2ContextTag, commContextStruct.epRankId);
 
-    GetHcclCommResource(commHandle, engine, &commContextStruct, rSize);
+    GetHcclCommResource(commHandle, engine, &commContextStruct, commContextStruct.rankSize);
 
     hcclRet = HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), &commContextStruct, commContextSize, 0);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
 }
 
-CommContextManager::CommContextManager(const std::string &group, int64_t worldSize, int64_t cclBufferSize)
-    : group_(group), worldSize_(worldSize), cclBufferSize_(cclBufferSize), initialized_(false),
+EngramEmbeddingUtils::EngramEmbeddingUtils(const std::string &group, int64_t cclBufferSize)
+    : group_(group), cclBufferSize_(cclBufferSize), initialized_(false),
       myBufHost_(nullptr) {}
 
-CommContextManager::~CommContextManager()
+EngramEmbeddingUtils::~EngramEmbeddingUtils()
 {
     if (myBufHost_ != nullptr) {
         aclrtHostUnregister(myBufHost_);
@@ -216,7 +215,7 @@ CommContextManager::~CommContextManager()
     }
 }
 
-at::Tensor CommContextManager::create_context()
+at::Tensor EngramEmbeddingUtils::create_context()
 {
     CommContext commContextStruct = get_comm_context();
     at::Tensor context = at::empty({context_tensor_size()}, at::TensorOptions().dtype(at::kInt)
@@ -225,14 +224,14 @@ at::Tensor CommContextManager::create_context()
     return context;
 }
 
-CommContext CommContextManager::get_comm_context()
+CommContext EngramEmbeddingUtils::get_comm_context()
 {
     if (initialized_) {
         return cachedContext_;
     }
 
-    HcclChannelContextBuilder builder;
-    cachedContext_ = builder.Build(group_, worldSize_, static_cast<uint64_t>(cclBufferSize_));
+    EngramEmbedingUtilsBuilder builder;
+    cachedContext_ = builder.Build(group_, static_cast<uint64_t>(cclBufferSize_));
     myBufHost_ = builder.myBufHost_;
     cclBufferSize_ = static_cast<int64_t>(builder.bufBytes_);
     initialized_ = true;
@@ -240,14 +239,14 @@ CommContext CommContextManager::get_comm_context()
     return cachedContext_;
 }
 
-void CommContextManager::update_group(const std::string &group, at::Tensor &contextTensor)
+void EngramEmbeddingUtils::update_group(const std::string &group, at::Tensor &contextTensor)
 {
     CommContext commContextStruct;
     update_comm_context(group, commContextStruct);
     CopyContextToTensor(commContextStruct, contextTensor);
 }
 
-void CommContextManager::update_comm_context(const std::string &group, CommContext &commContext)
+void EngramEmbeddingUtils::update_comm_context(const std::string &group, CommContext &commContext)
 {
     if (myBufHost_ != nullptr) {
         aclrtHostUnregister(myBufHost_);
@@ -257,29 +256,32 @@ void CommContextManager::update_comm_context(const std::string &group, CommConte
     initialized_ = false;
     group_ = group;
 
-    HcclChannelContextBuilder builder;
-    cachedContext_ = builder.Build(group_, worldSize_, static_cast<uint64_t>(cclBufferSize_));
+    EngramEmbedingUtilsBuilder builder;
+    cachedContext_ = builder.Build(group_, static_cast<uint64_t>(cclBufferSize_));
     myBufHost_ = builder.myBufHost_;
     cclBufferSize_ = static_cast<int64_t>(builder.bufBytes_);
     initialized_ = true;
     commContext = cachedContext_;
 }
 
-int64_t CommContextManager::ccl_buffer_size() const { return cclBufferSize_; }
+int64_t EngramEmbeddingUtils::ccl_buffer_size() const { return cclBufferSize_; }
 
-int64_t CommContextManager::context_tensor_size()
+int64_t EngramEmbeddingUtils::host_ptr() const { return reinterpret_cast<int64_t>(myBufHost_); }
+
+int64_t EngramEmbeddingUtils::context_tensor_size()
 {
     return (sizeof(CommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, int64_t>(),
-             py::arg("group"), py::arg("worldSize"), py::arg("cclBufferSize"))
-        .def("create_context", &CommContextManager::create_context)
-        .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
-        .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
+    py::class_<EngramEmbeddingUtils>(m, "EngramEmbeddingUtils")
+        .def(py::init<const std::string &, int64_t>(),
+             py::arg("group"), py::arg("cclBufferSize"))
+        .def("create_context", &EngramEmbeddingUtils::create_context)
+        .def("update_group", &EngramEmbeddingUtils::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def_property_readonly("ccl_buffer_size", &EngramEmbeddingUtils::ccl_buffer_size)
+        .def_property_readonly("host_ptr", &EngramEmbeddingUtils::host_ptr);
 }
 
 } // namespace op_api
