@@ -79,6 +79,10 @@ constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
+// Combine quantization modes
+constexpr uint8_t COMBINE_NO_QUANT = 0;
+constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
+constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 } // namespace
 
 struct WorkspaceInfo {
@@ -90,6 +94,8 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR ptrGmmOut;
+    GM_ADDR ptrRowGroupComplete;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -129,6 +135,22 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        // GMM2 output buffer (bf16)
+        ptrGmmOut = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
+
+        // Row group completion counters
+        ptrRowGroupComplete = base + workspaceSize;
+        int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(tilingData->expertPerRank));
+        int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
+        int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
+        int64_t maxRowGroupsStride = Ops::Base::CeilAlign(
+            maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
