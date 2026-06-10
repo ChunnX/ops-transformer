@@ -316,7 +316,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if (scenarioInfo_.batchSeqFusedFlag_ &&
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "actualSeqLen",
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
                                                              "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
                                                              "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);

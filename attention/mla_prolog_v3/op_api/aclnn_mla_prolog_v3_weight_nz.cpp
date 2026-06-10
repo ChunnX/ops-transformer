@@ -13,7 +13,7 @@
 #include <set>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v3_weight_nz.h"
-
+#include "log/log.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"

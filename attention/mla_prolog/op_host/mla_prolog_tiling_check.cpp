@@ -878,8 +878,8 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheIndexDim()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(context_.cacheIndex.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    context_.opName, "cacheIndex",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_.opName, "cacheIndex", "null",
                     "When cacheMode is in {PA_BLK_BSND, PA_BLK_NZ}, cacheIndex should not be null"),
                 return ge::GRAPH_FAILED);
 
