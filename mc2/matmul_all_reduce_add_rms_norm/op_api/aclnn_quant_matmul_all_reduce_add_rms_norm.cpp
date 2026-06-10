@@ -19,7 +19,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
@@ -49,8 +49,9 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
         "December 2026",
         "aclnnQuantMatmulAllReduceV2GetWorkspaceSize",
         "aclnnAddRmsNormGetWorkspaceSize");
-    CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
+    const char *opName = "aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize";
+    CHECK_RET(ArnCheckNotNull(opName, x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);

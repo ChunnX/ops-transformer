@@ -10,7 +10,7 @@
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 
 #include "aclnn_kernels/cast.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transdata.h"
@@ -102,21 +102,21 @@ static inline bool CheckSocVersionIsSupportBf16(void)
            GetCurrentPlatformInfo().GetSocVersion() >= SocVersion::ASCEND910B;
 }
 
-static bool CheckDtypeValid(
+static bool CheckDtypeValid(const char *opName,
     const aclTensor* self, const aclTensor* mat2, const aclTensor* bias, const aclTensor* out, int8_t cubeMathType)
 {
     bool bf16flag = CheckSocVersionIsSupportBf16();
     if (bf16flag) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(self, DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(mat2, DTYPE_SUPPORT_LIST, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, self, DTYPE_SUPPORT_LIST, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, mat2, DTYPE_SUPPORT_LIST, return false);
         if (bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST, return false);
+            OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, DTYPE_SUPPORT_LIST, return false);
         }
     } else {
-        OP_CHECK_DTYPE_NOT_SUPPORT(self, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(mat2, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, self, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, mat2, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
         if (bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
+            OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, DTYPE_SUPPORT_LIST_WITHOUT_BF16, return false);
         }
     }
 
@@ -145,10 +145,10 @@ static bool CheckDtypeValid(
     return true;
 }
 
-static bool CheckShapeValid(const aclTensor* self, const aclTensor* mat2, bool transposeX2 = false)
+static bool CheckShapeValid(const char *opName, const aclTensor* self, const aclTensor* mat2, bool transposeX2 = false)
 {
-    OP_CHECK_WRONG_DIMENSION(mat2, DIMS_TWO, return false);
-    OP_CHECK_WRONG_DIMENSION(self, DIMS_TWO, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, mat2, DIMS_TWO, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, self, DIMS_TWO, return false);
     op::Shape mat2Shape = mat2->GetViewShape();
     op::Shape selfShape = self->GetViewShape();
     int64_t mat2KDim = transposeX2 ? mat2Shape.GetDim(K_DIM_SELF_IDX) : mat2Shape.GetDim(M_DIM_SELF_IDX);
@@ -433,8 +433,8 @@ bool CheckGemmV3Support(const aclTensor* mat1, const aclTensor* mat2, MmOpInfo& 
 {
     CHECK_RET(mat1 != nullptr, false);
     CHECK_RET(mat2 != nullptr, false);
-    CHECK_RET(CheckDtypeValid(mat1, mat2, nullptr, nullptr, cubeMathType), false);
-    CHECK_RET(CheckShapeValid(mat1, mat2), false);
+    CHECK_RET(CheckDtypeValid("CheckGemmV3Support", mat1, mat2, nullptr, nullptr, cubeMathType), false);
+    CHECK_RET(CheckShapeValid("CheckGemmV3Support", mat1, mat2), false);
     CHECK_RET(CheckMathType(mat1, mat2, cubeMathType), false);
     // 空Tensor不由gemmV3处理
     if (mat1->IsEmpty() || mat2->IsEmpty()) {

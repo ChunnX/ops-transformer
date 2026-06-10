@@ -10,7 +10,7 @@
 #include "matmul_all_reduce_util.h"
 #include "aclnnInner_matmul_all_reduce.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -58,10 +58,10 @@ bool MatmulAllReduceCheckFormat(const aclTensor* x2)
     return true;
 }
 
-bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2)
+bool MatmulAllReduceCheckValidEmptyTensor(const char* opName, const aclTensor* x1, const aclTensor* x2)
 {
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
+    OP_MC2_CHECK_NULL(opName, x1, return false);
+    OP_MC2_CHECK_NULL(opName, x2, return false);
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (x2->GetViewShape().GetDimNum() < 2 || x2->GetViewShape().GetDimNum() > 6) {
         return false;
@@ -82,7 +82,7 @@ bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* te
 {
     bool isTransposeX2 = IsTransposeLastTwoDims(tensor);
     // x2非连续时仅支持转置场景
-    if (!isTransposeX2 && !MC2Aclnn::IsTensorContiguous(tensor)) {
+    if (!isTransposeX2 && !MC2Aclnn::IsTensorContiguous("MatmulAllReduce", tensor)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MatmulAllReduce", tensorName, "non-contiguous",
             "The value of tensor without transpose must be contiguous");
         return false;
@@ -91,16 +91,16 @@ bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* te
 }
 
 aclnnStatus MatmulAllReduceCheckParams(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const char* reduceOp,
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const char* reduceOp,
     int64_t streamMode, const aclTensor* output)
 {
     const static bool is310P = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
 
     // 1. 检查参数是否为空指针
-    CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(MatmulAllReduceCheckNotNull(opName, x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
-    CHECK_RET(MatmulAllReduceCheckDtypeValid(x1, x2, x3, bias, output, is310P), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(MatmulAllReduceCheckDtypeValid(opName, x1, x2, x3, bias, output, is310P), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
     CHECK_RET(MatmulAllReduceCheckAttr(reduceOp, streamMode), ACLNN_ERR_PARAM_INVALID);
@@ -111,11 +111,11 @@ aclnnStatus MatmulAllReduceCheckParams(
     }
 
     // 5. 检查输出shape
-    CHECK_RET(MatmulAllReduceCheckShape(x1, x2, x3, bias, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(MatmulAllReduceCheckShape(opName, x1, x2, x3, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     // 6.【A2】检查x2矩阵非连续合法性
     if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
-        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+        !MatmulAllReduceCheckValidEmptyTensor(opName, x1, x2)) {
         CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
     }
 
@@ -127,41 +127,41 @@ aclnnStatus MatmulAllReduceCheckParams(
 }
 
 // 检查入参是否为nullptr
-bool MatmulAllReduceCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
+bool MatmulAllReduceCheckNotNull(const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_MC2_CHECK_NULL(opName, x1, return false);
+    OP_MC2_CHECK_NULL(opName, x2, return false);
+    OP_MC2_CHECK_NULL(opName, output, return false);
     return true;
 }
 
 bool MatmulAllReduceCheckDtypeValid(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const aclTensor* output,
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const aclTensor* output,
     bool is310P)
 {
     const auto& dtypeSupportList = is310P ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
     // 检查x1、x2、bias、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, dtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, dtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, dtypeSupportList, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, dtypeSupportList, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, dtypeSupportList, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, dtypeSupportList, return false);
     // 检查bias的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, dtypeSupportList, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, dtypeSupportList, return false);
     }
 
     if (x3 != nullptr) {
         // 检查x3的数据类型是否在算子的支持列表内
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, dtypeSupportList, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x3, dtypeSupportList, return false);
         // 检查x1和x3的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(x1, x3, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x3, return false);
     }
     // 检查x1和x2的数据类型是否相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return false);
     // 检查x1和output的数据类型是否相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, output, return false);
     // 检查output和bias的数据类型是否相同
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, bias, x1, return false);
     }
     return true;
 }
@@ -182,14 +182,14 @@ bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 }
 
 bool MatmulAllReduceCheckShape(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const aclTensor* output)
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const aclTensor* output)
 {
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
     uint64_t weightDim = isWeightNZ ? FOUR_DIMS : TWO_DIMS;
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, weightDim, return false);
-    OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
-    OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, weightDim, return false);
+    OP_MC2_CHECK_MIN_DIM(opName, x1, TWO_DIMS, return false);
+    OP_MC2_CHECK_MAX_DIM(opName, x1, THREE_DIMS, return false);
     if (isWeightNZ) {
         return true;
     }
@@ -206,35 +206,35 @@ bool MatmulAllReduceCheckShape(
     // output的最后一维与x2的最后一维相同
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1_len - 1, x2->GetViewShape().GetDim(1));
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+    OP_MC2_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(opName, output, outShape, return false);
 
     if (x3 != nullptr) {
-        OP_CHECK_SHAPE_NOT_EQUAL(output, x3, return false);
+        OP_MC2_CHECK_SHAPE_NOT_EQUAL(opName, output, x3, return false);
     }
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        OP_MC2_CHECK_WRONG_DIMENSION(opName, bias, ONE_DIM, return false);
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1_len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        OP_MC2_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(opName, bias, biasShape, return false);
     }
     return true;
 }
 
 // 全量化场景
 aclnnStatus QuantMatmulAllReduceCheckParams(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const char* reduceOp, int64_t streamMode,
     const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(MatmulAllReduceCheckNotNull(opName, x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(
-        QuantMatmulAllReduceCheckDtypeValid(x1, x2, bias, dequantScale, pertokenScale, x3, output),
+        QuantMatmulAllReduceCheckDtypeValid(opName, x1, x2, bias, dequantScale, pertokenScale, x3, output),
         ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
@@ -242,11 +242,11 @@ aclnnStatus QuantMatmulAllReduceCheckParams(
 
     // 4. 检查输出shape
     CHECK_RET(
-        QuantMatmulAllReduceCheckShape(x1, x2, bias, dequantScale, pertokenScale, x3, output), ACLNN_ERR_PARAM_INVALID);
+        QuantMatmulAllReduceCheckShape(opName, x1, x2, bias, dequantScale, pertokenScale, x3, output), ACLNN_ERR_PARAM_INVALID);
 
     // 5.【A2】检查x2矩阵非连续合法性
     if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
-        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+        !MatmulAllReduceCheckValidEmptyTensor(opName, x1, x2)) {
         CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
     }
 
@@ -254,7 +254,7 @@ aclnnStatus QuantMatmulAllReduceCheckParams(
 }
 
 bool QuantMatmulAllReduceCheckDtypeValid(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
     const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
@@ -267,31 +267,31 @@ bool QuantMatmulAllReduceCheckDtypeValid(
 
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     // 对于量化来说，x1,x2只为INT8
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeSupport, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeSupport, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, DTYPE_SUPPORT_LIST_QUANT, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, dequantScale, dequantDtypeSupport, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, outDtypeSupport, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeSupport, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x3, outDtypeSupport, return false);
         // 检查x3和output的数据类型是否相同
-        OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x3, output, return false);
     }
     // 检查x1和x2的数据类型是否相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return false);
     // BF16场景，dequantScale的dtype与output一致，为BF16
     if (output->GetDataType() == op::DataType::DT_BF16 || dequantScale->GetDataType() == op::DataType::DT_BF16) {
-        OP_CHECK_DTYPE_NOT_SAME(dequantScale, output, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, dequantScale, output, return false);
     }
     // pertokenScale必须为float32
     if (pertokenScale != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(pertokenScale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, pertokenScale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
         // FP16场景，dequantScale的dtype与pertokenScale一致，为float32
         if (output->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(dequantScale, pertokenScale, return false);
+            OP_MC2_CHECK_DTYPE_NOT_SAME(opName, dequantScale, pertokenScale, return false);
         }
     }
     return true;
@@ -355,12 +355,12 @@ void QuantMatmulAllReduceProcessTransposedX2(
 }
 
 bool QuantMatmulAllReduceCheckPertokenScaleShape(
-    const aclTensor* pertokenScale, const aclTensor* x1, const size_t x1Len)
+    const char* opName, const aclTensor* pertokenScale, const aclTensor* x1, const size_t x1Len)
 {
     // pertokenScale的shape为[m]
     if (pertokenScale != nullptr) {
-        OP_CHECK_MIN_DIM(pertokenScale, ONE_DIM, return false);
-        OP_CHECK_MAX_DIM(pertokenScale, ONE_DIM, return false);
+        OP_MC2_CHECK_MIN_DIM(opName, pertokenScale, ONE_DIM, return false);
+        OP_MC2_CHECK_MAX_DIM(opName, pertokenScale, ONE_DIM, return false);
         const size_t pertokenScaleLen = pertokenScale->GetViewShape().GetDimNum();
         size_t x1_m = 1;
         for (size_t dim = 0; dim < x1Len - 1; dim++) {
@@ -377,16 +377,16 @@ bool QuantMatmulAllReduceCheckPertokenScaleShape(
 }
 
 bool QuantMatmulAllReduceCheckShape(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
+    const char* opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
-    OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
-    OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
+    OP_MC2_CHECK_MIN_DIM(opName, x1, TWO_DIMS, return false);
+    OP_MC2_CHECK_MAX_DIM(opName, x1, THREE_DIMS, return false);
     if (QuantMatmulAllReduceIsWeightNZFormat(x2)) {
         return true;
     }
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, TWO_DIMS, return false);
     uint64_t x2Dim0 =
         QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     uint64_t x2Dim1 =
@@ -407,7 +407,7 @@ bool QuantMatmulAllReduceCheckShape(
     // output的最后一维与x2的最后一维相同
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
+    OP_MC2_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(opName, output, outShape, return false);
 
     // 判断output是否为空tensor
     if (output->IsEmpty()) {
@@ -418,18 +418,18 @@ bool QuantMatmulAllReduceCheckShape(
     
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        OP_MC2_CHECK_WRONG_DIMENSION(opName, bias, ONE_DIM, return false);
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        OP_MC2_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(opName, bias, biasShape, return false);
     }
     // x3 shape [s,m,n]
     if (x3 != nullptr) {
-        OP_CHECK_SHAPE_NOT_EQUAL(x3, output, return false);
+        OP_MC2_CHECK_SHAPE_NOT_EQUAL(opName, x3, output, return false);
     }
     // scale和offset为per-tensor则shape为[1]，为per-channel则shape为[n]或者[1,n]
-    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
-    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
+    OP_MC2_CHECK_MIN_DIM(opName, dequantScale, ONE_DIM, return false);
+    OP_MC2_CHECK_MAX_DIM(opName, dequantScale, TWO_DIMS, return false);
     const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
     if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
                                       dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
@@ -441,7 +441,7 @@ bool QuantMatmulAllReduceCheckShape(
                 std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
         return false;
     }
-    if (!QuantMatmulAllReduceCheckPertokenScaleShape(pertokenScale, x1, x1Len)) {
+    if (!QuantMatmulAllReduceCheckPertokenScaleShape(opName, pertokenScale, x1, x1Len)) {
         return false;
     }
     return true;

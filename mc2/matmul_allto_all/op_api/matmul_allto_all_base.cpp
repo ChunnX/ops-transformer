@@ -17,7 +17,7 @@
 #include "securec.h"
 #include "common/utils/op_mc2.h"
 #include "acl/acl.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "common/utils/op_mc2_def.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "opdev/common_types.h"
@@ -99,14 +99,14 @@ static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {op::
                                                                             op::DataType::DT_FLOAT};
 
 // 非量化场景下，校验所有输入的参数类型是否正确（A5）
-static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+static bool CheckAllDtypesValid(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                 const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, output, return false);
     // biasDtype可以为输入xDtype，也可以为fp32
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
@@ -120,19 +120,19 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
 }
 
 // 910B在输入为bfloat16时，bias不支持bfloat16，只能为float32
-static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+static bool CheckAllDtypesValid910B(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                     const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-    OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, X_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, X_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, output, return false);
     if (biasOptional != nullptr) {
         auto biasDtype = biasOptional->GetDataType();
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, biasOptional, BIAS_DTYPE_SUPPORT_LIST, return false);
         if (x1->GetDataType() == op::DataType::DT_FLOAT16) {
-            OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
+            OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, biasOptional, return false);
         } else if (biasDtype != op::DataType::DT_FLOAT) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
                                         op::ToString(biasDtype).GetString(),
@@ -203,7 +203,7 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
     return true;
 }
 
-static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+static aclnnStatus CheckAndHandleParams(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclIntArray *alltoAllAxesOptional, const char *group,
                                         const char *commMode, bool transposeX1, bool transposeX2,
                                         const aclTensor *output)
@@ -213,13 +213,13 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 2. 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查shape
-    CHECK_RET(CheckShapeMMAA(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeMMAA(opName, x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     // bias的数据类型限制在950和910B上有所区别，这里根据芯片版本做区分
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckAllDtypesValid(opName, x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     } else {
-        CHECK_RET(CheckAllDtypesValid910B(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckAllDtypesValid910B(opName, x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     }
     // 5. 检查输入的数据格式是否为ND
     CHECK_RET(CheckFormat(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
@@ -308,7 +308,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
                                                     aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    aclnnStatus checkX2Ret = CheckX2Valid("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
@@ -331,13 +331,13 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
-        OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
+        OP_API_CHECK(!MC2Aclnn::IsTensorContiguous("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x2), {
             OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
                                         "non-contiguous", "contiguous");
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
-    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
+    aclnnStatus retParam = CheckAndHandleParams("aclnnMatmulAlltoAllBaseGetWorkspaceSize", x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
                                                 transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理

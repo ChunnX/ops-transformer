@@ -18,7 +18,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -104,11 +104,11 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, const char*
 }
 
 // 检查入参是否为nullptr
-static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
+static bool CheckNotNull(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
-    OP_CHECK_NULL(output, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(x1, return false);
+    OP_MC2_CHECK_NULL(opName, output, return false);
+    OP_MC2_CHECK_NULL(opName, x2, return false);
+    OP_MC2_CHECK_NULL(opName, x1, return false);
     return true;
 }
 
@@ -131,15 +131,15 @@ static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_HIGH_ACCURAC
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_LOW_ACCURACY = {
     op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_HIFLOAT8};
 
-static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output)
+static bool CheckDtypeValid(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output)
 {
     // 检查x1、x2、bias、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, BIAS_OUTPUT_SUPPORT_TYPE, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, BIAS_OUTPUT_SUPPORT_TYPE, return false);
     // 检查bias的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, BIAS_OUTPUT_SUPPORT_TYPE, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, BIAS_OUTPUT_SUPPORT_TYPE, return false);
     }
     return true;
 }
@@ -150,16 +150,16 @@ static const std::initializer_list<op::DataType> AIV_MODE_BIAS_SUPPORT_LIST = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> AIV_MODE_OUTPUT_SUPPORT_TYPE = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
-static bool CheckAivModeDtypeValid(const aclTensor* x1, const aclTensor* x2,
+static bool CheckAivModeDtypeValid(const char *opName, const aclTensor* x1, const aclTensor* x2,
     const aclTensor* bias, const aclTensor* output)
 {
     // 检查x1、x2、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, AIV_MODE_INPUT_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, AIV_MODE_INPUT_SUPPORT_LIST, return false);
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
+        OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, AIV_MODE_BIAS_SUPPORT_LIST, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, AIV_MODE_OUTPUT_SUPPORT_TYPE, return false);
     return true;
 }
 
@@ -173,14 +173,14 @@ static bool CheckAttr(int64_t streamMode)
     }
     return true;
 }
-static aclnnStatus CheckParams(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, int64_t streamMode,
+static aclnnStatus CheckParams(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, int64_t streamMode,
                                const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(opName, x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
-    CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckDtypeValid(opName, x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
@@ -188,14 +188,14 @@ static aclnnStatus CheckParams(const aclTensor* x1, const aclTensor* x2, const a
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2,
+static aclnnStatus CheckAivModeParams(const char *opName, const aclTensor* x1, const aclTensor* x2,
     const aclTensor* bias, int64_t streamMode, const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(opName, x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
-    CHECK_RET(CheckAivModeDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAivModeDtypeValid(opName, x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
@@ -219,10 +219,10 @@ static aclnnStatus CheckCommMode(const char* commMode)
     return ACLNN_SUCCESS;
 }
 
-static bool CheckShape(const aclTensor* x1, const aclTensor* x2, bool isTransA)
+static bool CheckShape(const char *opName, const aclTensor* x1, const aclTensor* x2, bool isTransA)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x1, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, TWO_DIMS, return false);
     int64_t kVal1 = 0, kVal2 = 0;
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1", "transposed",
@@ -269,19 +269,19 @@ static bool CheckEmptyOptionalTensor(const aclTensor* tensor, const char* tensor
     return true;
 }
 
-static enum CaseOption CheckHighAccuracyCase(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
+static enum CaseOption CheckHighAccuracyCase(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                              const aclTensor* y)
 {
     // 高精度场景须数据类型相同
-    OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
-    OP_CHECK_DTYPE_NOT_SAME(x1, y, return CaseOption::INVALID);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return CaseOption::INVALID);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, y, return CaseOption::INVALID);
     if (CheckEmptyOptionalTensor(bias, "bias")) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, bias, return CaseOption::INVALID);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, bias, return CaseOption::INVALID);
     }
     return CaseOption::HIGH_ACCURACY;
 }
 
-static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor* x2,
+static enum CaseOption CheckLowAccuracyCase(const char *opName, const aclTensor* x1, const aclTensor* x2,
                                             const aclTensor* x1Scale, const aclTensor* x2Scale)
 {
     //先x1 x2指针判空
@@ -290,7 +290,7 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
     }
     // 矩阵入参为Hifloat8时，x1x2必须类型相同。
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
+        OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return CaseOption::INVALID);
     }
     
     if (!CheckEmptyTensor(x1Scale, "x1Scale") || !CheckEmptyTensor(x2Scale, "x2Scale")) {
@@ -310,7 +310,7 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
     }
 }
 
-static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* y,
+static enum CaseOption CheckCase(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* y,
                                  const aclTensor* amax, const aclTensor* x1Scale, const aclTensor* x2Scale)
 {
     if (amax != nullptr) {
@@ -320,10 +320,10 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
     }
     if (CheckType(x1->GetDataType(), INPUT_SUPPORT_TYPE_HIGH_ACCURACY) &&
         CheckType(x2->GetDataType(), INPUT_SUPPORT_TYPE_HIGH_ACCURACY)) {  // 高精度场景
-        return CheckHighAccuracyCase(x1, x2, bias, y);
+        return CheckHighAccuracyCase(opName, x1, x2, bias, y);
     } else if (CheckType(x1->GetDataType(), INPUT_SUPPORT_TYPE_LOW_ACCURACY) &&
                CheckType(x2->GetDataType(), INPUT_SUPPORT_TYPE_LOW_ACCURACY)) {  // 低精度场景 
-        return CheckLowAccuracyCase(x1, x2, x1Scale, x2Scale);
+        return CheckLowAccuracyCase(opName, x1, x2, x1Scale, x2Scale);
     } 
     else {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1/x2",
@@ -379,7 +379,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeByCommmode(const aclTensor* x1,
     OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeByCommmode start, comm_mode is %s.", commMode);
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
-    auto retParam = CheckParams(x1, x2, bias, streamMode, output);
+    const char *opName = "aclnnMatmulReduceScatterV2GetWorkspaceSize";
+    auto retParam = CheckParams(opName, x1, x2, bias, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     auto retCommmode = CheckCommMode(commMode);
     CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
@@ -402,9 +403,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeByCommmode(const aclTensor* x1,
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
     bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
-    CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(opName, x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
     CaseOption caseIndex =
-        CheckCase(x1, x2, bias, output, amaxOutOptional, x1Scale, x2Scale);
+        CheckCase(opName, x1, x2, bias, output, amaxOutOptional, x1Scale, x2Scale);
     if (caseIndex >= CaseOption::INVALID) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "input case",
             "invalid", "Does not match any available case, please read the documents and check the input.");
@@ -485,7 +486,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
                                                          uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode start");
-    auto ret_param = CheckAivModeParams(x1, x2, bias, streamMode, output);
+    const char *opName = "aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode";
+    auto ret_param = CheckAivModeParams(opName, x1, x2, bias, streamMode, output);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
@@ -494,10 +496,10 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     bool isAmaxOut = false;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     (void)MatmulReduceScatterV2IsWeightNZFormat(x2);
-    CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(opName, x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 【A2、A3】检查x2矩阵非连续合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
+        if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode", x2)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode", "x2",
                 "non-contiguous", "x2 without transpose must be contiguous.");
             return ACLNN_ERR_PARAM_INVALID;

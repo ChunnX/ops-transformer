@@ -170,7 +170,7 @@ TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckNotNullGroupNull)
   auto epSend = epSendDesc.ToAclType();
   auto scales = scalesDesc.ToAclType();
   auto xOut = xOutDesc.ToAclType();
-  EXPECT_FALSE(CombineCheckNotNull(expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), nullptr,
+  EXPECT_FALSE(CombineCheckNotNull("aclnnMoeDistributeCombine", expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), nullptr,
                                    xOut.get()));
 }
 
@@ -188,7 +188,7 @@ TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckNotNullGroupEmpty)
   auto epSend = epSendDesc.ToAclType();
   auto scales = scalesDesc.ToAclType();
   auto xOut = xOutDesc.ToAclType();
-  EXPECT_FALSE(CombineCheckNotNull(expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "",
+  EXPECT_FALSE(CombineCheckNotNull("aclnnMoeDistributeCombine", expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "",
                                    xOut.get()));
 }
 
@@ -206,7 +206,7 @@ TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsSuccess)
   auto epSend = epSendDesc.ToAclType();
   auto scales = scalesDesc.ToAclType();
   auto xOut = xOutDesc.ToAclType();
-  EXPECT_EQ(CombineCheckParams(expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "group_ep",
+  EXPECT_EQ(CombineCheckParams("aclnnMoeDistributeCombine", expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "group_ep",
                                "group_tp", xOut.get()),
             ACLNN_SUCCESS);
 }
@@ -226,7 +226,7 @@ TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsGroupEpTooLong)
   auto scales = scalesDesc.ToAclType();
   auto xOut = xOutDesc.ToAclType();
   std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
-  EXPECT_EQ(CombineCheckParams(expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(),
+  EXPECT_EQ(CombineCheckParams("aclnnMoeDistributeCombine", expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(),
                                longGroup.c_str(), "group_tp", xOut.get()),
             ACLNN_ERR_PARAM_INVALID);
 }
@@ -246,7 +246,7 @@ TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsGroupTpTooLong)
   auto scales = scalesDesc.ToAclType();
   auto xOut = xOutDesc.ToAclType();
   std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
-  EXPECT_EQ(CombineCheckParams(expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "group_ep",
+  EXPECT_EQ(CombineCheckParams("aclnnMoeDistributeCombine", expandX.get(), expertIds.get(), assist.get(), epSend.get(), scales.get(), "group_ep",
                                longGroup.c_str(), xOut.get()),
             ACLNN_ERR_PARAM_INVALID);
 }

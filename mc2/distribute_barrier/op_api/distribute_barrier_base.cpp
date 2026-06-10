@@ -15,7 +15,7 @@
 #include <algorithm>
 
 #include "aclnn_distribute_barrier_v2.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
@@ -50,10 +50,10 @@ extern aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTe
                                                                      aclOpExecutor** executor);
 
 // check nullptr
-bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
+bool BarrierCheckNullStatus(const char* opName, const aclTensor* xRef, const char* group)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(xRef, return false);
+    OP_MC2_CHECK_NULL(opName, xRef, return false);
     if (group == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnDistributeBarrier", "group");
         return false;
@@ -64,7 +64,8 @@ bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
 // 入参校验
 aclnnStatus BarrierCheckParams(const aclTensor* xRef, const char* group)
 {
-    CHECK_RET(BarrierCheckNullStatus(xRef, group), ACLNN_ERR_PARAM_NULLPTR);
+    const char* opName = "aclnnDistributeBarrier";
+    CHECK_RET(BarrierCheckNullStatus(opName, xRef, group), ACLNN_ERR_PARAM_NULLPTR);
     auto groupStrnLen = strnlen(group, HCCL_GROUP_NAME_MAX);
     if ((groupStrnLen >= HCCL_GROUP_NAME_MAX) || (groupStrnLen == 0)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnDistributeBarrier", "group",

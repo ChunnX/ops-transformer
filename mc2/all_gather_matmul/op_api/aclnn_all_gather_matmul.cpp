@@ -14,7 +14,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -48,10 +48,10 @@ extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &d
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 
 // check nullptr
-static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
-  OP_CHECK_NULL(x1, return false);
-  OP_CHECK_NULL(x2, return false);
-  OP_CHECK_NULL(output, return false);
+static bool CheckNotNull(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* output) {
+  OP_MC2_CHECK_NULL(opName, x1, return false);
+  OP_MC2_CHECK_NULL(opName, x2, return false);
+  OP_MC2_CHECK_NULL(opName, output, return false);
   return true;
 }
 static inline bool IsAscend910A5(void)
@@ -62,18 +62,18 @@ static inline bool IsAscend910A5(void)
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
   op::DataType::DT_FLOAT16, op::DataType::DT_BF16
 };
-static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output) {
-  OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
-  OP_CHECK_DTYPE_NOT_SUPPORT(output, DTYPE_SUPPORT_LIST, return false);
+static bool CheckDtypeValid(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output) {
+  OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x1, DTYPE_SUPPORT_LIST, return false);
+  OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, x2, DTYPE_SUPPORT_LIST, return false);
+  OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, output, DTYPE_SUPPORT_LIST, return false);
   if (bias != nullptr) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SUPPORT(opName, bias, DTYPE_SUPPORT_LIST, return false);
   }
 
-  OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
-  OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
+  OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, x2, return false);
+  OP_MC2_CHECK_DTYPE_NOT_SAME(opName, x1, output, return false);
   if (bias != nullptr) {
-    OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
+    OP_MC2_CHECK_DTYPE_NOT_SAME(opName, bias, x1, return false);
   }
   return true;
 }
@@ -86,8 +86,8 @@ static bool CheckAttr(int64_t streamMode) {
   return true;
 }
 
-static bool IsGatherOut(const aclTensor *gatherOut) {
-  OP_CHECK_NULL(gatherOut, return false);
+static bool IsGatherOut(const char *opName, const aclTensor *gatherOut) {
+  OP_MC2_CHECK_NULL(opName, gatherOut, return false);
   if (gatherOut->IsEmpty()) {
     OP_LOGD("AllGatherMatmul, get gather out is false.");
     return false;
@@ -95,10 +95,10 @@ static bool IsGatherOut(const aclTensor *gatherOut) {
   return true;
 }
 
-static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
+static bool CheckShape(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
   bool isTransA) {
-  OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-  OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+  OP_MC2_CHECK_WRONG_DIMENSION(opName, x1, TWO_DIMS, return false);
+  OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, TWO_DIMS, return false);
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x1", "transposed",
         "The value of x1 must not be transposed.");
@@ -112,7 +112,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     return false;
   });
 
-  if (IsGatherOut(gatherOut)) {
+  if (IsGatherOut(opName, gatherOut)) {
     auto kVal3 = gatherOut->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 != kVal3), {
       OP_LOGE_FOR_INVALID_SHAPE("aclnnAllGatherMatmulGetWorkspaceSize", "x1/gatherOut",
@@ -147,16 +147,16 @@ static bool CheckNotEmptyTensor(const aclTensor* x1) {
   return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
                                int64_t streamMode, const aclTensor *output) {
-  CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+  CHECK_RET(CheckNotNull(opName, x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
   if (bias != nullptr) {
    OP_LOGW("AllGatherMatmul, The current version does not support the scenario where bias is not 0. "
     "Features and accuracy are not guaranteed if inputting bias with values other than 0s.");
   }
 
-  CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
+  CHECK_RET(CheckDtypeValid(opName, x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
   CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
 
@@ -181,7 +181,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
                                                  const aclTensor *gatherOut,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor) {
   uint64_t timeStamp = NnopbaseMsprofSysTime();
-  auto retParam = CheckParams(x1, x2, bias, streamMode, output);
+  auto retParam = CheckParams("aclnnAllGatherMatmulGetWorkspaceSize", x1, x2, bias, streamMode, output);
   CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
   // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
   if (x1->IsEmpty()) {
@@ -194,15 +194,15 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   uint32_t rankSize = 0;
   bool transposeX1 = IsTransposeLastTwoDims(x1);
   bool transposeX2 = IsTransposeLastTwoDims(x2);
-  CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
+  CHECK_RET(CheckShape("aclnnAllGatherMatmulGetWorkspaceSize", x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
   // 【A2】校验非连续入参合法性
   if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-    OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2), {
+    OP_API_CHECK(!transposeX2 && !MC2Aclnn::IsTensorContiguous("aclnnAllGatherMatmulGetWorkspaceSize", x2), {
       OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAllGatherMatmulGetWorkspaceSize", "x2",
           "non-contiguous", "The value of x2 must be contiguous when not transposed.");
       return ACLNN_ERR_PARAM_INVALID;});
   }
-  bool isGatherOut = IsGatherOut(gatherOut);
+  bool isGatherOut = IsGatherOut("aclnnAllGatherMatmulGetWorkspaceSize", gatherOut);
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
     return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,

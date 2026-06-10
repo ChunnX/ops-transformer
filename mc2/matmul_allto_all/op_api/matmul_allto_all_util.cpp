@@ -13,7 +13,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -106,23 +106,23 @@ bool CheckGroupLength(const char *group)
 }
 
 // 校验输入tensor的维度
-bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
+bool CheckInputDimensions(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
                           const aclTensor* alltoAllOutOptional = nullptr)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x1, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, output, TWO_DIMS, return false);
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+        OP_MC2_CHECK_WRONG_DIMENSION(opName, alltoAllOutOptional, TWO_DIMS, return false);
     }
     return true;
 }
 
 // 校验bias的维度和shape
-bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
+bool CheckBiasShape(const char *opName, const aclTensor* biasOptional, int64_t nVal)
 {
     if (biasOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        OP_MC2_CHECK_WRONG_DIMENSION(opName, biasOptional, ONE_DIM, return false);
         auto biasDim = biasOptional->GetViewShape().GetDim(0);
         if (biasDim != nVal) {
             OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "group.length()",
@@ -135,10 +135,10 @@ bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
 }
 
 // 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
-bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
+bool CheckShapeMMAA(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
                 bool transposeX2, const aclTensor* output)
 {
-    if (!CheckInputDimensions(x1, x2, output)) {
+    if (!CheckInputDimensions(opName, x1, x2, output)) {
         return false;
     }
     auto kdimX1 = x1->GetViewShape().GetDim(1);
@@ -159,18 +159,18 @@ bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* b
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
-    return CheckBiasShape(biasOptional, nVal);
+    return CheckBiasShape(opName, biasOptional, nVal);
 }
 
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
-bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
+bool CheckShapeAAMM(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
                     bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional)
 {
-    if (!CheckInputDimensions(x1, x2, output, alltoAllOutOptional)) {
+    if (!CheckInputDimensions(opName, x1, x2, output, alltoAllOutOptional)) {
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
-    return CheckBiasShape(biasOptional, nVal);
+    return CheckBiasShape(opName, biasOptional, nVal);
 }
 
 // 检查tensor是否连续
@@ -197,7 +197,7 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
 }
 
 // 检查x2是否合法
-aclnnStatus CheckX2Valid(const aclTensor* x2) {
+aclnnStatus CheckX2Valid(const char *opName, const aclTensor* x2) {
     if (x2 == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("matmul_allto_all", "x2");
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -206,7 +206,7 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
     	OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "x2", "empty tensor", "non-empty tensor");
     	return ACLNN_ERR_PARAM_INVALID;
   	}
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 

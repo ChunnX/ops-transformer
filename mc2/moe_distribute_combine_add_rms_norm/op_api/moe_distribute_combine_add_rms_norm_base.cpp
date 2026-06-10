@@ -16,7 +16,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_combine_add_rms_norm_v2.h"
@@ -41,16 +41,16 @@ static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, 
 }
 
 // check nullptr
-bool CombineArnCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
+bool CombineArnCheckNotNull(const char *opName, const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
     const aclTensor* epSendCounts, [[maybe_unused]] const aclTensor* tpSendCounts, const aclTensor* expertScales,
     const char* groupEp, [[maybe_unused]] const char* groupTp, aclTensor* x)
 {
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(epSendCounts, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(x, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, assistInfoForCombine, return false);
+    OP_MC2_CHECK_NULL(opName, epSendCounts, return false);
+    OP_MC2_CHECK_NULL(opName, expertScales, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineAddRmsNorm", "groupEp");
         return false;
@@ -59,12 +59,12 @@ bool CombineArnCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds
 }
 
 // 入参校验
-aclnnStatus CombineArnCheckParams(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* expandIdx,
+aclnnStatus CombineArnCheckParams(const char *opName, const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* expandIdx,
                             const aclTensor* epSendCounts, const aclTensor* tpSendCounts,
                             const aclTensor* expertScales, const char* groupEp, const char* groupTp,
                             aclTensor* x, bool is910B)
 {
-    CHECK_RET(CombineArnCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, tpSendCounts, expertScales, groupEp, 
+    CHECK_RET(CombineArnCheckNotNull(opName, expandX, expertIds, expandIdx, epSendCounts, tpSendCounts, expertScales, groupEp, 
                                      groupTp, x), 
               ACLNN_ERR_PARAM_NULLPTR);
 
@@ -105,7 +105,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(const aclTen
     aclOpExecutor** executor)
 {
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-    auto retParam = CombineArnCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, tpSendCountsOptional,
+    const char *opName = "aclnnMoeDistributeCombineAddRmsNorm";
+    auto retParam = CombineArnCheckParams(opName, expandX, expertIds, assistInfoForCombine, epSendCounts, tpSendCountsOptional,
         expertScales, groupEp, groupTp, xOut, is910B);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret;

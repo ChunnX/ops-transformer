@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_grouped_mat_mul_allto_allv.h"
 #include "acl/acl.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
 #include "common/utils/op_mc2.h"
@@ -72,11 +72,11 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 // 检查必要输入是否为空，必须非空
-static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *y)
+static bool CheckNotNull(const char *opName, const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *y)
 {
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(y, return false);
+    OP_MC2_CHECK_NULL(opName, gmmX, return false);
+    OP_MC2_CHECK_NULL(opName, gmmWeight, return false);
+    OP_MC2_CHECK_NULL(opName, y, return false);
     return true;
 }
 
@@ -404,7 +404,7 @@ static aclnnStatus HandleMmTtTranspose(const aclTensor *&weight, bool &transWeig
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
                                const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
                                const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
@@ -415,7 +415,7 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional,
                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    CHECK_RET(CheckNotNull(gmmX, gmmWeight, y), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(opName, gmmX, gmmWeight, y), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
                               mmWeightOptional, group, y, mmYOptional),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -449,7 +449,8 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight,
     const aclTensor *y, const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional,
+    const char *opName = "aclnnQuantGroupedMatMulAlltoAllv";
+    auto retParam = CheckParams(opName, gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional,
                                 recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional,
                                 mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode, mmXQuantMode,
                                 mmWeightQuantMode, commQuantMode, group, epWorldSize, sendCounts, recvCounts,

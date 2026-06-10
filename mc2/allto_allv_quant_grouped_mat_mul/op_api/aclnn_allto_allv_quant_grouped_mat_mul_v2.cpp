@@ -14,7 +14,7 @@
 #include "common/utils/op_mc2.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
@@ -112,22 +112,22 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
     return true;
 }
 
-static bool CheckGmmWeightValid(const aclTensor *gmmWeight)
+static bool CheckGmmWeightValid(const char *opName, const aclTensor *gmmWeight)
 {
     if (gmmWeight == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, gmmWeight, THREE_DIMS, return false);
     return true;
 }
 
-static bool CheckMmWeightValid(const aclTensor *mmWeightOptional)
+static bool CheckMmWeightValid(const char *opName, const aclTensor *mmWeightOptional)
 {
     if (mmWeightOptional == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
+    OP_MC2_CHECK_WRONG_DIMENSION(opName, mmWeightOptional, TWO_DIMS, return false);
     return true;
 }
 
@@ -474,7 +474,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(const 
     aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前支持转置的gmmWeight涉及该处理
-    CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckGmmWeightValid("aclnnAlltoAllvQuantGroupedMatMulV2", gmmWeight), ACLNN_ERR_PARAM_NULLPTR);
     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
     auto transposeGmmWeight = gmmWeight;   // 复制一个gmmWeight
     if (notContiguous && transGmmWeight) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
@@ -501,7 +501,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(const 
     // 保存原始指针用于一致性校验
     const aclTensor *originalMmWeightOptional = mmWeightOptional;
     const aclTensor *originalMmWeightScaleOptional = mmWeightScaleOptional;
-    if (CheckMmWeightValid(mmWeightOptional)) {
+    if (CheckMmWeightValid("aclnnAlltoAllvQuantGroupedMatMulV2", mmWeightOptional)) {
         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         auto transMmWeightOptional = mmWeightOptional;
         int64_t mmDim0 = mmWeightOptional->GetViewShape().GetDim(0);

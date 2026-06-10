@@ -13,7 +13,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_teardown.h"
@@ -36,18 +36,18 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, 
 
 // check nullptr
 static bool CheckNotNull(
-    const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo,
+    const char *opName, const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo,
     const char* groupEp, aclTensor* expandXOut, aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut,
     aclTensor* expertTokenNumsOut)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(y, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(commCmdInfo, return false);
-    OP_CHECK_NULL(expandXOut, return false);
-    OP_CHECK_NULL(dynamicScalesOut, return false);
-    OP_CHECK_NULL(assistInfoForCombineOut, return false);
-    OP_CHECK_NULL(expertTokenNumsOut, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, y, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, commCmdInfo, return false);
+    OP_MC2_CHECK_NULL(opName, expandXOut, return false);
+    OP_MC2_CHECK_NULL(opName, dynamicScalesOut, return false);
+    OP_MC2_CHECK_NULL(opName, assistInfoForCombineOut, return false);
+    OP_MC2_CHECK_NULL(opName, expertTokenNumsOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchTeardown", "groupEp");
         return false;
@@ -57,12 +57,12 @@ static bool CheckNotNull(
 
 // check invalid parameters
 static aclnnStatus CheckParams(
-    const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo, 
+    const char *opName, const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo, 
     const char* groupEp, int64_t expertShardType, int64_t sharedExpertRankNum, int64_t moeExpertNum, 
     int64_t quantMode, int64_t globalBs,int64_t commType, char* commAlg, aclTensor* expandXOut, 
     aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut, aclTensor* expertTokenNumsOut)
 {
-    CHECK_RET(CheckNotNull(x, y, expertIds, commCmdInfo, groupEp, expandXOut, dynamicScalesOut,
+    CHECK_RET(CheckNotNull(opName, x, y, expertIds, commCmdInfo, groupEp, expandXOut, dynamicScalesOut,
                            assistInfoForCombineOut, expertTokenNumsOut),
               ACLNN_ERR_PARAM_NULLPTR);
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
@@ -92,7 +92,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
             std::to_string(static_cast<int64_t>(GetCurrentPlatformInfo().GetCurNpuArch())).c_str(), "unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    auto ret_param = CheckParams(
+    auto ret_param = CheckParams("aclnnMoeDistributeDispatchTeardown",
         x, y, expertIds, commCmdInfo, groupEp, expertShardType, sharedExpertRankNum, 
         moeExpertNum, quantMode, globalBs, commType, commAlg, expandXOut, 
         dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut);

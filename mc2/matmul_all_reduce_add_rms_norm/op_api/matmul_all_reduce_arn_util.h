@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 // MatmulAllReduceAddRmsNorm
-bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma);
+bool ArnCheckNotNull(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma);
 bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual);
 
 #define DEPRECATED_MM_ARN_API_WARN_ONCE(oldApiName1, oldApiName2, deprecatedDate, newApiName1, newApiName2)     \

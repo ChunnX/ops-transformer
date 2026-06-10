@@ -11,7 +11,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -36,18 +36,18 @@ enum NnopbaseHcclServerType {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* expandX,
+static bool CheckNotNull(const char *opName, const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* expandX,
                          aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
                          aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull start");
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expandIdx, return false);
-    OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
-    OP_CHECK_NULL(epRecvCounts, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, expandIdx, return false);
+    OP_MC2_CHECK_NULL(opName, expertTokensNums, return false);
+    OP_MC2_CHECK_NULL(opName, tpRecvCounts, return false);
+    OP_MC2_CHECK_NULL(opName, epRecvCounts, return false);
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull success");
     if ((groupEp == nullptr)||(strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatch", "groupEp");
@@ -57,13 +57,13 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
 }
 
 // 入参教验
-static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
+static aclnnStatus CheckParams(const char *opName, const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
                                const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
                                aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
                                aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
-    CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
+    CHECK_RET(CheckNotNull(opName, x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
         ACLNN_ERR_PARAM_NULLPTR);
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
@@ -101,7 +101,7 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
                                                                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
+    auto ret_param = CheckParams("aclnnMoeDistributeDispatch", x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
                                  expertTokensNums, epRecvCounts, tpRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 

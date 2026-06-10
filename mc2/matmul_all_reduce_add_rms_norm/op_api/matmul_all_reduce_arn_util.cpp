@@ -10,7 +10,7 @@
 
 #include "matmul_all_reduce_arn_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -43,12 +43,12 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT_310P = {
     op::DataType::DT_UINT64, op::DataType::DT_INT64};
 
-bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma)
+bool ArnCheckNotNull(const char *opName, const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma)
 {
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
-    OP_CHECK_NULL(residual, return false);
-    OP_CHECK_NULL(gamma, return false);
+    OP_MC2_CHECK_NULL(opName, x1, return false);
+    OP_MC2_CHECK_NULL(opName, x2, return false);
+    OP_MC2_CHECK_NULL(opName, residual, return false);
+    OP_MC2_CHECK_NULL(opName, gamma, return false);
     return true;
 }
 
