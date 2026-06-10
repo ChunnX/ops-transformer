@@ -16,8 +16,7 @@
 #include "../../../attn_infra/detail/fused_alignment.hpp"
 #include "../../../attn_infra/fused_matrix_coord.hpp"
 
-namespace NpuArch::layout 
-{
+namespace NpuArch::layout {
 
 /// Mapping function for row-major matrices
 struct RowMajor {
@@ -56,7 +55,8 @@ public:
     HOST_DEVICE
     static RowMajor MakeLayoutInUb(MatrixCoord const &shape)
     {
-        return RowMajor(shape.row(), shape.column(), NpuArch::Detail::Alignment::RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
+        return RowMajor(shape.row(), shape.column(),
+            NpuArch::Detail::Alignment::RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
     }
 
     /// Returns the offset of a coordinate in linear memory.

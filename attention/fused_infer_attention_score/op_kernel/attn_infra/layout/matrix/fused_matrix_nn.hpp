@@ -16,8 +16,7 @@
 #include "../../../attn_infra/detail/fused_alignment.hpp"
 #include "../../../attn_infra/fused_matrix_coord.hpp"
 
-namespace NpuArch::layout
-{
+namespace NpuArch::layout {
 
 ///////////////////////
 // new add layout nN
@@ -96,67 +95,78 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const& coord) const {
+    LongIndex GetOffset(MatrixCoord const& coord) const
+    {
         return LongIndex(coord.row()) / shape_[0] * stride_[1] + LongIndex(coord.column()) / shape_[2] * stride_[3];
     }
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index orgShape(int idx) const {
+    typename OrgShape::Index orgShape(int idx) const
+    {
         return orgShape_[idx];
     }
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index& orgShape(int idx) {
+    typename OrgShape::Index& orgShape(int idx)
+    {
         return orgShape_[idx];
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape shape() const {
+    Shape shape() const
+    {
         return shape_;
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    Shape& shape() {
+    Shape& shape()
+    {
         return shape_;
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    typename Shape::Index shape(int idx) const {
+    typename Shape::Index shape(int idx) const
+    {
         return shape_[idx];
     }
 
     /// Returns the shape of the layout
     HOST_DEVICE
-    typename Shape::Index& shape(int idx) {
+    typename Shape::Index& shape(int idx)
+    {
         return shape_[idx];
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    Stride stride() const {
+    Stride stride() const
+    {
         return stride_;
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    Stride& stride() {
+    Stride& stride()
+    {
         return stride_;
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index stride(int idx) const {
+    typename Stride::Index stride(int idx) const
+    {
         return stride_[idx];
     }
 
     /// Returns the stride of the layout
     HOST_DEVICE
-    typename Stride::Index& stride(int idx) {
+    typename Stride::Index& stride(int idx)
+    {
         return stride_[idx];
     }
 
