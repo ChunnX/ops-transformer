@@ -24,7 +24,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 
 using namespace AscendC;
 
