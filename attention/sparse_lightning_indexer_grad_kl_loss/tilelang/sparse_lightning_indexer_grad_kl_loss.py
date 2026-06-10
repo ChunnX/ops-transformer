@@ -206,57 +206,57 @@ def tilelang_grad_kl_loss_single_kernel(
             # K dim: DQuery + d_rope, split into d_num_total chunks
             # ============================================================
             with T.Scope("C"):
-                Q_L1_full = T.alloc_L1((N1, DQuery), input_dtype)
-                QR_L1_full = T.alloc_L1((N1, d_rope), input_dtype) if d_rope > 0 else T.alloc_L1((N1, 1), input_dtype)
+                Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
                 GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    T.copy(
-                        Query[bz, s1_row, 0:N1, 0:DQuery],
-                        Q_L1_full,
-                    )
-                    if d_rope > 0:
-                        T.copy(
-                            QueryRope[bz, s1_row, 0:N1, 0:d_rope],
-                            QR_L1_full,
-                        )
                     for n_idx in T.serial(n_num):
                         for d_idx in T.serial(d_num_total):
+                            if d_idx < d_num_query:
+                                T.copy(
+                                    Query[bz, s1_row, 0:N1, d_idx * k_block:(d_idx + 1) * k_block],
+                                    Q_L1,
+                                )
+                            else:
+                                rope_d = d_idx - d_num_query
+                                T.copy(
+                                    QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
+                                    Q_L1,
+                                )
                             if d_idx < d_num_query:
                                 T.copy(
                                     GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
                                     GK_L1,
                                 )
-                                T.gemm_v0(Q_L1_full[:, d_idx * k_block:(d_idx + 1) * k_block], GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                             else:
                                 rope_d = d_idx - d_num_query
                                 T.copy(
                                     GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
                                     GK_L1,
                                 )
-                                T.gemm_v0(QR_L1_full[:, rope_d * k_block:(rope_d + 1) * k_block], GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
+                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                         T.copy(
                             C_L0C,
                             bmm1Res[bz, s1_row, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
                         )
 
-                QI_L1_full = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
+                QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
                 GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
                 C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    T.copy(
-                        QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex],
-                        QI_L1_full,
-                    )
                     for n_idx in T.serial(n_num):
                         for k_idx in T.serial(d_num_query_index):
+                            T.copy(
+                                QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
+                                QI_L1,
+                            )
                             T.copy(
                                 GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GKI_L1,
                             )
-                            T.gemm_v0(QI_L1_full[:, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
+                            T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                         T.copy(
                             C2_L0C,
                             bmm2Res[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
