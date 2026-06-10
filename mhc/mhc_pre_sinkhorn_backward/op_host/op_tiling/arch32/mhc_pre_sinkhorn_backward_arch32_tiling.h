@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_ARCH32_H_
-#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_ARCH32_H_
+#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_
+#define MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_
 
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
