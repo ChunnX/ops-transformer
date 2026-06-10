@@ -400,7 +400,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
                 }
-                MTE3ToVSync();
             }
         }
 
@@ -860,7 +859,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
     MTE3ToVSync();
     ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
                       (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
-    MTE3ToVSync();
     MTE3ToMTE2Sync();
 }
 
