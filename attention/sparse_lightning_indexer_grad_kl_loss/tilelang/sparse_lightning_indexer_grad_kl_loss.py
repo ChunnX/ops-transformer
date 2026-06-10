@@ -25,8 +25,8 @@ _workspace_cache = {}
 
 
 pass_configs = {
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 }
@@ -773,6 +773,7 @@ def sparse_lightning_indexer_grad_kl_loss(
     weights_orig_dtype = weights.dtype
 
     if layout_query == "BSND" and sparse_mode in (3,):
+
         if actual_seq_lengths_query is not None:
             actual_q_len = torch.tensor(actual_seq_lengths_query, dtype=torch.int32) if isinstance(actual_seq_lengths_query, list) else actual_seq_lengths_query.to(torch.int32)
         else:
