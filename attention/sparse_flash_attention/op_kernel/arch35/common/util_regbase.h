@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef KV_QUANT_SAS_UTIL_REGBASE_H
-#define KV_QUANT_SAS_UTIL_REGBASE_H
+#ifndef UTIL_REGBASE_H
+#define UTIL_REGBASE_H
 
 #include "util.h"
 
@@ -180,9 +180,12 @@ struct RunInfo {
     int64_t mm1Ka; \
     /* dq 或者attentionOut的Stride */ \
     int64_t attentionOutStride; \
+    uint32_t aicIdx; \
     uint32_t aivIdx; \
     uint8_t layoutType; \
     uint8_t subBlockIdx;\
+    bool returnSoftmaxLse; \
+    uint8_t resv; \
     /* 分核相关 */ \
     uint32_t s2Start; \
     uint32_t s2End; \
@@ -217,21 +220,21 @@ struct RunInfo {
     uint32_t s1Size;  \
     uint32_t s2Size;  \
     uint32_t dSize : 10;  \
-    int64_t dSizeVInput : 12;  \
+    int32_t dSizeVInput : 12;  \
     uint32_t needInit : 4; \
     uint32_t layoutType : 4;  \
     uint32_t isActualSeqLengthsNull : 1; \
     uint32_t isActualSeqLengthsKVNull : 1; \
     uint32_t sparseBlockCount; \
     float softmaxScale; \
-    uint32_t dSizeRope : 11; \
-    uint32_t maskMode : 6;\
+    uint32_t dSizeRope : 8; \
+    uint32_t maskMode : 4; \
     uint32_t tileSize : 8; \
     /* pa params */  \
     uint32_t blockSize : 12; \
     uint32_t maxBlockNumPerBatch; \
-    uint32_t usedCoreNum
-
+    uint32_t usedCoreNum; \
+    bool returnSoftmaxLse
 
 struct ConstInfo {
     COMMON_CONST_INFO;
@@ -244,4 +247,4 @@ struct CVSharedParams {
 };
 }
 
-#endif // KV_QUANT_SAS_UTIL_REGBASE_H
+#endif // UTIL_REGBASE_H
