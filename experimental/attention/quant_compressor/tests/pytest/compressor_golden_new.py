@@ -125,10 +125,8 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         '---------------------------------------------------------------------------------------')
 # fuzz 中precision_method == 1的精度对比方式
 def check_result(expect, result, data_type, pct_thd = 0.005):
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
-    real_data = real_data.flatten()
-    data_compe = data_compe.flatten()
+    real_data = result.cpu().numpy().ravel()
+    data_compe = expect.cpu().numpy().ravel()
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
             'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
@@ -144,13 +142,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         print_log(
             'Error,the size of npu output[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
         return 0.0, result
-    overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
 
-
-    if overflows_count > 0:
-        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
-            overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
-    
     if data_type == 'bfloat16':
         diff_thd=0.005
         max_diff_hd=10.0
@@ -168,9 +160,23 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     print_log('split_count:%s; max_diff_hd:%s;' %
               (float(split_count), max_diff_hd))
 
-    has_nan_inf = False
-    if 'nan' in str(real_data) or 'inf' in str(real_data) or 'nan' in str(data_compe) or 'inf' in str(data_compe):
-        has_nan_inf = True
+    if np.array_equal(real_data, data_compe):
+        fulfill_percent = 100.0
+        pct_thd_pct = (1 - pct_thd) * 100.0
+        display_output_np_isclose(real_data, data_compe, start, end)
+        print_log(
+            '---------------------------------------------------------------------------------------')
+        print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+        print_log(
+            '---------------------------------------------------------------------------------------')
+        print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
+                    (rtol, atol, pct_thd_pct, fulfill_percent, "Pass"))
+        return fulfill_percent, "Pass"
+
+    overflows_count = int(np.count_nonzero(np.isinf(data_compe))) + int(np.count_nonzero(np.isnan(data_compe)))
+    if overflows_count > 0:
+        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
+            overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
 
     if str(real_data.dtype) == 'bfloat16':
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
@@ -207,18 +213,22 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     else:
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
-    err_idx = np.where(diff_result != np.array((True,)))[0]
+    err_idx = np.where(~diff_result)[0]
 
-    if str(data_compe.dtype) == 'bool':
-        data_compe = data_compe.astype(np.int8)  
-        real_data = real_data.astype(np.int8)
-    diff_abs = abs(data_compe - real_data)
-    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
     b2 = float((1.0 / (1 << 14)) / diff_thd)
-    b = np.add(np.maximum(b1, b2), 10e-10)
     eps = 10e-10
-    err_diff = diff_abs / (b + eps)
-    err_diff = err_diff[err_idx]
+    if err_idx.size > 0:
+        if str(data_compe.dtype) == 'bool':
+            data_compe = data_compe.astype(np.int8)
+            real_data = real_data.astype(np.int8)
+        err_real = real_data[err_idx]
+        err_expect = data_compe[err_idx]
+        err_abs = np.abs(err_expect - err_real)
+        err_max = np.maximum(np.abs(err_real), np.abs(err_expect))
+        err_b = np.maximum(err_max, b2) + eps
+        err_diff = err_abs / err_b
+    else:
+        err_diff = np.array([], dtype=np.float64)
 
     fulfill_percent = float(split_count - err_idx.size) / \
                         float(split_count) * 100.0
@@ -656,12 +666,13 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
                     block_table[i][j] = next_block_id
                     next_block_id = next_block_id + 1
 
+        actual_block_num = next_block_id
         if B==0:
             kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (actual_block_num, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (actual_block_num, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
         token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
