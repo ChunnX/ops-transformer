@@ -363,8 +363,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
-    MhcPreSinkhornBackwardTilingData* tilingData =
-    context_->GetTilingData<MhcPreSinkhornBackwardTilingData>();
+    MhcPreSinkhornBackwardArch35TilingData* tilingData =
+    context_->GetTilingData<MhcPreSinkhornBackwardArch35TilingData>();
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
