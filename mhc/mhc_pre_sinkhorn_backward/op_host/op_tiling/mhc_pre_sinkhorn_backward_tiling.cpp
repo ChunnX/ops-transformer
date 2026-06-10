@@ -18,7 +18,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "arch35/mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
 #include "arch32/mhc_pre_sinkhorn_backward_arch32_tiling.h"
-#include "mhc_pre_backward_tiling.h"
+#include "mhc_pre_sinkhorn_backward_tiling.h"
 #include "log/log.h"
 
 namespace optiling {

@@ -19,6 +19,7 @@
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "err/ops_err.h"
 
 namespace optiling {
     ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context);

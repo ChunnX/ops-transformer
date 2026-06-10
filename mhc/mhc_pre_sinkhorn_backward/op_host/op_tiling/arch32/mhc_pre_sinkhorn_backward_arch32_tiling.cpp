@@ -411,7 +411,7 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     mm1Tiling.SetShape(mm1M, mm1N, mm1K);
     mm1Tiling.SetBias(false);
     mm1Tiling.SetBufferSpace(-1, -1, -1);
-    if (mm1Tiling.GetTiling(tilingData.mm1TilingData) == -1) {
+    if (mm1Tiling.GetTiling(tilingData->mm1TilingData) == -1) {
         OP_LOGE(context, "mm1Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm1M, mm1N, mm1K);
         return ge::GRAPH_FAILED;
     }
@@ -423,7 +423,7 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     mm2Tiling.SetShape(mm2M, mm2N, mm2K);
     mm2Tiling.SetBias(false);
     mm2Tiling.SetBufferSpace(-1, -1, -1);
-    if (mm2Tiling.GetTiling(tilingData.mm2TilingData) == -1) {
+    if (mm2Tiling.GetTiling(tilingData->mm2TilingData) == -1) {
         OP_LOGE(context, "mm2Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm2M, mm2N, mm2K);
         return ge::GRAPH_FAILED;
     }
