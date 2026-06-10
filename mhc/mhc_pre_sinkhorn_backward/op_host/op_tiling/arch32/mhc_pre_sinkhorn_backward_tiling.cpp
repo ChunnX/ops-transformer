@@ -470,12 +470,12 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseContext *context)
-{
-    return ge::GRAPH_SUCCESS;
-}
+// static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseContext *context)
+// {
+//     return ge::GRAPH_SUCCESS;
+// }
 
-IMPL_OP_OPTILING(MhcPreSinkhornBackward)
-    .Tiling(TilingMhcPreSinkhornBackward)
-    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
+// IMPL_OP_OPTILING(MhcPreSinkhornBackward)
+//     .Tiling(TilingMhcPreSinkhornBackward)
+//     .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
 } // namespace optiling
