@@ -140,6 +140,7 @@ target_link_libraries(opmaster PRIVATE
   -Wl,--no-whole-archive
   mmpa
   tiling_api
+  ops_base
   exe_meta_device
   platform_static
   ascend_protobuf
