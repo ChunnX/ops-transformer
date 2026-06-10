@@ -997,7 +997,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         // sendTokenBufNum_ 为 outTensor_ 的 slot 数，需 >= 每个 token 的 expert 数
         uint32_t maxExpPerCore = (activeBS < moeUsedAivNum_) ?
             Ceil(axisK_, moeUsedAivNum_ / activeBS) : axisK_;
-        bool canUseBSMode = (activeBS > 0) && (moeUsedAivNum_ > 0) &&
+        bool canUseBSMode = (activeBS > 16) && (moeUsedAivNum_ > 0) &&
             (activeBS % moeUsedAivNum_ == 0 || moeUsedAivNum_ % activeBS == 0) &&
             (scalesCount_ <= axisH_) &&
             (sendTokenBufNum_ >= maxExpPerCore) &&
