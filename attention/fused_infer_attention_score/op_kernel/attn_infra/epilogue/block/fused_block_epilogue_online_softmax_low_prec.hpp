@@ -46,12 +46,12 @@ public:
     using ElementMask = typename MaskType_::Element;
     using ElementSink = typename SinkType_::Element;
     using ElementFull = typename FullType_::Element;
+    using ElementOutput = typename OutputType_::Element;
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = typename InputType_::Layout;
     using LayoutMask = typename MaskType_::Layout;
     using LayoutFull = typename FullType_::Layout;
-    using ElementOutput = typename OutputType_::Element;
-
+    
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr SinkMode SINK_MODE = DispatchPolicy::SINK_MODE;
 
