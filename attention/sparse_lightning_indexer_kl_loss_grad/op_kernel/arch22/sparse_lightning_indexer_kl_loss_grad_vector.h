@@ -44,9 +44,8 @@ public:
 
     static constexpr uint32_t topKSize = static_cast<uint32_t>(SLIT::topKRange);
     static constexpr bool isTopkLess2k = (topKSize <= SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K);
-    static constexpr uint32_t PSY_SYNC_BLOCK_FLOAT_NUM = 32 / sizeof(T);
-    static constexpr uint32_t PSY_SYNC_SUM_P_OFFSET = topKSize * 2;
-    static constexpr uint32_t PSY_SYNC_STRIDE = PSY_SYNC_SUM_P_OFFSET + PSY_SYNC_BLOCK_FLOAT_NUM;
+    static constexpr uint32_t PSY_SYNC_EXTRA_FLOAT_NUM = 32 / sizeof(T);
+    static constexpr uint32_t PSY_SYNC_STRIDE = topKSize * 2 + PSY_SYNC_EXTRA_FLOAT_NUM;
     static constexpr SLILayout LAYOUT_T = SLIT::inputQLayout;
     static constexpr SLILayout KV_LAYOUT_T = SLIT::inputKLayout;
     static constexpr UBAllocPolicy<isTopkLess2k> ubAllocPolicy;
@@ -694,17 +693,11 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     AscendC::DataCopyPad(reduceSumPResUb, attnSoftmaxL1NormGm[softmaxOffset], copyParams, copyPadParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
-    // DataCopyPad zero-fills the tail from kRealSize to realKSizeAlign8.
-    uint32_t reduceShape[] = {1U, static_cast<uint32_t>(realKSizeAlign8)};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
-        reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, reduceShape, true);
     PipeBarrier<PIPE_V>();
 
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyParams);
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumDwResUb, pSumCopyParams);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
 }
 
@@ -1385,26 +1378,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm, kRealSizeAlign16);
     }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumResTensor, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumResTensor, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    }
 
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
 
-    event_t eventIdMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    T pSumValue = reduceSumResTensor.GetValue(0);
-    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    AscendC::SetFlag<AscendC::HardEvent::S_V>(eventIdSToV);
-    AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventIdSToV);
-    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
-    PipeBarrier<PIPE_V>();
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
 
@@ -1529,26 +1506,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSizeAlign16);
     }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumResTensor, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumResTensor, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    }
 
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
 
-    event_t eventIdMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    T pSumValue = reduceSumResTensor.GetValue(0);
-    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    AscendC::SetFlag<AscendC::HardEvent::S_V>(eventIdSToV);
-    AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventIdSToV);
-    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
-    PipeBarrier<PIPE_V>();
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
 
