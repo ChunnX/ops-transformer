@@ -53,7 +53,8 @@ namespace ge {
   Default: "0". Reserved attribute. The block_size only supports 549764202624 in the per_block scenario. The block_size only supports 0 in the other scenario. \n
 * @li is_amax_out: A bool. whether the output of amax_out is supported . Default: "false". If True, supports output amax_out.
 * @li y_dtype: An int. Default: "0". The y_dtype only supports 0(float32)/1(float16)/27(bfloat16) in current version. \n
-* @li comm_mode: A string. communication Mode. Default: "". The comm_mode only supports "aicpu" or "aiv" in current version. \n
+* @li comm_mode: A string. Communication mode. Default: "" (auto-select based on rank_size). The comm_mode supports "ai_cpu", "ccu" or "". 
+  When input is an empty string "", comm_mode selects "ccu" if rank_size <= 8 , otherwise selects "ai_cpu". \n
 *
 * @par Outputs:
 * @li y: A matrix tensor. If x1 type is float16, bfloat16, The type is same as x1.
@@ -79,7 +80,7 @@ REG_OP(MatmulReduceScatterV2)
     .ATTR(group_size, Int, 0)
     .ATTR(is_amax_out, Bool, false)
     .ATTR(y_dtype, Int, 0)
-    .ATTR(comm_mode, String, "aicpu")
+    .ATTR(comm_mode, String, "")
     .OP_END_FACTORY_REG(MatmulReduceScatterV2)
 }
 #endif  // MATMUL_REDUCE_SCATTER_V2_PROTO_H_
