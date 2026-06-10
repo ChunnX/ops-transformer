@@ -126,7 +126,7 @@ class MoEElasticBuffer:
 
         recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)
         recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
-        recv_topk_weights = torch.empty((actual_a, self.num_topk), dtype=torch.float32, device=x.device)
+        recv_topk_weights = torch.empty((actual_a,), dtype=torch.float32, device=x.device)
         recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
         num_recv_per_rank = torch.empty((ep_world_size,), dtype=torch.int32, device=x.device)
         num_recv_per_expert = torch.empty((ne // ep_world_size,), dtype=torch.int64, device=x.device)

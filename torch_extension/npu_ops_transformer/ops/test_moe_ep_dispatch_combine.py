@@ -65,7 +65,7 @@ def run_test_dispatch_forward_upper_bound(rank):
     upper_a = world_size * num_max_tokens_per_rank
     assert recv_x.shape == (upper_a, hidden), f"recv_x shape={recv_x.shape}, expected ({upper_a}, {hidden})"
     assert recv_topk_idx.shape == (upper_a, top_k)
-    assert recv_topk_weights.shape == (upper_a, top_k)
+    assert recv_topk_weights.shape == (upper_a,)
     assert handle.dst_buffer_slot_idx.shape == (num_tokens, top_k)
     assert handle.recv_src_metadata.shape[1] == 3
     assert handle.num_recv_tokens_per_rank.shape[0] == world_size
