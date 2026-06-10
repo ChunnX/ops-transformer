@@ -15,6 +15,8 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_datatype_context_faker.h"
 #include "mc2_infer_shape_case_executor.h"
 
 class QuantReduceScatterInferShapeTest : public testing::Test {
@@ -217,4 +219,72 @@ TEST_F(QuantReduceScatterInferShapeTest, Dim4D)
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{0, 0}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+class QuantReduceScatterInferDTypeTest : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantReduceScatterInferDTypeTest SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantReduceScatterInferDTypeTest TearDown" << std::endl;
+    }
+};
+
+TEST_F(QuantReduceScatterInferDTypeTest, OutputDtypeFloat16)
+{
+    ge::DataType xType = ge::DT_INT8;
+    ge::DataType scalesType = ge::DT_FLOAT;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .NodeIoNum(2, 1)
+        .InputDataTypes({&xType, &scalesType})
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+                    {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+                    {"output_dtype",
+                     Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_FLOAT16))},
+                    {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}})
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("QuantReduceScatter");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->infer_datatype, nullptr);
+    auto *ctx = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_NE(ctx, nullptr);
+    ASSERT_EQ(opImpl->infer_datatype(ctx), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(ctx->GetOutputDataType(0), ge::DT_FLOAT16);
+}
+
+TEST_F(QuantReduceScatterInferDTypeTest, OutputDtypeBf16KeepContext)
+{
+    ge::DataType xType = ge::DT_INT8;
+    ge::DataType scalesType = ge::DT_FLOAT;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .NodeIoNum(2, 1)
+        .InputDataTypes({&xType, &scalesType})
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+                    {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+                    {"output_dtype",
+                     Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_BF16))},
+                    {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}})
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("QuantReduceScatter");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->infer_datatype, nullptr);
+    auto *ctx = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_NE(ctx, nullptr);
+    ge::DataType contextDtype = ctx->GetOutputDataType(0);
+    ASSERT_EQ(opImpl->infer_datatype(ctx), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(ctx->GetOutputDataType(0), contextDtype);
 }
