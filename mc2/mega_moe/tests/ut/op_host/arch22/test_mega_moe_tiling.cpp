@@ -58,10 +58,10 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
         inputs.push_back({{{kNHalf, kHiddenSize}, {kNHalf, kHiddenSize}}, ge::DT_INT4, ge::FORMAT_ND});
     }
     for (uint32_t i = 0; i < kExpertPerRank; i++) {
-        inputs.push_back({{{kN}, {kN}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        inputs.push_back({{{kN}, {kN}}, ge::DT_UINT64, ge::FORMAT_ND});
     }
     for (uint32_t i = 0; i < kExpertPerRank; i++) {
-        inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_UINT64, ge::FORMAT_ND});
     }
     for (uint32_t i = 0; i < kExpertPerRank; i++) {
         inputs.push_back({{{kN}, {kN}}, ge::DT_FLOAT, ge::FORMAT_ND});
