@@ -18,7 +18,8 @@ ACTUAL_SEQ_Q = [128]
 ACTUAL_SEQ_KV = [256]
 
 # Layout 选择
-INPUT_LAYOUT = "TND"
+INPUT_LAYOUT = "NTD"
+OUTPUT_LAYOUT = "TND"
 Q_SCALE_LAYOUT = "NT"
 
 # PA KV Cache Layout
@@ -378,6 +379,16 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
                 result[t:t + act_s, n, :] = tensor[b, n, :act_s, :]
             t += act_s
         return result.contiguous()
+    elif layout == "NTD":
+        T = sum(seq_lens)
+        result = torch.zeros((N, T, D), dtype=tensor.dtype, device=tensor.device)
+        t = 0
+        for b in range(B):
+            act_s = seq_lens[b]
+            for n in range(N):
+                result[n, t:t + act_s, :] = tensor[b, n, :act_s, :]
+            t += act_s
+        return result.contiguous()
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
@@ -486,7 +497,7 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     accum_seq_q = make_accum_seq(actual_seq_q)
 
     # 数据准备 (在CPU上)
-    npu_input_layout = "TND" if ENABLE_PA else INPUT_LAYOUT
+    npu_input_layout = INPUT_LAYOUT
     
     # 确保 q 是 FP8 类型
     q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, npu_input_layout)
@@ -546,7 +557,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print("FIA Full Quant GQA GOLDEN")
     print("=" * 60)
-    print(f"场景: {'PA' if ENABLE_PA else 'TND'}")
+    print(f"场景: {'PA' if ENABLE_PA else 'TND'}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
     print(f"B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
     print(f"ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}, ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
 
@@ -565,12 +576,13 @@ if __name__ == '__main__':
     npu_out = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
                                  dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                  ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    print(f"npu_out shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
+    print(f"npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
     if ENABLE_LSE:
         print(f"npu_lse_out shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
     print("\n[Step 4] 精度对比")
-    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, "TND")
+    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, OUTPUT_LAYOUT)
+    print(f"cpu atten out shape = {cpu_tnd_torch.shape}")
     result_compare_method.check_result(cpu_tnd_torch, npu_out[0])
 
     if ENABLE_LSE:
