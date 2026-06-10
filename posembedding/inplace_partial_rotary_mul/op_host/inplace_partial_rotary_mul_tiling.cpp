@@ -663,7 +663,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitNMixed(int64_t numHead
 }
 
 ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitBMixed(int64_t batchSize, int64_t numHeads,
-                                                                  int64_t headDimAlign, int64_t ubSize)
+                                                                 int64_t headDimAlign, int64_t ubSize)
 {
     const int64_t gatherOffsetSize = numHeads * headDimAlign * INT32_DTYPE_SIZE;
     const int64_t bufferSize = ubSize - gatherOffsetSize;
