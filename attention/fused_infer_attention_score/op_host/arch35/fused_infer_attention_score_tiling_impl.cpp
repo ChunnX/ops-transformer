@@ -813,7 +813,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitS2(const FiaTilingInfo 
     }
 
     faRunTilingAdapter_.inputParamsRegbase.set_kvSplitPart(kvSplitPart);
-    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * headDimAlign_);
+    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * fiaInfo.vHeadDim);
     faRunTilingAdapter_.inputParamsRegbase.set_logSumExpSize(batchSize * headNumSize * kvSplitPart *
                                                              (BYTE_BLOCK / sizeof(float)));
 
