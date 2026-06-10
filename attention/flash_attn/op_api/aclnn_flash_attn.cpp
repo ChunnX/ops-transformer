@@ -10,7 +10,7 @@
 
 /*!
  * \file aclnn_flash_attn.cpp
- * \brief
+ * \PA_Nz
  */
 
 #include "aclnn_flash_attn.h"
