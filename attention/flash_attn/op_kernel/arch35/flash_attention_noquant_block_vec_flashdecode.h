@@ -272,6 +272,11 @@ public:
     }
     __aicore__ inline void AllocEventID()
     {
+        // 在 SetFlag 预置 FD 的双缓冲反向同步前，先排空 V 流水。
+        // 静态 Tensor 模式下，FD 的 fdMm2ResBuf/fdSum/fdMax/fdLseExp 等 UB 与 FA 的 stage1OutBuf/stage2OutBuf
+        // 共享同一段物理 UB。kernel template 的 PipeBarrier 已确保进入这里前 FA 流水已干净，
+        // 这里再加一道 PipeBarrier<PIPE_V> 保证向量寄存器状态对 SetFlag 可见。
+        AscendC::PipeBarrier<PIPE_V>();
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG);
