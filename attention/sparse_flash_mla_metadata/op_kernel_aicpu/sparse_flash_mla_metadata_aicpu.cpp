@@ -43,6 +43,7 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     actSeqLenCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenCmpKv));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
     seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedKv));
+    cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
@@ -99,6 +100,17 @@ int32_t SparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
 bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        if (layoutKv_ != "TND" || !hasCmpKv_) {
+            KERNEL_LOG_ERROR("cmp_residual_kv only supports layout_kv TND with cmp_kv.");
+            return false;
+        }
+        if (cmpResidualKv_->GetTensorShape() == nullptr || cmpResidualKv_->GetTensorShape()->GetDims() != 1 ||
+            cmpResidualKv_->GetTensorShape()->GetDimSize(0) != batchSize_) {
+            KERNEL_LOG_ERROR("cmp_residual_kv shape size should be equal to batch_size.");
+            return false;
+        }
+    }
     auto mode = static_cast<SparseMode>(oriMaskMode_);
     if (mode == SparseMode::DEFAULT_MASK) {
         preToken_ = INT64_MAX;
@@ -126,6 +138,15 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         mBaseSize_ = groupSize_;
     } else {
         mBaseSize_ = 256U;
+    }
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *cmpResidualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+        for (uint32_t bIdx = 0; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
+            if (cmpResidualPtr[bIdx] < 0 || cmpResidualPtr[bIdx] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("cmp_residual_kv value should be in [0, cmp_ratio).");
+                return false;
+            }
+        }
     }
     s2BaseSize_ = 512U;
     return true;
@@ -310,10 +331,22 @@ void SparseFlashMlaMetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitC
     batchCache.bIdx = bIdx;
     batchCache.s1Size = GetS1ValidSeqSize(bIdx);
     batchCache.s2Size = GetS2SeqSize(bIdx);
+    batchCache.cmpS2Size = hasCmpKv_ && cmpRatio_ > 0 ? batchCache.s2Size / static_cast<uint32_t>(cmpRatio_) : 0U;
+    if (layoutKv_ == "TND" && actSeqLenCmpKv_ != nullptr && actSeqLenCmpKv_->GetData() != nullptr) {
+        const int32_t *cmpS2Ptr = static_cast<const int32_t*>(actSeqLenCmpKv_->GetData());
+        batchCache.cmpS2Size = static_cast<uint32_t>(cmpS2Ptr[bIdx + 1U] - cmpS2Ptr[bIdx]);
+    }
+    batchCache.cmpOriSize = batchCache.s2Size;
+    if (layoutKv_ == "TND" && hasCmpKv_ && cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *cmpResidualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+        batchCache.cmpOriSize = batchCache.cmpS2Size * static_cast<uint32_t>(cmpRatio_) +
+                                static_cast<uint32_t>(cmpResidualPtr[bIdx]);
+    }
     batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
     batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
     isHighPorfScfa_ = isSCFA &&
-        (batchCache.s1Size >= batchCache.s2Size || batchCache.s2Size - batchCache.s1Size + 1 < cmpTopK_ * cmpRatio_);
+        (batchCache.s1Size >= batchCache.cmpOriSize ||
+         batchCache.cmpOriSize - batchCache.s1Size + 1 < cmpTopK_ * cmpRatio_);
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
@@ -405,7 +438,34 @@ void SparseFlashMlaMetadataCpuKernel::CalcBlockRangeAndTailSize(Range<int64_t> &
     // cmp部分s2起止和tailSize
     s1GCache.cmpS2Start = s1GCache.winS2End;
     // 计算CmpS2LastToken的长度
-    uint32_t cmpS2LastTokenSize = hasCmpKv_ ? (oriS2LastToken + 1) / cmpRatio_ : 0;
+    int64_t cmpS2LastToken = oriS2LastToken;
+    if (layoutKv_ == "TND" && hasCmpKv_ && cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        if (!attentionMode_) {
+            cmpS2LastToken = static_cast<int64_t>(batchCache.cmpOriSize) - 1;
+        } else {
+            int64_t s1GFirstToken = static_cast<int64_t>(s1GCache.s1GIdx) * static_cast<int64_t>(mBaseSize_);
+            int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(mBaseSize_),
+                static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) - 1;
+            int64_t s1LastToken = 0;
+            if (isS1G_) {
+                s1LastToken = s1GLastToken / static_cast<int64_t>(groupSize_);
+            } else if (s1GFirstToken / batchCache.s1Size == s1GLastToken / batchCache.s1Size) {
+                s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
+            } else {
+                s1LastToken = batchCache.s1Size;
+            }
+            cmpS2LastToken = s1LastToken + CalcNextTokenLeftUp(batchCache.s1Size, batchCache.cmpOriSize);
+        }
+    }
+    uint32_t cmpS2LastTokenSize = 0;
+    if (hasCmpKv_ && batchCache.cmpOriSize > 0U && cmpS2LastToken >= 0) {
+        cmpS2LastToken = Clip(cmpS2LastToken, static_cast<int64_t>(0),
+                              static_cast<int64_t>(batchCache.cmpOriSize - 1U));
+        cmpS2LastTokenSize = static_cast<uint32_t>((cmpS2LastToken + 1) / cmpRatio_);
+        if (layoutKv_ == "TND") {
+            cmpS2LastTokenSize = std::min(cmpS2LastTokenSize, batchCache.cmpS2Size);
+        }
+    }
     uint32_t actCmpS2LastTokenSize = 0;
     if (isCFA) {
         actCmpS2LastTokenSize = cmpS2LastTokenSize;

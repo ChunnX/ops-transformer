@@ -166,6 +166,7 @@ int main()
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
       seqUsedQ, seqUsedOriKv,
+      nullptr,
       N1, N2, D, B, S1, S2,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,

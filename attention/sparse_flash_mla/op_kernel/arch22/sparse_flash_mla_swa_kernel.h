@@ -43,6 +43,8 @@ struct SwaTempLoopInfo {
     int32_t actS1Size = 0; // TND场景下当前Batch循环处理的S1轴的大小
     int32_t actOriS2Size = 0;
     int32_t actCmpS2Size = 0;
+    int32_t actCmpKVSeqSize = 0;
+    int32_t actCmpOriS2Size = 0;
 
     bool curActSeqLenIsZero = false;
     bool hasInvalidRow = false;
@@ -85,8 +87,9 @@ public:
                                 __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
                                 __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
                                 __gm__ uint8_t* cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ,
-                                __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *sinks,
+                                __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
                                 TPipe *tPipe);
 
@@ -155,6 +158,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<int32_t> actualSeqLengthsCmpKVGm;
+    GlobalTensor<int32_t> cmpResidualKVGm;
 
     // workspace
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -360,7 +364,10 @@ __aicore__ inline int32_t SparseFlashMlaSwa<SMLAT>::GetActualSeqLenKV(uint32_t b
         int32_t actualSeqKVPrefixSum = actualSeqLengthsKVGm.GetValue(bIdx);
         int32_t actualSeqKVNextSum = actualSeqLengthsKVGm.GetValue(bIdx + 1);
         if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
-            tempLoopInfo.actualSeqCmpKVPrefixSum = actualSeqLengthsCmpKVGm.GetValue(bIdx);
+            int32_t actualSeqCmpKVPrefixSum = actualSeqLengthsCmpKVGm.GetValue(bIdx);
+            int32_t actualSeqCmpKVNextSum = actualSeqLengthsCmpKVGm.GetValue(bIdx + 1);
+            tempLoopInfo.actualSeqCmpKVPrefixSum = actualSeqCmpKVPrefixSum;
+            tempLoopInfo.actCmpKVSeqSize = actualSeqCmpKVNextSum - actualSeqCmpKVPrefixSum;
         }
         tempLoopInfo.actualSeqKVPrefixSum = actualSeqKVPrefixSum;
         return actualSeqKVNextSum - actualSeqKVPrefixSum;
@@ -380,6 +387,12 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::GetSparseActualSeqLen()
     // 对于cmp部分还有top k, tempLoopInfo.actS2Size只针对cmp
     if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
         int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        if (thresHold < 0) {
+            thresHold = 0;
+        }
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+            thresHold = Min(thresHold, tempLoopInfo.actCmpKVSeqSize);
+        }
         tempLoopInfo.actCmpS2Size = thresHold;
     }
 }
@@ -403,9 +416,9 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t *cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ,
-    __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
-    TPipe *tPipe)
+    __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -427,6 +440,12 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
         InitActualSeqLen(cuSeqlensQ, seqUsedKV);
     } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD || KV_LAYOUT_T == SMLA_LAYOUT::BSND)) {
         InitActualSeqLen(seqUsedQ, seqUsedKV);
+    }
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND && TEMPLATE_MODE == CFA_TEMPLATE) {
+        if (cmpResidualKV != nullptr) {
+            cmpResidualKVGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV);
+            constInfo.hasCmpResidualKV = true;
+        }
     }
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
     InitCalcParamsEach();
@@ -624,7 +643,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint3
                 info.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
             }
             info.s2StartPoint = tempLoopInfo.cmpMixSize;
-            info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+            info.cmpS2IdLimit = tempLoopInfo.actCmpS2Size;
         }
     }
 
@@ -735,6 +754,14 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
         gS1LoopEnd = isS1S2ZeroAndLastBatch ? gS1LoopEnd + 1 : gS1LoopEnd;
         for (uint32_t gS1LoopIdx = constInfo.gS1Start; gS1LoopIdx < gS1LoopEnd; gS1LoopIdx++) {
             tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx);
+            tempLoopInfo.actCmpOriS2Size = tempLoopInfo.actOriS2Size;
+            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND && TEMPLATE_MODE == CFA_TEMPLATE) {
+                if (constInfo.hasCmpResidualKV) {
+                    int32_t cmpResidualKV = cmpResidualKVGm.GetValue(tempLoopInfo.bIdx);
+                    tempLoopInfo.actCmpOriS2Size =
+                        tempLoopInfo.actCmpKVSeqSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKV;
+                }
+            }
             // 对于各轴上的真实的idx, 采用左闭右闭的方案
             // 跳过行无效部分，从有效行开始后续计算
             tempLoopInfo.gS1Idx = inValidRowCount * constInfo.gSize + gS1LoopIdx * constInfo.mBaseSize;
@@ -747,7 +774,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
             tempLoopInfo.oriMaskLeft = Max(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
                                            static_cast<int32_t>(tempLoopInfo.s1StartIdx) - constInfo.oriWinLeft, 0);
             if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
-                tempLoopInfo.cmpMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size;
+                tempLoopInfo.cmpMaskRight = tempLoopInfo.actCmpOriS2Size - tempLoopInfo.actS1Size;
             }
             GetSparseActualSeqLen();
             UpdateInnerLoopCond();

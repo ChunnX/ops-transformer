@@ -206,6 +206,7 @@ struct SMLAParaInfo {
     SMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
     SMLATilingOptionalParaInfo sequsedKv = {nullptr, nullptr};      // A5
     SMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};   // A2/A3
+    SMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};  // A2/A3
     SMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};  // A5
     SMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};  // A5
     SMLATilingOptionalParaInfo sinks = {nullptr, nullptr};

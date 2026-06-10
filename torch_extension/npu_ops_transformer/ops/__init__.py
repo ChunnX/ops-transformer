@@ -9,27 +9,33 @@
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import npu_sparse_flash_mla_grad
 from .sparse_flash_mla_grad_metadata import npu_sparse_flash_mla_grad_metadata
-from .moe_distribute_dispatch import npu_moe_distribute_dispatch
-from .moe_distribute_combine import npu_moe_distribute_combine
-from .mega_moe import (
-    get_symm_buffer_for_mega_moe,
-    mega_moe,
-    npu_get_mega_moe_ccl_buffer_size
-)
-from .deep_ep import MoeDistributeBuffer
-from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
-from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
-from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
-from .flash_attn import npu_flash_attn
-from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
-from .flash_attn_metadata import npu_flash_attn_metadata
-from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
-from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
-from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla
-from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
-from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
-    convert_npu_quant_lightning_indexer_v2_metadata
-)
-from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
-from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
-from .lightning_indexer_v2 import npu_lightning_indexer_v2
+from .sparse_flash_mla import npu_sparse_flash_mla
+from .sparse_flash_mla_metadata import npu_sparse_flash_mla_metadata
+
+try:
+    from .moe_distribute_dispatch import npu_moe_distribute_dispatch
+    from .moe_distribute_combine import npu_moe_distribute_combine
+    from .mega_moe import (
+        get_symm_buffer_for_mega_moe,
+        mega_moe,
+        npu_get_mega_moe_ccl_buffer_size
+    )
+    from .deep_ep import MoeDistributeBuffer
+    from .flash_attn import npu_flash_attn
+    from .flash_attn_metadata import npu_flash_attn_metadata
+    from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
+    from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
+    from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla
+    from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
+    from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
+    from .lightning_indexer_v2 import npu_lightning_indexer_v2
+    from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
+    from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
+    from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
+    from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
+    from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
+    from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
+        convert_npu_quant_lightning_indexer_v2_metadata
+    )
+except ImportError:
+    pass

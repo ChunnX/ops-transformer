@@ -25,6 +25,7 @@ namespace l0op {
  * @param [in] cuSeqLensCmpKvOptional: Prefix-sum of valid cmpKv token counts per batch, shape is (B+1,), dtype is INT32
  * @param [in] sequsedQOptional: Actual q token counts per batch, shape is (B,), dtype is INT32
  * @param [in] sequsedOriKvOptional: Actual oriKv token counts per batch, shape is (B,), dtype is INT32
+ * @param [in] cmpResidualKvOptional: Per-batch residual of decompressed cmpKv token count, shape is (B,), dtype is INT32
  * @param [in] numHeadsQ: Number of query heads (N1)
  * @param [in] numHeadsKv: Number of kv heads (N2)
  * @param [in] headDim: Head dimension (D)
@@ -52,6 +53,7 @@ namespace l0op {
 const aclTensor* SparseFlashMlaMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedOriKvOptional,
+    const aclTensor* cmpResidualKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
     int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,

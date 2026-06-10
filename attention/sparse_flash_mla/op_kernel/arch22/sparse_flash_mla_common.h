@@ -320,6 +320,7 @@ struct ConstInfo {
 
     // cmp attr
     int64_t cmpRatio = 0;
+    bool hasCmpResidualKV = false;
 
     // win
     int32_t oriWinRight = 0;

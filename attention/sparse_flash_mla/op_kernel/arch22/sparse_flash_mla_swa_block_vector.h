@@ -370,6 +370,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
                 continue;
             }
             actNoMaskCmpSize = noMaskCmpSize / constInfo.cmpRatio;
+            actNoMaskCmpSize = Min(actNoMaskCmpSize, info.cmpS2IdLimit);
             if (actNoMaskCmpSize <= 0) {
                 cmpRight = 0;
             } else {
@@ -392,6 +393,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
         int32_t right = 0;
         for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
             actNoMaskCmpSize = noMaskCmpSize / constInfo.cmpRatio;
+            actNoMaskCmpSize = Min(actNoMaskCmpSize, info.cmpS2IdLimit);
             if (actNoMaskCmpSize <= 0) {
                 right = 0;
             } else {
