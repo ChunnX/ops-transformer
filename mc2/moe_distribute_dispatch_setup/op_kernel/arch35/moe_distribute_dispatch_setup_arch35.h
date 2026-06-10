@@ -81,9 +81,9 @@ class MoeDistributeDispatchSetup
 public:
     __aicore__ inline MoeDistributeDispatchSetup(){};
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut, GM_ADDR expandIdxOut,
-        GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe* pipe,
-        const MoeDistributeDispatchSetupTilingData* tilingData);
+        GM_ADDR context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+        GM_ADDR YOut, GM_ADDR expandIdxOut, GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM,
+        TPipe* pipe, const MoeDistributeDispatchSetupTilingData* tilingData);
     __aicore__ inline void Process();
 
 private:
