@@ -25,7 +25,9 @@ _workspace_cache = {}
 
 
 pass_configs = {
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 }
 
@@ -819,6 +821,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                      d_rope, input_dtype_str, calc_dtype_str, scale_value)
+
         if cache_key in _kernel_cache:
             func = _kernel_cache[cache_key]
         else:
