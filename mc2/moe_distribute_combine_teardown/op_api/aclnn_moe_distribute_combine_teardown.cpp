@@ -17,7 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/utils/matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -34,19 +34,19 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-static bool CheckNotNull(const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds,
+static bool CheckNotNull(const char *opName, const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds,
                          const aclTensor *expandIdx, const aclTensor *expertScales, const aclTensor *commCmdInfo,
                          const aclTensor *xActiveMaskOptional, const aclTensor *sharedExpertXOptional,
                          const char *groupEp, aclTensor *xOut)
 {
     OP_LOGD("aclnn_moe_distribute_combine_teardown CheckNotNull start");
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(quantExpandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandIdx, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(commCmdInfo, return false);
-    OP_CHECK_NULL(xOut, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, quantExpandX, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, expandIdx, return false);
+    OP_MC2_CHECK_NULL(opName, expertScales, return false);
+    OP_MC2_CHECK_NULL(opName, commCmdInfo, return false);
+    OP_MC2_CHECK_NULL(opName, xOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineTeardown", "groupEp");
         return false;
@@ -55,7 +55,7 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *quantExpandX
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds,
                                const aclTensor *expandIdx, const aclTensor *expertScales, const aclTensor *commCmdInfo,
                                const aclTensor *xActiveMaskOptional, const aclTensor *sharedExpertXOptional,
                                const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
@@ -64,7 +64,7 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantE
                                aclTensor *xOut)
 {
     OP_LOGD("aclnn_moe_distribute_combine_teardown checkparams start");
-    CHECK_RET(CheckNotNull(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
+    CHECK_RET(CheckNotNull(opName, expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
                            sharedExpertXOptional, groupEp, xOut),
               ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -104,8 +104,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    const char *opName = "aclnnMoeDistributeCombineTeardown";
     auto ret_param =
-        CheckParams(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
+        CheckParams(opName, expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
                     sharedExpertXOptional, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
                     sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, xOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);

@@ -15,7 +15,7 @@
 #include <algorithm>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -68,16 +68,16 @@ enum class CommType : uint64_t {
 #endif
 
 
-bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
+bool CombineCheckNotNull(const char *opName, const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
                          const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
                          aclTensor *x)
 {
-    OP_CHECK_NULL(epSendCounts, return false);
-    OP_CHECK_NULL(expertScales, return false);
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
+    OP_MC2_CHECK_NULL(opName, epSendCounts, return false);
+    OP_MC2_CHECK_NULL(opName, expertScales, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, assistInfoForCombine, return false);
 
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombine", "groupEp");
@@ -86,11 +86,11 @@ bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
     return true;
 }
 
-aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
+aclnnStatus CombineCheckParams(const char *opName, const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
                                const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
                                const char *groupTp, aclTensor *x)
 {
-    CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
+    CHECK_RET(CombineCheckNotNull(opName, expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -153,9 +153,10 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     int64_t copyExpertNum, int64_t constExpertNum, aclTensor *xOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("enter to the  aclnnMoeDistributeCombineBaseGetWorkspaceSize\n");
+    const char *opName = "aclnnMoeDistributeCombine";
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
+    auto retParam = CombineCheckParams(opName, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
                                        groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
@@ -185,8 +186,8 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
-        const char *opName = "moe_distribute_v2";
-        auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        const char *ctxOpName = "moe_distribute_v2";
+        auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, ctxOpName, hcclBuffSize, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
             mc2Context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,

@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_setup.h"
@@ -49,14 +49,14 @@ inline int64_t Align(int64_t x, int64_t base)
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* yOut,
+static bool CheckNotNull(const char *opName, const aclTensor* x, const aclTensor* expertIds, const char* groupEp, aclTensor* yOut,
                          aclTensor* expandIdxOut, aclTensor* commCmdInfoOut)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(yOut, return false);
-    OP_CHECK_NULL(expandIdxOut, return false);
-    OP_CHECK_NULL(commCmdInfoOut, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, yOut, return false);
+    OP_MC2_CHECK_NULL(opName, expandIdxOut, return false);
+    OP_MC2_CHECK_NULL(opName, commCmdInfoOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchSetup", "groupEp");
         return false;
@@ -65,13 +65,13 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
+static aclnnStatus CheckParams(const char *opName, const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
                                const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t expertShardType,
                                int64_t shareExpertRankNum, int64_t moeExpertNum, int64_t quantMode, int64_t globalBs,
                                int64_t commType, const char* commAlg, aclTensor* yOut,
                                aclTensor* expandIdxOut, aclTensor* commCmdInfoOut)
 {
-    CHECK_RET(CheckNotNull(x, expertIds, groupEp, yOut, expandIdxOut, commCmdInfoOut), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(opName, x, expertIds, groupEp, yOut, expandIdxOut, commCmdInfoOut), ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchSetup", "groupEp",
             "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
@@ -88,7 +88,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
     aclTensor* expandIdxOut, aclTensor* commCmdInfoOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchSetupGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, expertIds, scalesOptional, groupEp, epWorldSize, epRankId, expertShardType,
+    auto ret_param = CheckParams("aclnnMoeDistributeDispatchSetup", x, expertIds, scalesOptional, groupEp, epWorldSize, epRankId, expertShardType,
                                  shareExpertRankNum, moeExpertNum, quantMode, globalBs, commType,
                                  commAlg, yOut, expandIdxOut, commCmdInfoOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
@@ -108,8 +108,9 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     uint64_t& tokenMsgSize, uint64_t& expandIdxOutSize, uint64_t& assistInfoForCombineOutSize,
     uint64_t& commCmdInfoOutSize)
 {
-    OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expertIds, return ACLNN_ERR_PARAM_NULLPTR);
+    const char *opName = "aclnnMoeDistributeDispatchSetup";
+    OP_MC2_CHECK_NULL(opName, x, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, expertIds, return ACLNN_ERR_PARAM_NULLPTR);
     if (x->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeDispatchSetup", "x",
             "dim=" + std::to_string(x->GetViewShape().GetDimNum()), "The shape dim of x must be 2D.");

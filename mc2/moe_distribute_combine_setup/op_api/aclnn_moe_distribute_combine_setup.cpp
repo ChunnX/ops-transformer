@@ -17,7 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
@@ -72,15 +72,15 @@ static inline int64_t AlignUp(int64_t x, int64_t base)
 }
 
 // check nullptr
-static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
+static bool CheckNotNull(const char *opName, const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
                          const char *groupEp, aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut)
 {
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckNotNull start");
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(quantExpandXOut, return false);
-    OP_CHECK_NULL(commCmdInfoOut, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, assistInfoForCombine, return false);
+    OP_MC2_CHECK_NULL(opName, quantExpandXOut, return false);
+    OP_MC2_CHECK_NULL(opName, commCmdInfoOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineSetup", "groupEp");
         return false;
@@ -90,7 +90,7 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *expandX, const aclTensor *expertIds,
                                const aclTensor *assistInfoForCombine, const char *groupEp, int64_t epWorldSize,
                                int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
                                int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType,
@@ -107,7 +107,7 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
     (void)commType;
     (void)commAlg;
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckParams start");
-    CHECK_RET(CheckNotNull(expandX, expertIds, assistInfoForCombine, groupEp, quantExpandXOut, commCmdInfoOut),
+    CHECK_RET(CheckNotNull(opName, expandX, expertIds, assistInfoForCombine, groupEp, quantExpandXOut, commCmdInfoOut),
               ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_EMPTY_TENSOR(expertIds, return ACLNN_ERR_PARAM_INVALID);
@@ -150,7 +150,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    auto retParam = CheckParams(expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum,
+    const char *opName = "aclnnMoeDistributeCombineSetup";
+    auto retParam = CheckParams(opName, expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum,
                                 expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
                                 commType, commAlg, quantExpandXOut, commCmdInfoOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -180,7 +181,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     (void)commQuantMode;
     (void)commType;
     (void)commAlg;
-    OP_CHECK_NULL(expandX, return ACLNN_ERR_PARAM_NULLPTR);
+    const char *opName = "aclnnMoeDistributeCombineSetup";
+    OP_MC2_CHECK_NULL(opName, expandX, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     if (expandX->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",

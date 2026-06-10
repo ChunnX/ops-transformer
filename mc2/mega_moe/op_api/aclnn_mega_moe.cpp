@@ -20,7 +20,7 @@
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "aclnnInner_mega_moe.h"
 
 using namespace Ops::Transformer;
@@ -86,15 +86,16 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclOpExecutor** executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
+    const char *opName = "aclnnMegaMoe";
 
-    OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(weight1, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(weight2, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, context, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, x, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, topkIds, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, weight1, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, weight2, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, yOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_MC2_CHECK_NULL(opName, expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID,
         "moeExpertNum must be > 0, got %ld.", moeExpertNum);

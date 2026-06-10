@@ -17,7 +17,7 @@
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -66,12 +66,12 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {
 };
 
 // 检查入参是否为nullptr
-static bool  QuantAllReduceCheckNotNull(const aclTensor* x, const aclTensor* scales,
+static bool  QuantAllReduceCheckNotNull(const char *opName, const aclTensor* x, const aclTensor* scales,
                                         const aclTensor* output)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(scales, return false);
-    OP_CHECK_NULL(output, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, scales, return false);
+    OP_MC2_CHECK_NULL(opName, output, return false);
     return true;
 }
 
@@ -174,11 +174,11 @@ static bool QuantAllReduceCheckGroupLength(const char* group)
 }
 
 // 参数综合校验
-static aclnnStatus QuantAllReduceCheckParams(const aclTensor* x, const aclTensor* scales,
+static aclnnStatus QuantAllReduceCheckParams(const char *opName, const aclTensor* x, const aclTensor* scales,
                                              const char* group, const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(QuantAllReduceCheckNotNull(x, scales, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(QuantAllReduceCheckNotNull(opName, x, scales, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(QuantAllReduceCheckAllDtypesValid(x, scales, output), ACLNN_ERR_PARAM_INVALID);
@@ -208,7 +208,8 @@ extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor* x, c
                                                            aclTensor* output, uint64_t* workspaceSize,
                                                            aclOpExecutor** executor)
 {
-    aclnnStatus retParam = QuantAllReduceCheckParams(x, scales, group, output);
+    const char *opName = "aclnnQuantAllReduceGetWorkspaceSize";
+    aclnnStatus retParam = QuantAllReduceCheckParams(opName, x, scales, group, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     int64_t worldSize = -1;

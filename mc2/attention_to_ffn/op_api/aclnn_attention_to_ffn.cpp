@@ -11,7 +11,7 @@
 #include "aclnn_attention_to_ffn.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "opdev/common_types.h"
@@ -32,17 +32,17 @@ enum NnopbaseHcclServerType {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+static bool CheckNullStatus(const char *opName, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                             const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                             const char *group)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(sessionId, return false);
-    OP_CHECK_NULL(microBatchId, return false);
-    OP_CHECK_NULL(layerId, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expertRankTable, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, sessionId, return false);
+    OP_MC2_CHECK_NULL(opName, microBatchId, return false);
+    OP_MC2_CHECK_NULL(opName, layerId, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, expertRankTable, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFFN", "group");
         return false;
@@ -52,11 +52,11 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                                const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                                const char *group)
 {
-    CHECK_RET(CheckNullStatus(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group),
+    CHECK_RET(CheckNullStatus(opName, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group),
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -78,7 +78,7 @@ aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
     int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
-    auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
+    auto retParam = CheckParams("aclnnAttentionToFFN", x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(
         x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,

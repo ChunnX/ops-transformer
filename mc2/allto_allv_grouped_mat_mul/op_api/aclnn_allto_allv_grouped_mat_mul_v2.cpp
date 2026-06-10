@@ -10,7 +10,7 @@
 #include "aclnn_allto_allv_grouped_mat_mul_v2.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
@@ -72,15 +72,15 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 }
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
+static bool CheckNullStatus(const char *opName, const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const char *group, bool permuteOutFlag, aclTensor *gmmY,
     const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(gmmY, return false);
+    OP_MC2_CHECK_NULL(opName, gmmX, return false);
+    OP_MC2_CHECK_NULL(opName, gmmWeight, return false);
+    OP_MC2_CHECK_NULL(opName, gmmY, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
         return false;
@@ -107,13 +107,13 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
+static aclnnStatus CheckParams(const char *opName, const aclTensor *gmmX, const aclTensor *gmmWeight,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const char *group, int64_t epWorldSize, bool permuteOutFlag, aclTensor *gmmY,
     aclTensor *mmYOptional, aclTensor *permuteOutOptional)
 {
     (void)epWorldSize; // Unused
-    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+    CHECK_RET(CheckNullStatus(opName, gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
         mmWeightOptional, group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional),
         ACLNN_ERR_PARAM_NULLPTR);
 
@@ -157,7 +157,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor *gmmX,
     bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+    auto ret_param = CheckParams("aclnnAlltoAllvGroupedMatMulV2", gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
         mmWeightOptional, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);

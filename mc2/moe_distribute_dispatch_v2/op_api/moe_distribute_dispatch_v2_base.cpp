@@ -18,7 +18,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "log/log.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
@@ -65,18 +65,18 @@ enum class CommType : uint64_t {
 };
 #endif
 
-bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+bool DispatchCheckNotNull(const char *opName, const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                           [[maybe_unused]] const char *groupTp, aclTensor *expandX,
                           [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
                           aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
 {
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(expertIds, return false);
-    OP_CHECK_NULL(expandX, return false);
-    OP_CHECK_NULL(assistInfoForCombine, return false);
-    OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
-    OP_CHECK_NULL(epRecvCounts, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, expertIds, return false);
+    OP_MC2_CHECK_NULL(opName, expandX, return false);
+    OP_MC2_CHECK_NULL(opName, assistInfoForCombine, return false);
+    OP_MC2_CHECK_NULL(opName, expertTokensNums, return false);
+    OP_MC2_CHECK_NULL(opName, tpRecvCounts, return false);
+    OP_MC2_CHECK_NULL(opName, epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
         return false;
@@ -84,13 +84,13 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
     return true;
 }
 
-aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+aclnnStatus DispatchCheckParams(const char *opName, const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                                 const char *groupTp, int64_t quantMode, aclTensor *expandX, aclTensor *dynamicScales,
                                 aclTensor *assistInfoForCombine, aclTensor *expertTokensNums, aclTensor *epRecvCounts,
                                 aclTensor *tpRecvCounts)
 {
-    CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
-                                   expertTokensNums, epRecvCounts, tpRecvCounts),
+    CHECK_RET(DispatchCheckNotNull(opName, x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
+                                    expertTokensNums, epRecvCounts, tpRecvCounts),
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     OP_LOGD("enter to the  aclnnMoeDistributeDispatchGetWorkspaceSizeBase\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    auto retParam = DispatchCheckParams(x, expertIds, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
+    auto retParam = DispatchCheckParams("aclnnMoeDistributeDispatchV2", x, expertIds, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
                                         assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 

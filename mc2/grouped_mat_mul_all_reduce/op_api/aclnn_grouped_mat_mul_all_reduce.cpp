@@ -18,7 +18,7 @@
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -128,7 +128,7 @@ static bool CheckGroupListOptional(const GroupedMatMulAllReduceParams& gmmParams
     return true;
 }
 
-static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParams& gmmParams)
+static aclnnStatus CheckParamDimAndLengthGmmAr(const char *opName, const GroupedMatMulAllReduceParams& gmmParams)
 {
     uint64_t xGroupedSize = gmmParams.x->Size();
     uint64_t weightGroupedSize = gmmParams.weight->Size();
@@ -181,7 +181,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
         }
     }
     for (size_t i = 0; i < xGroupedSize; ++i) {
-        OP_CHECK_NULL((*gmmParams.x)[i], continue);
+        OP_MC2_CHECK_NULL(opName, (*gmmParams.x)[i], continue);
         size_t xDims = (*gmmParams.x)[i]->GetViewShape().GetDimNum();
         if (xDims > MAX_FM_DIM || xDims < MIN_FM_DIM) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -191,7 +191,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
         }
     }
     for (size_t i = 0; i < weightGroupedSize; ++i) {
-        OP_CHECK_NULL((*gmmParams.weight)[i], continue);
+        OP_MC2_CHECK_NULL(opName, (*gmmParams.weight)[i], continue);
         size_t weightDims = (*gmmParams.weight)[i]->GetViewShape().GetDimNum();
         if (weightDims != MIN_FM_DIM) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -209,7 +209,7 @@ static aclnnStatus CheckParamDimAndLengthGmmAr(const GroupedMatMulAllReduceParam
             return ACLNN_ERR_PARAM_INVALID;
         }
         for (size_t i = 0; i < biasGroupedSize; ++i) {
-            OP_CHECK_NULL((*gmmParams.bias)[i], continue);
+            OP_MC2_CHECK_NULL(opName, (*gmmParams.bias)[i], continue);
             size_t biasDims = (*gmmParams.bias)[i]->GetViewShape().GetDimNum();
             if (biasDims != 1) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatMulAllReduce",
@@ -387,37 +387,37 @@ static bool CheckMatmulShape(const GroupedMatMulAllReduceParams& gmmParams)
     return true;
 }
 
-static bool CheckTensorListDataType(const aclTensorList* tensorList, const DataType dtype)
+static bool CheckTensorListDataType(const char *opName, const aclTensorList* tensorList, const DataType dtype)
 {
     for (size_t i = 0; i < tensorList->Size(); ++i) {
         const aclTensor* tensor = (*tensorList)[i];
-        OP_CHECK_NULL(tensor, continue);
-        OP_CHECK_DTYPE_NOT_MATCH(tensor, dtype, return false);
+        OP_MC2_CHECK_NULL(opName, tensor, continue);
+        OP_MC2_CHECK_DTYPE_NOT_MATCH(opName, tensor, dtype, return false);
     }
     return true;
 }
 
-static bool CheckMatmulDataType(
+static bool CheckMatmulDataType(const char *opName,
     const GroupedMatMulAllReduceParams& gmmParams, const DataType comDtype, const DataType weightDtype,
     const DataType biasDtype)
 {
-    if (!CheckTensorListDataType(gmmParams.x, comDtype)) {
+    if (!CheckTensorListDataType(opName, gmmParams.x, comDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatMulAllReduce", "x",
             op::ToString(comDtype).GetString(), "x dtype does not match with required dtype");
         return false;
     }
-    if (!CheckTensorListDataType(gmmParams.weight, weightDtype)) {
+    if (!CheckTensorListDataType(opName, gmmParams.weight, weightDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatMulAllReduce", "weight",
             op::ToString(weightDtype).GetString(), "weight dtype does not match with required dtype");
         return false;
     }
-    if (!CheckTensorListDataType(gmmParams.y, comDtype)) {
+    if (!CheckTensorListDataType(opName, gmmParams.y, comDtype)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatMulAllReduce", "y",
             op::ToString(comDtype).GetString(), "y dtype does not match with required dtype");
         return false;
     }
     if (gmmParams.bias != nullptr) {
-        if (!CheckTensorListDataType(gmmParams.bias, biasDtype)) {
+        if (!CheckTensorListDataType(opName, gmmParams.bias, biasDtype)) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatMulAllReduce", "bias",
                 op::ToString(biasDtype).GetString(), "bias dtype does not match with required dtype");
             return false;
@@ -426,13 +426,13 @@ static bool CheckMatmulDataType(
     return true;
 }
 
-static aclnnStatus CheckParamOptionGmmAr(const GroupedMatMulAllReduceParams& gmmParams)
+static aclnnStatus CheckParamOptionGmmAr(const char *opName, const GroupedMatMulAllReduceParams& gmmParams)
 {
     DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
     if ((gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT16) &&
         gmmParams.xDtype == weightDtype) {
         DataType biasDtype = gmmParams.xDtype == DataType::DT_BF16 ? DataType::DT_FLOAT : DataType::DT_FLOAT16;
-        CHECK_RET(CheckMatmulDataType(gmmParams, gmmParams.xDtype, weightDtype, biasDtype), ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckMatmulDataType(opName, gmmParams, gmmParams.xDtype, weightDtype, biasDtype), ACLNN_ERR_PARAM_INVALID);
     } else {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatMulAllReduce", "x/weight",
             op::ToString(gmmParams.xDtype).GetString(), "Only float16/bfloat16 are supported for x and weight.");
@@ -441,11 +441,11 @@ static aclnnStatus CheckParamOptionGmmAr(const GroupedMatMulAllReduceParams& gmm
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParam(const GroupedMatMulAllReduceParams& gmmParams)
+static aclnnStatus CheckParam(const char *opName, const GroupedMatMulAllReduceParams& gmmParams)
 {
     CHECK_RET(CheckNotNull(gmmParams), ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(CheckParamDimAndLengthGmmAr(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckParamOptionGmmAr(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckParamDimAndLengthGmmAr(opName, gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckParamOptionGmmAr(opName, gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDims(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -584,7 +584,7 @@ aclnnStatus aclnnGroupedMatMulAllReduceGetWorkspaceSize(
     GroupedMatMulAllReduceParams gmmParams{x,        weight, bias,  groupListOptional, splitItem, group, reduceOp,
                                            commTurn, y,      xDtype};
     ResetEmptyTensor(gmmParams);
-    CHECK_RET(CheckParam(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckParam("aclnnGroupedMatMulAllReduce", gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclTensorList* xAfterSplit = nullptr;
     aclTensorList* yAfterSplit = nullptr;

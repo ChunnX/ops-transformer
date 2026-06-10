@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/mc2_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
 #include "aclnnInner_ffn_to_attention.h"
@@ -32,17 +32,17 @@ enum NnopbaseHcclServerType {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
  
 // check nullptr
-static bool CheckNullStatus(const aclTensor* x, const aclTensor* sessionIds,
+static bool CheckNullStatus(const char *opName, const aclTensor* x, const aclTensor* sessionIds,
                             const aclTensor* microBatchIds, const aclTensor* tokenIds, const aclTensor* expertOffsets,
                             const aclTensor* actualTokenNum, const char* group)
 {
     // 检查必选入参出参为非空
-    OP_CHECK_NULL(x, return false);
-    OP_CHECK_NULL(sessionIds, return false);
-    OP_CHECK_NULL(microBatchIds, return false);
-    OP_CHECK_NULL(tokenIds, return false);
-    OP_CHECK_NULL(expertOffsets, return false);
-    OP_CHECK_NULL(actualTokenNum, return false);
+    OP_MC2_CHECK_NULL(opName, x, return false);
+    OP_MC2_CHECK_NULL(opName, sessionIds, return false);
+    OP_MC2_CHECK_NULL(opName, microBatchIds, return false);
+    OP_MC2_CHECK_NULL(opName, tokenIds, return false);
+    OP_MC2_CHECK_NULL(opName, expertOffsets, return false);
+    OP_MC2_CHECK_NULL(opName, actualTokenNum, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnFFNToAttention", "group");
         return false;
@@ -52,12 +52,12 @@ static bool CheckNullStatus(const aclTensor* x, const aclTensor* sessionIds,
 }
  
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* sessionIds,
+static aclnnStatus CheckParams(const char *opName, const aclTensor* x, const aclTensor* sessionIds,
                                const aclTensor* microBatchIds, const aclTensor* tokenIds,
                                const aclTensor* expertOffsets, const aclTensor* actualTokenNum,
                                const char* group)
 {
-    CHECK_RET(CheckNullStatus(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNullStatus(opName, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group), ACLNN_ERR_PARAM_NULLPTR);
  
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnFFNToAttention", "group",
@@ -75,7 +75,7 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(const aclTensor* x, const aclTen
                                                 const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape,
                                                 uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    auto retParam = CheckParams(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
+    auto retParam = CheckParams("aclnnFFNToAttention", x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets,
         actualTokenNum, attnRankTable, const_cast<char*>(group), worldSize, tokenInfoTableShape, tokenDataShape,
