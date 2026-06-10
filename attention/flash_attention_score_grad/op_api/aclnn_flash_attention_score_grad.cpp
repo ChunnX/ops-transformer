@@ -2595,8 +2595,8 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    if (sinkInOptional != nullptr || dropMaskOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [FlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize: only support without sinkInOptional and dropMaskOptional]");
+    if (dropMaskOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [FlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize: only support without dropMaskOptional]");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

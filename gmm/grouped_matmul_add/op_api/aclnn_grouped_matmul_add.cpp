@@ -115,9 +115,7 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params, c
                opName, "x, weight", aKDim, bKDim);
 
     // group_matmul_add support the y shape is 3D actually. other is historical issue.
-    size_t Dim1 = 1;
-    size_t Dim2 = 2;
-    size_t Dim3 = 3;
+    constexpr size_t Dim3 = 3;
     if (yRefDimNum != Dim3) {
         OP_LOGW("Expected shape of y is 3 Dim.");
     }

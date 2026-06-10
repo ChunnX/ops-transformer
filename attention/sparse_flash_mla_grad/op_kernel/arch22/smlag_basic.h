@@ -284,6 +284,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         if (cubeBlockIdx < usedCoreNum && task > 0) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(POST_WAIT_CUBE);
         }
+        vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
 

@@ -29,6 +29,9 @@
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 #include "gmm_csv_ge_parse_utils.h"
+#include "op_tiling_parse_context_builder.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "platform/platform_infos_def.h"
 
 using namespace std;
 using namespace ge;
@@ -51,18 +54,20 @@ struct TensorDescParam {
 constexpr size_t kInputTensorCount = 8U;
 constexpr size_t kOutputTensorCount = 2U;
 constexpr size_t kTensorFieldCount = 4U;
-constexpr size_t kScalarFieldCount = 18U;
-constexpr size_t kCsvColumnCount =
-    kScalarFieldCount + (kInputTensorCount + kOutputTensorCount) * kTensorFieldCount;
+constexpr size_t kScalarFieldCount = 19U;
+constexpr size_t kCsvColumnCount = kScalarFieldCount + (kInputTensorCount + kOutputTensorCount) * kTensorFieldCount;
 
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
-        // 跳过未启用的case
         if (!enable) {
             return;
         }
         auto compileInfoForRun = compileInfo;
+        vector<int64_t> tuningConfigVec = ops::ut::ParseDims(tuningConfig, {});
+        if (tuningConfigVec.empty()) {
+            tuningConfigVec = {0};
+        }
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmulSwigluQuantV2", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
@@ -72,6 +77,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
             },
             &compileInfoForRun);
         if (expectSuccess) {
@@ -99,6 +105,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     int64_t quantDtype = 0;
     bool transposeWeight = false;
     int64_t groupListType = 0;
+    string tuningConfig;
 
 private:
     static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(const vector<TensorDescParam> &tensors)
@@ -106,8 +113,8 @@ private:
         vector<gert::TilingContextPara::TensorDescription> descs;
         descs.reserve(tensors.size());
         for (const auto &tensor : tensors) {
-            descs.emplace_back(ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims),
-                               tensor.dtype, tensor.format);
+            descs.emplace_back(ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype,
+                               tensor.format);
         }
         return descs;
     }
@@ -155,23 +162,18 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             tc.expectTilingKey = stoll(Trim(items[idx++]));
 
             tc.compileInfo = {
-                static_cast<uint64_t>(stoull(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                ParseBool(Trim(items[idx++])),
+                static_cast<uint64_t>(stoull(Trim(items[idx++]))), static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  ParseBool(Trim(items[idx++])),
             };
 
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-                tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), 
-                                     ops::ut::ParseDims(Trim(items[idx++])),
+                tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
                                      ops::ut::ParseGeDtype(Trim(items[idx++])),
                                      ops::ut::ParseGeFormat(Trim(items[idx++]))});
             }
             for (size_t tensorIdx = 0; tensorIdx < kOutputTensorCount; ++tensorIdx) {
-                tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), 
-                                      ops::ut::ParseDims(Trim(items[idx++])),
+                tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
                                       ops::ut::ParseGeDtype(Trim(items[idx++])),
                                       ops::ut::ParseGeFormat(Trim(items[idx++]))});
             }
@@ -182,6 +184,7 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             tc.quantDtype = stoll(Trim(items[idx++]));
             tc.transposeWeight = ParseBool(Trim(items[idx++]));
             tc.groupListType = stoll(Trim(items[idx++]));
+            tc.tuningConfig = Trim(items[idx++]);
             cases.push_back(tc);
         } catch (const std::exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
@@ -255,5 +258,123 @@ TEST_P(TestGroupedMatmulSwigluQuantV2Tiling910B, csvDrivenCase)
 
 INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_910B, TestGroupedMatmulSwigluQuantV2Tiling910B,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);
+
+class TestTilingParseForGroupedMatmulSwigluQuantV2 : public testing::Test {
+protected:
+};
+
+TEST_F(TestTilingParseForGroupedMatmulSwigluQuantV2, TilingPrepareSuccess)
+{
+    optiling::GMMSwigluV2CompileInfo compileInfo = {};
+    fe::PlatFormInfos platformInfo;
+    platformInfo.Init();
+    std::map<std::string, std::string> socInfos = {
+        {"ai_core_cnt", "24"}, {"l2_size", "33554432"}, {"core_type_list", "AICore"}};
+    std::map<std::string, std::string> aicoreSpec = {{"ub_size", "201326592"},
+                                                     {"l1_size", "524288"},
+                                                     {"l0_a_size", "65536"},
+                                                     {"l0_b_size", "65536"},
+                                                     {"l0_c_size", "131072"}};
+    std::map<std::string, std::string> intrinsics = {{"Intrinsic_data_move_l12ub", "float16"},
+                                                     {"Intrinsic_data_move_l0c2ub", "float16"},
+                                                     {"Intrinsic_fix_pipe_l0c2out", "float16"},
+                                                     {"Intrinsic_data_move_out2l1_nd2nz", "float16"},
+                                                     {"Intrinsic_data_move_l12bt", "bf16"}};
+    platformInfo.SetPlatformRes("SoCInfo", socInfos);
+    platformInfo.SetPlatformRes("AICoreSpec", aicoreSpec);
+    platformInfo.SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
+
+    const char *compileJsonStr = "{}";
+
+    gert::OpTilingParseContextBuilder builder;
+    builder.OpType("GroupedMatmulSwigluQuantV2")
+        .OpName("GroupedMatmulSwigluQuantV2")
+        .IONum(2, 1)
+        .CompiledJson(compileJsonStr)
+        .CompiledInfo(reinterpret_cast<void *>(&compileInfo))
+        .PlatformInfo(reinterpret_cast<void *>(&platformInfo));
+    auto holder = builder.Build();
+    auto parseContext = holder.GetContext();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulSwigluQuantV2");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext *>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(TestTilingParseForGroupedMatmulSwigluQuantV2, TilingDataFieldCoverage)
+{
+    optiling::GMMSwigluQuantV2TilingData tilingData;
+    auto &bp = tilingData.gmmSwigluQuantV2BaseParams;
+    bp.set_groupNum(1);
+    EXPECT_EQ(bp.get_groupNum(), 1);
+    bp.set_coreNum(24);
+    EXPECT_EQ(bp.get_coreNum(), 24);
+    bp.set_K(2048);
+    EXPECT_EQ(bp.get_K(), 2048);
+    bp.set_N(256);
+    EXPECT_EQ(bp.get_N(), 256);
+    bp.set_M(1024);
+    EXPECT_EQ(bp.get_M(), 1024);
+    bp.set_baseM(128);
+    EXPECT_EQ(bp.get_baseM(), 128);
+    bp.set_baseN(256);
+    EXPECT_EQ(bp.get_baseN(), 256);
+    bp.set_mLimit(32768);
+    EXPECT_EQ(bp.get_mLimit(), 32768);
+    bp.set_workSpaceOffset1(0);
+    EXPECT_EQ(bp.get_workSpaceOffset1(), 0);
+    bp.set_workSpaceOffset2(0);
+    EXPECT_EQ(bp.get_workSpaceOffset2(), 0);
+    bp.set_quantGroupNum(1);
+    EXPECT_EQ(bp.get_quantGroupNum(), 1);
+    bp.set_isSingleTensor(1);
+    EXPECT_EQ(bp.get_isSingleTensor(), 1);
+    bp.set_groupListType(0);
+    EXPECT_EQ(bp.get_groupListType(), 0);
+    bp.set_smoothScaleDimNum(0);
+    EXPECT_EQ(bp.get_smoothScaleDimNum(), 0);
+    bp.set_singleN(256);
+    EXPECT_EQ(bp.get_singleN(), 256);
+
+    auto &sq = tilingData.gmmSwigluQuantV2;
+    sq.set_maxProcessRowNum(100);
+    EXPECT_EQ(sq.get_maxProcessRowNum(), 100);
+    sq.set_groupListLen(16);
+    EXPECT_EQ(sq.get_groupListLen(), 16);
+    sq.set_tokenLen(256);
+    EXPECT_EQ(sq.get_tokenLen(), 256);
+}
+
+TEST_F(TestTilingParseForGroupedMatmulSwigluQuantV2, FusionTilingDataFieldCoverage)
+{
+    optiling::GMMSwigluQuantV2TilingFusionData fusionData;
+    fusionData.set_cubeBlockDim(24);
+    EXPECT_EQ(fusionData.get_cubeBlockDim(), 24);
+    fusionData.set_vectorBlockDim(48);
+    EXPECT_EQ(fusionData.get_vectorBlockDim(), 48);
+    fusionData.set_groupNum(16);
+    EXPECT_EQ(fusionData.get_groupNum(), 16);
+    fusionData.set_K(2048);
+    EXPECT_EQ(fusionData.get_K(), 2048);
+    fusionData.set_N(7168);
+    EXPECT_EQ(fusionData.get_N(), 7168);
+    fusionData.set_M(1024);
+    EXPECT_EQ(fusionData.get_M(), 1024);
+    fusionData.set_ubFactorDimx(2);
+    EXPECT_EQ(fusionData.get_ubFactorDimx(), 2);
+    fusionData.set_ubFactorDimy(3584);
+    EXPECT_EQ(fusionData.get_ubFactorDimy(), 3584);
+    fusionData.set_actRight(1);
+    EXPECT_EQ(fusionData.get_actRight(), 1);
+    fusionData.set_groupListType(0);
+    EXPECT_EQ(fusionData.get_groupListType(), 0);
+    fusionData.set_isSingleTensor(1);
+    EXPECT_EQ(fusionData.get_isSingleTensor(), 1);
+}
 
 } // namespace GroupedMatmulSwigluQuantV2UT

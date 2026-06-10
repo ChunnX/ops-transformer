@@ -75,8 +75,8 @@ ASCENDC_TPL_ARGS_DECL(IncreFlashAttention,
     //    3: AntiquantMode_PER_TOKEN_HEAD
     //    4: AntiquantMode_PER_TOKEN_PAGE_ATTENTION
     //    5: AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION
-    //   17: PerBlock
-    //   18: FULLQUANT_MODE_PER_TOKEN_HEAD
+    //   17: FULLQUANT_MODE_QKV_PERBLOCK
+    //   18: FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR
     //   30: FullQuantMode
     //   31: NoQuantMode
     ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),

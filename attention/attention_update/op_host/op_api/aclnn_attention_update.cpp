@@ -44,7 +44,8 @@ static const int64_t LSE_DIM_NUM = 1;
 static const int64_t GO_DIM_NUM = 2;
 static const int64_t HD_MULTIPLE = 8;
 static const int64_t HD_MAX = 512;
-static const int64_t SP_MAX = 16;
+static const int64_t SP_MAX = 128;
+static const int64_t SP_MAX_95 = 16;
 
 static const std::initializer_list<op::DataType> ATTENTION_UPDATE_DTYPE_SUPPORT_LIST = {
                                 DataType::DT_FLOAT};
@@ -282,7 +283,7 @@ static inline bool CheckShape_95(const aclTensorList *lse, const aclTensorList *
     return true;
 }
 
-static inline bool CheckSp_95(const aclTensorList *lse, const aclTensorList *localOut)
+static inline bool CheckSp(const aclTensorList *lse, const aclTensorList *localOut)
 {
     auto lseSp = lse->Size();
     auto localOutSp = localOut->Size();
@@ -292,6 +293,24 @@ static inline bool CheckSp_95(const aclTensorList *lse, const aclTensorList *loc
                      "Size of lse must greater than zero and less than %ld,"
                      "but which is %ld.",
                      SP_MAX, lseSp),
+             return false);
+    OP_CHECK(
+        localOutSp == lseSp,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Size of lse: %ld must equal to size of localOut: %ld.", lseSp, localOutSp),
+        return false);
+    return true;
+}
+
+static inline bool CheckSp_95(const aclTensorList *lse, const aclTensorList *localOut)
+{
+    auto lseSp = lse->Size();
+    auto localOutSp = localOut->Size();
+
+    OP_CHECK(lseSp > 0 && lseSp <= SP_MAX_95,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "Size of lse must greater than zero and less than %ld,"
+                     "but which is %ld.",
+                     SP_MAX_95, lseSp),
              return false);
     OP_CHECK(
         localOutSp == lseSp,
@@ -351,13 +370,10 @@ static aclnnStatus CheckParams(const aclTensorList* lse, const aclTensorList* lo
     CHECK_RET(CheckDtypeValid(lse, localOut, out), ACLNN_ERR_PARAM_INVALID);
 
     // 2. 检查输入sp是否支持
-    CHECK_RET(CheckSp_95(lse, localOut), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckSp(lse, localOut), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查self和out的shape是否一致
     CHECK_RET(CheckShape(lse, localOut, out, lseOut, updateType), ACLNN_ERR_PARAM_INVALID);
-
-    // 4. 检查self和out的shape是否一致
-    CHECK_RET(CheckShape_95(lse, localOut, out, lseOut, updateType), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }

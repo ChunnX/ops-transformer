@@ -1210,8 +1210,8 @@ bool CheckSpecConditions(const gert::TilingContext *context)
             int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
             bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
                     (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
-            bool blockSizeSupported = (blockSize == 128);
             isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U);
+            bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
             if (isFAIDSize && blockSizeSupported) {
                 specConditionFlag = true;
             }

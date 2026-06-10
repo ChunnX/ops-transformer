@@ -552,6 +552,7 @@ protected:
                                       "{FLOAT8_E4M3FN, FLOAT8_E5M2}");
             return false;
         }
+        (void)output;
         return true;
     }
 
@@ -882,8 +883,6 @@ protected:
     {
         DataType xDtype = gmmDsqParams_.x->GetDataType();
         DataType weightDtype = ((*gmmDsqParams_.weight)[0])->GetDataType();
-        DataType xScaleDtype = gmmDsqParams_.xScale->GetDataType();
-        DataType weightScaleDtype = ((*gmmDsqParams_.weightScale)[0])->GetDataType();
         const aclTensor *x = gmmDsqParams_.x;
         const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         const aclTensor *xScale = gmmDsqParams_.xScale;
