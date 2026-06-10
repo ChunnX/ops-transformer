@@ -415,12 +415,12 @@ int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, in
     if (d == 0) {
         return 0;
     }
-    if (an <= 0){
+    if (an <= 0) {
         return 0;
     }
     int64_t term1 = an % d + an;
     int64_t term2 = an / d + 1;
-    if (term1 > INT64_MAX / term2){
+    if (term1 > INT64_MAX / term2) {
         OP_LOGI("FusedInferAttentionScore", "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", term1, term2, an, d);
         return INT64_MAX;
     }
