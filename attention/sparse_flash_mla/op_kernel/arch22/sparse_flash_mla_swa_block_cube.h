@@ -366,7 +366,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
             uint32_t copyFinishRowCnt = 0;
 
             if (info.isOriOnly) {
-                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                     uint64_t curS2Offset = static_cast<uint64_t>(info.s2Idx) * constInfo.s2BaseSize + \
                         info.s2StartPoint + nL1 * N_SPLIT_SIZE;
                     uint32_t copyFinishRowCnt = 0;
@@ -442,7 +442,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                 uint32_t cmpSizeCur = nL1Size - oriSizeCur;
                 cmpSizeCur = (cmpSizeCur < info.actualSingleProcessSInnerCmpSize) ? cmpSizeCur : \
                     info.actualSingleProcessSInnerCmpSize;
-                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                     LocalTensor<KV_T> kTensor;
                     uint32_t copyRowCnt = 0;
 
@@ -580,7 +580,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     }
                 }
             } else {
-                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                     uint64_t curS2Offset = static_cast<uint64_t>(info.relativeS2Idx) * constInfo.s2BaseSize + \
                         info.s2StartPoint + nL1 * N_SPLIT_SIZE;
                     while (copyFinishRowCnt < nL1Size) {
@@ -801,7 +801,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
 
                 uint32_t copyFinishRowCnt = 0;
                 if (info.isOriOnly) {
-                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         uint64_t curS2Offset = static_cast<uint64_t>(info.s2Idx) * constInfo.s2BaseSize + \
                             info.s2StartPoint + kL1 * K_L0_SPLIT_SIZE;
                         while (copyFinishRowCnt < kL0Size) {
@@ -875,7 +875,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                     uint32_t cmpSizeCur = kL0Size - oriSizeCur;
                     cmpSizeCur = (cmpSizeCur < info.actualSingleProcessSInnerCmpSize) ? cmpSizeCur : \
                         info.actualSingleProcessSInnerCmpSize;
-                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         if (oriSizeCur > 0) {
                             copyFinishRowCnt = 0;
                             uint64_t curS2Offset = static_cast<uint64_t>(info.s2Idx) * constInfo.s2BaseSize + \
@@ -1016,7 +1016,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                         }
                     }
                 } else {
-                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         uint64_t curS2Offset = static_cast<uint64_t>(info.relativeS2Idx) * constInfo.s2BaseSize + \
                             info.s2StartPoint + K_L0_SPLIT_SIZE * kL1;
                         while (copyFinishRowCnt < kL0Size) {
