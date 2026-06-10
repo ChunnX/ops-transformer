@@ -531,8 +531,13 @@ private:
         uint32_t WHOLE_PROCESS_LOOP = 16;
 
         uint32_t curS2LoopIdx = runInfo.curS2LoopIdx;
-        uint32_t groupMaxEndIdx =
-            loop / 2 * 2 % GROUP_MAX_SPACE_LEN + 1;  // 这一轮pscale的任务loop在groupMax空间下发的groupMaxEndIdx
+        // 求单核目前为止，计算对应的第几个softmax(即第几个groupmax 8*128)（跨batch）
+        // 等价groupMaxEndLoop = (loop % 2 == 0) ? ((subBlockIdx == 0) ? (loop / 2) : ((loop / 2) - 1)) : (loop / 2);
+        uint32_t groupMaxEndLoop = (loop >> 1) - (subBlockIdx != 0 && loop % 2 == 0);
+        // 这一轮pscale的任务loop在groupMax空间下发的groupMaxEndIdx，*2的原因是因为groupmax一片空间承载4*128
+        uint32_t groupMaxEndIdx = groupMaxEndLoop * 2 % GROUP_MAX_SPACE_LEN + 1;
+
+        // toProcessGroupMaxLoopLen 求当前FD切核对应的Tile(16个softmax是一个tile)在每个核上有占用几片groupmax(4*128)空间
         uint16_t toProcessGroupMaxLoopLen =
             (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
         toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
@@ -549,7 +554,6 @@ private:
         } else {
             firstLoopStart = firstLoopStartNotU;
             secondLoopStart = firstLoopStart + firstLoop;  // 向上对齐到2
-            // secondLoopEnd = groupMaxEndIdx;
         }
         // 两片groupmax空间对应其中的一个softmax任务
         firstLoop /= 2;

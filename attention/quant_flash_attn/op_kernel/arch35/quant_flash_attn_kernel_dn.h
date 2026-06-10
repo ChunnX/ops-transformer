@@ -505,6 +505,8 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK); // 统一对齐到32
+        info.actSingleLoopS2SizeAlign16 =
+            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
         info.actSingleLoopS2SizeAlign64 =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);

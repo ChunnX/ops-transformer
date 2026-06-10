@@ -399,7 +399,7 @@ public:
             for (uint32_t loop = 0; loop < loopCnt; ++loop) {
                 if (loop + 1 == loopCnt) {
                     actS2Size = info.actSingleLoopS2Size - loop * QK_L0_S2_SPLIT_SIZE;
-                    actS2SizeAlign = info.actSingleLoopS2SizeAlign - loop * QK_L0_S2_SPLIT_SIZE;
+                    actS2SizeAlign = info.actSingleLoopS2SizeAlign16 - loop * QK_L0_S2_SPLIT_SIZE;
                 }
 
                 WaitFlag<HardEvent::FIX_M>(QK_L0C_EVENT0 + qkL0cBufId);
@@ -433,15 +433,25 @@ public:
     {
         WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
-            InitConstValueParams<uint16_t> PL1InitParams (1, static_cast<uint16_t>(info.actMSize / 2 / 2), 0, 0x0000);
-            uint32_t POffset = info.actSingleLoopS2SizeAlign * info.actMSize / 2 / 2;
-            Fill(pL1Tensor[POffset].template ReinterpretCast<uint16_t>(), PL1InitParams);
-            Fill(pL1Tensor[POffset * 2 + 32 * info.actMSize / 2 / 2].template ReinterpretCast<uint16_t>(), PL1InitParams);
+            InitConstValueParams<uint16_t> PL1InitParams (1, static_cast<uint16_t>(info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2SizeAlign), 0, 0x0000);
+            uint32_t l1P_Base_Offset = (info.loop % 20) * L1_P_SIZE;
+            // uint32_t POffset =  info.actSingleLoopS2SizeAlign * info.actMSize / 2 / 2;
+            Fill(pL1Tensor[l1P_Base_Offset + info.actSingleLoopS2SizeAlign * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
+            if (info.actMSize == mBaseSize) {
+                Fill(pL1Tensor[l1P_Base_Offset + 2 * info.actSingleLoopS2SizeAlign * 32 + 32 * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
+            }
         }
         CopyVGmToL1(info);
         CopyVScaleGmToL1(info);
         SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
+        if (info.actSingleLoopS2Size != info.actSingleLoopS2SizeAlign64) {
+            InitConstValueParams<uint16_t> kvL1InitParams (1, static_cast<uint16_t>((info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2Size)), 0, 0x0000);
+            uint32_t l1V_Base_Offset = kvBufId * L1_KV_SIZE;
+            uint32_t vOffset = constInfo.dSize / 4 * info.actSingleLoopS2Size;
+            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size * 2 + (info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2Size) * constInfo.dSize  / 4].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        }
         {
             if (info.isC2Sync) {
                 WaitFlag<HardEvent::FIX_M>(PV_L0C_EVENT0 + pvL0cBufId);
@@ -614,7 +624,7 @@ private:
         //     .dstGap = 0,
         //     .initValue = 0x7777
         // );
-        InitConstValueParams<uint16_t> vL1InitParams (1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x2222);
+        InitConstValueParams<uint16_t> vL1InitParams (1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         Fill(kvL1Tensor[l1BaseOffset].template ReinterpretCast<uint16_t>(), vL1InitParams);
 
@@ -625,7 +635,7 @@ private:
         //     .dstGap = 0,
         //     .initValue = 0x7f7f
         // );
-        InitConstValueParams<uint16_t> vScaleL1InitParams (1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7f7f);
+        InitConstValueParams<uint16_t> vScaleL1InitParams (1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
         uint32_t vScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         Fill(kvDescaleL1Tensor[vScaleL1Offset].template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
 
@@ -719,7 +729,7 @@ private:
             .n2Idx = info.n2Idx,
             .s2Idx = info.s2Idx,
             .dIdx = 0,
-            .s2DealSize = info.actSingleLoopS2SizeAlign64,
+            .s2DealSize = info.actSingleLoopS2Size,
             .dDealSize = headDimInt8
         };
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
@@ -916,10 +926,11 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = ((info.actSingleLoopS2SizeAlign64 + 15) / 16 + 3) / 4 * 4;
+        // loadData2DParamsA.mStep = ((info.actSingleLoopS2SizeAlign64 + 15) / 16 + 3) / 4 * 4;
+        loadData2DParamsA.mStep = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         
-        loadData2DParamsA.srcStride = (info.actSingleLoopS2SizeAlign64 + 15) / 16;
+        loadData2DParamsA.srcStride = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.dstStride = (constInfo.dSize + 15) / 16 + 1;
         loadData2DParamsA.ifTranspose = true;
 

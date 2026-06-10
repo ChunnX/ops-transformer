@@ -145,6 +145,7 @@ struct RunInfo {
 
     uint32_t actSingleLoopS2Size = 0; // 单个softmaxS2方向长度
     uint32_t actSingleLoopS2SizeAlign = 0; // 对齐到32
+    uint32_t actSingleLoopS2SizeAlign16 = 0; // 对齐到16
     uint32_t actSingleLoopS2SizeAlign64 = 0; // 对齐到64
     uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
