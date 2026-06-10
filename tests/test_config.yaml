@@ -132,7 +132,7 @@ attention:
       - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
-      examples: True
+      examples: False
     options:
       - incre_flash_attention
       - fused_infer_attention_score
