@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -142,7 +142,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     </tbody></table>
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
-    - <term>Ascend 950PR/Ascend 950DT</term>：timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
+    - <term>Ascend 950DT</term>：timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
     
 - **返回值**
 
@@ -235,7 +235,7 @@ aclnnStatus aclnnDistributeBarrierV2(
 
 ## 调用示例
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：
        
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
