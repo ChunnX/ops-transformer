@@ -17,7 +17,9 @@
 #include <thread>
 #include <vector>
 #include <gtest/gtest.h>
+#include "base/registry/op_impl_space_registry_v2.h"
 #include "mc2_tiling_case_executor.h"
+#include "op_tiling_parse_context_builder.h"
 
 namespace QuantAllReduceUT {
 
@@ -249,5 +251,21 @@ TEST_F(QuantAllReduceArch35TilingTest, GeneralCasesMultiThread)
 }
 
 INSTANTIATE_TEST_CASE_P(QuantAllReduceTilingUT, QuantAllReduceArch35TilingTest, testing::ValuesIn(g_testCases));
+
+TEST_F(QuantAllReduceArch35TilingTest, TilingParseSuccess)
+{
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.Build();
+    auto parseContext = holder.GetContext();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("QuantAllReduce");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+}
 
 } // namespace
