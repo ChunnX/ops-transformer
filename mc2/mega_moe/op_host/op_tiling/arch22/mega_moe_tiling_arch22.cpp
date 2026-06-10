@@ -162,7 +162,7 @@ static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3Til
             cclBufferSize, leastCclBufferSize, bs, h, topK, epWorldSize, expertPerRank, yDtypeSize),
         return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
- 	 
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -450,8 +450,8 @@ static ge::graphStatus CheckWeightScaleInput(gert::TilingContext *context, uint3
     auto wScaleDesc = context->GetDynamicInputDesc(inputIndex, 0);
     OP_TILING_CHECK(wScaleDesc == nullptr,
         OP_LOGE(K_INNER_DEBUG, "%s desc is null.", inputName), return GRAPH_FAILED);
-    OP_TILING_CHECK(wScaleDesc->GetDataType() != ge::DT_FLOAT,
-        OP_LOGE(K_INNER_DEBUG, "%s dataType is invalid, should be FLOAT, but got %d.",
+    OP_TILING_CHECK(wScaleDesc->GetDataType() != ge::DT_UINT64,
+        OP_LOGE(K_INNER_DEBUG, "%s dataType is invalid, should be UINT64, but got %d.",
             inputName, static_cast<int>(wScaleDesc->GetDataType())), return GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetStorageFormat())) != ge::FORMAT_ND,
         OP_LOGE(K_INNER_DEBUG, "%s format is invalid, should be FORMAT_ND.", inputName), return GRAPH_FAILED);
@@ -636,7 +636,7 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
             static_cast<int>(w1Format), static_cast<int>(w2Format)), return GRAPH_FAILED);
 
     uint32_t w2TensorDims = w2Tensor->GetOriginShape().GetDimNum();
-    
+
     uint32_t w2ListLen = GetDynamicInputTensorListLen(context, WEIGHT2_INDEX);
     OP_TILING_CHECK(w2ListLen != listLen,
         OP_LOGE(K_INNER_DEBUG,
@@ -1001,7 +1001,7 @@ static ge::graphStatus MegaMoeA2A3CommAlg(const gert::TilingContext *context)
     auto commAlg = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
     OP_TILING_CHECK(commAlg == nullptr,
         OP_LOGE(K_INNER_DEBUG, "commAlg is null."), return ge::GRAPH_FAILED);
-    
+
     if (strlen(commAlg) > 0) {
         OP_LOGE(K_INNER_DEBUG, "Attr commAlg is invalid, current version only supports \"\", but got \"%s\".", commAlg);
         return ge::GRAPH_FAILED;
@@ -1052,15 +1052,15 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "y shape is null."), return GRAPH_FAILED);
-    
+
     // 维度数校验：必须为 2 维
     OP_TILING_CHECK(yStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(K_INNER_DEBUG, "y must be 2-dimension, but got %lu dim.",
             yStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
-    
+
     int64_t yDim0 = yStorageShape->GetStorageShape().GetDim(0);
     int64_t yDim1 = yStorageShape->GetStorageShape().GetDim(1);
-    
+
     // Shape 一致性校验：y 的 shape 应该与 x 的 shape 一致 [M, K]
     OP_TILING_CHECK(yDim0 != static_cast<int64_t>(info.M),
         OP_LOGE(K_INNER_DEBUG, "y's dim0 not equal to M, y's dim0 = %ld, M = %u.",
@@ -1068,7 +1068,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     OP_TILING_CHECK(yDim1 != static_cast<int64_t>(info.K),
         OP_LOGE(K_INNER_DEBUG, "y's dim1 not equal to K, y's dim1 = %ld, K = %u.",
             yDim1, info.K), return GRAPH_FAILED);
-    
+
     // 数据类型校验
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK(yDesc == nullptr,
@@ -1077,21 +1077,21 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     OP_TILING_CHECK(yDataType != ge::DT_FLOAT16 && yDataType != ge::DT_BF16,
         OP_LOGE(K_INNER_DEBUG, "y dataType is invalid, should be FLOAT16 or BF16, but got %d.",
             static_cast<int>(yDataType)), return GRAPH_FAILED);
-    
+
     OP_LOGD(K_INNER_DEBUG, "y dim0 = %ld", yDim0);
     OP_LOGD(K_INNER_DEBUG, "y dim1 = %ld", yDim1);
     OP_LOGD(K_INNER_DEBUG, "y dataType = %d", static_cast<int>(yDataType));
-    
+
     // ==================== 2. expert_token_nums 输出校验 ====================
     const gert::StorageShape *expertTokenNumsStorageShape = context->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     OP_TILING_CHECK(expertTokenNumsStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums shape is null."), return GRAPH_FAILED);
-    
+
     // 维度数校验：必须为 1 维
     OP_TILING_CHECK(expertTokenNumsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums must be 1-dimension, but got %lu dim.",
             expertTokenNumsStorageShape->GetStorageShape().GetDimNum()), return GRAPH_FAILED);
-    
+
     int64_t expertTokenNumsDim0 = expertTokenNumsStorageShape->GetStorageShape().GetDim(0);
 
     // Shape 校验：expert_token_nums 的 dim0 应该等于 expertPerRank（本卡专家数量）
@@ -1100,7 +1100,7 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
             "expert_token_nums's dim0 not equal to expertPerRank, "
             "expert_token_nums's dim0 = %ld, expertPerRank = %u.",
             expertTokenNumsDim0, info.expertPerRank), return GRAPH_FAILED);
-    
+
     // 数据类型校验
     auto expertTokenNumsDesc = context->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     OP_TILING_CHECK(expertTokenNumsDesc == nullptr,
@@ -1108,10 +1108,10 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     OP_TILING_CHECK(expertTokenNumsDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(K_INNER_DEBUG, "expert_token_nums dataType is invalid, should be INT32, but got %d.",
             static_cast<int>(expertTokenNumsDesc->GetDataType())), return GRAPH_FAILED);
-    
+
     OP_LOGD(K_INNER_DEBUG, "expert_token_nums dim0 = %ld", expertTokenNumsDim0);
     OP_LOGD(K_INNER_DEBUG, "expert_token_nums dataType = %d", static_cast<int>(expertTokenNumsDesc->GetDataType()));
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1128,7 +1128,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData.");
     MegaMoeA2A3TilingData& info = tilingData->common;
     OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData info.");
-    
+
     OP_TILING_CHECK(MegaMoeA2A3CommAlg(context) != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(K_INNER_DEBUG, "MegaMoeA2A3 CheckCommAlg Failed"),
         return ge::GRAPH_FAILED);
@@ -1173,7 +1173,8 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type must be INT8 in quant mode, got %u",
                     quantOutType), return ge::GRAPH_FAILED);
     }
-    uint32_t archCode = mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510 ? SOC_ASCEND910B : SOC_ASCEND910_93;
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    uint32_t archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(
         static_cast<int64_t>(info.isTransposeW1),
@@ -1195,7 +1196,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     int64_t quantModeRouting = 1;
     uint64_t initRoutingQuantTilingKey = 0;
     size_t initRoutingWorkspace = 0;
-    
+
     if (info.isQuantRouting != 0U) {
         MegaMoeTilingDataQuant *quantTilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
         OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(K_INNER_DEBUG, "quantTilingData is nullptr."),

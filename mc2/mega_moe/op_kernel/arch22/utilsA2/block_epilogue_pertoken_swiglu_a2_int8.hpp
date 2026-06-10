@@ -8,20 +8,22 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_INT8_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_INT8_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
+#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/arch/resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/detail/callback.hpp"
 
 namespace Catlass::Epilogue::Block {
 
-// float scale, dequant per expert
+// A2 INT8 SwiGLU: per-token-scale dequant + SiLU(x_gate) * x_up + dynamic
+// quantize to int8. 6-arg operator() matches the A2 kernel call pattern
+// (no `resource` parameter).
 template <
     uint32_t UB_STAGES_,
     class CType_,
@@ -31,7 +33,7 @@ template <
     class TileCopy_
 >
 class BlockEpilogue <
-    EpilogueAtlasA2PerTokenDequantSwigluQuant<UB_STAGES_>,
+    EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<UB_STAGES_>,
     CType_,
     Gemm::GemmType<float, LayoutPerTokenScale_>,
     DType_,
@@ -39,11 +41,10 @@ class BlockEpilogue <
     TileCopy_
 > {
 public:
-    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantSwigluQuant<UB_STAGES_>;
+    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 
-    // Data infos
     using ElementC = typename CType_::Element;
     using LayoutC = typename CType_::Layout;
     using ElementPerTokenScale = float;
@@ -51,9 +52,10 @@ public:
     using ElementD = typename DType_::Element;
     using LayoutD = typename DType_::Layout;
 
-    // Check data infos
     static_assert(
-        std::is_same_v<ElementC, half> && (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t>),
+        (std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+        (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
+         std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
         "The element type template parameters of BlockEpilogue are wrong"
     );
     static_assert(
@@ -62,11 +64,9 @@ public:
         "The layout template parameters of BlockEpilogue are wrong"
     );
 
-    // Tile copy
     using CopyGmToUbC = typename TileCopy_::CopyGmToUbC;
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
-    using CopyUbToGmDequantScale = Epilogue::Tile::CopyUb2Gm<
-        ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
+    using CopyUbToGmDequantScale = Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
 
     struct Params {
         __gm__ ElementPerTokenScale *ptrPerTokenScale{nullptr};
@@ -123,6 +123,7 @@ public:
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
     }
+
     CATLASS_DEVICE
     void Finalize()
     {
@@ -131,17 +132,15 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
     }
-    CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+
+    CATLASS_DEVICE ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void UpdateParams(Params const &params_)
     {
         params = params_;
     }
-    // Each tile is 1x7168, and each block covers all tokens for one expert = [group[i], 7168]
+
     CATLASS_DEVICE
     void operator() (
         AscendC::GlobalTensor<ElementC> const &gmC,
@@ -149,7 +148,6 @@ public:
         AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
         AscendC::GlobalTensor<ElementD> const &gmD,
         AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
-
         uint32_t epilogueCoreNum = 40,
         Callback &&callback = Callback{}
     )
@@ -158,39 +156,28 @@ public:
         uint32_t blockM = shapeC.row();
         uint32_t blockN = shapeC.column();
 
-        uint32_t tileLoops = blockM;
         uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
-
         uint32_t subblockNum = get_block_num() * 2;
         uint32_t moveDataCoreNum = subblockNum - epilogueCoreNum;
 
-        if (subblockIdx < moveDataCoreNum) {
-            return;
-        }
-        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
+        if (subblockIdx < moveDataCoreNum) return;
 
+        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
         uint32_t perCoreData =  blockM / epilogueCoreNum;
         uint32_t remainderData = blockM % epilogueCoreNum;
-
         uint32_t tasksForIdx  = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData +
-            (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
-
-        uint32_t alignedPerCoreData = RoundUp<BYTE_PER_BLK / sizeof(ElementPerTokenScale)>(perCoreData + 1);
+        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData? epilogueCoreIdx : remainderData);
 
         uint32_t ChunkTileLen = blockN / 2;
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
             auto gmTileC = gmC[loopIdx * blockN];
-
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
-
             auto &ubCFp32 = ubCFp32List[ubListId];
             auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId];
             auto &ubAbs = ubCFp32ChunkNAbsList[ubListId];
-            // auto &ubMax = ubCFp32ChunkNMaxList[ubListId];
             auto &ubReduceMax = ubCFp32ChunkNMaxList[ubListId];
             auto &ubOutputTmp = ubAbs;
             auto &sharedUbTmpBuffer = ubReduceMax;
@@ -200,27 +187,22 @@ public:
             auto gmTileD = gmD[loopIdx * ChunkTileLen];
             LayoutC layoutUbC{1, blockN};
 
-            // Move C from GM workspace to UB
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
             copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
 
-            // Cast C to FP32 in UB
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
 
-            // Get per-token scale from row loopIdx of gmPerTokenScale
             ElementPerTokenScale perTokenScale = gmPerTokenScale1(loopIdx);
-
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
-            // Multiply FP32 C by the per-token scale
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Muls(ubCFp32, ubCFp32, perTokenScale, blockN);
             AscendC::PipeBarrier<PIPE_V>();
 
-            // Swiglu computation process
+            // SiLU(x_gate) * x_up
             AscendC::Muls(ubCFp32ChunkN, ubCFp32, -1.0f, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Exp(ubCFp32ChunkN, ubCFp32ChunkN, ChunkTileLen);
@@ -231,7 +213,7 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Mul(ubCFp32ChunkN, ubCFp32ChunkN, ubCFp32[ChunkTileLen], ChunkTileLen);
 
-            // Quantization process; difference between the two approaches
+            // Dynamic quantization: abs → reduce_max → scale → quantize to int8
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Abs(ubAbs, ubCFp32ChunkN, ChunkTileLen);
             AscendC::PipeBarrier<PIPE_V>();
@@ -271,13 +253,9 @@ public:
 
         if (tasksForIdx > 0) {
             LayoutPerTokenScale layoutGmPerTokenScale2{tasksForIdx};
-
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-
-            copyUbToGmDequantScale(
-                gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0],
-                layoutGmPerTokenScale2, layoutGmPerTokenScale2);
+            copyUbToGmDequantScale(gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput[0], layoutGmPerTokenScale2, layoutGmPerTokenScale2);
         }
     }
 
@@ -309,4 +287,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_SWIGLU_HPP
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_INT8_HPP

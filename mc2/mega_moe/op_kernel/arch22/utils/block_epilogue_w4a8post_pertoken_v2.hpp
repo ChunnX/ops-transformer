@@ -130,9 +130,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[i]);
         }
-#ifdef W4A8_DEBUG
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
-#endif
     }
 
     CATLASS_DEVICE
@@ -142,9 +139,6 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[i]);
         }
-#ifdef W4A8_DEBUG
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
-#endif
     }
     CATLASS_DEVICE
     ~BlockEpilogue()
@@ -174,11 +168,6 @@ public:
         int64_t gmOffsetwA = blockCoord.n() + (listLen == 1 ? groupIdx * params.n2 : 0);
         gmWeighAux = weightAux[gmOffsetwA];
 
-#ifdef W4A8_DEBUG
-        int32_t gmCOffset = (preSrcExpertSum * params.n2 + blockCoord.m() * params.n2) / 2 + blockCoord.n();
-        auto gmTileGMM2 = gmGMM2[gmCOffset];
-#endif
-
         constexpr float DEFAULT_MUL_SCALE = 16.0f;
 
         LayoutC layoutGM{actualBlockShape.m() / 2, actualBlockShape.n(), params.n2};
@@ -196,9 +185,6 @@ public:
         AscendC::DataCopyPad(ubweighAux, gmWeighAux, copyParamsW, padParamsW);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbTileWMTE2VList[ubListId]);
 
-#ifdef W4A8_DEBUG
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
-#endif
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Cast<float, ElementC, false>(ubFp32, ubCH, AscendC::RoundMode::CAST_NONE, -1, repeat, {1, 1, 8, 4});
         PipeBarrier<PIPE_V>();
@@ -226,13 +212,6 @@ public:
                                {1, 1, 8, 8});
         }
         AscendC::PipeBarrier<PIPE_V>();
-
-#ifdef W4A8_DEBUG
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
-        copyUbToGmGMM2(gmTileGMM2, ubFp32, layoutGM, layoutUB);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
-#endif
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[ubListId]);
         AscendC::Cast<ElementD, float, false>(ubD, ubFp32, AscendC::RoundMode::CAST_RINT, -1, repeat, {1, 1, 4, 8});
