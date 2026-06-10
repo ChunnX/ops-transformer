@@ -26,20 +26,9 @@
 #include "quant_block_sparse_attention_metadata.h"
 #include "../../common/op_kernel/aicpu_common.h"
 
-using namespace optiling;
-using namespace std;
-
 namespace aicpu {
 
-static const int64_t NUM_8192 = 8192L;
-static const int64_t NUM_4096 = 4096L;
-static const int64_t NUM_2048 = 2048L;
-static const int64_t NUM_1024 = 1024L;
-static const int64_t NUM_512 = 512L;
-static const int64_t NUM_256 = 256L;
 static const int64_t NUM_128 = 128L;
-static const int64_t NUM_64 = 64L;
-static const int64_t NUM_32 = 32L;
 
 struct SplitInfo {
     std::vector<std::vector<uint32_t>> sparseSeqLen {};
@@ -92,7 +81,7 @@ private:
     bool CheckTensorData();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(const SplitResult &splitRes);
+    bool GenMetadata(const SplitResult &splitRes);
     uint32_t GetRowBlockNum(const SplitInfo &splitInfo, uint32_t bIdx, uint32_t s1Idx) const;
     void CalcSplitInfo(SplitInfo &splitInfo);
     void UpdateCurrentBN2Block(const SplitInfo &splitInfo, AssignContext &assignContext) const;

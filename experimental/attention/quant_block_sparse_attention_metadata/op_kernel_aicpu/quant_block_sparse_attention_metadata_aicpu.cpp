@@ -31,7 +31,7 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &c
         return KERNEL_STATUS_PARAM_INVALID;
     }
     SplitResult splitRes(static_cast<uint32_t>(aicCoreNum_));
-    success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
+    success = BalanceSchedule(splitRes) && GenMetadata(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
@@ -197,14 +197,14 @@ void QuantBlockSparseAttentionMetadataCpuKernel::UpdateCursor(const SplitInfo &s
         assignContext.curBIdx = assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsKv_);
         while (assignContext.curS1GIdx < Qbmax_ &&
                GetRowBlockNum(splitInfo, assignContext.curBIdx, assignContext.curS1GIdx) == 0U) {
-            ++assignContext.curS1GIdx;
+            assignContext.curS1GIdx++;
         }
         if (assignContext.curS1GIdx < Qbmax_) {
             assignContext.curS2Idx = 0U;
             UpdateCurrentBN2Block(splitInfo, assignContext);
             return;
         }
-        ++assignContext.curBN2Idx;
+        assignContext.curBN2Idx++;
         assignContext.curS1GIdx = 0U;
         assignContext.curS2Idx = 0U;
     }
@@ -226,7 +226,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(const SplitInfo &
            assignContext.curS1GIdx == 0U) {
         UpdateCurrentBN2Block(splitInfo, assignContext);
         if (assignContext.bN2Block == 0U) {
-            ++assignContext.curBN2Idx;
+            assignContext.curBN2Idx++;
             UpdateCursor(splitInfo, assignContext);
             continue;
         }
@@ -234,7 +234,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(const SplitInfo &
             break;
         }
         assignContext.coreCache.block += assignContext.bN2Block;
-        ++assignContext.curBN2Idx;
+        assignContext.curBN2Idx++;
         assignContext.curS1GIdx = 0U;
         assignContext.curS2Idx = 0U;
         UpdateCursor(splitInfo, assignContext);
@@ -252,7 +252,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(const SplitInfo &sp
            assignContext.curBN2Idx < static_cast<uint32_t>(batchSize_ * numHeadsKv_)) {
         uint32_t rowBlock = GetRowBlockNum(splitInfo, assignContext.curBIdx, assignContext.curS1GIdx);
         if (rowBlock == 0U) {
-            ++assignContext.curS1GIdx;
+            assignContext.curS1GIdx++;
             UpdateCursor(splitInfo, assignContext);
             continue;
         }
@@ -265,7 +265,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(const SplitInfo &sp
         } else {
             assignContext.bN2Block = 0U;
         }
-        ++assignContext.curS1GIdx;
+        assignContext.curS1GIdx++;
         UpdateCursor(splitInfo, assignContext);
     }
 }
@@ -287,7 +287,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ForceAssign(const SplitInfo &sp
     } else {
         assignContext.bN2Block = 0U;
     }
-    ++assignContext.curS1GIdx;
+    assignContext.curS1GIdx++;
     UpdateCursor(splitInfo, assignContext);
 }
 
@@ -322,7 +322,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::CalcSplitPlan(const SplitInfo &
     UpdateCurrentBN2Block(splitInfo, assignContext);
     UpdateCursor(splitInfo, assignContext);
 
-    for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); ++i) {
+    for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); i++) {
         if (assignContext.isFinished || assignContext.unassignedBlock == 0U) {
             break;
         }
@@ -349,18 +349,18 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::BalanceSchedule(SplitResult &sp
     return true;
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetaData(const SplitResult &splitRes)
+bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
 {
     if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    detail::FaMetaData faMetadata(metaData_->GetData());
-    uint32_t* ptr = (uint32_t*)metaData_->GetData();
+    optiling::detail::FaMetaData faMetadata(metaData_->GetData());
+    uint32_t *ptr = static_cast<uint32_t *>(metaData_->GetData());
     ptr[1] = 0U;
     ptr[2] = mBaseSize_;
     ptr[3] = s2BaseSize_;
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
         faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, 0U);
@@ -370,12 +370,12 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetaData(const SplitResult &
         faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
-        for (uint32_t j = 0; j < optiling::FD_METADATA_SIZE; ++j) {
+    for (uint32_t i = 0; i < optiling::AIV_CORE_NUM; i++) {
+        for (uint32_t j = 0; j < optiling::FD_METADATA_SIZE; j++) {
             faMetadata.fdMetadata[i * optiling::FD_METADATA_SIZE + j] = 0U;
         }
     }
-    for (uint32_t i = 0; i < splitRes.usedCoreNum; ++i) {
+    for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
         faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 1U);
         uint32_t bn1Start = (i == 0) ? 0U : splitRes.bN2End[i - 1] * groupSize_;
         uint32_t bn1End = splitRes.bN2End[i] * groupSize_;
