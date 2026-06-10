@@ -917,12 +917,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(GMMAddrI
             AscendC::Nop<200>();
         }
         uint32_t rowStart = rgIdx * L1_TILE_M_256;
-        uint32_t rowCount = Min(L1_TILE_M_256, m_expert - rowStart);
+        uint32_t rowCount = (L1_TILE_M_256 < m_expert - rowStart) ? L1_TILE_M_256 : m_expert - rowStart;
         uint32_t rowsPerCore = Ops::Base::CeilDiv(rowCount, myGrpSize);
         int32_t myRowOffset = myIdxInGrp * rowsPerCore;
         uint32_t myRowCount = 0;
         if (myRowOffset < (int32_t)rowCount) {
-            myRowCount = Min(rowsPerCore, rowCount - myRowOffset);
+            myRowCount = (rowsPerCore < rowCount - myRowOffset) ? rowsPerCore : rowCount - myRowOffset;
         }
         if (myRowCount > 0) {
             AscendC::SetCtrlSpr<60, 60>(0);
