@@ -461,6 +461,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (startExpert >= endExpert || processExpertNum == 0) { 
         return; 
     }
+    uint32_t lenth = Ceil(processExpertNum * sizeof(uint32_t),UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sendCntBuf_, lenth);
     tpipe_->InitBuffer(sendSumBuf_, lenth);
     sendCntTensor_ = sendCntBuf_.Get<int32_t>();
