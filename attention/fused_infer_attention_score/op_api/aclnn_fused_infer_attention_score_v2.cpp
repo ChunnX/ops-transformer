@@ -175,7 +175,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret = CheckTensorContiguous(key, value);
+    aclnnStatus ret = CheckKVContiguous(key, value);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         return ret;
     }
