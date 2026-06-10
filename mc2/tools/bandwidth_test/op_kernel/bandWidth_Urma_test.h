@@ -496,7 +496,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                 continue;
             }
             for (uint32_t j = 0; j < curSendCnt; ++j) {
-                uint32_t sendFlag = 0;
+                int32_t sendFlag = 0;
                 __gm__ int32_t* sendFlagHandle = (__gm__ int32_t*)(sendHandleWorkspace_ + (i * axisBS_ + j) * sizeof(int32_t));
                 sendFlag = ReadGmByPassDCache(sendFlagHandle);
                 if (sendFlag == 1) {
