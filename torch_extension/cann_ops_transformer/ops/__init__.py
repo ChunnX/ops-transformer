@@ -38,3 +38,4 @@ from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer, EPHandle
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
