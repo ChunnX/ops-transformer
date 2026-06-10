@@ -448,6 +448,7 @@ aclnnStatus ProcessDropAndPadTokensGrad(
     CHECK_RET(tokensGradOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     return ACLNN_SUCCESS;
+    
 }
 
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
