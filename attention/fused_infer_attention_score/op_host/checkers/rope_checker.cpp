@@ -357,12 +357,12 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
     // 一个空 一个非空
     OP_CHECK_IF((queryRopeTensor == nullptr && keyRopeTensor != nullptr),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
-                                                      "When query_rope is not empty, key_rope cannot be empty"),
+                                                      "When query_rope is empty, key_rope must be empty"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((keyRopeTensor == nullptr && queryRopeTensor != nullptr),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
-                                                      "When query_rope is empty, key_rope must be empty"),
+                                                      "When query_rope is not empty, key_rope cannot be empty"),
                 return ge::GRAPH_FAILED);
 
     // rope split时 rope必须都存在
