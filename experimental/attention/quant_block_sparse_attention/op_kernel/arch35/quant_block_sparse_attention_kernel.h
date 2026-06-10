@@ -82,8 +82,8 @@ public:
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void AnalysisSparseIndices();
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
-                                      int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr &runParam);
+                                      int64_t s2LoopLimit, int64_t multiCoreInnerIdx, uint64_t sparseBase);
+    __aicore__ inline void SetSparseIndicesRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t s2LoopCount, int64_t s2LoopLimit, uint64_t sparseBase);
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void InitUniqueConstInfo();
@@ -127,10 +127,6 @@ public:
 
     ConstInfo constInfo;
     AttenMaskInfo attenMaskInfo;
-    uint64_t s1SizeAcc;
-    uint64_t s2SizeAcc;
-    uint64_t s1ScaleNumAcc;
-    uint64_t s2ScaleNumAcc;
 
     int64_t actualKVPrefixLen = 0;
 
@@ -184,6 +180,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe);
     this->InitLocalBuffer();
+    this->AnalysisSparseIndices();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -275,8 +272,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint64_t dimInfo[4];
     sparseIndicesTensorDesc.SetShapeAddr(&dimInfo[0]);
     sparseIndicesListTensorDesc.GetDesc(sparseIndicesTensorDesc, 0);
-    runInfo.maxQb = sparseIndicesTensorDesc.GetShape(2);
-    runInfo.maxKb = sparseIndicesTensorDesc.GetShape(3);
+    constInfo.maxQb = sparseIndicesTensorDesc.GetShape(2);
+    constInfo.maxKb = sparseIndicesTensorDesc.GetShape(3);
 }
 
     
@@ -371,12 +368,43 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
+__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::SetSparseIndicesRunInfo(
+    RunInfo &runInfo, RunParamStr &runParam, int64_t s2LoopCount, int64_t s2LoopLimit, uint64_t sparseBase
+)
 {
-    runInfo.s2StartIdx = runParam.s2LineStartIdx;
-    runInfo.s2EndIdx = runParam.s2LineEndIdx;
+    uint64_t sparseLoopCountOffset = sparseBase + s2LoopCount * 2;
+    runInfo.sparseBlkIdx1 = sparseIndicesGm.GetValue(sparseLoopCountOffset);
+    runInfo.sparseBlkIdx2 = sparseIndicesGm.GetValue(sparseLoopCountOffset + 1);
+    if ((runInfo.sparseBlkIdx1 + 1) * constInfo.blockSize > runParam.actualS2Size) {
+        runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.blockSize;
+        runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
+    }
+    if ((runInfo.sparseBlkIdx2 + 1) * constInfo.blockSize > runParam.actualS2Size) {
+        runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.blockSize;
+        runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
+    }
+
+    // 判断当前sparse块是否需要计算
+    uint32_t delta = -runParam.nextTokensPerBatch;
+    uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
+    uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
+    uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
+    uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.blockSize;
+    AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1, runInfo.sparseBlk1PartialMask);
+    AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2, runInfo.sparseBlk2PartialMask);
+}
+
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::SetRunInfo(
+    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx, uint64_t sparseBase)
+{
+    // sparseIndices 相关计算
+    SetSparseIndicesRunInfo(runInfo, runParam, s2LoopCount, s2LoopLimit, sparseBase);
+    runInfo.s2StartIdx = 0;         // sparsemode仅支持0/3  且  逻辑分核不会对S2进行分核
     runInfo.s2LoopCount = s2LoopCount;
+    runInfo.qBOffset = runParam.qBOffset;
+    runInfo.qBScalarOffset = runParam.qBScalarOffset;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
@@ -386,15 +414,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
-    if constexpr (layout == BSALayout::TND) {
-        runInfo.boIdx = runParam.boIdx;
-        runInfo.s1ScaleNumAcc = s1ScaleNumAcc;
-        runInfo.s2ScaleNumAcc = s2ScaleNumAcc;
-        runInfo.s1SizeAcc = s1SizeAcc;
-        runInfo.s2SizeAcc = s2SizeAcc;
-    } else {
-        runInfo.s2SizeAcc = runInfo.boIdx * constInfo.s2Size;
-    }
+
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
@@ -417,15 +437,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
     runInfo.halfS1RealSize = runParam.halfS1RealSize;
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
-
     runInfo.vec2S1BaseSize = runInfo.halfS1RealSize;
 
-    runInfo.s2RealSize = s2BaseSize;
-    runInfo.s2AlignedSize = runInfo.s2RealSize;
-    if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-        runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
-    }
+    runInfo.s2RealSize = runInfo.s2SparseBlk1RealSize + runInfo.s2SparseBlk2RealSize;
+    runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -475,8 +490,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint32_t bn1EndIdx;
     uint32_t s1StartIdx;
     uint32_t s1EndIdx;
-    uint32_t s2StartIdx;
-    uint32_t s2EndIdx;
 
     int64_t s2LoopLimit;
     int64_t taskId = 0;
@@ -505,17 +518,18 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(s1Index, runParam);
                 ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->actualSeqQlenAddr);
-                if (ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, sparseIndicesGm)) {
+                bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
+                if (s2NoNeedCalc) {
                     continue;
                 }
-                sparseBase = (runParam.boIdx*constInfo.n1Size+runParam.n1oIdx)*runInfo.maxQb*runInfo.maxKb + 
-                             s1Index*runInfo.maxKb;
+                sparseBase = (runParam.boIdx*constInfo.n1Size+runParam.n1oIdx)*constInfo.maxQb*constInfo.maxKb + 
+                             s1Index*constInfo.maxKb;
             }
             s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId & 3];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx, sparseBase);
                     if ASCEND_IS_AIC {
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
                     }
@@ -523,7 +537,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 if (taskId > 0 && notLastTwoLoop) {
                     if ASCEND_IS_AIV {
                         auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                        // AttentionMaskFullProcessingOrRequired();
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
                             this->constInfo);
                     }

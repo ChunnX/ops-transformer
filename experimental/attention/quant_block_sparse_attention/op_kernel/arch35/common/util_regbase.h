@@ -17,6 +17,7 @@
 #define FLASH_ATTENTION_UTIL_REGBASE_H
 
 #include "util.h"
+#include "../../quant_block_sparse_attention_common.h"
 
 using AscendC::TQue;
 using AscendC::QuePosition;
@@ -76,8 +77,6 @@ enum class SparseType : uint8_t {
     int64_t n2oIdx; \
     int64_t goIdx; \
     int32_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
-    int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
-    int64_t s2LineEndIdx;          /* S2方向按行的结束位置 */ \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
@@ -96,6 +95,7 @@ enum class SparseType : uint8_t {
 struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
+    int32_t sparseSeqLen;
     int64_t s1LoopStart;
     int64_t s1LoopEnd;
     // BN循环生产的数据
@@ -109,8 +109,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 
     // q k v attenMask不同轴的offset
     // B轴offset 
-    int64_t qBOffset;             // bIdx * seqSize * multiHeadQ，后续更名为qBOffset batch层确定
-    int64_t qRopeBOffset;         // batch层确定 actualSeqLengths相关
+    int64_t qBOffset;
+    int64_t qBScalarOffset;
 
     // lse 输出offset
     int64_t softmaxLseOffset;       // souter层确定
@@ -118,9 +118,10 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 
 #define COMMON_RUN_INFO \
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
-    int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
     int64_t s2LoopLimit; \
+    int64_t qBOffset;   \
+    int64_t qBScalarOffset; \
     int64_t s1oIdx = 0; /* s1轴的index */ \
     int64_t boIdx = 0; /* b轴的index */ \
     int64_t n2oIdx = 0; /* n2轴的index */ \
@@ -130,10 +131,14 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */ \
     int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 size */ \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
+    int64_t s2AlignedSize; /* s2方向基本块对齐到16之后的长度 */ \
+    int32_t s2SparseBlk1RealSize;   \
+    int32_t s2SparseBlk1RealAlignedSize;   \
+    int32_t s2SparseBlk2RealSize;   \
+    int32_t s2SparseBlk2RealAlignedSize;   \
     int64_t sparseBase = 0; /* BSA: sparseIndices 当前 (b,n2,g,qb) 基址 */ \
     int64_t sparseS2TokenOffset = 0; /* BSA: sparseIndices 映射后的 actual KV token offset */ \
     int32_t actSparseLen = 0; /* BSA: sparseSeqLen 当前实际选块数 */ \
-    int64_t s2AlignedSize; /* s2方向基本块对齐到16之后的长度 */ \
     int32_t vec2S1BaseSize; /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */ \
     int32_t vec2S1RealSize; /* vector2侧开循环之后，经过切分的S1的尾块大小，例如把63切分成两份32和31，第二份的实际大小是31 */ \
     int64_t vecCoreOffset; /* vec核基于cube核起始处s1方向偏移 */ \
@@ -145,10 +150,6 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     \
     int64_t attentionOutOffset; \
-    uint64_t s1ScaleNumAcc; \
-    uint64_t s2ScaleNumAcc; \
-    int64_t s1SizeAcc;  \
-    int64_t s2SizeAcc;  \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
@@ -165,6 +166,11 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 
 struct RunInfo {
     COMMON_RUN_INFO;
+    /* sparseIndices 偏移量计算 */  
+    int64_t sparseBlkIdx1;      /*256/128 第一个sparse块 */  
+    int64_t sparseBlkIdx2;      /* 256/128 第二个sparse块 */
+    bool sparseBlk1PartialMask;    // true表示部分计算  false表示全量计算
+    bool sparseBlk2PartialMask;    // true表示部分计算  false表示全量计算
     // lse 输出offset
     int64_t softmaxLseOffset;
 };

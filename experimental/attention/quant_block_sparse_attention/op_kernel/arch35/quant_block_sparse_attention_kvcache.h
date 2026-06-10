@@ -80,8 +80,13 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     }
     // 计算query偏移量
     if constexpr (layout == BSALayout::TND) {
-        runParam.qBOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx - 1] * constInfo.n2GD;
+        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx - 1] * constInfo.n2G;
+        runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     }
+
+    // 暂时用不到，但保留的参数计算
+    runParam.b1SSAttenMaskOffset = runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size *
+        (uint64_t)attenMaskInfo.attenMaskS2Size;
 }
 
 TEMPLATE_INTF
@@ -109,8 +114,12 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.s1RealSize = Min(constInfo.s1BaseSize, runParam.actualS1Size - cubeSOuterOffset);
     }
-   
-    runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
+    if constexpr(useDn) {
+        runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5);
+        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
+    } else {
+        runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
+    }
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
@@ -169,11 +178,13 @@ __aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
+__aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo,
+    GlobalTensor<int32_t>& sparseSeqLenGm, int64_t s1Index)
 {
-    
-    // sInnerFirstToken在nomask和maskmode=3场景下均为0
-    runParam.s2LineStartIdx = 0;
+    int64_t sparseSeqLenFlatIdx = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb + s1Index;
+    runParam.sparseSeqLen = sparseSeqLenGm.GetValue(sparseSeqLenFlatIdx);
+    runParam.s2LoopEndIdx = (runParam.sparseSeqLen + 2 - 1) / 2;     // sparse块为128  基本块为256
+    return runParam.sparseSeqLen <= 0;
 }
 
 TEMPLATE_INTF
@@ -212,6 +223,25 @@ __aicore__ inline void UpdateLoopFlagsBasedOnS1Index(
             break;
         default:
             break;
+    }
+}
+__aicore__ inline void AttentionMaskFullProcessingOrRequired(
+    uint32_t s1Offset, uint32_t s2Offset, uint32_t delta, uint32_t realSize, 
+    int64_t& sparseBlkIdx, bool& sparseBlkPartialMask
+)
+{
+    uint32_t offsetDiff = s1Offset - s2Offset - delta;
+    if (offsetDiff + realSize - 1 < 0) {
+        // 情景三
+        sparseBlkIdx = -1;
+        return;
+    }
+    if (offsetDiff - realSize + 1 < 0) {
+        // 情景二
+        sparseBlkPartialMask = true;
+    } else {
+        // 情景一
+        sparseBlkPartialMask = false;
     }
 }
 
