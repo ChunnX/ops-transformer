@@ -20,6 +20,8 @@
 #include "err/ops_err.h"
 
 namespace optiling {
+ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context);
+
 BEGIN_TILING_DATA_DEF(MhcPreSinkhornBackwardTilingData)
 TILING_DATA_FIELD_DEF(int64_t, batchSize)
 TILING_DATA_FIELD_DEF(int64_t, seqLength)
