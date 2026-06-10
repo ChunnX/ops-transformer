@@ -151,6 +151,8 @@ public:
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
                 cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                SET_FLAG(MTE1, MTE2, EVENT_ID0);
+                WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
@@ -158,6 +160,7 @@ public:
             }
             taskId++;
         }
+        cubeOp.Destroy();
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
@@ -193,8 +196,7 @@ public:
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
 
             if (runTimeInfo_[ping_pong_idx].need_compute) {
-                SET_FLAG(MTE3, V, EVENT_ID0);
-                WAIT_FLAG(MTE3, V, EVENT_ID0);
+                vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx]);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
                 vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
