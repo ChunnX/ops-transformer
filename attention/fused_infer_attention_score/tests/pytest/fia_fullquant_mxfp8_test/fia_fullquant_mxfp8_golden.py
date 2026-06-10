@@ -43,13 +43,13 @@ N_q = 1           # query heads
 N_kv = 1           # kv heads
 D = 128
 
-ENABLE_ROPE = True
-D_rope = 64
+ENABLE_ROPE = False
+D_rope = 0
 
 ACTUAL_SEQ_Q = [4]
-ACTUAL_SEQ_KV = [1024]
+ACTUAL_SEQ_KV = [512]
 
-ENABLE_PA = True
+ENABLE_PA = False
 BLOCK_SIZE = 512
 
 SPARSE_MODE = 3
@@ -65,7 +65,7 @@ P_SCALE = 1.0
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
 # PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
-KV_CACHE_LAYOUT = "BnNBsD"
+KV_CACHE_LAYOUT = "PA_NZ"
 
 IS_CONTIGUOUS = True
 
@@ -687,8 +687,7 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
     return S_ij / math.sqrt(d_total)
 
 
-def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale,
-                           q_scale_is_tnd, LN2):
+def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
     """Online softmax: 计算 m, P, s 更新
     1. mask 位置填 -inf
     2. 求 block 内 max (m_block_j)
@@ -701,8 +700,7 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale,
     S_ij = S_ij.masked_fill(mask_j, float('-inf'))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    if q_scale_is_tnd:
-        m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    m_block_j = torch.ceil(m_block_j / LN2) * LN2
     m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
 
@@ -723,8 +721,6 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 512
-
-    q_scale_is_tnd = resolve_q_scale_layout(actual_seq_q)[0] == "TND"
 
     # FP8 → FP32 反量化
     q_tensor = q_fp8.to(torch.float32)
@@ -798,7 +794,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total, Qri, Krj)
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
-                S_ij, mask_j, mi, si, oi, ln_p_scale, q_scale_is_tnd, LN2)
+                S_ij, mask_j, mi, si, oi, ln_p_scale, LN2)
 
             if j + 1 < TILES_KV:
                 # --- 第二个 K block (j+1) ---
@@ -811,7 +807,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 S_ij1 = _compute_s_block(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, d_total, Qri, Krj1)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, q_scale_is_tnd, LN2)
+                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2)
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
                 Vj = V_BLOCKS[j // 2]
@@ -822,10 +818,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                 V_part1 = Vj_dequant[:, :, :Kj.shape[2], :]
                 V_part2 = Vj_dequant[:, :, Kj.shape[2]:Kj.shape[2] + Kj1.shape[2], :]
-                if q_scale_is_tnd:
-                    P_ij_Vj = torch.matmul(P_ij_drop * torch.exp(m_block_j - m_block_j1), V_part1) + torch.matmul(P_ij1_drop, V_part2)
-                else:
-                    P_ij_Vj = torch.matmul(P_ij_drop, V_part1) + torch.matmul(P_ij1_drop, V_part2)
+                P_ij_Vj = torch.matmul(P_ij_drop * torch.exp(m_block_j - m_block_j1), V_part1) + torch.matmul(P_ij1_drop, V_part2)
 
                 update_mul_si = torch.exp(mi - m_block_j1)
                 si_new = update_mul_si * si + s_block_j * torch.exp(m_block_j - m_block_j1) + s_block_j1
@@ -1033,9 +1026,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             logger.info(f"[NPU] kscale is_contiguous={deq_k_npu.is_contiguous()}, vscale is_contiguous={deq_v_npu.is_contiguous()}")
 
 
-        print(f"[NPU PA] kv_layout={KV_CACHE_LAYOUT}")
-        print(f"[NPU PA] k={k_npu.shape}, v={v_npu.shape}")
-        print(f"[NPU PA] deq_k={deq_k_npu.shape}, deq_v={deq_v_npu.shape}")
+        logger.info(f"[NPU PA] kv_layout={KV_CACHE_LAYOUT}")
+        logger.info(f"[NPU PA] k={k_npu.shape}, v={v_npu.shape}")
+        logger.info(f"[NPU PA] deq_k={deq_k_npu.shape}, deq_v={deq_v_npu.shape}")
 
         block_table_npu = block_table_torch.npu() if isinstance(block_table_torch, torch.Tensor) else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         accum_seq_q = make_accum_seq(actual_seq_q)
