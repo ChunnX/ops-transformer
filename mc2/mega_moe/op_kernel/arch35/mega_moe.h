@@ -63,7 +63,7 @@ private:
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId);
     __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
-    template <OffsetUpdateMode Mode>
+    template <AddrUpdateMode Mode>
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
@@ -717,7 +717,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
 //   Phase 2: 更新当前专家id收到的count数;
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
-template <OffsetUpdateMode Mode>
+template <AddrUpdateMode Mode>
 __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0) {
@@ -743,7 +743,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
     }
 
     // gmm1中当前专家收到的count数是由subBlockIdx_=1的aiv计算出并写入expertRevNumsGloablTensor_，通知后续aic读取该值
-    if constexpr (Mode == OffsetUpdateMode::kGmm) {
+    if constexpr (Mode == AddrUpdateMode::kGmm1) {
         if constexpr (g_coreType == AscendC::AIC) {
             CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(2 + 16);
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
@@ -763,7 +763,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
                 Get<M_VALUE>(state.problemShape) = totalSendCntInExp_;
             }
         }
-    } else {
+    } else if constexpr (Mode == AddrUpdateMode::kGmm2) {
         uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
@@ -801,13 +801,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     } else if constexpr(Mode == AddrUpdateMode::kGmm2 && g_coreType == AIC) {
-        gmmAddrInfo.aGlobal = params_.workspaceInfo.swigluQuantDataPtr +
-            Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(QuantOutType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) *
-                                    sizeof(QuantScaleOutType);
+        gmmAddrInfo.aGlobal =
+            params_.workspaceInfo.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(QuantOutType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr +
+                                   Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(QuantOutType);
-        gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) *
-                                    sizeof(QuantScaleOutType);
+        gmmAddrInfo.bScaleGlobal =
+            params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
                                 Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
@@ -976,7 +976,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
             }
         }
-        if (!UpdateGroupParams<OffsetUpdateMode::kGmm>(gmm1State, localExpertId)) {  // 更新偏移
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
@@ -1003,7 +1003,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     expertBeforeCnt_ = 0;
     ExpertLoopState gmm2State{initShape, initOffset};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams<OffsetUpdateMode::kGmm>(gmm2State, expertIdx)) {
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
