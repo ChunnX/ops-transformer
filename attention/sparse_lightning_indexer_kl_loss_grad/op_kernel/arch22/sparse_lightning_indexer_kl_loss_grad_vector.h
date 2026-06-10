@@ -1385,14 +1385,6 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm, kRealSizeAlign16);
     }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumResTensor, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumResTensor, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    }
-
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
 
@@ -1520,14 +1512,6 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSizeAlign16);
     }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumResTensor, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumResTensor, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    }
-
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
 
