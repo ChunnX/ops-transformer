@@ -75,7 +75,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>当前层的输入token特征，对应公式中的x_l</td>
+        <td>当前层的输入token特征，对应公式中的xψ<sub>l</sub></td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -88,7 +88,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>残差连接矩阵，对应公式中的H_l^res</td>
+        <td>残差连接矩阵，对应公式中的Hψ<sub>l</sub>ψ<sup>res</sup></td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -101,7 +101,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>上一层的输出状态，对应公式中的H_l^out</td>
+        <td>上一层的输出状态，对应公式中的Hψ<sub>l</sub>ψ<sup>out</sup></td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
@@ -114,7 +114,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_post</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>后处理权重矩阵，对应公式中的H_t^post</td>
+        <td>后处理权重矩阵，对应公式中的Hψ<sub>t</sub>ψ<sup>post</sup></td>
         <td>FLOAT32</td>
         <td>
             <ul>
@@ -151,7 +151,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>y</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>MHC Post计算输出，对应公式中的x_l+1，数据类型与输入`x`保持一致，shape与输入`x`保持一致</td>
+        <td>MHC Post计算输出，对应公式中的xψ<sub>l+1</sub>，数据类型与输入`x`保持一致，shape与输入`x`保持一致</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>
             <ul>
