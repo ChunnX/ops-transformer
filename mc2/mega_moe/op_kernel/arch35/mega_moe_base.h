@@ -35,6 +35,7 @@ struct GMMAddrInfo {
     GM_ADDR bScaleGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
+    GM_ADDR gmm2OutGlobal;
 };
 
 struct PeermemInfo {
