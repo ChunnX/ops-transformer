@@ -429,8 +429,8 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
         uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->s1TotalSize);
         n2OffsetU64 = n2OffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
-        uint64_t bOffsetU64 =
-            static_cast<uint64_t>(extraInfo.s1SizeAcc) * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
+        uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s1SizeAcc) *
+            static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
         uint64_t s1gOffsetU64 =
             static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->tilingData->coreParams.s1BaseSize);
         s1gOffsetU64 = s1gOffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
@@ -840,8 +840,8 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     int64_t s1gOffset = 0;
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
-        uint64_t n2OffsetU64 =
-            static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->s1TotalSize) * static_cast<uint64_t>(k);
+        uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) *
+            static_cast<uint64_t>(this->s1TotalSize) * static_cast<uint64_t>(k);
         uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s1SizeAcc) * static_cast<uint64_t>(k);
         uint64_t s1Base =
             static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->tilingData->coreParams.s1BaseSize);
