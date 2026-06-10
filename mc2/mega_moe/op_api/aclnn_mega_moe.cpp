@@ -30,6 +30,8 @@ using namespace op;
 extern "C" {
 #endif
 
+static constexpr size_t COMM_ALG_LEN_MAX = 128U;
+
 // 将int4打包为int32输入的Tensor还原回int4
 aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor* executor)
 {
@@ -135,9 +137,15 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
             weight2 = ConvertTensorListToInt4(weight2, *executor);
         }
     }
-
-    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
-    SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
+    
+    
+    if (commAlg != nullptr && strlen(commAlg) >= COMM_ALG_LEN_MAX) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commAlg length %zu exceeds max limit %zu.", 
+                strlen(commAlg), COMM_ALG_LEN_MAX);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    char commAlgBuf[COMM_ALG_LEN_MAX] = {0};
+    SafeCopyGroupBuf(commAlgBuf, COMM_ALG_LEN_MAX, commAlg, COMM_ALG_LEN_MAX - 1);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
