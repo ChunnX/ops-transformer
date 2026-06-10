@@ -21,16 +21,15 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include "hccl_common.h"
 
 namespace op_api {
 
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
-constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
-constexpr uint64_t COMM_DEFAULT_BUF_BYTES = 500ULL * 1024ULL * 1024ULL;
+// URMA 链路协议值（AIV URMA, local UB fabric）
+constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
+constexpr int COMM_PROTOCOL_UBC_TP_VALUE  = 5;
 
 struct CommContext {
     uint32_t epRankId = 0;
@@ -43,49 +42,32 @@ void CopyContextToTensor(const CommContext &context, at::Tensor &tensor);
 class HcclChannelContextBuilder {
 public:
     void *myBufHost_ = nullptr;
-    void *myBufDev_ = nullptr;
-    HcclMemHandle myMemHandle_ = nullptr;
+    void *selfBufDev_ = nullptr;
+    HcclMemHandle memHandle_ = nullptr;
     uint64_t bufBytes_ = 0;
-    uint32_t rankId_ = 0;
-    uint32_t rankSize_ = 0;
-    std::vector<uint64_t> peerBufAddrs_;
-    std::vector<uint64_t> channelPtrByRank_;
 
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor);
-    CommContext Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize);
+    void Build(const std::string &group, int64_t worldSize, uint64_t bufBytes, at::Tensor &contextTensor);
+    CommContext Build(const std::string &group, int64_t worldSize, uint64_t bufBytes);
     void AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle);
     void BuildContext(const HcclComm &hcclHandle, const std::string &group,
-                      const CommProtocol &protocol, CommContext &commContextStruct,
-                      int64_t &cclBufferSize);
-    void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol);
-    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum);
+                      CommContext &commContextStruct);
     static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
     void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
-                                    uint64_t bufBytes);
-    void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                          const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc);
+                                    uint32_t rankId);
+    void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
+                           std::vector<HcclChannelDesc> &channelDesc);
     void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                             const CommProtocol &protocol, const CommEngine &engine,
-                             std::vector<ChannelHandle> &channels);
-    void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
+                             ChannelHandle *channels, uint32_t length);
+    void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine,
                               CommContext *commContextStruct, uint32_t rankSize);
-    void CollectChannelPtrs(const HcclComm &commHandle,
-                             const std::vector<ChannelHandle> &channels,
-                             uint32_t srcRankId, uint32_t rankSize,
-                             CommContext *commContextStruct);
     void CreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag,
-                        const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                        CommContext &commContextStruct, uint64_t bufBytes);
-    static void GetNetLayers(const HcclComm &commHandle, uint32_t *&netLayerList, uint32_t &netLayerNum);
-    static void GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, uint32_t srcRankId,
-                                  uint32_t dstRankId, const CommProtocol &protocol, CommLink *&links);
-
-    std::unordered_map<uint32_t, uint32_t> layerMap_;
+                        const CommEngine &engine, void *&ctx,
+                        CommContext &commContextStruct);
 };
 
 class CommContextManager {
 public:
-    CommContextManager(const std::string &group, int64_t worldSize);
+    CommContextManager(const std::string &group, int64_t worldSize, int64_t cclBufferSize);
     ~CommContextManager();
 
     at::Tensor create_context();
@@ -99,16 +81,10 @@ private:
 
     std::string group_;
     int64_t worldSize_;
-    int64_t cclBufferSize_ = 0;
+    int64_t cclBufferSize_;
     bool initialized_ = false;
     void *myBufHost_ = nullptr;
-    void *myBufDev_ = nullptr;
-    HcclMemHandle myMemHandle_ = nullptr;
-    uint64_t bufBytes_ = 0;
-    uint32_t rankId_ = 0;
-    uint32_t rankSize_ = 0;
-    std::vector<uint64_t> peerBufAddrs_;
-    std::vector<uint64_t> channelPtrByRank_;
+    CommContext cachedContext_ = {};
 };
 
 } // namespace op_api
