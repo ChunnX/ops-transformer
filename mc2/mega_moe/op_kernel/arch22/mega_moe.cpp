@@ -43,7 +43,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     REGISTER_TILING_DEFAULT(MegaMoeTilingDataNonQuant);
     REGISTER_TILING_FOR_TILINGKEY("(QuantMode == MEGA_MOE_QUANT_MODE_PER_TENSOR)", MegaMoeTilingDataQuant);
     if constexpr (isA2) {
-#if (ORIG_DTYPE_WEIGHT1 != DT_INT4)
         if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
 
@@ -59,7 +58,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                     xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
-#endif
     } else {
         if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
