@@ -1096,7 +1096,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::BnNBsD && fiaInfo.kvLayout != FiaLayout::NZ),
                 OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "key",
                     LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                    "In MXFP8 fullquant scenario, the layout of key only supports BnNBsD or NZ when PA is enabled");
+                    "In MXFP8 fullquant scenario, the layout of key only supports BnNBsD or NZ when PA is enabled"),
                 return ge::GRAPH_FAILED);
         // pa场景 BNBD/NZ支持0/1轴非连续
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex)) &&
