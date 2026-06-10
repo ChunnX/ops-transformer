@@ -182,6 +182,8 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
         }
     }
 
+    OP_LOGI(fiaInfo.opName, "GSMerge judge");
+
     SetGSMerge(fiaInfo);
     SetIsIFA(fiaInfo);
     if (!fiaInfo.antiQuantFlag) {
