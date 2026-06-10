@@ -46,7 +46,8 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
     auto scaleDimNum = wScaleShape.GetDimNum();
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
-           (scaleDimNum == 1 || (scaleDimNum == 2 && static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+           (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
+                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }

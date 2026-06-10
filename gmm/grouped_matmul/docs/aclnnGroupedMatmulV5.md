@@ -269,7 +269,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       <tr>
           <td>tuningConfigOptional</td>
           <td>可选输入</td>
-          <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。<br>第二个数代表A8W4可选使能weight，先转置的NZ格式。<br>第三个数代表允许额外使用的内存空间。详见<a href="#约束说明">约束说明</a>。</td>
+          <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。<br>第二个数代表A8W4可选开启weight，先转置的NZ格式。<br>第三个数代表允许额外使用的内存空间。详见<a href="#约束说明">约束说明</a>。</td>
           <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
           <td>INT64</td>
           <td>-</td>
@@ -591,7 +591,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       - offset不为空时
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, 1, N]$。
         - 该场景下offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
-      - tuningConfigOptional数组第二个元素可置1，以使能A8W4场景中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考:K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入。
+      - tuningConfigOptional数组第二个元素可置1，以开启A8W4场景中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考:K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入。
     </details>
 
     <a id="a16w4场景约束"></a>
@@ -755,7 +755,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       * 第二个元素：
 
-        语义：是否使能weight为亲核格式，该格式需要先将weight内存排布转置，然后转为NZ格式。
+        语义：是否开启weight为亲核格式，该格式需要先将weight内存排布转置，然后转为NZ格式。
 
         适用场景：[a8w4场景](#a8w4场景约束)。
 

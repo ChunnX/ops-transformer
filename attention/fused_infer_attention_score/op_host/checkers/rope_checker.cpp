@@ -65,7 +65,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
         OP_LOGE(fiaInfo.opName,
             "In MXFP8 fullquant scenario, when rope exist, "

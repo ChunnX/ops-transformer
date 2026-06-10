@@ -25,7 +25,7 @@ using namespace optiling::GmmConstant;
 
 namespace QuantGroupedMatmulInplaceAdd {
 
-bool AnalyzeAttrsForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inputParams)
+bool AnalyzeAttrsForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo &inputParams)
 {
     auto attrs = context->GetAttrs();
     if (attrs != nullptr) {
@@ -49,7 +49,7 @@ bool AnalyzeAttrsForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inpu
     return true;
 }
 
-bool AnalyzeDtypeForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inputParams)
+bool AnalyzeDtypeForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo &inputParams)
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
@@ -129,7 +129,7 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
     return false;
 }
 
-bool CheckCoreNumForInplaceAdd(gert::TilingContext *context, const GQmmInputInfo &inputParams)
+bool CheckCoreNumForInplaceAdd(const gert::TilingContext *context, const GQmmInputInfo &inputParams)
 {
     auto aicNum = context->GetCompileInfo<GMMCompileInfo>()->aicNum;
     auto aivNum = context->GetCompileInfo<GMMCompileInfo>()->aivNum;
@@ -160,7 +160,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
                     StrCat("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
                            inputParams.groupNum, "]")),
                 return false);
-    if (x1ScaleDimNum == 2) {
+    if (x1ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
         auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
         OP_CHECK_IF(x1LastDim != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale1",
@@ -183,7 +183,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
                                                              "groupNum[",
                                                              inputParams.groupNum, "]")),
                 return false);
-    if (x2ScaleDimNum == 2) {
+    if (x2ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(

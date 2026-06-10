@@ -724,7 +724,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     </tbody>
     </table>
 
-  - 说明：BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。
+  - 说明：BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。
 
 - softmaxLse使用限制如下：
 
@@ -808,14 +808,14 @@ aclnnStatus aclnnFusedInferAttentionScore(
 
   - page attention场景：
 
-    - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
-    - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致
+    - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - page attention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。当query的inputLayout为BNSD时，kv cache排布支持BnBsH和BnNBsD两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致
     - page attention不支持伪量化场景，不支持tensorlist场景，不支持左padding场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）。
     - page attention场景下，不支持query为int8。
-    - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
+    - page attention的开启场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
       - 传入attenMask时，如 mask shape为 (B, 1, Q_S, KV_S)
       - 传入pseShift时，如 pseShift shape为(B, N, Q_S, KV_S)
     
@@ -823,15 +823,15 @@ aclnnStatus aclnnFusedInferAttentionScore(
 
     - query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。
     - 场景kvPaddingSize小于0时将被置为0。
-    - 场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。
-    - 场景不支持PageAttention，不能与blockTable参数一起使能。
+    - 场景需要与actualSeqLengths参数一起开启，否则默认为query右padding场景。
+    - 场景不支持PageAttention，不能与blockTable参数一起开启。
     
   - kv左padding场景：
 
     - key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。
     - kvPaddingSize小于0时将被置为0。
-    - 需要与actualSeqLengthsKv参数一起使能，否则默认为kv右padding场景。
-    - 不支持PageAttention，不能与blockTable参数一起使能。
+    - 需要与actualSeqLengthsKv参数一起开启，否则默认为kv右padding场景。
+    - 不支持PageAttention，不能与blockTable参数一起开启。
     
   - 输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
 
@@ -843,7 +843,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - query数据类型为FLOAT16且pseShift存在时，强制走高精度模式，对应的限制继承自高精度模式的限制。
     - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。
     
-  - 输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：
+  - 输出为INT8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部开启）：
 
   - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件
   - sparseMode = 1 或 2，不会出现满足拦截条件的情况
@@ -856,22 +856,22 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - 支持B轴小于等于65536，支持N轴小于等于256，支持D轴小于等于512。
     - query、key、value输入类型均为INT8的场景暂不支持。
   - page attention场景:
-    - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-    - page attention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
+    - page attention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
     - page attention不支持tensorlist场景，不支持左padding场景。
     - page attention场景下，必须传入actualSeqLengthsKv。
     - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-    - page attention的使能场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
+    - page attention的开启场景下，以下场景输入KV_S需要大于等于maxBlockNumPerSeq * blockSize
       - 传入attenMask时，如 mask shape为 (B, 1, Q_S, KV_S)
       - 传入pseShift时，如 pseShift shape为(B, N, Q_S, KV_S)
   - kv左padding场景:
     - kvCache的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengths。kvCache的搬运终点计算公式为：KV_S - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
     - kvPaddingSize小于0时将被置为0。
-    - 需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
-    - 与attenMask参数一起使能时，需要保证attenMask含义正确，即能够正确地对无效数据进行隐藏。否则将引入精度问题。
+    - 需要与actualSeqLengths参数一起开启，否则默认为kv右padding场景。
+    - 与attenMask参数一起开启时，需要保证attenMask含义正确，即能够正确地对无效数据进行隐藏。否则将引入精度问题。
   - pseShift功能使用限制如下：
     - pseShift数据类型需与query数据类型保持一致。
 

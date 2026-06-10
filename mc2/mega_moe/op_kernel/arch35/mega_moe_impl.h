@@ -30,20 +30,20 @@
 
 #include "mega_moe_combine_send.h"
 
-using namespace AscendC;
-
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;  // 3: SwizzleOffset
 constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M = 256;
+constexpr uint32_t L1_TILE_M_256 = 256;
+constexpr uint32_t L1_TILE_M_128 = 128;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
 constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
-constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
-constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
+constexpr uint32_t MAX_SINGLE_MN_256_256 = 256 * 256;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U) / ALIGN32 * ALIGN32;
+constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
@@ -95,7 +95,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n); // block mmad需要传入bias
-    auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+    auto layoutC = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -108,34 +108,15 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2 // 2: double buffer
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
     int64_t ubOffset = 0;
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_256 * sizeof(ElementC);
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-
-    GlobalTensor<ElementA> aGlobalTensor;
-    GlobalTensor<ElementB> bGlobalTensor;
-
-    aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
-    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
-
-    // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
-    // data reads will bypass L2 Cache.
-    if (CeilDiv(m, L1_TILE_M) == 1) {
-        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-    } else {
-        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-    }
-    if (CeilDiv(n, L1_TILE_N) == 1) {
-        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-    } else {
-        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-    }
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -151,13 +132,13 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     BlockScheduler scheduler(
         {m, outputN, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
 
-    // wave-grain dispatch flag: 每 wave (L1_TILE_M 行) 一个槽，dispatch 完成该 wave 内行数累加。
-    // 目标值 = 该 wave 实际行数 = min(L1_TILE_M, m - mLoc)（尾 wave 可能 < L1_TILE_M）。
-    // 仅在 wave 切换时等待，跨 nLoc 不同的同 mLoc tile 复用上次等待结果。
+    // wave-grain dispatch flag: 每 wave (L1_TILE_M_256 行) 一个槽,dispatch 完成的行数累加到该槽。
+    // 目标值 = 该 wave 实际行数 = min(L1_TILE_M_256, m - mLoc) (尾 wave 可能 < L1_TILE_M_256)。
+    // 仅在 wave 切换时等待;跨 nLoc 不同的同 mLoc tile 复用上次等待结果。
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
@@ -169,9 +150,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
         if constexpr (g_coreType == AscendC::AIC) {
-            uint32_t waveIdx = mLoc / L1_TILE_M;
+            uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
-                uint32_t targetValue = (mLoc + L1_TILE_M > m) ? (m - mLoc) : L1_TILE_M;
+                uint32_t targetValue = (mLoc + L1_TILE_M_256 > m) ? (m - mLoc) : L1_TILE_M_256;
                 __gm__ int32_t* flagValueAddr =
                     (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr() + waveIdx;
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
@@ -233,14 +214,14 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法 + Combine
+// GroupMatmul2Impl - GMM2矩阵乘法 + Combine (合并Normal和Wave模式)
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
-__aicore__ inline void GroupMatmul2(
+__aicore__ inline void GroupMatmul2Combine(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2,
+    uint32_t groupCnt, uint16_t& pingpongIdx)
 {
-    constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
+    constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M_128 * L1_TILE_N;
 
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<K_VALUE>(problemShape);
@@ -282,7 +263,7 @@ __aicore__ inline void GroupMatmul2(
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n); // block mmad需要传入bias
-    auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+    auto layoutC = MakeLayoutC{}(L1_TILE_M_128, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -295,36 +276,19 @@ __aicore__ inline void GroupMatmul2(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2 // 2: double buffer
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_128, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
     int64_t ubOffset = 0;
-    LocalTensor<ElementC> l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+    LocalTensor<ElementC> l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN,
+        ubOffset, L1_TILE_M_128 * L1_TILE_N);
     auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_128 * sizeof(ElementC);
+    LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN,
+        ubOffset, L1_TILE_M_128 * L1_TILE_N);
     auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-
-    GlobalTensor<ElementA> aGlobalTensor;
-    GlobalTensor<ElementB> bGlobalTensor;
-
-    aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
-    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
-
-    // Matrix A or Matrix B does not have duplicate data reads. Setting L2 Cache to Disable,
-    // data reads will bypass L2 Cache.
-    if (CeilDiv(m, L1_TILE_M) == 1) {
-        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-    } else {
-        bGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-    }
-    if (CeilDiv(n, L1_TILE_N) == 1) {
-        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-    } else {
-        aGlobalTensor.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-    }
 
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
@@ -340,7 +304,7 @@ __aicore__ inline void GroupMatmul2(
 
     BlockScheduler scheduler(
         {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_128), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
 
@@ -359,7 +323,7 @@ __aicore__ inline void GroupMatmul2(
             if (loopIdx == startLoopIdx) {
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
-                    BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M),
+                    BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
                         static_cast<int64_t>(L1_TILE_N))});
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
@@ -399,10 +363,16 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::GlobalTensor<int32_t> tripleGm;
+            int32_t lenTile = Get<M_VALUE>(actualShape);
+            LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, lenTile * 8);
+            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
+                (groupCnt + mLoc) * 32));
+            AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);
@@ -411,7 +381,6 @@ __aicore__ inline void GroupMatmul2(
     }
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
-
 } // namespace MegaMoeImpl
 
 #endif

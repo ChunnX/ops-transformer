@@ -33,7 +33,6 @@
 #include "log/log.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
-#include "mc2_quant_reduce_scatter_context.h"
 
 namespace Mc2Aclnn {
 
@@ -42,8 +41,6 @@ public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context, CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
-    static aclnnStatus GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
-                                                 aclTensor *&mc2Context, int64_t &worldSize);
 
 private:
      static Mc2Context &GetInstance();
@@ -77,15 +74,6 @@ private:
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList, const CommProtocol &protocol);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                   const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
-    /* for quant_reduce_scatter */
-    aclnnStatus GetHcclCommResourceForQrs(const HcclComm &hcclHandle, const CommEngine &engine,
-                                          const CommProtocol &protocol, Mc2QuantReduceScatterContext *mc2ContextStruct);
-    aclnnStatus CreatMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                      const CommEngine &engine, const CommProtocol &protocol,
-                                      Mc2QuantReduceScatterContext *mc2ContextStruct, void *&ctx,
-                                      uint64_t &hcclBuffSize);
-    aclnnStatus CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Context);
-
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);

@@ -13,8 +13,8 @@ from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
-from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
+from .moe_distribute_combine import npu_moe_distribute_combine
+from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .comm_context import CommContextManager
 
 
@@ -104,7 +104,7 @@ class MoeDistributeBuffer:
                              const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1,
                              shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0):
         (expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, tp_recv_counts, expand_scales) \
-            = torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch_v3(
+            = torch.ops.npu_ops_transformer.npu_moe_distribute_dispatch(
                                              context=self.context,
                                              x=x,
                                              expert_ids=topk_idx,
@@ -135,7 +135,7 @@ class MoeDistributeBuffer:
                             const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
                             const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0,
                             num_max_dispatch_tokens_per_rank=0):
-        return torch.ops.npu_ops_transformer.npu_moe_distribute_combine_v3(
+        return torch.ops.npu_ops_transformer.npu_moe_distribute_combine(
                                              context=self.context,
                                              expand_x=x,
                                              expert_ids=topk_idx,

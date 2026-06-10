@@ -29,6 +29,7 @@ struct MatmulAllReduceHostUtParamBase {
     int64_t group_size;
     ge::DataType y_dtype;
     int64_t comm_quant_mode;
+    std::string comm_mode;
     ge::graphStatus expectResult;
 
     MatmulAllReduceHostUtParamBase(const csv_map& csvMap)
@@ -43,6 +44,7 @@ struct MatmulAllReduceHostUtParamBase {
         this->group_size = stoll(ReadMap(csvMap, "group_size"));
         this->y_dtype = Str2DTypeGE(ReadMap(csvMap, "y_dtype"));
         this->comm_quant_mode = stoll(ReadMap(csvMap, "comm_quant_mode"));
+        this->comm_mode = ReadMap(csvMap, "comm_mode", "");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectResult"));
     }
 };
