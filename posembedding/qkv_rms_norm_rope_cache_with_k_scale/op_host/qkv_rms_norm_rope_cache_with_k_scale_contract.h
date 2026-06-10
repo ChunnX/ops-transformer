@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <string>
 
+#include "graph/ge_error_codes.h"
+
 namespace optiling {
 namespace qkv_rms_norm_rope_cache_with_k_scale {
 
@@ -26,39 +28,6 @@ constexpr uint64_t kUbOutputRowsPerAiv = 128;
 constexpr uint64_t kFp8NtdStagingRowsPerAiv = 80;
 constexpr uint64_t kDimTileFast = 128;
 constexpr uint64_t kAivPerAic = 2;
-
-enum class ContractStatus : uint32_t {
-    kSuccess = 0,
-    kInvalidTotalTokens,
-    kInvalidBatch,
-    kInvalidHeadNums,
-    kInvalidDtype,
-    kUnsupportedNvNotEqualNk,
-    kUnsupportedHeadDim,
-    kInvalidMaxSeqLen,
-    kInvalidBlockShape,
-    kMissingQRotation,
-    kMissingKRotation,
-    kMissingVScale,
-    kInvalidQkvShape,
-    kInvalidGammaShape,
-    kInvalidCosSinShape,
-    kInvalidSlotMappingShape,
-    kInvalidCuSeqLenShape,
-    kInvalidQRotationShape,
-    kInvalidKRotationShape,
-    kInvalidVScaleShape,
-    kInvalidCacheShape,
-    kInvalidScaleShape,
-    kInvalidCacheStride,
-    kInvalidScaleStride,
-    kUnsupportedResource,
-    kInvalidKCacheShape,
-    kInvalidVCacheShape,
-    kInvalidKCacheStride,
-    kInvalidVCacheStride,
-    kMismatchedKvCacheStride
-};
 
 enum class ContractDtype : uint32_t {
     kUnknown = 0,
@@ -163,13 +132,12 @@ uint64_t AlignUp(uint64_t value, uint64_t align);
 uint64_t CeilDiv(uint64_t value, uint64_t divisor);
 uint64_t CalcCubeTokenSize(uint64_t tokenSize);
 uint64_t CalcCubeHalfTokenSize(uint64_t tokenSize);
-ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling,
-                                      const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
+ge::graphStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling,
+                                       const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
 uint64_t CalcTileNum(uint64_t totalTokens, uint64_t tokenTile);
 uint64_t CalcCoreTokenTile(uint64_t totalTokens, uint64_t aicNum);
 uint64_t CalcCoreGroupNum(uint64_t totalTokens, uint64_t aicNum);
 AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId);
-const char *ContractStatusName(ContractStatus status);
 
 } // namespace qkv_rms_norm_rope_cache_with_k_scale
 } // namespace optiling

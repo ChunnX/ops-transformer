@@ -236,7 +236,7 @@ struct ConcurrentTilingCase {
     uint64_t numVHeads;
     uint64_t headDim;
     uint64_t aicNum;
-    ContractStatus status;
+    ge::graphStatus status;
     uint64_t tokenTile;
     uint64_t tokenTilePerAiv;
     uint64_t coreTokenTile;
@@ -247,16 +247,16 @@ struct ConcurrentTilingResult {
     bool ok = true;
     size_t failedCase = 0;
     uint32_t failedIteration = 0;
-    ContractStatus status = ContractStatus::kSuccess;
+    ge::graphStatus status = ge::GRAPH_SUCCESS;
     ContractTiling tiling;
 };
 
-bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, ContractStatus status, const ContractTiling &tiling)
+bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, ge::graphStatus status, const ContractTiling &tiling)
 {
     if (status != item.status) {
         return false;
     }
-    if (status != ContractStatus::kSuccess) {
+    if (status != ge::GRAPH_SUCCESS) {
         return tiling.tokenTile == 0U && tiling.coreTokenTile == 0U && tiling.coreGroupNum == 0U;
     }
     return tiling.tokenTile == item.tokenTile && tiling.tokenTilePerAiv == item.tokenTilePerAiv &&
@@ -295,7 +295,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
     for (const auto &item : cases) {
         ContractTiling tiling;
         auto input = BuildInput(128, item.numQHeads, item.numKHeads, item.numKHeads);
-        EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+        EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
         EXPECT_EQ(tiling.coreTokenTile, 4U);
         EXPECT_EQ(tiling.coreGroupNum, 32U);
         EXPECT_EQ(tiling.tokenTile, item.tokenTile);
@@ -312,7 +312,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedL0aRowsCanReduceTokenTile)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 14, 4, 4);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.tokenTile, 6U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 3U);
     EXPECT_EQ(tiling.rowTile, 108U);
@@ -326,19 +326,19 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 16, 2, 4);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedNvNotEqualNk);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 16, 2, 2, 64);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedHeadDim);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 0, 2, 2);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidHeadNums);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 128, 8, 8);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 64, 2, 2);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.tokenTile, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.rowTile, 66U);
@@ -350,7 +350,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
     ContractTiling tiling;
     auto input = BuildInput(512, 64, 8, 8);
     input.aicNum = 32;
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.tokenTile, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.rowTile, 72U);
@@ -365,14 +365,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdStagingCapacityIsEnforced)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 80, 1, 1);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.tokenTile, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv * std::max({input.numQHeads, input.numKHeads, input.numVHeads}),
         kFp8NtdStagingRowsPerAiv);
 
     input = BuildInput(128, 81, 1, 1);
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kUnsupportedResource);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBounded)
@@ -380,7 +380,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBou
     ContractTiling tiling;
     auto input = BuildInput(1024, 16, 2, 2);
     input.aicNum = 32;
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.tokenTile, 6U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 3U);
     EXPECT_EQ(tiling.rowTile, 108U);
@@ -401,11 +401,11 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, ValidateAndBuildTilingIsStableAcrossTh
     constexpr uint32_t kThreadCount = 8U;
     constexpr uint32_t kIterations = 64U;
     const std::array<ConcurrentTilingCase, 5U> cases = {{
-        {128, 16, 2, 2, 128, 32, ContractStatus::kSuccess, 6, 3, 4, 32},
-        {512, 64, 8, 8, 128, 32, ContractStatus::kSuccess, 1, 1, 16, 32},
-        {1024, 16, 2, 2, 128, 32, ContractStatus::kSuccess, 6, 3, 32, 32},
-        {128, 128, 8, 8, 128, 32, ContractStatus::kUnsupportedResource, 0, 0, 0, 0},
-        {128, 16, 2, 2, 64, 32, ContractStatus::kUnsupportedHeadDim, 0, 0, 0, 0},
+        {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 6, 3, 4, 32},
+        {512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 1, 1, 16, 32},
+        {1024, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 6, 3, 32, 32},
+        {128, 128, 8, 8, 128, 32, ge::GRAPH_FAILED, 0, 0, 0, 0},
+        {128, 16, 2, 2, 64, 32, ge::GRAPH_FAILED, 0, 0, 0, 0},
     }};
     std::atomic<bool> start{false};
     std::array<ConcurrentTilingResult, kThreadCount> results;
@@ -423,7 +423,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, ValidateAndBuildTilingIsStableAcrossTh
                     BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
                 input.aicNum = item.aicNum;
                 ContractTiling tiling;
-                const ContractStatus status = ValidateAndBuildTiling(input, tiling);
+                const ge::graphStatus status = ValidateAndBuildTiling(input, tiling);
                 if (!MatchesConcurrentTilingCase(item, status, tiling)) {
                     results[threadIdx].ok = false;
                     results[threadIdx].failedCase = caseIdx;
@@ -458,15 +458,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInput
     ContractTiling tiling;
     auto input = BuildInput();
     input.qRotation.shape.present = false;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingQRotation);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kRotation.shape.present = false;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingKRotation);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.vScale.shape.present = false;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingVScale);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
@@ -475,58 +475,58 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     auto input = BuildInput();
     const uint64_t invalidQkvN = input.numQHeads + input.numKHeads + input.numVHeads + 1;
     input.qkv.shape = Shape({invalidQkvN, input.totalTokens, input.headDim});
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQkvShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kCache.shape.dim1 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.vCache.shape.dim1 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kCache.shape.dim2 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.vCache.shape.dim0 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kScaleCache.shape.dim2 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kScaleCache.shape.dim3 = 2;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.qRotation.shape.dim1 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQRotationShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kRotation.shape.dim0 += 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKRotationShape);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.qkv.dtype = ContractDtype::kFloat;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.qRotation.dtype = ContractDtype::kFloat;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kRotation.dtype = ContractDtype::kFloat;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, ContiguousCacheStridesAreReported)
 {
     ContractTiling tiling;
     auto input = BuildInput();
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.kCacheStrideBlock, input.numKHeads * input.blockSize * input.headDim);
     EXPECT_EQ(tiling.kCacheStrideHead, input.blockSize * input.headDim);
     EXPECT_EQ(tiling.kCacheStrideToken, input.headDim);
@@ -545,7 +545,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
     input.kCache.stride = Stride({45000, 21000, 160, 1});
     input.vCache.stride = Stride({45000, 21000, 160, 1});
     input.kScaleCache.stride = Stride({1024, 256, 2, 1});
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     EXPECT_EQ(tiling.kCacheStrideBlock, 45000U);
     EXPECT_EQ(tiling.kCacheStrideHead, 21000U);
     EXPECT_EQ(tiling.kCacheStrideToken, 160U);
@@ -563,12 +563,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
     auto input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
     input.vCache.stride = Stride({45000, 21000, 192, 1});
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
     input.vCache.stride = Stride({52000, 21000, 160, 1});
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMismatchedKvCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
@@ -576,30 +576,30 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
     ContractTiling tiling;
     auto input = BuildInput();
     input.kCache.stride.stride3 = 2;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.vCache.stride.stride1 = input.headDim - 1;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidVCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kCache.stride.rank = 3;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKCacheStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kScaleCache.stride.stride3 = 2;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 
     input = BuildInput();
     input.kScaleCache.stride.stride1 = 0;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleStride);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 {
     ContractTiling tiling;
     auto input = BuildInput(13, 16, 2, 2);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
     ASSERT_EQ(CalcTileNum(input.totalTokens, tiling.tokenTile), 3U);
 
@@ -625,7 +625,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
 {
     ContractTiling tiling;
     auto input = BuildInput(11, 16, 2, 2);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
 
     auto fullTile = MakeTileParamForTest(0, 0, tiling.tokenTile, input.totalTokens, tiling);
@@ -672,7 +672,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
 {
     ContractTiling tiling;
     auto input = BuildInput(17, 16, 2, 2);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
 
     auto tile = MakeTileParamForTest(1, 6, 5, input.totalTokens, tiling);
     auto aiv0 = MakeAivSlice(tile, tiling.qkHeadTile, 0);
@@ -691,7 +691,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCorePr
 {
     ContractTiling tiling;
     auto input = BuildInput(6, 16, 2, 2);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
 
     for (uint64_t tokenSize = 1; tokenSize <= tiling.tokenTile; ++tokenSize) {
@@ -733,7 +733,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
 
     ContractTiling tiling;
     auto input = BuildInput(65);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.coreTokenTile, 3U);
     ASSERT_EQ(tiling.coreGroupNum, 22U);
 
@@ -749,7 +749,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
     EXPECT_EQ(coveredEnd, 65U);
 
     input = BuildInput(13);
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     const auto first = MakeCoreTokenRangeForTest(input.totalTokens, 0, tiling);
     EXPECT_EQ(first.begin, 0U);
     EXPECT_EQ(first.end, 1U);
@@ -760,7 +760,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRan
     ContractTiling tiling;
     auto input = BuildInput(40, 16, 2, 2);
     input.aicNum = 3;
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
     ASSERT_EQ(tiling.coreTokenTile, 14U);
     ASSERT_EQ(tiling.coreGroupNum, 3U);
@@ -808,7 +808,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic40CoreTilesKeepSingleTokenTail)
     ContractTiling tiling;
     auto input = BuildInput(512, 16, 2, 2);
     input.aicNum = 40;
-    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
     ASSERT_EQ(tiling.tokenTile, 6U);
     ASSERT_EQ(tiling.tokenTilePerAiv, 3U);
     ASSERT_EQ(tiling.coreTokenTile, 13U);

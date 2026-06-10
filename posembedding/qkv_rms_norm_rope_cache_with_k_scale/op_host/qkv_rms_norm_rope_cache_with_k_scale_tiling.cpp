@@ -24,8 +24,6 @@ namespace optiling {
 namespace {
 using qkv_rms_norm_rope_cache_with_k_scale::ContractDtype;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractInput;
-using qkv_rms_norm_rope_cache_with_k_scale::ContractStatus;
-using qkv_rms_norm_rope_cache_with_k_scale::ContractStatusName;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractTiling;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
@@ -583,12 +581,8 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     LogContractInput(opName, input, epsilon);
 
     ContractTiling contractTiling;
-    const ContractStatus status = ValidateAndBuildTiling(input, contractTiling, opName);
-    OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation result: status=%s(%u).",
-            ContractStatusName(status), static_cast<uint32_t>(status));
-    OP_CHECK_IF(status != ContractStatus::kSuccess,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract failed: %s",
-                        ContractStatusName(status)),
+    OP_CHECK_IF(ValidateAndBuildTiling(input, contractTiling, opName) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation failed."),
                 return ge::GRAPH_FAILED);
 
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData;
