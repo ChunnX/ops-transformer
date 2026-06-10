@@ -114,6 +114,15 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
     OP_CHECK_IF(CheckShape(batchSize_, seqLength_, n_, c_) != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CheckShape failed"), return ge::GRAPH_FAILED);
     skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
+    OP_CHECK_IF(
+        skIterCount_ != 20,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount_),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(c_ <= 0 || c_ >= 100000 || c_ % 128 != 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c_),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

@@ -15,7 +15,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward__arch32_tiling.h"
+#include "mhc_pre_sinkhorn_backward_arch32_tiling.h"
 #include "log/log.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_data_arch32.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_key_arch32.h"
