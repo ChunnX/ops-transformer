@@ -25,7 +25,8 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
                           GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha,
                           GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
-    GET_TILING_DATA(tilingData, tiling);
+    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch32TilingData);
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch32TilingData, tilingData, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     if (usrWorkspace == nullptr) {
         return;
