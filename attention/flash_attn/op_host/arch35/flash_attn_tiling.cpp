@@ -132,20 +132,15 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    uint32_t sOuterConfig = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
-    uint32_t dConfig = 0;
-
     if (faInfo_->qkHeadDim == 64) {
-        dConfig = 0;
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
     } else if (faInfo_->qkHeadDim == 128) {
-        dConfig = 2;
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
     } else if (faInfo_->qkHeadDim == 256) {
-        dConfig = 4;
+        tilingKeyInfo_.config = 4;
     } else {
         OP_LOGE(faInfo_->opName, "Invalid qkHeadDim %ld, only support 64/128/256.", faInfo_->qkHeadDim);
     }
-
-    tilingKeyInfo_.config = dConfig + sOuterConfig;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
