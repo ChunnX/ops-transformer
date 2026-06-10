@@ -352,11 +352,13 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
     std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
     std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "actual_seq_qlen", "The value of actual_seq_qlen cannot be bullptr");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName,
+            "actual_seq_qlen", "The value of actual_seq_qlen cannot be bullptr");
         return false;
     }
     if (!GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "actual_seq_kvlen", "The value of actual_seq_kvlen cannot be bullptr");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName,
+            "actual_seq_kvlen", "The value of actual_seq_kvlen cannot be bullptr");
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
