@@ -19,7 +19,7 @@
 #include "opdev/fast_vector.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
-#include "op_common/log/log.h"
+#include "../flash_attention_score_log.h"
 
 using namespace op;
 

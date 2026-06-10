@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPBASE_TAG_ID cd48c600c4b37146f504217eab2bf3956f7fee8b)
+set(OPBASE_TAG_ID ee5334d157016d2afa736d4a23381855dbf1fe37)
 message(STATUS "[opbase] OPBASE_TAG_ID: ${OPBASE_TAG_ID}")
 message(STATUS "[opbase] PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
 message(STATUS "[opbase] CANN_3RD_LIB_PATH: ${CANN_3RD_LIB_PATH}")

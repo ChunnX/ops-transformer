@@ -14,7 +14,7 @@
  */
 #include "onnx_common.h"
 #include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
-#include "op_common/log/log.h"
+#include "attention/flash_attention_score/flash_attention_score_log.h"
 
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;

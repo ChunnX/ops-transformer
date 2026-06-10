@@ -10,7 +10,7 @@
 
 #include "flash_attention_score_tiling_regbase.h"
 #include "../flash_attention_score_tiling_common.h"
-#include "op_common/log/log.h"
+#include "../../flash_attention_score_log.h"
 
 namespace optiling {
 namespace FA {
