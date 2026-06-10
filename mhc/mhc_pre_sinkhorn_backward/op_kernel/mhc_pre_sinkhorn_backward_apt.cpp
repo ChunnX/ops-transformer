@@ -14,6 +14,7 @@
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mhc_pre_sinkhorn_backward_one_stage.h"
 #include "arch35/mhc_pre_sinkhorn_backward_data_arch35.h"
 #include "arch35/mhc_pre_sinkhorn_backward_key_arch35.h"
@@ -22,14 +23,14 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template<bool DETERMINISTIC>
-extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(
+__global__ __aicore__ void mhc_pre_sinkhorn_backward(
     GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x,
     GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre,
     GM_ADDR hc_before_norm, GM_ADDR inv_rms, GM_ADDR sum_out,
     GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_phi,
     GM_ADDR grad_alpha, GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
-    if (workSpace == nullptr) {
+    if (workspace == nullptr) {
         return;
     }
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
