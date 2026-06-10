@@ -37,7 +37,6 @@ public:
 
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
-        this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("output_dtype").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicore_config_950;
@@ -51,7 +50,6 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend950", aicore_config_950);
-        this->MC2().HcclGroup("group");
     }
 };
 OP_ADD(EngramFetch);

@@ -54,7 +54,7 @@ aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *bufferHandle, cons
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGetWorkspaceSize(
         bufferHandle, indices, hiddenSize, numEntriesPerRank,
-        const_cast<char *>(group), outputDtype, fetched, workspaceSize, executor);
+        outputDtype, fetched, workspaceSize, executor);
     return ret;
 }
 
