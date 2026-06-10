@@ -401,7 +401,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::Process()
     if ASCEND_IS_AIV {
         if (blkIdx_ == 0) {
             InitOutput<T>(gradPhiGlobal_, (n_ * n_ + 2 * n_) * n_ * c_, 0);
-            InitOutput<T>(gradAlphaGolbal_, 3, 0);
+            InitOutput<T>(gradAlphaGlobal_, 3, 0);
             InitOutput<T>(gradBiasGlobal_, n_ * n_ + 2 * n_, 0);
         }
     }
