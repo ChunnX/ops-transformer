@@ -1401,8 +1401,6 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
     WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    T pSumValue = reduceSumResTensor.GetValue(0);
-    (void)pSumValue;
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
@@ -1540,8 +1538,6 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
     WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
-    T pSumValue = reduceSumResTensor.GetValue(0);
-    (void)pSumValue;
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
