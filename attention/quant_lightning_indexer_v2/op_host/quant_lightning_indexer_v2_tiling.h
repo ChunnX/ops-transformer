@@ -61,9 +61,9 @@ constexpr uint32_t SPARSE_INDICES_INDEX = 0;
 // Attributes Index
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 2;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 3;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 4;
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 5;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 6;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
@@ -148,6 +148,7 @@ public:
     QLIV2ParaInfo opParamInfo;
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -239,6 +240,7 @@ public:
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
     ge::DataType weightsType_ = ge::DT_FLOAT16;
