@@ -634,10 +634,15 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     sparse_idx_3d = sparse_indices[:, :, 0, :]
     valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
-    batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
-    gather_key = key[batch_idx, sparse_idx_safe, 0, :].contiguous()
-    gather_key_index = key_index[batch_idx, sparse_idx_safe, 0, :].contiguous()
+    key_2d = key[:, :, 0, :]
+    key_index_2d = key_index[:, :, 0, :]
+
+    idx_expanded_key = sparse_idx_safe.unsqueeze(-1).expand(B, S1, K, DQuery)
+    idx_expanded_ki = sparse_idx_safe.unsqueeze(-1).expand(B, S1, K, DQueryIndex)
+
+    gather_key = torch.gather(key_2d, dim=1, index=idx_expanded_key)
+    gather_key_index = torch.gather(key_index_2d, dim=1, index=idx_expanded_ki)
 
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
@@ -800,14 +805,15 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Pre-transpose GatherKeyIndex for Matmul4: (B,S1,K,DQueryIndex) -> (B,S1,DQueryIndex,K)
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
-        # Gather rope key
+        # Gather rope key (reuse sparse_idx_safe and valid_mask from _preprocess_gather)
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         if query_rope is not None and key_rope is not None:
-            _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
-            gather_key_rope = key_rope[torch.arange(B, device=query.device).view(B, 1, 1),
-                                       _sparse_idx_rope, 0, :].contiguous()
-            _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
-            gather_key_rope.mul_(_valid_mask_rope)
+            sparse_idx_safe = sparse_indices[:, :, 0, :].clamp(min=0)
+            key_rope_2d = key_rope[:, :, 0, :]
+            idx_expanded_rope = sparse_idx_safe.unsqueeze(-1).expand(B, S1, K, d_rope_orig)
+            gather_key_rope = torch.gather(key_rope_2d, dim=1, index=idx_expanded_rope)
+            valid_mask_rope = (sparse_idx_safe >= 0).unsqueeze(-1).to(query.dtype)
+            gather_key_rope.mul_(valid_mask_rope)
         else:
             gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
 
