@@ -58,7 +58,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         bs = (cu_q.shape[0] - 1) if cu_q is not None else p.get("B", 1)
         nqh, hd = q.shape[1], q.shape[2]
         nkh = k.shape[1]
-        msq, msk = p.get("S1", 1), p.get("S2", p.get("S1", 1))
+        msq = int(sq.max()) if sq is not None else p.get("S1", 1)
+        msk = int(skv.max()) if skv is not None else p.get("S2", p.get("S1", 1))
     else:
         bs = q.shape[0]; nqh = p["N1"]; nkh = p.get("N2", nqh)
         hd = d; msq = q.shape[1]; msk = k.shape[1]
