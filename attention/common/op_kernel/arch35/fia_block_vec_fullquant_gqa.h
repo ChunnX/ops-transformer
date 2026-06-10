@@ -425,12 +425,15 @@ public:
         float descaleQK = 1.0;
 
         // 加载qScale/kScale
-        LocalTensor<float> qScaleUbTensor = queryAntiqScaleInputQue.template AllocTensor<float>();
+        LocalTensor<float> qScaleUbTensor;
         LocalTensor<float> kScaleUbTensor = keyAntiqScaleInputQue.template AllocTensor<float>();
-        CopyQueryScaleTile(qScaleUbTensor, runInfo);
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            qScaleUbTensor = queryAntiqScaleInputQue.template AllocTensor<float>();
+            CopyQueryScaleTile(qScaleUbTensor, runInfo);
+            queryAntiqScaleInputQue.template EnQue(qScaleUbTensor);
+            qScaleUbTensor = queryAntiqScaleInputQue.DeQue<float>();
+        }
         CopyKeyScaleTile(kScaleUbTensor, runInfo);
-        queryAntiqScaleInputQue.template EnQue(qScaleUbTensor);
-        qScaleUbTensor = queryAntiqScaleInputQue.DeQue<float>();
         keyAntiqScaleInputQue.template EnQue(kScaleUbTensor);
         kScaleUbTensor = keyAntiqScaleInputQue.DeQue<float>();
 
@@ -469,7 +472,9 @@ public:
                     pScaleValue, negativeFloatScalar, 0.0F, true);
             }
         }
-        queryAntiqScaleInputQue.FreeTensor(qScaleUbTensor);
+        if (unlikely(runInfo.isLastS2Loop)) {
+            queryAntiqScaleInputQue.FreeTensor(qScaleUbTensor);
+        }
         keyAntiqScaleInputQue.FreeTensor(kScaleUbTensor);
 
         bmm1ResBuf.SetCrossCore();
