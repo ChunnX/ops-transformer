@@ -13,7 +13,8 @@
  * \brief
  */
 
-#pragma once
+#ifndef MHC_PRE_SINKHORN_BACKWARD_TILING_H_
+#define MHC_PRE_SINKHORN_BACKWARD_TILING_H_
 
 #include <cstdint>
 #include <register/tilingdata_base.h>
@@ -25,3 +26,5 @@ struct MhcPreSinkhornBackwardCompileInfo {
     uint32_t aivNum;
 };
 } // namespace optiling
+
+#endif
