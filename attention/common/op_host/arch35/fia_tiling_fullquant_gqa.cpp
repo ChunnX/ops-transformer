@@ -584,7 +584,7 @@ void FiaTilingFullQuantGqaArch35::UpdateTilingKeyLayout()
     } else if (fiaInfo_->qLayout == FiaLayout::TND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
     } else if (fiaInfo_->qLayout == FiaLayout::NTD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_NTD;
+        tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_TND;
     } else if (fiaInfo_->qLayout == FiaLayout::BSH || fiaInfo_->qLayout == FiaLayout::BSND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
     }
