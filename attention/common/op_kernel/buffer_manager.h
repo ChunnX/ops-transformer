@@ -45,6 +45,8 @@ public:
 
     template<SyncType syncType = SyncType::INNER_CORE_SYNC>
     __aicore__ inline Buffer<bufferType, syncType> AllocBuffer(uint32_t size) {
+        // auto layoutQL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(runInfo.actMSize, constInfo.dSize);
+        // auto tensorQL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, Q_T>(offsetQL1), layoutQL1);
         TensorType temp = mem_[offset_];
         offset_ += size;
         return Buffer<bufferType, syncType>(temp, size);
