@@ -435,20 +435,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeByCommmode(const aclTensor* x1,
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
         SetNnopbaseHcclServerTypeByArch(*executor, commMode);
         // SetUserHandle to pass comm_mode to aclnnMatmulReduceScatterV2
-        char* commModePtr = new(std::nothrow) char[strlen(commMode) + 1];
-        if (commModePtr == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "[MatmulReduceScatterV2] Failed to allocate memory for commMode.");
-            return ACLNN_ERR_INNER;
-        } else {
-            errno_t err = strcpy_s(commModePtr, strlen(commMode) + 1, commMode);
-            if (err != EOK) {
-                OP_LOGE(ACLNN_ERR_INNER, "[MatmulReduceScatterV2] strcpy_s failed, err = %d", err);
-                delete[] commModePtr;
-                return ACLNN_ERR_INNER;
-            }
-            NnopbaseSetUserHandle(*executor, commModePtr);
-            OP_LOGD("[MatmulReduceScatterV2] GetWorkspaceSize set commMode = %s", commMode);
-        }
+        void* commModePtr = reinterpret_cast<void *>(const_cast<char *>(commMode));
+        NnopbaseSetUserHandle(*executor, commModePtr);
+        OP_LOGD("[MatmulReduceScatterV2] GetWorkspaceSize set commMode = %s", commMode);
     }
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
