@@ -1029,6 +1029,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         if(likely(sendTokenNum > 0U)) {
             hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
             hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+            moeStartToken += sendTokenNum;
         }
     }
 }
