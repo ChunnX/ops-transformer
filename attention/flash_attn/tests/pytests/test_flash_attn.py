@@ -194,18 +194,6 @@ if __name__ == "__main__":
     from core.backends.cpu import CPUBackend
     golden = CPUBackend()
     comparators = []
-    if args.compare_mode and args.use_gpu:
-        try:
-            from core.backends.npu import NPUBackend
-            comparators = [NPUBackend(args.device_id)]
-        except ImportError:
-            pass
-    elif args.compare_mode and not args.use_gpu:
-        try:
-            from core.backends.gpu import GPUBackend
-            comparators = [GPUBackend(args.gpu_device)]
-        except ImportError:
-            pass
 
     # ── 逐 case 执行 ──
     reporter = Reporter()
