@@ -199,104 +199,123 @@ def tilelang_grad_kl_loss_single_kernel(
             m = cid % s1_tile_num
             s1_start = m * s1_block
             s1_end = T.min(s1_start + s1_block, S1)
-            num_stages = 2
 
             # ============================================================
-            # Pipeline 1: C1(Matmul1+2) + V1(softmax/grad) per s1_row
+            # C scope 1: Matmul1 (with rope) + Matmul2
+            # Matmul1: [Query||QueryRope] @ [GatherKey||GatherKeyRope]^T
+            # K dim: DQuery + d_rope, split into d_num_total chunks
             # ============================================================
-            for s1_id in T.Pipelined(s1_start, s1_end, num_stages=num_stages):
-                with T.Scope("C"):
-                    Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
-                    GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
-                    C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
+            with T.Scope("C"):
+                Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
+                GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
+                for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
                         for d_idx in T.serial(d_num_total):
                             if d_idx < d_num_query:
                                 T.copy(
-                                    Query[bz, s1_id, 0:N1, d_idx * k_block:(d_idx + 1) * k_block],
+                                    Query[bz, s1_row, 0:N1, d_idx * k_block:(d_idx + 1) * k_block],
                                     Q_L1,
                                 )
                             else:
                                 rope_d = d_idx - d_num_query
                                 T.copy(
-                                    QueryRope[bz, s1_id, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
+                                    QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block],
                                     Q_L1,
                                 )
                             if d_idx < d_num_query:
                                 T.copy(
-                                    GatherKey[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
+                                    GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
                                     GK_L1,
                                 )
                             else:
                                 rope_d = d_idx - d_num_query
                                 T.copy(
-                                    GatherKeyRope[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
+                                    GatherKeyRope[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, rope_d * k_block:(rope_d + 1) * k_block],
                                     GK_L1,
                                 )
                             T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(d_idx == 0))
                         T.copy(
                             C_L0C,
-                            bmm1Res[bz, s1_id, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
+                            bmm1Res[bz, s1_row, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
                         )
 
-                    QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
-                    GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
-                    C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
+                QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
+                GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
 
+                for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
                         for k_idx in T.serial(d_num_query_index):
                             T.copy(
-                                QueryIndex[bz, s1_id, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
+                                QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
                                 QI_L1,
                             )
                             T.copy(
-                                GatherKeyIndex[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
+                                GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GKI_L1,
                             )
                             T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                         T.copy(
                             C2_L0C,
-                            bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
+                            bmm2Res[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                             enable_relu=True,
                         )
 
-                with T.Scope("V"):
-                    bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
-                    bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
-                    weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+                T.set_cross_flag("FIX", 1)
 
-                    p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                    rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    rsy_reduce_ub = T.alloc_ub(n_block, calc_dtype)
+            # ============================================================
+            # V scope 1: Compute softmaxI, P_reduced, dWeight, reluGrad
+            # ============================================================
+            # All vector ops on FP32 buffers.
+            # range() for UB row indexing (compile-time constant).
+            # T.serial() for GM indexing (runtime variable).
+            # Barrier rules: tile ops are async, need barrier between dependent
+            # tile ops and before copy/reduce that reads tile output.
+            # copy is sync, no barrier needed after copy.
+            # ============================================================
+            with T.Scope("V"):
+                T.wait_cross_flag(1)
 
-                    diff_ub = T.alloc_ub(n_block, calc_dtype)
-                    p_reduced_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    dw_accum_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    rg_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
+                bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
 
-                    rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
-                    dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+                p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                rsy_reduce_ub = T.alloc_ub(n_block, calc_dtype)
 
-                    sm_max_ub = T.alloc_ub(G, calc_dtype)
-                    sm_sum_ub = T.alloc_ub(G, calc_dtype)
+                diff_ub = T.alloc_ub(n_block, calc_dtype)
+                p_reduced_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                dw_accum_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                rg_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
 
-                    rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
-                    rsy_max_ub = T.alloc_ub(16, calc_dtype)
-                    rsy_sum_ub = T.alloc_ub(16, calc_dtype)
-                    rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
-                    rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
-                    max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
+                rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
+                dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
 
-                    mask_ub = T.alloc_ub(n_block, calc_dtype)
-                    ones_ub = T.alloc_ub(n_block, calc_dtype)
-                    eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                sm_max_ub = T.alloc_ub(G, calc_dtype)
+                sm_sum_ub = T.alloc_ub(G, calc_dtype)
 
+
+                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
+                rsy_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_sum_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
+                max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
+
+                mask_ub = T.alloc_ub(n_block, calc_dtype)
+                ones_ub = T.alloc_ub(n_block, calc_dtype)
+
+                eps_sm_ub = T.alloc_ub(G, calc_dtype)
+
+                for s1_id in T.serial(s1_start, s1_end):
                     T.tile.fill(ones_ub, 1.0)
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
                     T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
@@ -306,6 +325,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
 
+                    # --- Pass 1: compute P_reduced and reduceSumY per K chunk ---
                     for n_idx in T.serial(n_num):
                         T.copy(
                             bmm1Res[bz, s1_id, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
@@ -365,6 +385,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
 
+                    # --- Global softmax on reduceSumY -> softmaxI ---
                     T.tile.fill(rsy_max_ub, -1e30)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
@@ -426,6 +447,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
 
+                    # --- Pass 2: compute dWeight and reluGrad ---
                     for g_id in range(g_num):
                         T.copy(
                             Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
@@ -491,6 +513,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             dWeight[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
                         )
 
+                    # --- Pass 3: compute KL Loss = sum(P_reduced * (log(P_reduced) - log(softmaxI))) ---
                     loss_accum_ub = T.alloc_ub(16, calc_dtype)
                     loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
@@ -545,45 +568,61 @@ def tilelang_grad_kl_loss_single_kernel(
                         LossOut[bz, s1_id, 0:16],
                     )
 
-            # ============================================================
-            # Pipeline 2: C2(Matmul4) + V2(cast) per s1_row
-            # ============================================================
-            for s1_id in T.Pipelined(s1_start, s1_end, num_stages=num_stages):
-                with T.Scope("C"):
-                    RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-                    GKIT_L1 = T.alloc_L1((k_block, n_block), input_dtype)
-                    DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+                T.set_cross_flag("V", 2)
 
+            # ============================================================
+            # C scope 2: Matmul4 (reluGrad @ GatherKeyIndexT^T -> dQueryIndex)
+            # dQueryIndex = reluGrad @ GatherKeyIndex
+            #            = reluGrad @ (GatherKeyIndexT)^T  (use transpose_B=True)
+            # GatherKeyIndexT: (B, S1, DQueryIndex, K)
+            # reluGrad: (Nidx1, K), (GatherKeyIndexT)^T: (K, DQueryIndex)
+            # ============================================================
+            with T.Scope("C"):
+                T.wait_cross_flag(2)
+
+                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                GKIT_L1 = T.alloc_L1((k_block, n_block), input_dtype)
+                DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+
+                for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         for n_idx in T.serial(n_num):
                             T.copy(
-                                reluGradRes[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
+                                reluGradRes[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 RG_L1,
                             )
                             T.copy(
-                                GatherKeyIndexT[bz, s1_id, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
+                                GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
                                 GKIT_L1,
                             )
                             T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
                         T.copy(
                             DQ_L0C,
-                            dQueryIndex_ws[bz, s1_id, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
 
-                with T.Scope("V"):
-                    dq_fp32_ub = T.alloc_ub((Nidx1, k_block), calc_dtype)
-                    dq_fp16_ub = T.alloc_ub((Nidx1, k_block), input_dtype)
+                T.set_cross_flag("FIX", 3)
 
+            # ============================================================
+            # V scope 2: Cast dQueryIndex FP32 -> FP16
+            # ============================================================
+            with T.Scope("V"):
+                T.wait_cross_flag(3)
+
+                dq_fp32_ub = T.alloc_ub((Nidx1, k_block), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((Nidx1, k_block), input_dtype)
+
+                for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.copy(
-                            dQueryIndex_ws[bz, s1_id, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                             dq_fp32_ub,
                         )
                         T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", Nidx1 * k_block)
                         T.barrier_all()
                         T.copy(
                             dq_fp16_ub,
-                            dQueryIndex[bz, s1_id, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
+                            dQueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
 
     return main
