@@ -1169,23 +1169,19 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     MTE2ToVSync();
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
-    SyncAll();
 
     AddTileHistToTileTopK(globalHist);
-    SyncAll();
 
     remainK_ = kValue_ - totalDefinitelyInTopK_;
     LocalTensor<float> tileHistFp32 = resTensor.ReinterpretCast<float>();
 
     if (roundId == 0 && remainK_ > 0) {
         HandleLastRoundBoundary(resTensor, tileHistFp32);
-        SyncAll();
     }
 
     bool isLastRound = (remainK_ == 0 || roundId == 0);
     if (isLastRound) {
         WriteCoreTopKFromWs(resTensor, tileHistFp32);
-        SyncAll();
     }
 
     return isLastRound;
