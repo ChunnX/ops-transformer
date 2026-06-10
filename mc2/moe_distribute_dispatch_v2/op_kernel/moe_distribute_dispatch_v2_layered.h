@@ -1319,6 +1319,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
         AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 10);
+        PipeBarrier<PIPE_ALL>();
         int64_t startCycleThree = AscendC::GetSystemCycle();
         while (true) {
             DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
@@ -1332,6 +1333,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         if (readFlagValue == END_OF_WRITE_FLAG_VALUE) {
             break;
         }
+        AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
+        PipeBarrier<PIPE_ALL>();
         if ((AscendC::GetSystemCycle() - startCycle >= WAIT_RDMA_READ_TIMEOUT_CYCLES) && dumpId == 0) {
             dumpLt.SetValue(0, static_cast<uint64_t>(readFlagValue));
             PipeBarrier<PIPE_ALL>();
@@ -1659,8 +1662,16 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         // selfDataStatusGMTensor.SetValue(99, winContext_->localUsrRankId); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(1, aivNum_);
         selfDataStatusGMAiv.SetValue(2, rankId_);
+        selfDataStatusGMAiv2.SetValue(0, 88);
+        selfDataStatusGMAiv2.SetValue(1, 88);
+        selfDataStatusGMAiv2.SetValue(2, 88);
+        selfDataStatusGMAiv2.SetValue(3, 88);
         selfDataStatusGMAiv2.SetValue(4, rankId_);
         selfDataStatusGMAiv2.SetValue(5, rankId_);
+        selfDataStatusGMAiv2.SetValue(8, 88);
+        selfDataStatusGMAiv2.SetValue(9, 88);
+        selfDataStatusGMAiv2.SetValue(10, 88);
+        selfDataStatusGMAiv2.SetValue(11, 88);
         uint32_t opcnt = selfDataStatusGMAiv.GetValue(9);
         opcnt += 1;
         selfDataStatusGMAiv.SetValue(9, opcnt);

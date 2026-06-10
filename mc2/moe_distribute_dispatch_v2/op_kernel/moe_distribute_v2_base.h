@@ -63,7 +63,8 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
 }
 
  __aicore__ inline void AIVRDMAPostDoorBell(__gm__ HcclAiRMAWQ* qp_ctx_entry, uint64_t curHead, __gm__ uint32_t* curHardwareHead, 
-    LocalTensor<uint64_t>& ubLocalTensor, LocalTensor<uint32_t>& ubLocalHeadTensor)
+    LocalTensor<uint64_t>& ubLocalTensor, LocalTensor<uint32_t>& ubLocalHeadTensor,
+    GlobalTensor<uint32_t>& selfDataStatusGMAiv)
 {
     uint64_t doorBellInfo = 0;
     doorBellInfo |= qp_ctx_entry->wqn; // [0:23] DB_TAG (qp_num)
@@ -89,6 +90,14 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     PipeBarrier<PIPE_ALL>();
     AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHeadTensor, copyParamsHead);
     PipeBarrier<PIPE_ALL>();
+    GlobalTensor<uint32_t> selfDataStatusGMAiv2;
+    uint32_t aivId = GetBlockIdx();
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)selfDataStatusGMAiv.GetPhyAddr() - aivId * 64;
+    selfDataStatusGMAiv2.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + aivId * 64 + 48 * 64));
+    uint32_t doorBellCnt = selfDataStatusGMAiv2.GetValue(12) + 1;
+    selfDataStatusGMAiv2.SetValue(12, doorBellCnt);
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv2);
 }
     
 __aicore__ inline void AIVRDMAPostSend(
@@ -167,7 +176,8 @@ __aicore__ inline void AIVRDMAPostSend(
     cacheWriteThrough(wqeAddr, sizeof(struct hns_roce_rc_sq_wqe) + sizeof(struct hns_roce_lite_wqe_data_seg));
     PipeBarrier<PIPE_ALL>();
     curHead++;
-    AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor);
+    AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor,
+        selfDataStatusGMAiv);
 }
 
 __aicore__ inline void AIVRDMAPostRead(
@@ -246,7 +256,8 @@ __aicore__ inline void AIVRDMAPostRead(
     cacheWriteThrough(wqeAddr, sizeof(struct hns_roce_rc_sq_wqe) + sizeof(struct hns_roce_lite_wqe_data_seg));
     PipeBarrier<PIPE_ALL>();
     curHead++;
-    AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor);
+    AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor,
+        selfDataStatusGMAiv);
 }
 
 }
