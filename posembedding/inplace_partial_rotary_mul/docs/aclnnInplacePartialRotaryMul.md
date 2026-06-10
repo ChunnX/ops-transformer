@@ -96,7 +96,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cos</td>
@@ -106,7 +106,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sin</td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>rotary_mode</td>
