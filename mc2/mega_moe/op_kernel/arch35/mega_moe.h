@@ -723,109 +723,304 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
 }
 
 // =====================================================================================================
-// UpdateGroupParams：更新当前expertIdx的problemShape，偏移掉本卡前侧专家收到的cnt数
+// UpdateGroupParams：更新当前expertIdx的problemShape_与baseOffset_，为后续GMM运算准备矩阵维度与偏移
 // ----------------------------------------------------------------------------------------------------
-//   Phase 1: 根据problemShape中的M(前一个专家收到的count数)，偏移计算baseOffset中gmm1与gmm2的左右矩阵偏移；
-//   Phase 2: 更新当前专家id收到的count数;
+// 整体流程：
+//   1. 若不是第一个专家，则累加 baseOffset_：根据上一个专家的 M(收到的token数) 前移所有矩阵/量化scale/flag偏移，
+//      使得当前专家在全局workspace中定位到属于自己的数据区域；
+//   2. 更新 problemShape_ 的 M 维度（当前专家实际收到的token数）：
+//      - gmmIndex==0 (第一轮GMM1+SwiGlu) 时，AIC/AIV 通过跨核同步读取 AIV(subBlockIdx_=1) 写入的
+//        expertRevNumsGloablTensor_ 来获取 token 数；
+//      - gmmIndex==1 (第二轮GMM2) 时，直接从 expertRevNumsGloablTensor_ 读取（此时数据已就绪，无需同步）；
+//   3. 若当前专家收到的token数为0，返回false跳过该专家的计算。
+//
+// 参数说明：
+//   expertIdx  : 当前本卡专家的局部索引(0 ~ expertPerRank_-1)
+//   gmmIndex   : 当前处于哪一轮GMM：0=第一轮(GMM1+SwiGluQuant), 1=第二轮(GMM2+Combine)
+//
+// baseOffset_ 中各字段含义与增量公式（BlockOffset 是一个 Shape<int64_t,...,int64_t>，12个元素）：
+//   [IDX_A_OFFSET      = 0] : dispatch接收到的量化token数据(A矩阵)偏移，增量 = m * k
+//                               m=token数, k=hiddenDim，A是 [m, k] 的fp8矩阵
+//   [IDX_B_OFFSET      = 1] : GMM1权重(B矩阵)偏移，增量 = n * k
+//                               n=hiddenDim(输出维度), k=hiddenDim(输入维度)，B是 [n, k] 的fp8权重
+//   [IDX_A_SCALE_OFFSET= 2] : A矩阵量化scale偏移，增量 = m * scaleK
+//                               scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE
+//                               即每32个元素一组scale(MXFP)，每组2字节(e8m0)，共 CeilDiv(k/64)*2 个scale元素
+//   [IDX_B_SCALE_OFFSET= 3] : B矩阵量化scale偏移，增量 = n * scaleK
+//                               同A scale的公式，B按列分组，每组64列对应2字节scale
+//   [未使用            = 4] : baseOffset_第4位保留
+//   [IDX_C_OFFSET      = 5] : GMM1输出/SwiGluQuant中间结果(C矩阵)偏移，增量 = m * n / SWIGLU_N_HALF
+//                               SwiGlu将n维度减半(n/2)，C是 [m, n/2] 的fp8中间结果
+//   [IDX_C_SCALE_OFFSET= 6] : C矩阵量化scale偏移，增量 = m * CeilDiv(n/2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE
+//                               对SwiGlu减半后的维度 n/2 按 MXFP 规则计算scale数量
+//   [IDX_FLAG_OFFSET   = 7] : expert级flag偏移，增量 = 1
+//                               每个专家独占一组flag(SwiGluToGmm2 INT_CACHELINE个 + DispatchToGmm1 dispatchFlagSlotsPerExpert_个)
+//   [IDX_B2_OFFSET     = 8] : GMM2权重(B2矩阵)偏移，增量 = k * n / SWIGLU_N_HALF
+//                               B2是 [k, n/2] 的fp8权重，因为GMM2的输入是SwiGlu减半后的n/2维
+//   [IDX_B2_SCALE_OFFSET= 9] : B2矩阵量化scale偏移，增量 = k * CeilDiv(n/2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE
+//                               B2按列分组，列数=n/2，scale数量同理
+//   [IDX_Y2_OFFSET     = 10] : GMM2输出(Y2矩阵)偏移，增量 = m * k
+//                               Y2是 [m, k] 的最终Combine结果，维度回到原始k
+//   [IDX_M_OFFSET      = 11] : 专家级M(行数/token数)累计偏移，增量 = m
+//                               用于GMM2阶段定位当前专家在所有专家中的全局行偏移
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
 template <AddrUpdateMode Mode>
 __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx)
 {
+    // === Phase 1: 基偏移累加 ===
+    // 仅在非首个专家时执行：根据上一个专家的M(收到的token数)前推所有偏移量，
+    // 使得当前专家在workspace中找到属于自己的数据起始位置。
+    // expertIdx==0 时 baseOffset_ 已在 Init 中初始化为全0，无需累加。
     if (expertIdx != 0) {
-        uint64_t m = Get<M_VALUE>(state.problemShape);
-        uint64_t n = Get<N_VALUE>(state.problemShape);
-        uint64_t k = Get<K_VALUE>(state.problemShape);
+        // m: 上一个专家收到的token数（行数），来自 problemShape_ 的 M 维度
+        // n: 输出维度（hiddenDim），来自 problemShape_ 的 N 维度，全局不变
+        // k: 输入维度（hiddenDim），来自 problemShape_ 的 K 维度，全局不变
+        uint64_t m = Get<M_VALUE>(problemShape_);
+        uint64_t n = Get<N_VALUE>(problemShape_);
+        uint64_t k = Get<K_VALUE>(problemShape_);
+
+        // expertBeforeCnt_: 累计前面所有专家收到的token总数，
+        // 用于GMM2阶段(Combine)定位当前专家在全局workspace中的行偏移
         expertBeforeCnt_ += m;
-        Get<IDX_A_OFFSET>(state.baseOffset) += m * k / ELEMS_PER_BYTE;
-        Get<IDX_B_OFFSET>(state.baseOffset) += n * k / ELEMS_PER_BYTE;
-        // only splitM
+
+        // A矩阵偏移：dispatch接收的fp8量化token数据，形状[m, k]，增量=m*k个元素
+        Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+
+        // B矩阵偏移：GMM1权重，形状[n, k]，增量=n*k个元素
+        // 不同专家的权重在GM上紧密排列，按n*k步长前移
+        Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+
+        // MXFP量化scale长度计算：
+        //   scaleK = CeilDiv(k, 64) * 2
+        //   每64个元素共享1个e8m0 scale(2字节)，向上取整后再乘MXFP_MULTI_BASE_SIZE(=2)
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
-        Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
-        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / ELEMS_PER_BYTE;
-        Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
+
+        // A矩阵scale偏移：每行有scaleK个scale元素，m行共m*scaleK，增量=m*scaleK
+        Get<IDX_A_SCALE_OFFSET>(baseOffset_) += m * scaleK;
+
+        // B矩阵scale偏移：每列有scaleK个scale元素，n列共n*scaleK，增量=n*scaleK
+        Get<IDX_B_SCALE_OFFSET>(baseOffset_) += n * scaleK;
+
+        // C矩阵偏移：GMM1输出经SwiGlu激活后的中间结果，形状[m, n/2]，增量=m*(n/2)个元素
+        // SWIGLU_N_HALF=2: SwiGlu操作将输出维度n减半(n/2)
+        Get<IDX_C_OFFSET>(baseOffset_) += m * n / SWIGLU_N_HALF;
+
+        // C矩阵scale偏移：对SwiGlu减半后的n/2维度按MXFP规则计算scale数量，增量=m*CeilDiv(n/2,64)*2
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / ELEMS_PER_BYTE;
-        Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
+
+        // expert级flag偏移：每个专家独占一组flag区，增量=1（代表1个专家单位）
+        // 实际字节偏移在UpdateGlobalBuffer中按 INT_CACHELINE 或 dispatchFlagSlotsPerExpert_ 展开
+        Get<IDX_FLAG_OFFSET>(baseOffset_) += 1;
+
+        // B2矩阵偏移：GMM2权重，形状[k, n/2]，增量=k*(n/2)个元素
+        // GMM2的输入是SwiGlu的n/2维输出，所以B2列数=n/2
+        Get<IDX_B2_OFFSET>(baseOffset_) += k * n / SWIGLU_N_HALF;
+
+        // B2矩阵scale偏移：B2按列分组，列数=n/2，每列scaleK个scale，增量=k*CeilDiv(n/2,64)*2
+        // 注意：B2是[k, n/2]，scale按列方向排列，每列k个元素，ceil(k/64)*2个scale
+        Get<IDX_B2_SCALE_OFFSET>(baseOffset_) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
-        Get<IDX_M_OFFSET>(state.baseOffset) += m;
+
+        // Y2矩阵偏移：GMM2最终输出(Combine结果)，形状[m, k]，增量=m*k个元素
+        // Y2维度回到原始k(与输入同维度)
+        Get<IDX_Y2_OFFSET>(baseOffset_) += m * k;
+
+        // M累计偏移：记录前面所有专家的token数之和，用于GMM2阶段跨专家的行定位
+        Get<IDX_M_OFFSET>(baseOffset_) += m;
     }
 
-    // gmm1中当前专家收到的count数是由subBlockIdx_=1的aiv计算出并写入expertRevNumsGloablTensor_，通知后续aic读取该值
-    if constexpr (Mode == AddrUpdateMode::kGmm1) {
+    // === Phase 2: 更新当前专家的M维度(收到的token数) ===
+    // gmm1阶段(gmmIndex==0)：token数由AIV的subBlockIdx_=1在SendCntCal中计算并写入
+    // expertRevNumsGloablTensor_，然后通过CrossCoreSetFlag通知AIC读取。
+    // AIC需要先WaitFlag等AIV写完，AIV的subBlockIdx_=0也需要等AIC读完后再读(避免缓存不一致)。
+    if (gmmIndex == 0) {
+        // AIC路径：等待AIV(subBlockIdx_=1)通过CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2)
+        // 发出的信号。flag编号2+16=18，其中2是SendCntCal中设置的flag号，16是AIC侧的偏移基址。
         if constexpr (g_coreType == AscendC::AIC) {
             CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(2 + 16);
+
+            // 计算当前AIC核在expertRevNumsGloablTensor_中的偏移：
+            // expertIdx * 8 * aicNum_ : 每个专家占8个int32(256B对齐)*aicNum_个AIC核的空间
+            // + 8 * blockIdx_         : 当前AIC核在该专家区域内的偏移(每个AIC核占8个int32=256B)
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
+
+            // 刷新数据缓存：确保读到AIV最新写入的值，而非本地缓存中的旧值
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
-            Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
+
+            // 从全局内存读取当前专家收到的token数，更新problemShape_的M维度
+            Get<M_VALUE>(problemShape_) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
+
+            // 通知AIV(subBlockIdx_=0)可以读取：AIC读完后设置flag 3，
+            // AIV的subBlockIdx_=0在下方WaitFlag(3)处等待此信号
             CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
         }
+        // AIV路径：subBlockIdx_=0等待AIC读完并设置flag 3后，再从expertRevNumsGloablTensor_读取；
+        // subBlockIdx_=1已经在SendCntCal中直接计算了totalSendCntInExp_，无需从GM读取。
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 0) {
+                // 等待AIC读完并设置flag 3，确保AIC的DataCacheCleanAndInvalid已完成，
+                // 避免AIV读到缓存中的脏数据
                 CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
+
+                // 与AIC相同的偏移计算方式，从expertRevNumsGloablTensor_读取token数
                 uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
                 DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
                 Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
             } else {
-                Get<M_VALUE>(state.problemShape) = totalSendCntInExp_;
+                // subBlockIdx_=1是实际执行SendCntCal的核，已经计算出totalSendCntInExp_
+                // (该专家从所有源卡收到的token总数)，直接使用本地值，避免GM读取开销
+                Get<M_VALUE>(problemShape_) = totalSendCntInExp_;
             }
         }
-    } else if constexpr (Mode == AddrUpdateMode::kGmm2) {
+    } else {
+        // gmm2阶段(gmmIndex==1)：此时所有专家的token数已在gmm1阶段写入expertRevNumsGloablTensor_，
+        // 数据已就绪无需跨核同步，直接刷新缓存并读取即可。
         uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
         Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
     }
 
-    if (Get<M_VALUE>(state.problemShape) == 0) {
+    // 若当前专家收到的token数为0，则无需进行GMM计算，返回false让Process()跳过该专家
+    if (Get<M_VALUE>(problemShape_) == 0) {
         return false;
     }
     return true;
 }
 
-// ==================================================================================
-// UpdateGlobalBuffer：更新当前expertIdx gmmAddrInfo中的地址，
-//                     该地址用于后续GroupMatmulSwigluQuant 与 GroupMatmul2Combine运算；
-// ==================================================================================
+// =====================================================================================================
+// UpdateGlobalBuffer：根据 baseOffset_ 更新当前专家的 gmmAddrInfo 全局地址指针
+// ----------------------------------------------------------------------------------------------------
+// 整体流程：
+//   根据当前处于第几轮GMM(gmmIndex)以及核类型(AIC/AIV)，将 baseOffset_ 中累计的元素偏移量
+//   转换为字节偏移，并与workspace/权重基址相加，得到当前专家在全局内存(GM)中各矩阵的实际地址。
+//
+// 数据流与地址映射关系：
+//
+//   gmmIndex==0 (第一轮: GMM1 + SwiGluQuant)：
+//     计算过程: A(token) x B(weight1) → C(中间) → SwiGlu(C) → C'(量化输出)
+//     A来源 = dispatch接收的fp8量化token (dispatchRevDataPtr)
+//     A scale来源 = dispatch接收的量化scale (dispatchRevScalePtr)
+//     B来源 = 专家第一层权重 (weight1/bGmAddr)，仅AIC使用(矩阵乘法在AIC上执行)
+//     B scale来源 = 专家第一层权重scale (weightScales1/bScaleGmAddr)，仅AIC使用
+//     AIV侧不设bGlobal/bScaleGlobal，而是更新 epilogueOp_ (SwiGlu+量化后处理) 的输出地址：
+//       - C偏移 → SwiGlu量化后的fp8数据地址(swigluQuantDataPtr)
+//       - C scale偏移 → SwiGlu量化后的scale地址(swigluQuantScalePtr)
+//       - FLAG偏移 → SwiGlu→GMM2的flag地址(flagSwiGluToGmm2Ptr)
+//
+//   gmmIndex==1 (第二轮: GMM2 + Combine)，仅AIC执行(else if constexpr(g_coreType == AIC))：
+//     计算过程: C'(SwiGlu输出) x B2(weight2) → Y2(最终输出)
+//     A来源 = SwiGlu量化输出 (swigluQuantDataPtr)，复用gmm1阶段的C偏移(IDX_C_OFFSET)
+//     A scale来源 = SwiGlu量化scale (swigluQuantScalePtr)，复用C scale偏移(IDX_C_SCALE_OFFSET)
+//     B来源 = 专家第二层权重 (weight2/b2GmAddr)
+//     B scale来源 = 专家第二层权重scale (weightScales2/b2ScaleGmAddr)
+//     AIV不参与GMM2计算，因此gmmIndex==1时AIV分支什么都不做
+//
+// 参数说明：
+//   gmmAddrInfo  : 输出参数，GMM地址信息结构体，包含6个字段：
+//                    aGlobal      - A矩阵(左矩阵/输入)的全局地址
+//                    bGlobal      - B矩阵(右矩阵/权重)的全局地址
+//                    aScaleGlobal - A矩阵量化scale的全局地址
+//                    bScaleGlobal - B矩阵量化scale的全局地址
+//                    groupFlagList  - SwiGlu→GMM2的expert级flag地址
+//                    groupFlagList2 - Dispatch→GMM1的wave-grain flag地址
+//   gmmIndex     : 0=第一轮(GMM1+SwiGluQuant), 1=第二轮(GMM2+Combine)
+//   localExpertId: 当前本卡专家的局部索引(0 ~ expertPerRank_-1)
+//
+// 偏移转换规则：
+//   baseOffset_ 中存储的是"元素个数"偏移(以QuantOutType/QuantScaleOutType为单位)，
+//   转换为字节偏移时需乘 sizeof(QuantOutType)(fp8=1字节) 或 sizeof(QuantScaleOutType)(e8m0=1字节/fp32=4字节)。
+// =====================================================================================================
 template <TemplateMegaMoeTypeClass>
 template <AddrUpdateMode Mode>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
     const ExpertLoopState &state)
 {
-    if constexpr (Mode == AddrUpdateMode::kGmm1) {
+    // === gmmIndex==0: 第一轮GMM (GMM1 + SwiGluQuant) 的地址更新 ===
+    if (gmmIndex == 0) {
+        // A矩阵地址：dispatch接收的fp8量化token数据基址 + A元素偏移 * sizeof(fp8)
+        // IDX_A_OFFSET 记录了前面所有专家的A矩阵元素总数(m*k累加)，乘以fp8元素大小(1字节)得到字节偏移
         gmmAddrInfo.aGlobal = params_.workspaceInfo.dispatchRevDataPtr +
-            Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+            Get<IDX_A_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+
+        // A矩阵scale地址：dispatch接收的MXFP量化scale基址 + A scale元素偏移 * sizeof(scale)
+        // IDX_A_SCALE_OFFSET 记录了前面所有专家的A scale元素总数(m*scaleK累加)
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.dispatchRevScalePtr +
-        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+
+        // AIC和AIV在gmm1阶段承担不同职责：
+        //   AIC: 执行GMM1矩阵乘法 A x B → C，需要设置B矩阵地址
+        //   AIV: 执行SwiGlu激活+量化后处理(epilogueOp_)，需要设置SwiGlu输出地址和flag地址
         if constexpr(g_coreType == AIC) {
-            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-            gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) *
+            // B矩阵地址：专家第一层权重基址 + B元素偏移 * sizeof(fp8)
+            // IDX_B_OFFSET 记录了前面所有专家的B矩阵元素总数(n*k累加)
+            // 每个专家的权重按 [n, k] 形状紧密排列，AIC按顺序读取
+            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+
+            // B矩阵scale地址：专家第一层权重scale基址 + B scale元素偏移 * sizeof(scale)
+            // IDX_B_SCALE_OFFSET 记录了前面所有专家的B scale元素总数(n*scaleK累加)
+            gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) *
                                         sizeof(QuantScaleOutType);
         } else {
+            // AIV侧：更新 epilogueOp_ (BlockEpilogueSwigluMxQuant) 的全局地址
+            // vecBaseOffset 包含6个字段：
+            //   [0] IDX_C_OFFSET     : SwiGlu量化输出数据的元素偏移，用于定位 swigluQuantDataPtr 中当前专家的输出区
+            //   [1] IDX_C_SCALE_OFFSET: SwiGlu量化输出scale的元素偏移，用于定位 swigluQuantScalePtr 中当前专家的scale区
+            //   [2] IDX_FLAG_OFFSET   : expert级flag偏移，用于定位 flagSwiGluToGmm2Ptr 中当前专家的flag区
+            //   [3-5] 0L              : 保留字段，epilogueOp_ 内部未使用
+            // epilogueOp_.UpdateGlobalAddr 会将这些偏移转换为实际GM地址，
+            // 供SwiGlu激活+MXFP量化后处理将结果写入正确的workspace区域
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(state.baseOffset), Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
                 Get<IDX_FLAG_OFFSET>(state.baseOffset), 0L, 0L, 0L};
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
-    } else if constexpr(Mode == AddrUpdateMode::kGmm2 && g_coreType == AIC) {
-        gmmAddrInfo.aGlobal =
-            params_.workspaceInfo.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr +
-                                   Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.bScaleGlobal =
-            params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+    } else if constexpr(g_coreType == AIC) {
+        // === gmmIndex==1: 第二轮GMM (GMM2 + Combine) 的地址更新，仅AIC执行 ===
+        // AIV不参与GMM2计算（Combine阶段的权重乘法全部在AIC上完成），
+        // 所以此分支用 `else if constexpr(g_coreType == AIC)` 确保AIV编译时直接跳过。
+
+        // A矩阵地址：SwiGlu量化输出的fp8数据基址 + C元素偏移 * sizeof(fp8)
+        // GMM2的A矩阵就是GMM1+SwiGlu的输出，复用 IDX_C_OFFSET (SwiGlu输出形状[m, n/2])
+        // 基址是 swigluQuantDataPtr (workspace中SwiGlu量化结果的存储区)
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.swigluQuantDataPtr +
+            Get<IDX_C_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+
+        // A矩阵scale地址：SwiGlu量化输出的scale基址 + C scale元素偏移 * sizeof(scale)
+        // 复用 IDX_C_SCALE_OFFSET，基址是 swigluQuantScalePtr
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(baseOffset_) *
+                                    sizeof(QuantScaleOutType);
+
+        // B矩阵地址：专家第二层权重基址 + B2元素偏移 * sizeof(fp8)
+        // IDX_B2_OFFSET 记录了前面所有专家的B2矩阵元素总数(k*(n/2)累加)
+        // B2形状为 [k, n/2]，GMM2计算 C'(n/2维) x B2 → Y2(k维)
+        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+
+        // B矩阵scale地址：专家第二层权重scale基址 + B2 scale元素偏移 * sizeof(scale)
+        // IDX_B2_SCALE_OFFSET 记录了前面所有专家的B2 scale元素总数
+        gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
+                                    sizeof(QuantScaleOutType);
     }
+
+    // === 公共部分：两种flag地址更新 ===
+    // groupFlagList: SwiGlu→GMM2的flag，用于AIV(SwiGlu完成后)通知AIC(GMM2可以开始)
+    // 每个专家占 INT_CACHELINE(=16) 个int32(即64字节=1条cache line)，保证cache line对齐避免false sharing
+    // 偏移计算: 基址 + expert编号 * INT_CACHELINE
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-                                Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
-    // wave-grain dispatch-gmm1 flag: per-expert 步长是 dispatchFlagSlotsPerExpert_,而不是 INT_CACHELINE。
+                                Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+
+    // groupFlagList2: Dispatch→GMM1的wave-grain flag，用于AIV(dispatch完成后)通知AIC(GMM1可以开始)
+    // 每个专家占 dispatchFlagSlotsPerExpert_ 个int32槽位(每个wave一个槽位，L1_TILE_M=256行/wave)，
+    // 步长远大于 INT_CACHELINE，因为GMM1按wave粒度(256行)推进，需要多个flag槽位记录各wave的dispatch完成状态
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                                Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
+                                Get<IDX_FLAG_OFFSET>(baseOffset_) * dispatchFlagSlotsPerExpert_;
+
+    // 将计算好的flag地址绑定到成员GlobalTensor，供后续 ResetFlagList/TripleInfoCalAndDispatch 等函数
+    // 通过 groupFlagListGm_ / groupFlagListGm2_ 直接访问当前专家的flag区域
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
 }
 
