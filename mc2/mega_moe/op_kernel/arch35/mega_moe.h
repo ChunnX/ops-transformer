@@ -32,7 +32,7 @@ namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
-                            int64_t, int64_t>;
+                            int64_t, int64_t, int64_t, int64_t>;
 
 // 预留：XType OutputType Weight1Type
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
@@ -739,6 +739,8 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
         Get<IDX_M_OFFSET>(state.baseOffset) += m;
+        Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
+        Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
     }
 
     // gmm1中当前专家收到的count数是由subBlockIdx_=1的aiv计算出并写入expertRevNumsGloablTensor_，通知后续aic读取该值
@@ -967,7 +969,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TupleShape initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState gmm1State{initShape, initOffset};
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
