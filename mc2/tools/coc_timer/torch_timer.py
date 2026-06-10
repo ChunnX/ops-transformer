@@ -1,14 +1,19 @@
 """
 CocTimer Python/Torch 端解析工具。
 
-提供两个核心函数：
-  - get_timer_buffer_size(core_count)  → 计算 timer buffer tensor 所需元素数
-  - parse_timer_buffer(tensor, core_count) → 解析 raw tensor 为结构化 DataFrame
+提供核心函数：
+  - get_timer_buffer_size(core_count)          → 计算 timer buffer tensor 所需元素数
+  - parse_timer_buffer(tensor, core_count)      → 解析 raw tensor 为结构化 TimerResult
+  - write_time_results_raw(filename, result)    → 写入原始时间戳 CSV（start/end_cycle + duration_us）
+  - write_time_results_duration(filename, result) → 写入 Duration CSV（仅 duration_us）
 
 用法示例：
 
     import torch
-    from mc2.tools.coc_timer.torch_timer import get_timer_buffer_size, parse_timer_buffer, core_count_for
+    from mc2.tools.coc_timer.torch_timer import (
+        get_timer_buffer_size, parse_timer_buffer, core_count_for,
+        write_time_results_raw, write_time_results_duration,
+    )
 
     # 1. 已知 block 数，计算 core_count
     block_num = 24
@@ -22,7 +27,11 @@ CocTimer Python/Torch 端解析工具。
 
     # 4. 解析结果
     timer_cpu = timer_buffer.cpu()
-    df_duration, df_iter = parse_timer_buffer(timer_cpu, core_count)
+    timer_result = parse_timer_buffer(timer_cpu, core_count)
+
+    # 5. 写入 CSV 文件
+    write_time_results_raw("./trace/raw_timing.csv", timer_result)
+    write_time_results_duration("./trace/duration_timing.csv", timer_result)
 """
 
 from __future__ import annotations
@@ -224,6 +233,100 @@ def to_duration_dataframe(timer_result: TimerResult) -> pd.DataFrame:
         records.append(record)
 
     return pd.DataFrame(records)
+
+
+def write_time_results_raw(filename: str, timer_result: TimerResult) -> bool:
+    """
+    对应 CocTimerHost::WriteTimeResultsRaw()。
+
+    写入原始时间戳 CSV：每行一个核，包含 start_cycle / end_cycle / duration_us。
+
+    Args:
+        filename: 输出 CSV 文件路径
+        timer_result: parse_timer_buffer() 返回的 TimerResult
+
+    Returns:
+        bool: 写入成功返回 True，失败返回 False
+    """
+    try:
+        import os
+        os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
+
+        core_count = timer_result.core_count
+        timing_names = _build_timing_names(timer_result)
+        total_items = len(timing_names)
+        cycle_data = timer_result.base_cycle_data
+        iter_max = timer_result.dynamic_actual_iter_max
+
+        with open(filename, "w") as f:
+            header_parts = ["group_id", "core_type", "sub_group_id"]
+            for name in timing_names:
+                header_parts.append(f"{name}_start_cycle")
+                header_parts.append(f"{name}_end_cycle")
+                header_parts.append(f"{name}_duration_us")
+            for dtype_idx in range(_K_DYNAMIC_TYPE_COUNT):
+                if dtype_idx < iter_max.numel() and iter_max[dtype_idx].item() <= 0:
+                    continue
+                if dtype_idx in _K_DYNAMIC_NAMES:
+                    header_parts.append(f"{_K_DYNAMIC_NAMES[dtype_idx]}_IterCount")
+            f.write(",".join(header_parts) + "\n")
+
+            for core_id in range(core_count):
+                group_id = core_id // _K_CORES_PER_GROUP
+                sub_group_id = core_id % _K_CORES_PER_GROUP
+                core_type = "AIC" if sub_group_id == _K_SUB_GROUP_ID_AIC else "AIV"
+                sub_id = 0 if core_type == "AIC" else (sub_group_id - 1)
+                base_index = _base_index_for_core(group_id, sub_group_id)
+
+                row_parts = [str(group_id), core_type, str(sub_id)]
+
+                for name_idx, name in enumerate(timing_names):
+                    element_idx = _element_idx_for_name(name, name_idx, base_index)
+                    if element_idx < 0 or element_idx + 1 >= timer_result.timing_counter_size:
+                        row_parts.extend(["0", "0", "0"])
+                    else:
+                        start = cycle_data[element_idx].item()
+                        end = cycle_data[element_idx + 1].item()
+                        duration = _compute_duration_us(start, end)
+                        row_parts.append(str(start))
+                        row_parts.append(str(end))
+                        row_parts.append(str(duration))
+
+                for dtype_idx in range(_K_DYNAMIC_TYPE_COUNT):
+                    if dtype_idx < iter_max.numel() and iter_max[dtype_idx].item() <= 0:
+                        continue
+                    idx_iter = core_id * _K_ITER_PER_CORE_ALIGN + dtype_idx
+                    val = timer_result.dynamic_actual_iter_per_core[idx_iter].item() if idx_iter < timer_result.dynamic_actual_iter_per_core.numel() else 0
+                    row_parts.append(str(val))
+
+                f.write(",".join(row_parts) + "\n")
+
+        return True
+    except Exception:
+        return False
+
+
+def write_time_results_duration(filename: str, timer_result: TimerResult) -> bool:
+    """
+    对应 CocTimerHost::WriteTimeResultsDuration()。
+
+    写入 Duration CSV：每行一个核，仅包含 duration_us（无原始 cycle 值）。
+
+    Args:
+        filename: 输出 CSV 文件路径
+        timer_result: parse_timer_buffer() 返回的 TimerResult
+
+    Returns:
+        bool: 写入成功返回 True，失败返回 False
+    """
+    try:
+        df = to_duration_dataframe(timer_result)
+        import os
+        os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
+        df.to_csv(filename, index=False)
+        return True
+    except Exception:
+        return False
 
 
 # ============================================================================
