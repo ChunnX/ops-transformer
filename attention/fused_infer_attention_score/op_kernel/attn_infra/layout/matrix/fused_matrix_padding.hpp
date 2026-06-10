@@ -16,8 +16,7 @@
 #include "../../../attn_infra/detail/fused_alignment.hpp"
 #include "../../../attn_infra/fused_matrix_coord.hpp"
 
-namespace NpuArch::layout
-{
+namespace NpuArch::layout {
 
 /// Mapping function for padding rowmajor matrices
 /// A special data layout designed to improve the efficiency of matrix operations in non-512B aligned scenarios.
@@ -48,13 +47,13 @@ public:
 public:
     /// Constructor
     HOST_DEVICE
-    PaddingRowMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0) :
-        orgShape_(MakeCoord(orgRows, orgCols)),
-        shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
-        blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
-        stride_(MakeCoord((LongIndex)blockCols,
-        (LongIndex)blockRows * (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgCols, blockCols),
-        (LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols)) {}
+    PaddingRowMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0)
+        : orgShape_(MakeCoord(orgRows, orgCols)),
+          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
+              blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
+          stride_(MakeCoord((LongIndex)blockCols,
+              (LongIndex)blockRows * (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgCols, blockCols),
+              (LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols)) {}
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -189,12 +188,12 @@ public:
 public:
     /// Constructor
     HOST_DEVICE
-    PaddingColumnMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0) :
-        orgShape_(MakeCoord(orgRows, orgCols)),
-        shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
-        blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
-        stride_(MakeCoord((LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols, (LongIndex)blockRows,
-        (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgRows, blockRows) * (LongIndex)blockCols)) {}
+    PaddingColumnMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0)
+        : orgShape_(MakeCoord(orgRows, orgCols)),
+          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
+              blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
+          stride_(MakeCoord((LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols, (LongIndex)blockRows,
+              (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgRows, blockRows) * (LongIndex)blockCols)) {}
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -284,7 +283,6 @@ public:
     {
         return stride_[idx];
     }
-
 
 private:
     //

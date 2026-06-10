@@ -16,8 +16,7 @@
 #include "../../../attn_infra/detail/fused_alignment.hpp"
 #include "../../../attn_infra/fused_matrix_coord.hpp"
 
-namespace NpuArch::layout
-{
+namespace NpuArch::layout {
 
 /// Mapping function for col-major matrices
 struct ColumnMajor {
