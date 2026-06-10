@@ -52,7 +52,6 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
         return ge::GRAPH_SUCCESS;
     }
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
-
     // check dim num
     if (blockTableShape.GetDimNum() != 2) {
         std::string dimStr = std::to_string(blockTableShape.GetDimNum()) + "D";

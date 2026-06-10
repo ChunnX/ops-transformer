@@ -95,7 +95,6 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
-
     if (dim0 != faInfo.bSize) {
         std::string shapeStr = Ops::Base::ToString(blockTableTensor->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table", shapeStr.c_str(),

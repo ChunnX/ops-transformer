@@ -36,7 +36,7 @@ ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
 {
     // QuantScale2 and quantOffset2 only support bf16/fp32 data type.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantScale2.desc, QUANT_SCALE2_NAME)) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale2", 
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
             ToString(fiaInfo.opParamInfo.quantScale2.desc->GetDataType()).c_str(),
             "The datatype of quant_scale2 must be bf16 or fp32");
         return ge::GRAPH_FAILED;
@@ -160,8 +160,6 @@ ge::graphStatus PostQuantChecker::CheckFeatureOutputEqual(const FiaTilingInfo &f
     // only KV input and post-quantization outputs with the same data type are supported.
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
-
-
         if (outputType != fiaInfo.inputKvType) {
             // TODO: Fix same as dtype a and b after translated
             std::string reasonMsg = "When quantScale2 is not empty, "
