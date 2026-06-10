@@ -8,17 +8,17 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_BF16_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_BF16_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
-#include "catlass/epilogue/block/block_epilogue.hpp"
+#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/arch/resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/gemm_coord.hpp"
+#include "../template_linear_algebra_v2/matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/detail/callback.hpp"
+#include "../template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -31,14 +31,14 @@ template <
     class TileCopy_
 >
 class BlockEpilogue <
-    EpilogueAtlasA2PerTokenDequant<UB_STAGES_>,
+    EpilogueAtlasA2PerTokenDequantBF16<UB_STAGES_>,
     CType_,
     Gemm::GemmType<float, LayoutPerTokenScale_>,
     DType_,
     TileCopy_
 > {
 public:
-    using DispatchPolicy = EpilogueAtlasA2PerTokenDequant<UB_STAGES_>;
+    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantBF16<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 
@@ -52,7 +52,8 @@ public:
 
     // Check data infos
     static_assert(
-        std::is_same_v<ElementC, half> && (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
+        (std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+        (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
         "The element type template parameters of BlockEpilogue are wrong"
     );
     static_assert(
@@ -69,26 +70,23 @@ public:
         __gm__ int32_t *ptrTokenPerExpert{nullptr};
         int32_t EP;
         int32_t expertPerRank;
-        int32_t n2;
 
         CATLASS_DEVICE
         Params() {};
 
         CATLASS_DEVICE
-        Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_, int32_t n2_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), n2(n2_)
-        {}
+        Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_) : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_) {}
     };
 
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
     {
-        size_t ubOffset = 0;
+        size_t ubOffset = 4096;
         int32_t eventVMTE2 = 0;
         int32_t eventMTE2V = 0;
         int32_t eventMTE3V = 0;
         int32_t eventVMTE3 = 0;
-        int32_t blockN = params.n2;
+        constexpr int32_t blockN = 12000;
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
             ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += blockN * sizeof(ElementC);
@@ -115,7 +113,9 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue() {}
+    ~BlockEpilogue()
+    {
+    }
 
     CATLASS_DEVICE
     void UpdateParams(Params const &params_)
@@ -202,4 +202,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W8A8_POST_PER_TOKEN_ROW_HPP
+#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_BF16_HPP

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MEGA_MOE_KERNEL_HPP
-#define MEGA_MOE_KERNEL_HPP
+#ifndef MEGA_MOE_KERNEL_A3_HPP
+#define MEGA_MOE_KERNEL_A3_HPP
 
 // Guard against 3rdparty copy_l0c_to_gm.hpp so the custom PER_CHANNEL
 // specialization in copy_l0c_to_gm_custom.hpp takes precedence.
@@ -53,24 +53,19 @@
 // directory so it can share all sort/expert-token/srcToDst helpers.
 #include "moe_init_routing_v2/moe_init_routing_v2.hpp"
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
-
-using namespace Mc2Tiling;
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
 
+namespace Catlass::Gemm::Kernel {
 
 using namespace AscendC;
-// #define SYNC_MODE
-
-namespace Catlass::Gemm::Kernel {
+using namespace Mc2Tiling;
 
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
 // Atlas A3 (910_93) kernel.
-//
-// Uses `HcclOpResParam` window context.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
           class BlockEpilogue2_, class BlockEpilogue3_>
 class MegaMoeKernel {
@@ -167,7 +162,7 @@ public:
                GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                LayoutB layoutB1_, GM_ADDR ptrBias1_, GM_ADDR ptrB2_, LayoutB layoutB2_, GM_ADDR ptrBias2_,
                GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
-               GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
+               GM_ADDR ptrOutput_, LayoutD1 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
@@ -208,7 +203,7 @@ public:
                GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                LayoutB layoutB1_, GM_ADDR ptrBias1_, GM_ADDR ptrB2_, LayoutB layoutB2_, GM_ADDR ptrBias2_,
                GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
-               GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
+               GM_ADDR ptrOutput_, LayoutD1 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
@@ -260,23 +255,13 @@ public:
     template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
-        if constexpr (std::is_same_v<ElementA, int8_t>) {
+        if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
             GMM1(params);
             AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
             GMM2(params);
         } else {
-#ifdef SYNC_MODE
-            AscendC::SyncAll<false>();
-#endif
             GMM1(params);
-#ifdef SYNC_MODE
-            AscendC::SyncAll<false>();
-            AscendC::SyncAll<false>();
-#endif
             GMM2(params);
-#ifdef SYNC_MODE
-            AscendC::SyncAll<false>();
-#endif
         }
     }
 
@@ -362,7 +347,6 @@ private:
         AscendC::LocalTensor<T> tmpBuffer2 = resource.ubBuf.template GetBufferByByte<T>(tmpBufferOffset);
         tmpBuffer2.SetSize(tmpBufferSize);
 
-        // [ReduceScatter] 2. Pre Interface Sync
         int pingpongId = 0;
         auto processCount = CeilDiv(elemNum, ubMoveNum);
         for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
@@ -374,20 +358,15 @@ private:
 
             auto inputOffset = processOffset;
             auto outputOffset = processOffset;
-            // [ReduceScatter] 2. Pre Interface Sync
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
-            // [ReduceScatter] 3. Start shmem_mte_get_mem_nbi
             copyGmToUb(buf, src[inputOffset], layout::RowMajor{1, curProcessNum}, layout::RowMajor{1, curProcessNum});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             copyUbToGm(dst[outputOffset], buf, layout::RowMajor{1, curProcessNum}, layout::RowMajor{1, curProcessNum});
 
-            // [ReduceScatter] 4. Post Interface Sync
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             pingpongId = (pingpongId + 1) % BufferNum;
         }
-        // [ReduceScatter] 4. Post Interface Sync
-
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
@@ -436,7 +415,6 @@ private:
     {
         uint32_t tmpBufferOffset = 0;
 
-        // double buffer 定义： tmpBuffer 包含int8_t token + float scale, xTensor 只包含int8_t token
         AscendC::LocalTensor<int8_t> xTensor0 = resource.ubBuf.template GetBufferByByte<int8_t>(tmpBufferOffset);
         AscendC::LocalTensor<int8_t> tmpBuffer0 = resource.ubBuf.template GetBufferByByte<int8_t>(tmpBufferOffset);
         xTensor0.SetSize(hiddenSize);
@@ -448,7 +426,6 @@ private:
         xTensor1.SetSize(hiddenSize);
         tmpBuffer1.SetSize(hiddenSize + ALIGN_512);
         tmpBufferOffset += (hiddenSize + ALIGN_512) * sizeof(int8_t);
-        // double buffer 定义结束
 
         AscendC::LocalTensor<int4b_t> xHighI4Tensor = resource.ubBuf.template GetBufferByByte<int4b_t>(tmpBufferOffset);
         xHighI4Tensor.SetSize(hiddenSize);
@@ -482,6 +459,7 @@ private:
         const size_t LEN_VK = (hiddenSize / 2) / 128;
         const size_t LAST_LEN_VK = (hiddenSize % 256) / 2;
         const half ONE_SIXTEENTH = static_cast<half>(0.0625f);
+        const half MINUS_EIGHT = static_cast<half>(-8);
 
         uint32_t totalM = rows;
 
@@ -548,7 +526,6 @@ private:
             Cast(xLowHalfTensor2.ReinterpretCast<half>(), xLowHalfTensor.ReinterpretCast<int8_t>(),
                  AscendC::RoundMode::CAST_NONE, hiddenSize);
             PipeBarrier<PIPE_V>();
-            const half MINUS_EIGHT = static_cast<half>(-8);
             Adds(xHighHalfTensor, xLowHalfTensor2, MINUS_EIGHT, hiddenSize);
             PipeBarrier<PIPE_V>();
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID6);
@@ -605,8 +582,6 @@ private:
         icache_preload(8);
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
-        float aivFinishGroups = 0.0f;
-        __gm__ float *aivFinishPtr = workspaceInfo.ptrSoftFlagBase + params.EP * FLAGSTRIDE;
 
         int64_t gmGroupOffsetA = 0;
         int64_t gmGroupOffsetB = 0;
@@ -917,8 +892,6 @@ private:
     {
         // 均分任务数
         int64_t eachCoreTaskNum = (totalM + coreNum - 1) / coreNum; // 每个核处理的数据量
-        // 尾核任务数
-        int64_t taskNumPertailCore = eachCoreTaskNum - 1;
         // 实际使用核数
         int64_t usedCoreNum = totalM >= coreNum ? coreNum : totalM;
         // 尾核起始索引
@@ -1173,28 +1146,6 @@ private:
 
         ApplyXActiveMask(params);
 
-        // ----------------------------------------------------------------
-        // [MoeInitRoutingV2 quant vs non-quant dispatch]
-        //
-        // The routing variant is decided purely from the weight element type
-        // (`ElementB`), matching the host tiling's `info.isQuantRouting`:
-        //   - ElementB ∈ {int4b_t, int8_t} -> quant routing
-        //         * tilingKey 20000 / 11000-series / 10000-series with quantMode=1
-        //         * emits INT8 tokens + per-token quant scale
-        //   - ElementB ∈ {fp16, bf16}      -> non-quant routing
-        //         * tilingKey 20000 / 10000-series with quantMode=0
-        //         * forwards X directly without quantization
-        //
-        // The two dispatchers (`moe_init_routing_quant_v2` / `moe_init_routing_v2`)
-        // share all underlying sort / expert-token / srcToDst helpers since
-        // both are defined under `namespace MoeInitRoutingQuantV2`.
-        //
-        // Note on `peermemInfo.offsetPeerPerTokenScale`: this output slot only
-        // matters for the quant path (it carries the dynamic-quant scale).
-        // The non-quant path doesn't write it, so we never need to set it up
-        // differently here.
-        // ----------------------------------------------------------------
-        //---initRouting------
         constexpr bool kRoutingIsQuant = std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
@@ -1221,7 +1172,6 @@ private:
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
 
-        uint32_t curGroupOffset = 0;
         int32_t prevSum = 0;
         if (coreIdx < params.EP) {
             prevSum = preSumBeforeRank(coreIdx * params.expertPerRank);
@@ -1257,7 +1207,6 @@ private:
             // rank's local peer-mem and runs the pre-process step.
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
-            // Pull-based ReduceScatter.
             for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
                 uint32_t rowStart =
                     (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
@@ -1333,9 +1282,6 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
-#ifdef SYNC_MODE
-        AscendC::SyncAll<false>();
-#endif
 
         uint32_t n2 = params.problemShape.k();
 
@@ -1360,9 +1306,6 @@ private:
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
         BlockEpilogue1 blockEpilogue1(resource, n);
-#ifdef SYNC_MODE
-        AscendC::SyncAll<false>();
-#endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
@@ -1441,10 +1384,6 @@ private:
             }
         }
         blockEpilogue1.Finalize();
-#ifdef SYNC_MODE
-        AscendC::SyncAll<false>();
-        AscendC::SyncAll<false>();
-#endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             blockEpilogue3.InitFlag();
             CombineV2(params, blockEpilogue3);
@@ -1452,7 +1391,7 @@ private:
             blockEpilogue2.SetFlag();
             CombineV1(params, blockEpilogue2);
         } else {
-            blockEpilogue3.SetFlag();
+            CombineSetFlag();
             CombineV2(params, blockEpilogue3);
         }
 
@@ -1507,6 +1446,7 @@ private:
     }
 
     CATLASS_DEVICE
+    // CombineV1: selected when ElementB == int8_t && m * topK > 4096.
     void CombineV1(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
         uint32_t n2 = params.problemShape.k();
@@ -1550,6 +1490,8 @@ private:
     }
 
     CATLASS_DEVICE
+    // CombineV2: selected when W4A8 (int4b_t), or ElementB == int8_t && m * topK <= 4096,
+    //   or BF16/FP16 (all non-INT8 paths).
     void CombineV2(Params const &params, BlockEpilogue3 &blockEpilogue)
     {
         BlockScheduler blockScheduler;
@@ -1599,7 +1541,7 @@ private:
                 if (aivSubCoreIdx == 1 && aiv_m_rows * 2 < m_rows) {
                     aiv_m_rows += 1;
                 }
-                uint32_t m_offset = blockCoord.m() * L1TileShape::M; // blockOffset
+                uint32_t m_offset = blockCoord.m() * L1TileShape::M;
                 if (aivSubCoreIdx == 1) {
                     m_offset += (m_rows / 2) * m0;
                 }
@@ -1660,9 +1602,6 @@ private:
         GM_ADDR ptrCGMM1;
         GM_ADDR ptrCGMM2;
         GM_ADDR ptrSumBeforeRank;
-#ifdef ENABLE_TIMER
-        GM_ADDR ptrTimer;
-#endif
         __gm__ float *ptrSoftFlagBase;
 
         CATLASS_DEVICE
@@ -1715,13 +1654,7 @@ private:
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
                 workspaceOffset += params.maxOutputSize * k2;
                 ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
-#ifdef W4A8_DEBUG
-                workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(float);
-#endif
                 ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
-#ifdef W4A8_DEBUG
-                workspaceOffset += params.maxOutputSize * n2 * sizeof(float);
-#endif
             } else if constexpr (std::is_same_v<ElementA, int8_t>) {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = ptrA;
@@ -1736,19 +1669,10 @@ private:
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                 workspaceOffset += params.EP * sizeof(int32_t) * params.expertPerRank;
-#ifdef SOFT_SYNC
-                ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
-                workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
-#endif
             } else {
                 workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
                 ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
             }
-
-#ifdef ENABLE_TIMER
-            ptrTimer = params.ptrWorkspace + workspaceOffset;
-            workspaceOffset += AscendTimer::N_TIMING_COUNTER * sizeof(int64_t);
-#endif
         }
     };
 
@@ -1766,10 +1690,10 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
-            offsetA = 0;                                                               // 占用1/3的BUFFSIZE
-            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512); // 占用1MB
-            offsetD = offsetPeerPerTokenScale + MB_SIZE;                               // 占用剩下的
-            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;              // 占用最后2MB
+            offsetA = 0;
+            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
+            offsetD = offsetPeerPerTokenScale + MB_SIZE;
+            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
         }
     };
 
@@ -1783,7 +1707,7 @@ private:
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
 
-    uint32_t dequantSum[16] = {0};
+    uint32_t dequantSum[kMaxDequantSyncGroups] = {0};
 
     // ========== Common tensors (all types) ==========
     AscendC::GlobalTensor<ElementC> gmC;
@@ -1799,22 +1723,17 @@ private:
     int32_t paddedExpertNumAligned;
     bool isCombineV1;
 
-    // ========== int4b_t (W4A8) specific tensors ==========
     AscendC::GlobalTensor<ElementScale> gmS;
     AscendC::GlobalTensor<ElementScale> gmS2;
     AscendC::GlobalTensor<int4b_t> gmA1I4;
     AscendC::GlobalTensor<int8_t> gmA1I4_I8;
-    AscendC::GlobalTensor<int8_t> gmB1_I8;
     AscendC::GlobalTensor<int4b_t> gmA2I4;
     AscendC::GlobalTensor<int8_t> gmA2I4_I8;
     AscendC::GlobalTensor<float> gmCGMM1;
     AscendC::GlobalTensor<float> gmCGMM2;
 
-    // ========== int8_t / bf16 / fp16 specific tensors ==========
     AscendC::GlobalTensor<ElementABefore> gmA;
     AscendC::GlobalTensor<ElementD1> gmPermutedToken;
 };
-
 } // namespace Catlass::Gemm::Kernel
-
 #endif // MEGA_MOE_KERNEL_HPP
