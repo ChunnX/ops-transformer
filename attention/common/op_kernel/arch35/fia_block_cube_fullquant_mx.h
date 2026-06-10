@@ -437,7 +437,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (runInfo.actMSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(runInfo.actMSize, blockNumDtype);
+            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
@@ -512,7 +512,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (s2RealSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(s2RealSize, blockNumDtype);
+            uint32_t offset =  AttentionCommon::Align(nopeDealSize, blockNumDtype) *  AttentionCommon::Align(s2RealSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor =  {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
@@ -1059,7 +1059,7 @@ public:
             return;
         }
         offset = movK * 16U;
-        initConstValueParams.repeatTimes = Align(curN, 16U) / 32U;
+        initConstValueParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
         initConstValueParams.blockNum = curPadK - movK;
         initConstValueParams.dstGap = movK;
         initConstValueParams.initValue = 0;
@@ -1078,10 +1078,10 @@ public:
         }
         // pad n1, n0, 16 for half
         initConstValueParams.repeatTimes = 1;
-        initConstValueParams.blockNum = Align(curN, 16U);
+        initConstValueParams.blockNum = AttentionCommon::Align(curN, 16U);
         initConstValueParams.dstGap = 0;
         initConstValueParams.initValue = 0;
-        uint64_t kAlign = Align(realK, 16U) / 32U * 16U;
+        uint64_t kAlign = AttentionCommon::Align(realK, 16U) / 32U * 16U;
         offset = curN * kAlign;
         InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
     }
