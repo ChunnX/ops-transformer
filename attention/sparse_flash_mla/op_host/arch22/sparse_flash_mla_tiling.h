@@ -132,6 +132,7 @@ private:
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;
     ge::graphStatus CheckSingleParaCmpBlockTable() const;
+    ge::graphStatus CheckSingleParaCmpResidualKv() const;
 
     ge::graphStatus CheckParaExistence() const;
     ge::graphStatus CheckExists(const void *pointer, const std::string &name) const;

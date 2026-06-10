@@ -36,6 +36,7 @@ extern "C" {
 aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedOriKvOptional,
+    const aclTensor* cmpResidualKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
     int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
@@ -43,18 +44,18 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnSparseFlashMlaMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
-                          sequsedOriKvOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv,
-                          oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-                          layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv),
+                          sequsedOriKvOptional, cmpResidualKvOptional, numHeadsQ, numHeadsKv, headDim, batchSize,
+                          maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
+                          oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv),
                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
-                           sequsedOriKvOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv,
-                           oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-                           layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, metadata);
+                           sequsedOriKvOptional, cmpResidualKvOptional, numHeadsQ, numHeadsKv, headDim, batchSize,
+                           maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode,
+                           oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -62,42 +63,48 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
-    if (cuSeqLensQOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
+    const aclTensor *cuSeqLensQOptionalContiguous = nullptr;
+    if (cuSeqLensQOptional != nullptr) {
+        cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
+        CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto cuSeqLensOriKvOptionalContiguous = l0op::Contiguous(cuSeqLensOriKvOptional, uniqueExecutor.get());
-    if (cuSeqLensOriKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_ori_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
+    const aclTensor *cuSeqLensOriKvOptionalContiguous = nullptr;
+    if (cuSeqLensOriKvOptional != nullptr) {
+        cuSeqLensOriKvOptionalContiguous = l0op::Contiguous(cuSeqLensOriKvOptional, uniqueExecutor.get());
+        CHECK_RET(cuSeqLensOriKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto cuSeqLensCmpKvOptionalContiguous = l0op::Contiguous(cuSeqLensCmpKvOptional, uniqueExecutor.get());
-    if (cuSeqLensCmpKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_cmp_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
+    const aclTensor *cuSeqLensCmpKvOptionalContiguous = nullptr;
+    if (cuSeqLensCmpKvOptional != nullptr) {
+        cuSeqLensCmpKvOptionalContiguous = l0op::Contiguous(cuSeqLensCmpKvOptional, uniqueExecutor.get());
+        CHECK_RET(cuSeqLensCmpKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-    if (sequsedQOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
+    const aclTensor *sequsedQOptionalContiguous = nullptr;
+    if (sequsedQOptional != nullptr) {
+        sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto sequsedOriKvOptionalContiguous = l0op::Contiguous(sequsedOriKvOptional, uniqueExecutor.get());
-    if (sequsedOriKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_ori_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
+    const aclTensor *sequsedOriKvOptionalContiguous = nullptr;
+    if (sequsedOriKvOptional != nullptr) {
+        sequsedOriKvOptionalContiguous = l0op::Contiguous(sequsedOriKvOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedOriKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    const aclTensor *cmpResidualKvOptionalContiguous = nullptr;
+    if (cmpResidualKvOptional != nullptr) {
+        cmpResidualKvOptionalContiguous = l0op::Contiguous(cmpResidualKvOptional, uniqueExecutor.get());
+        CHECK_RET(cmpResidualKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     auto output = l0op::SparseFlashMlaMetadata(
         cuSeqLensQOptionalContiguous, cuSeqLensOriKvOptionalContiguous, cuSeqLensCmpKvOptionalContiguous,
-        sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSize,
-        maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-        layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, metadata,
-        uniqueExecutor.get());
+        sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous, cmpResidualKvOptionalContiguous, numHeadsQ,
+        numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode,
+        cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, socVersion,
+        aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

@@ -48,6 +48,7 @@ def main():
         cu_seqlens_cmp_kv=cu_cmp,
         seqused_q=seq_q,
         seqused_ori_kv=seq_ori,
+        cmp_residual_kv=cmp_residual,
         batch_size=batch,
         max_seqlen_q=s1,
         max_seqlen_kv=ori_len,

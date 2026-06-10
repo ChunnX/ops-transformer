@@ -58,7 +58,7 @@ using namespace SMLAKernel;
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
         op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,                       \
                 cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,                                                   \
-                sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);                                     \
+                cmpResidualKV, sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);                      \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -75,7 +75,6 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
                      __gm__ uint8_t *tiling)
 {
     (void)seqUsedCmpKV;
-    (void)cmpResidualKV;
     (void)oriTopkLength;
     (void)cmpTopkLength;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

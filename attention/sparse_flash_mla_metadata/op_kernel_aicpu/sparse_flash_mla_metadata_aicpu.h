@@ -219,6 +219,8 @@ struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
     uint32_t s2Size { 0U };
+    uint32_t cmpS2Size { 0U };
+    uint32_t cmpOriSize { 0U };
     int64_t preTokenLeftUp { 0 };
     int64_t nextTokenLeftUp { 0 };
     BlockCost<int64_t> typeCost {};
@@ -339,6 +341,7 @@ private:
     Tensor *actSeqLenCmpKv_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
     Tensor *seqUsedKv_ = nullptr;
+    Tensor *cmpResidualKv_ = nullptr;
 
     // output
     Tensor *metadata_ = nullptr;
@@ -388,6 +391,7 @@ private:
     actSeqLenCmpKv = 2,
     seqUsedQ = 3,
     seqUsedKv = 4,
+    cmpResidualKv = 5,
     // output
     metadata = 0,
   };

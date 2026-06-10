@@ -21,7 +21,7 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
             "npu_sparse_flash_mla_metadata("
             "int num_heads_q, int num_heads_kv, int head_dim, "
             "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, "
-            "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, "
+            "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, Tensor? cmp_residual_kv=None, "
             "int batch_size=None, int max_seqlen_q=None, int max_seqlen_kv=None, "
             "int ori_topk=None, int cmp_topk=None, int cmp_ratio=None, "
             "int ori_mask_mode=0, int cmp_mask_mode=0, int ori_win_left=-1, int ori_win_right=-1, "
@@ -40,6 +40,7 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
             cu_seqlens_cmp_kv=None,
             seqused_q=None,
             seqused_ori_kv=None,
+            cmp_residual_kv=None,
             batch_size=None,
             max_seqlen_q=None,
             max_seqlen_kv=None,
@@ -73,6 +74,7 @@ def npu_sparse_flash_mla_metadata(
     cu_seqlens_cmp_kv=None,
     seqused_q=None,
     seqused_ori_kv=None,
+    cmp_residual_kv=None,
     batch_size=None,
     max_seqlen_q=None,
     max_seqlen_kv=None,
@@ -97,6 +99,7 @@ def npu_sparse_flash_mla_metadata(
         cu_seqlens_cmp_kv,
         seqused_q,
         seqused_ori_kv,
+        cmp_residual_kv,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,

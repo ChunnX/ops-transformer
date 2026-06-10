@@ -224,6 +224,8 @@ void SMLAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.cuSeqLensCmpKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_CMP_KV_INDEX);
     opParamInfo_.sequsedOriKv.tensor = context_->GetOptionalInputTensor(SEQUSED_ORI_KV_INDEX);
     opParamInfo_.sequsedOriKv.desc = context_->GetOptionalInputDesc(SEQUSED_ORI_KV_INDEX);
+    opParamInfo_.cmpResidualKv.tensor = context_->GetOptionalInputTensor(CMP_RESIDUAL_KV_INDEX);
+    opParamInfo_.cmpResidualKv.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_KV_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
@@ -1125,6 +1127,32 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
+{
+    if (opParamInfo_.cmpResidualKv.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(kvLayout_ != SMLALayout::TND,
+                OP_LOGE(opName_, "cmp_residual_kv only supports layout_kv TND."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE,
+                OP_LOGE(opName_, "cmp_residual_kv should be nullptr when cmp_kv is nullptr."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cmpResidualKv.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "cmp_residual_kv's dtype must be DT_INT32."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetShape().GetDimNum() != DIM_NUM_ONE,
+                OP_LOGE(opName_, "cmp_residual_kv's dim num must be 1."),
+                return ge::GRAPH_FAILED);
+    uint32_t batchCount = (qLayout_ == SMLALayout::TND) ? (bSize_ - 1) : bSize_;
+    int64_t residualSize = opParamInfo_.cmpResidualKv.tensor->GetShape().GetShapeSize();
+    OP_CHECK_IF(residualSize != static_cast<int64_t>(batchCount),
+                OP_LOGE(opName_, "cmp_residual_kv's shape size should be %u, but got %ld.",
+                        batchCount, residualSize),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus SMLATilingCheck::CheckSingleParaSinks() const
 {
     OP_CHECK_IF(opParamInfo_.sinks.tensor->GetStorageShape().GetShapeSize() == 0,
@@ -1212,6 +1240,7 @@ ge::graphStatus SMLATilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpBlockTable() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSinks() ||
         ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
