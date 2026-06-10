@@ -52,3 +52,4 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
