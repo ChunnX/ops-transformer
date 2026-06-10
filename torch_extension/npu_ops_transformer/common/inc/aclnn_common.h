@@ -278,6 +278,11 @@ inline const char *GetCustOpApiLibName(void)
     return "libcust_opapi.so";
 }
 
+inline const char *GetTransformerOpApiLibName(void)
+{
+    return "libopapi_transformer.so";
+}
+
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
     auto funcAddr = dlsym(handler, apiName);
@@ -341,6 +346,13 @@ inline void *GetOpApiFuncAddr(const char *apiName)
         }
     }
 
+    static auto transformerHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+    if (transformerHandler != nullptr) {
+        auto funcAddr = GetOpApiFuncAddrInLib(transformerHandler, GetTransformerOpApiLibName(), apiName);
+        if (funcAddr != nullptr) {
+            return funcAddr;
+        }
+    }
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler == nullptr) {
         return nullptr;
@@ -877,7 +889,9 @@ auto DecodeDevice(Ts&... args) -> at::Device
             " not in ",                                                                                     \
             GetOpApiLibName(),                                                                              \
             ", or ",                                                                                        \
-            GetOpApiLibName(),                                                                              \
+            GetCustOpApiLibName(),                                                                          \
+            ", or ",                                                                                        \
+            GetTransformerOpApiLibName(),                                                                   \
             "not found.");                                                                                  \
         auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);                                     \
         uint64_t workspace_size = 0;                                                                        \
