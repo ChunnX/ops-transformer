@@ -68,7 +68,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", rfia_retet); 
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
         return ret;
     }
     // Call aclrtMemcpy to copy host side data to device side memory.
