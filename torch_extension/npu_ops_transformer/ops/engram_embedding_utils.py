@@ -37,4 +37,4 @@ class EngramEmbedingUitlsOpBuilder(OpBuilder):
 engram_embedding_utils_op_builder = EngramEmbedingUitlsOpBuilder()
 op_module = engram_embedding_utils_op_builder.load()
 
-EngramEmbedingUitls = op_module.CommContextManager
+EngramEmbedingUitls = op_module.EngramEmbeddingUtils
