@@ -61,9 +61,8 @@ static ge::graphStatus InferShapeMoeEpDispatchEpilogue(gert::InferShapeContext *
 
     gert::Shape *recvTopkWeights = context->GetOutputShape(EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeights);
-    recvTopkWeights->SetDimNum(DIM_TWO);
+    recvTopkWeights->SetDimNum(DIM_ONE);
     recvTopkWeights->SetDim(0U, aAlloc);
-    recvTopkWeights->SetDim(1U, topK);
 
     gert::Shape *recvSrcMetadata = context->GetOutputShape(EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadata);
