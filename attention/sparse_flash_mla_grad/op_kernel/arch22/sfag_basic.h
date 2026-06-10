@@ -218,7 +218,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         bool changeS1 = false;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
-            int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            int64_t t1Index = static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i;
             GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
@@ -261,7 +261,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
-            int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            int64_t t1Index = static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i;
             GetTndSeqLen(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, t1Index, bIndex);
             changePingpong = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
