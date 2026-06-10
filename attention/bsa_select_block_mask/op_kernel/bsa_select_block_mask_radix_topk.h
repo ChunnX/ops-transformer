@@ -410,9 +410,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
                 }
-                if (GetBlockIdx() == 0 && repeatId == 0) {
-                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileHist ws written round=%d start=%u end=%u\n",
-                        roundId, startTileId, endTileId);
+                if (GetBlockIdx() == 0) {
+                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after tileHist ws write round=%d repeat=%d\n",
+                        roundId, repeatId);
                 }
             }
         }
@@ -1330,8 +1330,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
     // === DUMP 600: TileTopK entry - boundaryHalf ===
     if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileTopK boundary involved=%d int16=%d\n",
-            static_cast<int32_t>(involvedMask16_), static_cast<int32_t>(boundaryInt16));
+        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileTopK boundary involved=0x%04x int16=0x%04x half=%f\n",
+            involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
     }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP600] TileTopK: involvedMask16_=0x%04x boundaryInt16=0x%04x boundaryHalf=%f\n",
