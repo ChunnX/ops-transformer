@@ -506,8 +506,14 @@ ge::graphStatus QLIInfoParser::GetBatchSize()
     } else {  // TND
         uint32_t bSizeQuery;
         uint32_t bSizeKey;
-        GetActualSeqLenSize(bSizeQuery, opParamInfo_.actualSeqLengthsQ.tensor, "input actual_seq_lengths_query");
-        GetActualSeqLenSize(bSizeKey, opParamInfo_.actualSeqLengthsK.tensor, "input actual_seq_lengths_key");
+        if (GetActualSeqLenSize(bSizeQuery, opParamInfo_.actualSeqLengthsQ.tensor,
+                                "input actual_seq_lengths_query") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        if (GetActualSeqLenSize(bSizeKey, opParamInfo_.actualSeqLengthsK.tensor,
+                                "input actual_seq_lengths_key") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         if (kLayout_ == DataLayout::TND) {
             OP_CHECK_IF(bSizeQuery != bSizeKey,
                 OP_LOGE(opName_, "the lengths of actual_seq_lengths_query and actual_seq_lengths_key is %u, %u respectively, they must be same.",
