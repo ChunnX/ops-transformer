@@ -376,7 +376,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     readStateGlobal_.SetGlobalBuffer((__gm__ int32_t *)(windowOutGM_ + dataSpaceSize_));
     statusSpaceGm_ = windowInGM_ + dataSpaceSize_;
     statusSpaceGlobal_.SetGlobalBuffer((__gm__ int32_t *)statusSpaceGm_);
-    testdumpGlobal_.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + coreIdx_ * 64));
+    testdumpGlobal_.SetGlobalBuffer((__gm__ uint32_t*)((GM_ADDR)winContext_->localWindowsExp + coreIdx_ * 64));
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusSpaceGm_ + SELF_STATE_OFFSET));
     // coreIdx_ < serverNum_
