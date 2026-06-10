@@ -157,10 +157,10 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q must be TND or BSND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // layout_kv: BSND, TND, or PA_BNBD
+    // layout_kv: BSND, TND, or PA_BBND
     if ((strcmp(layoutKvOptional, "BSND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
-        (strcmp(layoutKvOptional, "PA_BNBD") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD!");
+        (strcmp(layoutKvOptional, "PA_BBND") != 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核数校验
@@ -218,9 +218,9 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
             }
         }
         // seqused_ori_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
+        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
             if (!IsTensorExistSmla(sequsedOriKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BNBD, "
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
                     "seqused_ori_kv must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -244,9 +244,9 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
             }
         }
         // seqused_cmp_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
+        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
             if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BNBD, "
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
                     "seqused_cmp_kv must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }

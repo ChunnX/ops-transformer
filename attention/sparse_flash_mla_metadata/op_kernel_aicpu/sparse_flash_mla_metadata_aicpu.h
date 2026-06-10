@@ -330,7 +330,7 @@ private:
     int64_t oriWinLeft_ = 127;
     int64_t oriWinRight_ = 0;
     std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
+    std::string layoutKv_ = "PA_BBND";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;
     uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;

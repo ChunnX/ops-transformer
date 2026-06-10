@@ -286,10 +286,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
         isSparseCmpKv_ = true;
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = groupSize_;
-        s2BaseSize_ = 512U;
-    } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {
             isSplitG_ = true;
             aicCoreNum_ /= 2;
@@ -1200,7 +1197,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::BalanceSchedule(SplitResult &spl
 
 bool MixedQuantSparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::QsmlaMetadata* metadataPtr = static_cast<optiling::detail::QsmlaMetadata*>(metadata_->GetData());
+    optiling::detail::MqsmlaMetadata* metadataPtr = static_cast<optiling::detail::MqsmlaMetadata*>(metadata_->GetData());
     *metadataPtr = {};
     // FA Metadata Generate
     if (isSplitG_) {

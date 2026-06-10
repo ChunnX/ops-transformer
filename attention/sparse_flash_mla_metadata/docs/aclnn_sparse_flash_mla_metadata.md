@@ -334,7 +334,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>layoutKvOptional</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
-      <td>支持 BSND、TND、PA_BNBD</br>建议值为BSND</td>
+      <td>支持 BSND、TND、PA_BBND</br>建议值为BSND</td>
       <td>char*</td>
       <td>-</td>
       <td>-</td>
@@ -691,7 +691,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
     CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
-    strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BNBD
+    strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BBND
     context.hasOriKv = true;
     context.hasCmpKv = true;
 
