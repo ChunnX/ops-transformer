@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file hccl_common.h
@@ -39,6 +39,14 @@
 #endif
 #define NPU_NAME_SPACE at_npu::native
 
+// torch_npu旧版acl头文件缺少以下函数声明，从CANN官方acl_rt.h补充，
+// 确保acl_rt_api.h中的inline wrapper能正确链接
+extern "C" {
+aclError aclrtHostRegisterV2(void *ptr, uint64_t size, uint32_t flag);
+aclError aclrtHostUnregister(void *ptr);
+aclError aclrtHostGetDevicePointer(void *pHost, void **pDevice, uint32_t flag);
+}
+
 using _HcclKfcAllocOpArgs = HcclResult (*)(void **);                                        // 通信配置对象创建
 using _HcclKfcOpArgsSetAlgConfig = HcclResult (*)(void *, char *);                          // 设置通信类型
 using _HcclKfcOpArgsSetCommEngine = HcclResult (*)(void *, uint8_t);                        // 设置通信方式
@@ -64,7 +72,6 @@ using _HcclRankGraphGetRanksByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_
 using _HcclChannelAcquire = HcclResult (*)(HcclComm, CommEngine, HcclChannelDesc*, uint32_t, ChannelHandle*);
 // 通过channel获取buffer
 using _HcclChannelGetHcclBuffer = HcclResult (*)(HcclComm, ChannelHandle, void**, uint64_t*);
-// 创建引擎context
 using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char*, CommEngine, uint64_t, void**);
 // 获取引擎context
 using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char*, CommEngine, void**, uint64_t*);
@@ -74,8 +81,6 @@ using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char*, voi
 using _HcclCommMemReg = HcclResult (*)(HcclComm, const char*, const CommMem*, HcclMemHandle*);
 // 通过channel获取远端注册的内存
 using _HcclChannelGetRemoteMems = HcclResult (*)(HcclComm, ChannelHandle, uint32_t*, CommMem**, char***);
-// 通过channel句柄获取channel指针
-using _HcommChannelGetPtrByHandle = HcommResult (*)(const ChannelHandle*, uint32_t, ChannelPtr*);
 
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
@@ -101,7 +106,6 @@ static _HcclEngineCtxGet HcclEngineCtxGetFunc = nullptr;
 static _HcclEngineCtxCopy HcclEngineCtxCopyFunc = nullptr;
 static _HcclCommMemReg HcclCommMemRegFunc = nullptr;
 static _HcclChannelGetRemoteMems HcclChannelGetRemoteMemsFunc = nullptr;
-static _HcommChannelGetPtrByHandle HcommChannelGetPtrByHandleFunc = nullptr;
 
 inline const char *GetHcclLibName(void)
 {
@@ -204,8 +208,6 @@ inline void InitHcclEngineCtxFunctions()
     TORCH_CHECK(HcclCommMemRegFunc != nullptr, "getHcclCommMemReg failed.");
     HcclChannelGetRemoteMemsFunc = GetHcclFwkFuncAddr<_HcclChannelGetRemoteMems>("HcclChannelGetRemoteMems");
     TORCH_CHECK(HcclChannelGetRemoteMemsFunc != nullptr, "getHcclChannelGetRemoteMems failed.");
-    HcommChannelGetPtrByHandleFunc = GetHcclFwkFuncAddr<_HcommChannelGetPtrByHandle>("HcommChannelGetPtrByHandle");
-    TORCH_CHECK(HcommChannelGetPtrByHandleFunc != nullptr, "getHcommChannelGetPtrByHandle failed.");
 }
 
 #endif // NPU_OPS_TRANSFORMER_HCCL_COMMON_H
