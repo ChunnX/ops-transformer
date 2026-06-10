@@ -40,4 +40,5 @@ from .qkv_rms_norm_rope_cache_with_k_scale import (
     qkv_rms_norm_rope_cache_with_k_scale_
 )
 from .elastic_buffer import ElasticBuffer, EPHandle
+from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .grouped_matmul_activation_quant import grouped_matmul_activation_quant
