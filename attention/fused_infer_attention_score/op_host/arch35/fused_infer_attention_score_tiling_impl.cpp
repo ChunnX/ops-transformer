@@ -811,9 +811,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitS2(const FiaTilingInfo 
     while (((fiaInfo.s2Size / kvSplitPart) < kvSplitLimit) && (kvSplitPart > 1)) {
         kvSplitPart--;
     }
+    auto vHeadDimAlign = AlignUp(fiaInfo.vHeadDim, NUM_32);
 
     faRunTilingAdapter_.inputParamsRegbase.set_kvSplitPart(kvSplitPart);
-    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * headDimAlign_);
+    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * vHeadDimAlign);
     faRunTilingAdapter_.inputParamsRegbase.set_logSumExpSize(batchSize * headNumSize * kvSplitPart *
                                                              (BYTE_BLOCK / sizeof(float)));
 
@@ -1467,10 +1468,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceNormal(const Fia
     } else if (flashDecodeFlag_) {
         auto batchSize = fiaInfo.bSize;
         auto headNumSize = nLoopTimes_;
-        auto vHeadSize = fiaInfo.vHeadDim;
+        auto vHeadSize = AlignUp(fiaInfo.vHeadDim, NUM_32);
         uint32_t kvSplitPart = faRunTilingAdapter_.inputParamsRegbase.get_kvSplitPart();
-        accumOutSize = batchSize * fiaInfo.gSize * headNumSize * kvSplitPart * vHeadSize * sizeof(float);
-        logSumExpSize = batchSize * fiaInfo.gSize * headNumSize * kvSplitPart * BYTE_BLOCK * 2;
+        accumOutSize = faRunTilingAdapter_.inputParamsRegbase.get_accumOutSize() * sizeof(float);
+        logSumExpSize = faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize() * sizeof(float);
     }
 
     int64_t bmm2Bytes = 0;
