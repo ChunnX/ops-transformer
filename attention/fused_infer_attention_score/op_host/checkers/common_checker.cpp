@@ -469,7 +469,8 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
             "input_layout TND/NTD/TND_NTD/NTD_TND is not supported in the tensorlist scenario."),
         return ge::GRAPH_FAILED);
     if (fiaInfo.bSize > B_LIMIT) {
-        std::string reason = "B of query must be less than or equal to 63535 in the tensorlist scenario.";
+        std::string reason = "B of query must be less than or equal to " + std::to_string(B_LIMIT) +
+            " in the tensorlist scenario.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;

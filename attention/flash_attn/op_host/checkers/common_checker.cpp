@@ -55,14 +55,14 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     if (std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
         supportedKvLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
-            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_kv must be in BNSD/BSND/TND/PA_BBND/PA_BNBD.");
+            LayoutToSerialString(faInfo.kvLayout).c_str(), "The value of layout_kv must be in BNSD/BSND/TND/PA_BBND/PA_BNBD.");
         return ge::GRAPH_FAILED;
     }
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
-            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND.");
+            LayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND.");
         return ge::GRAPH_FAILED;
     }
 

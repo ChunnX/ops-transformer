@@ -497,6 +497,7 @@ ge::graphStatus FiaInfoParser::GetKvCache()
         std::string numsStr = std::to_string(kCache_.size()) + " and " + std::to_string(vCache_.size());
         OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(context_->GetNodeName(), "key and value",
             numsStr.c_str(), "The tensor nums in key and value must be the same.");
+        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;

@@ -57,9 +57,10 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQDim(const FiaTilingInfo &
     } else {
         // query为非TND/NTD，actualSeqLengthsQ的长度为1或大于等于query的batch值
         if (actualSeqLengthsQDimNum != DIM_NUM_1 && actualSeqLengthsQDimNum < batchSize) {
-            std::string reason = "greater than or equal to the batchSize: " + std::to_string(batchSize) + " of query or equal to 1.";
+            std::string correctStr = "greater than or equal to the batchSize: " +
+                std::to_string(batchSize) + " of query or equal to 1.";
             OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths",
-                std::to_string(actualSeqLengthsQDimNum).c_str(), reason.c_str());
+                std::to_string(actualSeqLengthsQDimNum).c_str(), correctStr.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -163,9 +164,9 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvDim(const FiaTilingInfo 
     } else {
         // key/value的layout为非TND/NTD，actualSeqLengthsKv的长度为1或大于等于batchSize
         if (actualSeqLengthsKvDimNum != DIM_NUM_1 && actualSeqLengthsKvDimNum < batchSize) {
-            std::string reason = "greater than or equal to the batchSize: " + std::to_string(batchSize) + " or equal to 1.";
+            std::string correctStr = "greater than or equal to the batchSize: " + std::to_string(batchSize) + " or equal to 1.";
             OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths_kv",
-                std::to_string(actualSeqLengthsKvDimNum).c_str(), reason.c_str());
+                std::to_string(actualSeqLengthsKvDimNum).c_str(), correctStr.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -372,8 +373,9 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
                     "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
                 std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
                     std::to_string(actualSeqLengthsKvData);
+                std::string reason = attrName + " must be the same when pseType is 2 or 3.";
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
-                    valueStr.c_str(), (attrName + " must be the same when pseType is 2 or 3.").c_str());
+                    valueStr.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
         }
