@@ -410,10 +410,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
                 }
-                if (GetBlockIdx() == 0) {
-                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after tileHist ws write round=%d repeat=%d\n",
-                        roundId, repeatId);
-                }
             }
         }
 
@@ -1384,9 +1380,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             // === DUMP 700: Before GT phase ===
             int32_t curTileKBeforeGT = curTileK;
-            if (GetBlockIdx() == 0 && tileId == 0) {
-                BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] before GT tile0 curTileK=%d\n", curTileK);
-            }
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP700] Before GT: tileId=%lu curTileK=%d curTileLen=%lu tileGmOffset=%lu\n",
                     tileId, curTileK, curTileLen, tileGmOffset);
@@ -1395,9 +1388,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
             // === DUMP 701: After GT phase ===
-            if (GetBlockIdx() == 0 && tileId == 0) {
-                BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after GT tile0 curTileK=%d\n", curTileK);
-            }
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP701] After GT: curTileK=%d (was %d, selected %d)\n",
                     curTileK, curTileKBeforeGT, curTileKBeforeGT - curTileK);
