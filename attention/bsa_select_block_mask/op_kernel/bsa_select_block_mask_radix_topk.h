@@ -1081,6 +1081,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
     // === DUMP 550: HandleLastRoundBoundary key values ===
+    if (GetBlockIdx() == 0) {
+        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] boundary reduce=%u cumPrev=%d remainCore=%d remainK=%lu boundary=%d prev=%d\n",
+            reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_, boundaryBin, boundaryBinPrev);
+    }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP550] HandleLastRoundBoundary: reduceSumValue=%u cumSumValuePrev=%d remainCoreBoundaryNum=%d remainK_=%lu\n",
             reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_);
@@ -1114,6 +1118,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 }
 
                 // === DUMP 560: Per-tile boundary allocation (core 0, first tile only) ===
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] boundary tile0 curBoundary=%d remainCore=%d tileTopKBefore=%d\n",
+                        curTileBoundaryNum, remainCoreBoundaryNum,
+                        tileTopK.GetValue(tileId - static_cast<int32_t>(startTileId)));
+                }
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP560] tileId=%d curTileBoundaryNum=%d remainCoreBoundaryNum=%d tileTopK_before=%d\n",
                         tileId, curTileBoundaryNum, remainCoreBoundaryNum,
@@ -1169,6 +1178,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
     }
 
     // === DUMP 570: WriteCoreTopKFromWs totalTileTopKInCore ===
+    if (GetBlockIdx() == 0) {
+        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] coreTopK total=%d\n", totalTileTopKInCore);
+    }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP570] WriteCoreTopKFromWs: totalTileTopKInCore=%d\n", totalTileTopKInCore);
     }
@@ -1329,6 +1341,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
     }
 
     // === DUMP 600: TileTopK entry - boundaryHalf ===
+    if (GetBlockIdx() == 0) {
+        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileTopK boundary involved=0x%04x int16=0x%04x half=%f\n",
+            involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
+    }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP600] TileTopK: involvedMask16_=0x%04x boundaryInt16=0x%04x boundaryHalf=%f\n",
             involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
@@ -1376,6 +1392,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             // === DUMP 700: Before GT phase ===
             int32_t curTileKBeforeGT = curTileK;
+            if (GetBlockIdx() == 0 && tileId == 0) {
+                BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tile0 before GT curTileK=%d len=%lu offset=%lu\n",
+                    curTileK, curTileLen, tileGmOffset);
+            }
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP700] Before GT: tileId=%lu curTileK=%d curTileLen=%lu tileGmOffset=%lu\n",
                     tileId, curTileK, curTileLen, tileGmOffset);
@@ -1384,6 +1404,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
             // === DUMP 701: After GT phase ===
+            if (GetBlockIdx() == 0 && tileId == 0) {
+                BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tile0 after GT curTileK=%d selected=%d\n",
+                    curTileK, curTileKBeforeGT - curTileK);
+            }
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                 BSA_TOPK_PRINTF("[DUMP701] After GT: curTileK=%d (was %d, selected %d)\n",
                     curTileK, curTileKBeforeGT, curTileKBeforeGT - curTileK);
@@ -1392,6 +1416,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             if (curTileK > 0) {
                 // === DUMP 800: Before EQ phase ===
                 int32_t curTileKBeforeEQ = curTileK;
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tile0 before EQ curTileK=%d\n", curTileK);
+                }
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP800] Before EQ: curTileK=%d\n", curTileK);
                 }
@@ -1399,6 +1426,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                 SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
 
                 // === DUMP 801: After EQ phase ===
+                if (GetBlockIdx() == 0 && tileId == 0) {
+                    BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tile0 after EQ curTileK=%d selected=%d\n",
+                        curTileK, curTileKBeforeEQ - curTileK);
+                }
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
                     BSA_TOPK_PRINTF("[DUMP801] After EQ: curTileK=%d (was %d, selected %d)\n",
                         curTileK, curTileKBeforeEQ, curTileKBeforeEQ - curTileK);
