@@ -19,6 +19,7 @@ import sys
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 from precision_test_general import gen_inputs_corrected, TEST_CASES
