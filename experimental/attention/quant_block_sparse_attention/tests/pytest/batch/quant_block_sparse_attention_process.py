@@ -108,7 +108,6 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
         inputs["softmax_scale"],
         inputs["sparse_q_block_size"],
         inputs["sparse_kv_block_size"],
-        inputs["pa_block_stride"],
         cu_seqlens_q=_to_npu(inputs["cu_seqlens_q"]),
         cu_seqlens_kv=_to_npu(inputs["cu_seqlens_kv"]),
         seqused_q=_to_npu(inputs["seqused_q"]),
@@ -140,7 +139,7 @@ class _QuantBlockSparseAttentionGraph(torch.nn.Module):
         return torch.ops.custom.npu_quant_block_sparse_attention(
             query, key, value, q_descale, k_descale, v_descale, p_scale, sparse_indices, sparse_seq_len,
             atten_mask, self.inputs["softmax_scale"], self.inputs["sparse_q_block_size"],
-            self.inputs["sparse_kv_block_size"], self.inputs["pa_block_stride"],
+            self.inputs["sparse_kv_block_size"],
             cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, seqused_q=seqused_q,
             seqused_kv=seqused_kv, block_table=block_table, metadata=metadata,
             max_seqlen_q=self.inputs["max_seqlen_q"], max_seqlen_kv=self.inputs["max_seqlen_kv"],
