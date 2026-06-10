@@ -30,6 +30,8 @@ Batch commands accept `--excel <path>`, `--sheet <name>`, and `--pt-dir <path>`.
 
 Follow the existing C++ style: 4-space indentation, header guards or `#pragma once` consistent with nearby files, and concise helper functions grouped by validation, tiling, and kernel responsibility. Keep operator-specific symbols prefixed with `MixedQuantSparseFlashMla`, `QSMLA`, or `mixed_quant_sparse_flash_mla` as appropriate. Avoid broad refactors when changing one validation path, tiling branch, or arch-specific kernel path.
 
+For kernel-side debug printing, use `printf`.
+
 ## Ownership Notes
 
 Treat this directory as the small-team implementation of the `mixed_quant_sparse_flash_mla` operator. Code under sibling shared paths such as `attention/common/` is large-team common infrastructure, even when included by this operator through conditional includes. When analyzing behavior, distinguish operator-owned files (`op_host/`, `op_kernel/`, `tests/pytest/`, `docs/`) from shared common implementations such as `attention/common/op_kernel/matmul.h`.
