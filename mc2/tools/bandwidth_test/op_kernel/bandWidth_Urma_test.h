@@ -412,7 +412,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     if (dstRankId != epRankId_) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         PipeBarrier<PIPE_MTE3>();
-        __gm__ int32_t* sendFlagHandle = (sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * sizeof(int32_t));
+        __gm__ int32_t* sendFlagHandle = (__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * sizeof(int32_t));
         int32_t sendFlag = 1;
         WriteGmByPassDCache(sendFlagHandle, sendFlag);
     }
@@ -497,7 +497,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
             }
             for (uint32_t j = 0; j < curSendCnt; ++j) {
                 uint32_t sendFlag = 0;
-                __gm__ int32_t* sendFlagHandle = (sendHandleWorkspace_ + (i * axisBS_ + j) * sizeof(int32_t));
+                __gm__ int32_t* sendFlagHandle = (__gm__ int32_t*)(sendHandleWorkspace_ + (i * axisBS_ + j) * sizeof(int32_t));
                 sendFlag = ReadGmByPassDCache(sendFlagHandle);
                 if (sendFlag == 1) {
                     uint32_t dstRankId = i;
