@@ -365,7 +365,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
     MhcPreSinkhornBackwardTilingData* tilingData =
     context_->GetTilingData<MhcPreSinkhornBackwardTilingData>();
-    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
@@ -452,6 +454,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::PostTiling()
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
 {
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
     size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
