@@ -787,6 +787,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     const ExpertLoopState &state)
 {
     if constexpr (Mode == AddrUpdateMode::kGmm1) {
+        gmmAddrInfo.gmm1OutGlobal =
+            params_.workspaceInfo.ptrGmm1MmadRes + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         gmmAddrInfo.aGlobal = params_.workspaceInfo.dispatchRevDataPtr +
             Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(QuantOutType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.dispatchRevScalePtr +
@@ -802,6 +804,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     } else if constexpr(Mode == AddrUpdateMode::kGmm2 && g_coreType == AIC) {
+        gmmAddrInfo.gmm2OutGlobal =
+            params_.workspaceInfo.ptrGmm2MmadRes + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         gmmAddrInfo.aGlobal =
             params_.workspaceInfo.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(QuantOutType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr +
