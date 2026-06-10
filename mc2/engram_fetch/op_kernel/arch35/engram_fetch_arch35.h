@@ -73,74 +73,55 @@ __aicore__ inline void EngramFetchArch35::Init(
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
-    uint32_t indicesBufSize = INDICES_CHUNK_SIZE * sizeof(int32_t);
+    uint32_t indicesBufSize = Ceil(numTokens_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
 }
 
 __aicore__ inline void EngramFetchArch35::Process()
 {
     if ASCEND_IS_AIV {
-        // 按 token 数量分核：将 numTokens_ 均匀分配到 aivNum_ 个 AIV 核
-        uint32_t tokensPerCore = numTokens_ / aivNum_;
-        uint32_t tailTokens = numTokens_ % aivNum_;
-        uint32_t myStart, myCount;
-        if (aivId_ < tailTokens) {
-            myCount = tokensPerCore + 1;
-            myStart = aivId_ * myCount;
-        } else {
-            myCount = tokensPerCore;
-            myStart = aivId_ * tokensPerCore + tailTokens;
-        }
-
-        if (myCount == 0) {
+        if (aivId_ >= numRanks_) {
             return;
         }
+        uint32_t myRank = aivId_;
 
-        // 分批搬运 indices（每批 ≤ INDICES_CHUNK_SIZE 个）
-        uint32_t processed = 0;
-        while (processed < myCount) {
-            uint32_t batchCount = myCount - processed;
-            if (batchCount > INDICES_CHUNK_SIZE) {
-                batchCount = INDICES_CHUNK_SIZE;
+        // DMA: 全部 indices 从 GM 搬入 UB
+        GlobalTensor<int32_t> indicesGlobal;
+        indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_);
+        LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+        DataCopyExtParams params{1U, numTokens_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
+        DataCopyPad(indicesLocal, indicesGlobal, params, pad);
+        PipeBarrier<PIPE_MTE2>();
+
+        uint32_t rankStart = myRank * numEntriesPerRank_;
+        uint32_t rankEnd = rankStart + numEntriesPerRank_;
+
+        for (uint32_t i = 0; i < numTokens_; i++) {
+            int32_t globalIdx = indicesLocal(i);
+            if (globalIdx < 0) {
+                continue;
+            }
+            if (static_cast<uint32_t>(globalIdx) < rankStart ||
+                static_cast<uint32_t>(globalIdx) >= rankEnd) {
+                continue;
             }
 
-            // DMA: 当前 batch 的 indices 从 GM 搬入 UB
-            GlobalTensor<int32_t> indicesGlobal;
-            indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_ + myStart + processed);
-            LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
-            DataCopyExtParams params{1U, batchCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
-            DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
-            DataCopyPad(indicesLocal, indicesGlobal, params, pad);
-            PipeBarrier<PIPE_MTE2>();
+            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - rankStart;
+            GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
 
-            for (uint32_t j = 0; j < batchCount; j++) {
-                int32_t globalIdx = indicesLocal(j);
-                if (globalIdx < 0) {
-                    continue;
-                }
-                uint32_t targetRank = static_cast<uint32_t>(globalIdx) / numEntriesPerRank_;
-                if (targetRank >= numRanks_) {
-                    continue;
-                }
-
-                uint32_t i = myStart + processed + j;
-                uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) -
-                                         targetRank * numEntriesPerRank_;
-                GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
-
-                if (targetRank == rankId_) {
-                    GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
-                                  static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                    LocalCopySlice(dst, src, hiddenBytes_);
-                } else {
-                    uint32_t channelIdx = targetRank > rankId_ ? targetRank - 1 : targetRank;
-                    GM_ADDR remoteSrcAddr = (GM_ADDR)bhPtr_->commBuffer[targetRank] +
-                                            static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                    hcomm_.ReadNbi(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
-                    hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
-                }
+            if (myRank == rankId_) {
+                GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
+                              static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                LocalCopySlice(dst, src, hiddenBytes_);
+            } else {
+                uint32_t channelIdx = myRank > rankId_ ? myRank - 1 : myRank;
+                GM_ADDR remoteSrcAddr =
+                    (GM_ADDR)bhPtr_->commBuffer[myRank] +
+                    static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                hcomm_.ReadNbi(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
+                hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
             }
-            processed += batchCount;
         }
     }
     SyncAll<true>();
