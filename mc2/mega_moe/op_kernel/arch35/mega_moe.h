@@ -72,8 +72,6 @@ private:
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
-    TupleShape problemShape_{};
-    BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     GlobalTensor<int32_t> groupFlagListGm_;
     GlobalTensor<int32_t> groupFlagListGm2_;
@@ -166,8 +164,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
     dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
         static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
-    Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
-    Get<K_VALUE>(problemShape_) = k_;
+    hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -567,7 +564,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
     }
     constexpr int32_t BufferNum = DISPATCH_BUFFER_NUM;
     constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
-    int64_t widthA = Get<K_VALUE>(problemShape_); // 输出单 token 长度,紧密排列
+    int64_t widthA = k_; // 输出单 token 长度,紧密排列
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(widthA), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;  // 输出 token-scale 长度,紧密排列
     uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_),
@@ -710,9 +707,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
 }
 
 // =====================================================================================================
-// UpdateGroupParams：更新当前expertIdx的problemShape_，偏移掉本卡前侧专家收到的cnt数
+// UpdateGroupParams：更新当前expertIdx的problemShape，偏移掉本卡前侧专家收到的cnt数
 // ----------------------------------------------------------------------------------------------------
-//   Phase 1: 根据problemShape_中的M(前一个专家收到的count数)，偏移计算baseOffset_中gmm1与gmm2的左右矩阵偏移；
+//   Phase 1: 根据problemShape中的M(前一个专家收到的count数)，偏移计算baseOffset中gmm1与gmm2的左右矩阵偏移；
 //   Phase 2: 更新当前专家id收到的count数;
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
@@ -965,7 +962,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
     GMMAddrInfo gmmAddrInfo;
-    ExpertLoopState gmm1State{problemShape_, baseOffset_, 0};
+    TupleShape initShape;
+    Get<N_VALUE>(initShape) = hiddenDim_;
+    Get<K_VALUE>(initShape) = k_;
+    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    ExpertLoopState gmm1State{initShape, initOffset, 0};
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
@@ -997,8 +998,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;
     expertBeforeCnt_ = 0;
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState gmm2State{problemShape_, baseOffset_, 0};
+    ExpertLoopState gmm2State{initShape, initOffset, 0};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<OffsetUpdateMode::kGmm>(gmm2State, expertIdx)) {
             continue;
