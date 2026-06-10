@@ -167,55 +167,64 @@ int main() {
     int64_t numKeyValueHeads = numHeads;
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
 
-    LOG_PRINT("Calling aclnnBSASelectBlockMaskGetWorkspaceSize...\n");
-    
-    uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    
-    ret = aclnnBSASelectBlockMaskGetWorkspaceSize(
-        queryTensor,
-        keyTensor,
-        blockShape,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        qLayoutBuffer,
-        kvLayoutBuffer,
-        numKeyValueHeads,
-        scaleValue,
-        static_cast<double>(sparsity),
-        maskOutTensor,
-        &workspaceSize,
-        &executor);
-
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBSASelectBlockMaskGetWorkspaceSize failed. ERROR: %d\n", ret);
-              aclDestroyIntArray(blockShape);
-              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
-    CHECK_RET(executor != nullptr, LOG_PRINT("executor is null after GetWorkspaceSize\n");
-              aclDestroyIntArray(blockShape);
-              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return -1);
-
-    LOG_PRINT("workspaceSize = %lu bytes (%.2f MB)\n", workspaceSize, workspaceSize / 1024.0 / 1024.0);
-
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
-                  aclDestroyIntArray(blockShape);
-                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
-    }
+    uint64_t workspaceCapacity = 0;
 
     std::vector<int8_t> resultData(maskOutSize, 0);
     int64_t selectedCount = 0;
     double actualSparsity = 0.0;
     constexpr int32_t kernelRunTimes = 100;
 
-    LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors/workspace...\n", kernelRunTimes);
+    LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
+        uint64_t workspaceSize = 0;
+        aclOpExecutor* executor = nullptr;
+
+        ret = aclnnBSASelectBlockMaskGetWorkspaceSize(
+            queryTensor,
+            keyTensor,
+            blockShape,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            qLayoutBuffer,
+            kvLayoutBuffer,
+            numKeyValueHeads,
+            scaleValue,
+            static_cast<double>(sparsity),
+            maskOutTensor,
+            &workspaceSize,
+            &executor);
+
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("aclnnBSASelectBlockMaskGetWorkspaceSize failed at run %d. ERROR: %d\n",
+                            runId + 1, ret);
+                  aclDestroyIntArray(blockShape);
+                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+        CHECK_RET(executor != nullptr,
+                  LOG_PRINT("executor is null after GetWorkspaceSize at run %d\n", runId + 1);
+                  aclDestroyIntArray(blockShape);
+                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return -1);
+
+        if (workspaceSize > workspaceCapacity) {
+            if (workspaceAddr != nullptr) {
+                aclrtFree(workspaceAddr);
+                workspaceAddr = nullptr;
+            }
+            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            CHECK_RET(ret == ACL_SUCCESS,
+                      LOG_PRINT("allocate workspace failed at run %d. ERROR: %d\n", runId + 1, ret);
+                      aclDestroyIntArray(blockShape);
+                      FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                                   maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+            workspaceCapacity = workspaceSize;
+            LOG_PRINT("workspaceCapacity = %lu bytes (%.2f MB)\n",
+                      workspaceCapacity, workspaceCapacity / 1024.0 / 1024.0);
+        }
+
         ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnBSASelectBlockMask failed at run %d. ERROR: %d\n", runId + 1, ret);
