@@ -34,6 +34,11 @@ class CPUBackend(Backend):
         tforward_kwargs = dict(params)
         tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
 
+        if layout_kv.startswith("PA_") and layout_q == "TND":
+            actual_b = params.get("actual_b", params["B"])
+            s2 = params["S2"]
+            tforward_kwargs["cu_seqlens_kv"] = [i * s2 for i in range(actual_b + 1)]
+
         out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
         lse = torch.log(x_sum) + x_max
         return {"out": out_cpu, "lse": lse}
@@ -59,7 +64,7 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     """PA 格式 → BNSD 重建。"""
     b   = params.get("actual_b", params["B"])  # TND 时 B=1，用 actual_b
     n2  = params.get("N2", params["N1"])
-    d   = params["D"]
+    d   = t.shape[-1]  # 使用 tensor 实际 last dim，兼容 DV != D
     s2  = params["S2"]  # 用 S2，不是 max(seqused_kv)
     seq_kv = params["seqused_kv"]
     bs  = params.get("block_size", 128)
