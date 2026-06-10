@@ -745,7 +745,7 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
         return;
     }
 
-    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER && ep_== 1 &&
+    if (n_ <= COUNTING_SORT_THRESHOLD && rowIdxTytpe_ == SCATTER && ep_== 1 && expertNum_ == ASSIST_NUM &&
         (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX && quantMode_ == UN_QUANT &&
         k_ == PERFORMANCE_MODE_TOP_K && dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT &&
         actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) {

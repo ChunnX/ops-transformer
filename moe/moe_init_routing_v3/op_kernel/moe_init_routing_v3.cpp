@@ -267,8 +267,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER)) {
         bool useCountingSort =
-            (!(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER &&
-               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX));
+            (!(t->n <= COUNTING_SORT_THRESHOLD && t->rowIdxType == SCATTER && t->quantMode == -1 && t->expertTokensNumType == EXERPT_TOKENS_COUNT &&
+               (t->expertEnd - t->expertStart) <= PERFORMANCE_MODE_RANGE_MAX) && t->k == 8 && t->expertNum == 256);
         if (useCountingSort) {
             // Non-FullLoad counting sort (prefill large T)
             TPipe countSortPipe;
