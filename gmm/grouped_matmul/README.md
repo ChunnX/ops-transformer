@@ -22,51 +22,67 @@
 
 - 计算公式：
     - **非量化场景：**
-    $$
-     y_i=x_i\times weight_i + bias_i
-    $$
+
+      $$
+      y_i=x_i\times weight_i + bias_i
+      $$
 
     - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
-    $$
+
+      $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
-    $$
+      $$
+
       - x为INT8，bias为INT32
-      $$
+
+        $$
         y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
-      $$
+        $$
+
       - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
-      $$
+
+        $$
         y_i=(x_i\times weight_i) * scale_i + bias_i
-      $$
+        $$
 
     - **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
-    $$
-     y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
-    $$
-      - x为INT8，bias为INT32
+
       $$
-        y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
-      $$
-      - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
-      $$
-        y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
+      y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
       $$
 
+      - x为INT8，bias为INT32
+
+        $$
+        y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
+        $$
+
+      - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
+
+        $$
+        y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
+        $$
+
     - **量化场景（动态量化，MX && G-B量化）：**
-    $$
-    y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
-    $$
-    其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
+
+      $$
+      y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
+      $$
+
+      其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
     - **伪量化场景：**
       - x为Float16、BFloat16，weight为INT4、INT8（仅支持x、weight、y均为单tensor的场景）。
-    $$
-      y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-    $$
+
+        $$
+        y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+        $$
+
       - x为INT8，weight为INT4（仅支持x、weight、y均为单tensor的场景）。其中$bias$为必选参数，是离线计算的辅助结果，且 $bias_i=8\times weight_i  * scale_i$ ，并沿k轴规约。
-    $$
-      y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
-    $$
+
+        $$
+        y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
+        $$
 
 ## 参数说明
 

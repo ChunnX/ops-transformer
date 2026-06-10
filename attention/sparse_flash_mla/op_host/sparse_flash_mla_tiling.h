@@ -152,6 +152,7 @@ TILING_DATA_FIELD_DEF(int64_t, oriKvStride0) // A2/A3
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft)
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
+TILING_DATA_FIELD_DEF(uint32_t, oriSparseBlockCount) // A5
 
 TILING_DATA_FIELD_DEF(int64_t, topkValueMode)
 
@@ -268,6 +269,7 @@ public:
     int64_t sparseBlockSize = 0;
     int64_t oriSparseBlockCount = 0;
     int64_t cmpSparseBlockCount = 0;
+    int64_t sparseBlockCount = 0;    // A2/A3
 
     int64_t topkValueMode = 0;
     // Mask

@@ -67,8 +67,7 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilingData,
-                          const QuantReduceScatterConfig& config)
+static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
 {
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -76,25 +75,22 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
     tilingData.quantAllReduceTilingInfo.aivNum = aivNum;
-    uint64_t xValueBS = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t xValueH = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    uint64_t scalesValueH = context->GetInputShape(config.SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t xValueBS = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    uint64_t xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+    uint64_t scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     // context->GetInputShape在函数CheckInputTensorDim中已经校验
-    if (context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDimNum() == THREE_DIMS) {
-        xValueBS = xValueBS * context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-        xValueH = context->GetInputShape(config.X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
-        scalesValueH = context->GetInputShape(config.SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
+    if (context->GetInputShape(X_INDEX)->GetStorageShape().GetDimNum() == THREE_DIMS) {
+        xValueBS = xValueBS * context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
+        xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
+        scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
     }
     tilingData.quantAllReduceTilingInfo.bs = xValueBS;
     tilingData.quantAllReduceTilingInfo.hiddenSize = xValueH;
     tilingData.quantAllReduceTilingInfo.scaleHiddenSize = scalesValueH;
     tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
-    tilingData.quantAllReduceTilingInfo.isMc2Context = config.isMc2Context;
 }
 
-/**
- * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
- */
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
 static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
 {
     constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
@@ -145,16 +141,12 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckNpuArch(context) != ge::GRAPH_SUCCESS,
  	                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510", "The value of npuArch must be DAV_3510"),
                     return ge::GRAPH_FAILED);
-    QuantReduceScatterConfig config;
-    config.X_INDEX = 0;
-    config.SCALES_INDEX = 1;
-    config.isMc2Context = false;
-    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo,
-                    OpType::OP_QUANT_ALL_REDUCE, config) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
+                        ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    SetTilingData(context, *tilingData, config);
+    SetTilingData(context, *tilingData);
     SetXPerBlock(*tilingData);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
