@@ -427,6 +427,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
+        if (GetBlockIdx() == 0) {
+            BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after Update round=%d remainK=%lu total=%lu\n",
+                roundId, remainK_, totalDefinitelyInTopK_);
+        }
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
