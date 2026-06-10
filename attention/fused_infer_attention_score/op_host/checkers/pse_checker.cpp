@@ -81,7 +81,8 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
             if (pseShiftDesc->GetDataType() != ge::DT_FLOAT16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "pse_shift",
                     ToString(pseShiftDesc->GetDataType()).c_str(),
-                    "The dtype of pse_shift must be FLOAT16 when the dtype of query is FLOAT16 or INT8 and pse_type is 0.");
+                    "The dtype of pse_shift must be FLOAT16 when the dtype of query "
+                    "is FLOAT16 or INT8 and pse_type is 0.");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -112,7 +113,8 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
         uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
         gert::Shape expectedShapeN = gert::Shape({numHeads});
         if (pseShiftShape != expectedShapeN) {
-            std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +"]) when pse_type is 2 or 3.";
+            std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +
+                "]) when pse_type is 2 or 3.";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
                                                   reason.c_str());
             return ge::GRAPH_FAILED;
@@ -145,7 +147,8 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
             if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
                 (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
                 std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
-                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" + std::to_string(s2Size + actualSharedPrefixLen) + "].";
+                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" +
+                    std::to_string(s2Size + actualSharedPrefixLen) + "].";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToString(pseShiftShape).c_str(),
                                                       reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -179,7 +182,8 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
     // 校验pseShift的desc的存在性，若pseShift存在，其desc也必须存在
     if (fiaInfo.opParamInfo.pseShift.tensor != nullptr) {
         OP_CHECK_IF((fiaInfo.opParamInfo.pseShift.desc == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift", "dtype of pseShift cannot be empty."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                        "pseShift", "dtype of pseShift cannot be empty."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -199,7 +203,8 @@ ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
         uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
         if (pseShiftS2 < maxBlockNumPerBatch * blockSize) {
             std::string reason = "The last axis of pse_shift must be greater than or equal to maxBlockNumPerBatch(" +
-                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) + ") when page attention is enabled.";
+                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(blockSize) +
+                ") when page attention is enabled.";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift",
                 ToString(fiaInfo.opParamInfo.pseShift.tensor->GetStorageShape()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;

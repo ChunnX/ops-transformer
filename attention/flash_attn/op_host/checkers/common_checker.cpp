@@ -55,7 +55,8 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     if (std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
         supportedKvLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
-            LayoutToSerialString(faInfo.kvLayout).c_str(), "The value of layout_kv must be in BNSD/BSND/TND/PA_BBND/PA_BNBD.");
+            LayoutToSerialString(faInfo.kvLayout).c_str(),
+            "The value of layout_kv must be in BNSD/BSND/TND/PA_BBND/PA_BNBD.");
         return ge::GRAPH_FAILED;
     }
 
@@ -146,7 +147,8 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (attnOutDesc != nullptr) {
         if (attnOutDesc->GetDataType() != queryDtype) {
-            std::string reason = "The dtype of attn_out must be the same as dtype(" + ToString(queryDtype) + ") of query.";
+            std::string reason = "The dtype of attn_out must be the same as dtype(" +
+                ToString(queryDtype) + ") of query.";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "attn_out",
                 ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
@@ -229,7 +231,6 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
             ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
             "S of key/value must be greater than 0."),
         return ge::GRAPH_FAILED);
-    
 
     if (faInfo.qkHeadDim != 128) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
@@ -377,7 +378,8 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
         }
-        std::string reason = "block_table cannot be empty when layout_kv is " + LayoutToSerialString(faInfo.kvLayout) + ".";
+        std::string reason = "block_table cannot be empty when layout_kv is " +
+            LayoutToSerialString(faInfo.kvLayout) + ".";
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }

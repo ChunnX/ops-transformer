@@ -50,7 +50,8 @@ ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInf
     // the Shape size and Dim number corresponding to the Padding size must both be 1.
     if (fiaInfo.qPaddingSizeFlag) {
         const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor, querypaddingsizeShapeNumList)) {
+        if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor,
+            querypaddingsizeShapeNumList)) {
             OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "query_padding_size",
                 std::to_string(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetShapeSize()).c_str(), "1");
             return ge::GRAPH_FAILED;
@@ -61,7 +62,8 @@ ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInf
 
     if (fiaInfo.kvPaddingSizeFlag) {
         const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor, kvpaddingsizeShapeNumList)) {
+        if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor,
+            kvpaddingsizeShapeNumList)) {
             OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "kv_padding_size",
                 std::to_string(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetShapeSize()).c_str(), "1");
             return ge::GRAPH_FAILED;
@@ -79,13 +81,15 @@ ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo &fiaI
 {
     if (fiaInfo.qPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.desc == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "queryPaddingSize", "desc of queryPaddingSize cannot be empty."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                        "queryPaddingSize", "desc of queryPaddingSize cannot be empty."),
                     return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.desc == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "kvPaddingSize", "desc of kvPaddingSize cannot be empty."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                        "kvPaddingSize", "desc of kvPaddingSize cannot be empty."),
                     return ge::GRAPH_FAILED);
     }
 
