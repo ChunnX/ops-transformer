@@ -24,9 +24,9 @@
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
 
-#include "include/tensor_api/tensor.h"
-#include "blaze/block/block_mmad_mx.h"
-#include "blaze/block/block_scheduler_swizzle.h"
+#include "tensor_api/tensor.h"
+#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_scheduler_swizzle.h"
 
 #include "mega_moe_combine_send.h"
 
@@ -100,7 +100,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias, void>;
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
     typename BlockMmad::L1Params l1Params{
@@ -109,7 +109,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         .l1BufNum = 2 // 2: double buffer
     };
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::TupleShape matmulShape{m, n, k};
+    typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
     int64_t ubOffset = 0;
@@ -268,7 +268,7 @@ __aicore__ inline void GroupMatmul2Combine(
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias, void>;
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
     typename BlockMmad::L1Params l1Params{
@@ -277,7 +277,7 @@ __aicore__ inline void GroupMatmul2Combine(
         .l1BufNum = 2 // 2: double buffer
     };
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_128, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::TupleShape matmulShape{m, n, k};
+    typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
     int64_t ubOffset = 0;
