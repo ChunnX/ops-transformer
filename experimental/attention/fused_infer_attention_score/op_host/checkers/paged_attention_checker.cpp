@@ -470,6 +470,16 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                 "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
                 fiaInfo.blockSize, NUM_32, NUM_32, BLOCK_SIZE_MAX),
             return ge::GRAPH_FAILED);
+
+        // mxfp8 仅支持blocksize等于512或者1024
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
+            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
+            OP_LOGE(fiaInfo.opName,
+                    "In MXFP8 fullquant scenario, when page attention enable, "
+                    "blockSize(%d) should be %u or %u.",
+                    fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -481,10 +491,12 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     }
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    if (inputLayout == "BSH" || inputLayout == "BSND") {
-        OP_CHECK_IF(dimNum == 4,
-            OP_LOGE(fiaInfo.opName,
-                "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()),
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+        OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
+                    return ge::GRAPH_FAILED);
+    } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
+        OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
+                "PA BnNBsD is not supported.", inputLayout.c_str()),
             return ge::GRAPH_FAILED);
     }
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
