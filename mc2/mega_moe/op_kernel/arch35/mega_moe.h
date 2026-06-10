@@ -47,7 +47,6 @@ public:
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
-        int64_t preOffset;
     };
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
@@ -972,7 +971,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState gmm1State{initShape, initOffset, 0};
+    ExpertLoopState gmm1State{initShape, initOffset};
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
@@ -1004,7 +1003,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;
     expertBeforeCnt_ = 0;
-    ExpertLoopState gmm2State{initShape, initOffset, 0};
+    ExpertLoopState gmm2State{initShape, initOffset};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<OffsetUpdateMode::kGmm>(gmm2State, expertIdx)) {
             continue;
