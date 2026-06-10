@@ -48,7 +48,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
         auto format = desc->GetOriginFormat();
         if ((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end())) {
             OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(),
-                Ops::Base::ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
+                ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
             return ge::GRAPH_FAILED;
         }
     }

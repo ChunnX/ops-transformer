@@ -36,12 +36,12 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo)
     // AttentionMask data type must be int8/uint8/bool, and data format must be ND/NCHW/NHWC/NCDHW.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
         OP_LOGE_FOR_INVALID_DTYPE(fiaInfo.opName, "atten_mask",
-            Ops::Base::ToString(fiaInfo.opParamInfo.attenMask.desc->GetDataType()).c_str(), "int8, uint8 or bool");
+            ToString(fiaInfo.opParamInfo.attenMask.desc->GetDataType()).c_str(), "int8, uint8 or bool");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
         OP_LOGE_FOR_INVALID_FORMAT(fiaInfo.opName, ATTEN_MASK_NAME,
-            Ops::Base::ToString(fiaInfo.opParamInfo.attenMask.desc->GetOriginFormat()).c_str(),
+            ToString(fiaInfo.opParamInfo.attenMask.desc->GetOriginFormat()).c_str(),
             "ND, NCHW, NHWC or NCDHW");
         return ge::GRAPH_FAILED;
     }
@@ -131,7 +131,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? Ops::Base::ToString(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr = (maskTensor != nullptr) ? ToString(maskTensor->GetStorageShape()) : "null";
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask must be empty, when the datatype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query = 1";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask",
@@ -151,7 +151,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (!fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? Ops::Base::ToString(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr = (maskTensor != nullptr) ? ToString(maskTensor->GetStorageShape()) : "null";
 
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask cannot be empty, when "
                         "the datatype of query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
@@ -233,7 +233,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             std::string reasonMsg = "In " + QuantModeToSerialString(fiaInfo.quantMode) +" scenario,"
                 " when sparse is " + std::to_string(sparseMode) + ", the datatype of attentionOut cannot be int8";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
-                    Ops::Base::ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
+                    ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -328,7 +328,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
-            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToString(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -341,7 +341,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
-            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToString(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -494,7 +494,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
         if (!checkMask) {
             const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
-            std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToString(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B(" + std::to_string(fiaInfo.bSize) +
                                     ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size) + "), >=KV_S(" +
                                     std::to_string(fiaInfo.s2Size) + ") + systemPrefixLen(" +
@@ -507,7 +507,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
          (fiaInfo.sparseMode == SPARSE_MODE_BAND)) &&
         !checkMask) {
         const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
-        std::string shapeStr = Ops::Base::ToString(maskShape->GetStorageShape());
+        std::string shapeStr = ToString(maskShape->GetStorageShape());
         std::string reasonMsg = "The shape of atten_mask must be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
                                 "2048] when the sparse_mode is " +
                                 std::to_string(fiaInfo.sparseMode);

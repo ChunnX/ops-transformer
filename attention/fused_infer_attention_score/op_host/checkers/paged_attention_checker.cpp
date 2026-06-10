@@ -64,7 +64,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
 
     // check blockTable each dim cannot be 0
     if (blockTableShape.GetShapeSize() == 0) {
-        std::string shapeStr = Ops::Base::ToString(blockTableShape);
+        std::string shapeStr = ToString(blockTableShape);
         // TODO: Fix when translation is back
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             fiaInfo.opName, "blockTable", shapeStr.c_str(),
@@ -112,8 +112,8 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         if (fiaInfo.isQKVDDifferent) {
-            std::string shapeMsg = Ops::Base::ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-                Ops::Base::ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
+            std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
+                ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key", shapeMsg.c_str(),
                 "When page attention is enabled, the headDim of query and key must be the same");
             return ge::GRAPH_FAILED;
@@ -171,7 +171,7 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
         uint32_t attenMaskDimNum = attenMaskShape.GetDimNum();
         if (attenMaskDimNum > 0 &&
             (attenMaskShape.GetDim(attenMaskDimNum - 1) < maxBlockNumPerBatch * fiaInfo.blockSize)) {
-            std::string shapeStr = Ops::Base::ToString(attenMaskShape);
+            std::string shapeStr = ToString(attenMaskShape);
             // TODO: Fix when translation is back
             std::string reasonMsg =
                 std::string("When page attention enable and attenMask enable, "
@@ -205,7 +205,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         compareD = fiaInfo.vHeadDim;
     }
 
-    std::string shapeStr = Ops::Base::ToString(tempShape);
+    std::string shapeStr = ToString(tempShape);
 
     if (shapeDim == DIM_NUM_3) { // [blockNums, blockSize, H]
         tempBlockSize = tempShape.GetDim(DIM_NUM_1);
@@ -372,7 +372,7 @@ ge::graphStatus PagedAttentionChecker::CheckQDtypeSupport(const FiaTilingInfo &f
 {
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
     // TODO: Fix and not xx scenerio after translated
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query", Ops::Base::ToString(fiaInfo.inputQType).c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query", ToString(fiaInfo.inputQType).c_str(),
             "When the page attention function is enabled, the data type of the query operation cannot be INT8 in"
             " the GQA scenario. INT8 is supported only in the full quantization scenario of MLA."),
             return ge::GRAPH_FAILED);
@@ -393,7 +393,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
     int64_t maxBlockNumPerBatch = GetMaxBlockNumPerBatch(fiaInfo);
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
     if ((blockTableShape.GetDim(0) != fiaInfo.bSize) || (blockTableShape.GetDim(1) < maxBlockNumPerBatch)) {
-        std::string shapeStr = Ops::Base::ToString(blockTableShape);
+        std::string shapeStr = ToString(blockTableShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             fiaInfo.opName, "block_table", shapeStr.c_str(),
             "When page attention enable, block_table shape must be [batch_size, >=max_block_num_per_batch]");

@@ -16,6 +16,8 @@
 #ifndef FUSED_INFER_ATTENTION_SCORE_TILING_UTILS_H
 #define FUSED_INFER_ATTENTION_SCORE_TILING_UTILS_H
 
+#include "fused_infer_attention_score_tiling_constants.h"
+
 namespace optiling {
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
@@ -59,6 +61,94 @@ inline auto increGcd(T a, T b) -> T
     }
     return increGcd(b, a % b);
 }
+
+inline std::string ToString(ge::DataType type)
+{
+    const auto it = arch35FIA::DATATYPE_TO_STRING_MAP.find(type);
+    if (it != arch35FIA::DATATYPE_TO_STRING_MAP.end()) {
+        return it->second;
+    } else {
+        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
+        return "UNDEFINED";
+    }
+}
+
+const std::map<ge::Format, std::string> kFormatToStringMap = {
+    {ge::FORMAT_NCHW, "NCHW"},
+    {ge::FORMAT_NHWC, "NHWC"},
+    {ge::FORMAT_ND, "ND"},
+    {ge::FORMAT_NCDHW, "NCDHW"},
+};
+
+inline std::string FormatToSerialString(const ge::Format format)
+{
+    const auto it = kFormatToStringMap.find(static_cast<ge::Format>(GetPrimaryFormat(format)));
+    if (it != kFormatToStringMap.end()) {
+        if (HasSubFormat(format)) {
+            return std::string(it->second + ":" + std::to_string(GetSubFormat(format))).c_str();
+        }
+        return it->second.c_str();
+    } else {
+        OP_LOGW("FusedInferAttentionScore", "[Check][Param] Format not support %d", format);
+        return "RESERVED";
+    }
+}
+
+/*
+ * @brief: get format string from enum
+ * @param [in] format: enum format
+ * @return string: format string
+ */
+inline std::string ToString(ge::Format format)
+{
+    return FormatToSerialString(format);
+}
+
+static std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0);
+
+    for (size_t i = 0; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+template <typename T>
+static std::string ToString(const std::vector<T> &v)
+{
+    std::ostringstream oss;
+    oss << "[";
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    oss << "]";
+    return oss.str();
+}
+
+inline std::string ToString(const std::vector<const gert::Shape *> &v)
+{
+    std::ostringstream oss;
+    oss << "[";
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << ToString(ToVector(*v[i])) << ", ";
+        }
+        oss << ToString(ToVector(*v[v.size() - 1]));
+    }
+    oss << "]";
+    return oss.str();
+}
+
+inline std::string ToString(const gert::Shape &shape)
+{
+    return ToString(ToVector(shape));
+}
+
 
 } // namespace optiling
 
