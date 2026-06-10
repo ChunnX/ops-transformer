@@ -325,7 +325,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     uint32_t epilogueGranularity;
 
     if constexpr(isW4A8) {
-        using MatmulKernel = 
+        using MatmulKernel =
             Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList,
                                                     BlockEpilogue1, BlockEpilogue2>;
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
