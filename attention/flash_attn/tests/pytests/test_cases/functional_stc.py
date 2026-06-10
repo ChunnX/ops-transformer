@@ -172,7 +172,7 @@ TestCases = {
     # S1G类型，G>mBase，G%mBase==0
     "GS1_21"   : {**BASE,
                   "N1": [128],
-                  "N2": [256],
+                   "N2": [128],
                   "layout_q": ["BSND"],
                   "layout_kv": ["BSND"],
                   "layout_out": ["BSND"]},

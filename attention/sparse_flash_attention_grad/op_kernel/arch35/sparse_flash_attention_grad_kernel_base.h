@@ -308,6 +308,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.commonConstInfo.dSizeV = tilingData->baseParams.d1;
     constInfo.dTotalSize = tilingData->baseParams.d;
     constInfo.commonConstInfo.layoutType = tilingData->baseParams.layout;
+    constInfo.dRopeSize = IS_ROPE ? ROPE_D_64 : 0;
  
     constInfo.commonConstInfo.s1D = constInfo.commonConstInfo.s1Size * constInfo.commonConstInfo.dSize;
     constInfo.commonConstInfo.gS1D = constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.s1D;
@@ -468,6 +469,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
     runInfo.queryOffsetWithRope = runInfo.commonRunInfo.queryOffset;
     runInfo.keyOffsetWithRope = runInfo.commonRunInfo.keyOffset;
+    runInfo.queryOffsetWithRopeForMm12 = runInfo.commonRunInfo.queryOffset;
+    runInfo.keyOffsetWithRopeForMm12 = runInfo.commonRunInfo.keyOffset;
     // Rope场景后面三个mm的GM offset不能和前面两个mm共用，因此需要重新计算
     if constexpr (IS_ROPE) {
         runInfo.queryOffsetWithRope = GetQueryOffset<false>(runInfo);

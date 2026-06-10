@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
-if(BUILD_OPEN_PROJECT)
+if (BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
@@ -51,6 +51,7 @@ if(BUILD_OPEN_PROJECT)
     file(GLOB GENTASK_SRCS
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
+        op_graph/mc2_moe_graph_context.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")

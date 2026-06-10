@@ -28,8 +28,8 @@ namespace optiling {
 // Inputs Index
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
-constexpr uint32_t VALUE_INPUT_INDEX = 2;
-constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
+constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 2;
+constexpr uint32_t VALUE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 4;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 5;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 6;
@@ -140,6 +140,7 @@ struct SFAParaInfo {
     const int64_t *nextTokens = nullptr;
     const int64_t *attentionMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
+    bool kvMerge = false;
 };
 
 struct InnerSplitParams {
@@ -168,6 +169,7 @@ TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
+TILING_DATA_FIELD_DEF(uint32_t, kvMerge)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionBaseParamsMlaOp, SparseFlashAttentionBaseParamsMla)
 
@@ -235,11 +237,11 @@ struct SFATilingInfo {
     uint32_t ropeHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND时生效
     uint32_t kvTSize = 0; // 仅TND时生效
+    int64_t sparseBlockSize = 0;
+    int64_t sparseBlockCount = 0;
     float scaleValue = 0;
     uint32_t innerPrecise = 0;
     uint32_t l2CacheOffFlag = 0;
-    int64_t sparseBlockSize = 0;
-    int64_t sparseBlockCount = 0;
 
     bool pageAttentionFlag = false;
     int64_t blockSize = 0;
@@ -250,10 +252,11 @@ struct SFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
-    bool actualQSeqLenFlag = false;
-    bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
+    bool actualQSeqLenFlag = false;
+    bool actualSeqLenFlag = false;
+
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
@@ -262,6 +265,7 @@ struct SFATilingInfo {
     int64_t nextTokens = INT64_MAX;
     uint32_t attentionMode = 0;
     bool returnSoftmaxLse = false;
+    bool kvMerge = false;
 
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKvType = ge::DT_FLOAT16;
@@ -293,19 +297,17 @@ private:
     ge::graphStatus SetTilingKey(uint64_t tilingKey) const;
     ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize) const;
     ge::graphStatus SetTilingData(TilingDef &tilingData) const;
-    gert::TilingContext *context_ = nullptr;
     ge::graphStatus GetPlatformInfo();
     void GenTilingKey();
     bool DealSameSeqEachBatch();
 
+    void Split();
+    bool IsBalanceSplitCore();
     void ZeroTensorProcess() const;
     void InitParams();
 
-    void Split();
-    bool IsBalanceSplitCore();
-
     void SplitBalanced();
-    void CalcInnerSize(uint32_t s2Size);
+    void CalcInnerSize(uint32_t sfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);
 
@@ -326,6 +328,7 @@ private:
 
     void CalcBlockDim();
 
+    gert::TilingContext *context_ = nullptr;
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
 
@@ -339,8 +342,8 @@ private:
     uint32_t sInnerSize_ = 0;
     uint32_t sInnerSizeTail_ = 0;
     uint32_t sInnerSizeAlign_ = 0;
-    uint32_t kvSplit_ = 0;
     uint32_t usedCoreNum_ = 0;
+    uint32_t kvSplit_ = 0;
     uint32_t formerCoreNum_ = 0;
     uint32_t blockSplitBn2Range_ = 0;
     uint32_t tailSplitedBatchRange_ = 0;
@@ -371,14 +374,14 @@ private:
     void Init();
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
         const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *sfaDesc,
         const std::string &name) const;
     template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name, const std::string subName) const;
     template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
     ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
+        const std::vector<size_t> &sfaExpectDimNumList, const std::string &name) const;
     ge::graphStatus CheckDimNumInLayoutSupport(const SFALayout &layout,
         const gert::StorageShape *shape, const std::string &name) const;
     void LogErrorLayoutSupport(const std::vector<SFALayout> &expectLayoutList,
@@ -487,8 +490,8 @@ private:
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
     NpuArch npuArch_ = NpuArch::DAV_2201;
-    bool isA5_ = false;
     uint64_t l2CacheSize_ = 0;
+    bool isA5_ = false;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
@@ -523,8 +526,8 @@ public:
     void GetInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
-    ge::graphStatus GetKvCache();
     ge::graphStatus GetOpParaInfo();
+    ge::graphStatus GetKvCache();
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetBatchSize();
@@ -603,9 +606,9 @@ public:
     gert::Shape queryShape_{};
     gert::Shape keyShape_{};
     gert::Shape valueShape_{};
-    gert::Shape sparseIndicesShape_{};
     gert::Shape queryRopeShape_{};
     gert::Shape keyRopeShape_{};
+    gert::Shape sparseIndicesShape_{};
 };
 } // namespace optiling
 #endif // SPARSE_FLASH_ATTENTION_TILING_H

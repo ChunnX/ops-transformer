@@ -655,10 +655,10 @@ protected:
     GlobalTensor<P> hPreGm_;
     GlobalTensor<P> xFloatGm_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_;
+    TQue<QuePosition::VECIN, 2> xInQueue_;
     TQue<QuePosition::VECIN, 1> gammaInQueue_;
     TQue<QuePosition::VECOUT, 1> invRmsOutQueue_;
-    TQue<QuePosition::VECOUT, 1> outQueue_;
+    TQue<QuePosition::VECOUT, 2> outQueue_;
     TQue<QuePosition::VECIN, 1> biasInQue_;
 
     TBuf<TPosition::VECCALC> tmpBuff_;

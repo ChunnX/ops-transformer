@@ -95,6 +95,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
@@ -368,10 +369,17 @@ ge::graphStatus LIInfoParser::GetN1Size()
         n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(1));
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
-
-    OP_CHECK_IF(n1Size_ > QUERY_HEAD_NUM_LIMIT, OP_LOGE(opName_, "N1 is %u, but N1 must be no greater than %u.",
-                n1Size_, QUERY_HEAD_NUM_LIMIT), return ge::GRAPH_FAILED);
-
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(n1Size_ != QUERY_HEAD_NUM_LIMIT_950_64 && n1Size_ != QUERY_HEAD_NUM_LIMIT_950_32 &&
+                    n1Size_ != QUERY_HEAD_NUM_LIMIT_950_24 && n1Size_ != QUERY_HEAD_NUM_LIMIT_950_16 &&
+                    n1Size_ != QUERY_HEAD_NUM_LIMIT_950_8,
+               OP_LOGE(opName_, "N1 is %u, N1 must equal 64 or 32 or 24 or 16 or 8.",
+                    n1Size_),
+               return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(n1Size_ > QUERY_HEAD_NUM_LIMIT, OP_LOGE(opName_, "N1 is %u, but N1 must be no greater than %u.",
+                    n1Size_, QUERY_HEAD_NUM_LIMIT), return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -386,10 +394,10 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                  const std::string &actualSeqLenName) const
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+                                                  const std::string &liSeqLenName) const
 {
-    return LiGetActualSeqLenSize(size, tensor, actualSeqLenName, opName_);
+    return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);
 }
 
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
@@ -679,6 +687,7 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.platformInfo = platformInfo_;
     liInfo.opParamInfo = opParamInfo_;
     liInfo.socVersion = socVersion_;
+    liInfo.npuArch = npuArch_;
 
     liInfo.bSize = bSize_;
     liInfo.n1Size = n1Size_;
@@ -709,12 +718,14 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
 
 ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 {
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
+        ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetAndCheckInOutDataType() || ge::GRAPH_SUCCESS != GetQueryKeyAndOutLayout() ||
+    if (ge::GRAPH_SUCCESS != GetAndCheckInOutDataType() ||
+        ge::GRAPH_SUCCESS != GetQueryKeyAndOutLayout() ||
         ge::GRAPH_SUCCESS != GetAndCheckOptionalInput()) {
         return ge::GRAPH_FAILED;
     }
@@ -724,8 +735,8 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size()) {
+    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
+        ge::GRAPH_SUCCESS != GetHeadDim() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch()) {
@@ -744,7 +755,7 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
 }
 
 // --------------------------LightningIndexerTiling类成员函数定义-----------------------
-static uint32_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
+static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liPlatform,
                                     int64_t liS2Size, uint32_t liAicNum)
 {
     constexpr uint32_t liMm1ResElemSize = 4;
@@ -759,7 +770,7 @@ static uint32_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
     constexpr uint32_t liS1BaseSize = 8;
     constexpr uint32_t liTopkMaxSize = 2048;
 
-    uint32_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
+    uint64_t liWorkspaceSize = liPlatform.GetLibApiWorkSpaceSize();
     if (liPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         constexpr uint32_t li3510S1Base = 4;
         constexpr uint32_t li3510S2Base = 128;
@@ -787,7 +798,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint32_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
+    uint64_t workspaceSize = LiCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
