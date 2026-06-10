@@ -49,26 +49,6 @@ using namespace Mc2Aclnn;
 #define CombineMC2TypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
 
 using namespace AscendC;
-
-enum class ExpertFilterType {
-    SPECIAL_EXPERT,
-    NEGATIVE_EXPERT_IDS
-};
-
-struct CombineExpertFilterCondition {
-    ExpertFilterType filterType;
-    int32_t compareVal;
-    AscendC::CMPMODE compareMode;
-
-    __aicore__ inline static CombineExpertFilterCondition SpecialExpert(int32_t moeExpertNum) {
-        return {ExpertFilterType::SPECIAL_EXPERT, moeExpertNum, AscendC::CMPMODE::LT};
-    }
-
-    __aicore__ inline static CombineExpertFilterCondition NegativeId() {
-        return {ExpertFilterType::NEGATIVE_EXPERT_IDS, -1, AscendC::CMPMODE::NE};
-    }
-};
-
 template <CombineMC2TypeClass>
 class MoeDistributeCombineV2 {
 public:
@@ -94,7 +74,7 @@ private:
     __aicore__ inline void TokenMaskCalCnt();
     __aicore__ inline void ExpertMaskCalCnt();
     __aicore__ inline void GenerateActiveMask(half val);
-	__aicore__ inline void MaskExpert(CombineExpertFilterCondition cond);
+    __aicore__ inline void MaskSpecialExpert();
     __aicore__ inline void MaskAlign();
     __aicore__ inline void SetWaitTpStatusAndDisPatch();
     __aicore__ inline void CustomAdd(LocalTensor<XType> &dst, LocalTensor<XType> &src0, LocalTensor<XType> &src1);
@@ -191,7 +171,7 @@ private:
     LocalTensor<int32_t> elasticInfoTensor_;
     LocalTensor<int32_t> performanceInfoTensor_;
     LocalTensor<int32_t> performanceInfoTmpTensor_;
-    LocalTensor<int32_t> firstRecordTensor_;
+    LocalTensor<int32_t> firstRecordTensor_;;
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<bool> maskGenerateTensor_;
     LocalTensor<uint32_t> dataStateLocalTensor_;
@@ -683,7 +663,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::GenerateActiv
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MaskExpert(CombineExpertFilterCondition cond)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MaskSpecialExpert()
 {
     LocalTensor<int32_t> expertIdsTensor_ = mulBuf_.Get<int32_t>();
     LocalTensor<float> expertIdsFloat = rowTmpFloatBuf_.Get<float>();
@@ -706,7 +686,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MaskExpert(Co
     Cast(expertIdsFloat, expertIdsTensor_, RoundMode::CAST_NONE, calcCnt);
     PipeBarrier<PIPE_V>();
     int32_t moeExpertNumInt32 = static_cast<int32_t>(moeExpertOriginalNum_);
-    CompareScalar(maskTensor, expertIdsFloat, static_cast<float>(cond.compareVal), cond.compareMode, calcCnt);
+    CompareScalar(maskTensor, expertIdsFloat, static_cast<float>(moeExpertNumInt32), AscendC::CMPMODE::LT, calcCnt);
     PipeBarrier<PIPE_V>();    
     if (isInputExpertMaskFlag_) {
         Cast(maskCalcTensor, expertMaskTensor_.ReinterpretCast<uint8_t>(), RoundMode::CAST_NONE, calcCnt);
@@ -809,11 +789,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllBuffI
             tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
             GenerateActiveMask(static_cast<half>(1));
         }
-        CombineExpertFilterCondition specialExpCond = CombineExpertFilterCondition::SpecialExpert(moeExpertNum_);
-        MaskExpert(specialExpCond);
+        MaskSpecialExpert();
     }
-    CombineExpertFilterCondition negExpCond = CombineExpertFilterCondition::NegativeId();
-    MaskExpert(negExpCond);
     if (isPerformanceFlag_) {
         uint32_t performanceInfoSize = JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t);
         performanceInfoSizeAlign_ = Ceil(performanceInfoSize, UB_ALIGN) * UB_ALIGN;
@@ -1375,7 +1352,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertScaleCo
         DataCopyPad(expertScalesLocal_, expertScalesGM_[expertScaleBeginIdx_ * axisK_], tokenScaleParams, copyPadFloatParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
     } else {
-        Duplicate(expertScalesLocal_, static_cast<float>(1), bsKNum_);
+        Duplicate(expertScalesLocal_, static_cast<float>(1), expertScaleCntPerCore);
         SyncFunc<AscendC::HardEvent::V_S>();
     }
 }
