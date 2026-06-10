@@ -219,7 +219,7 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
             std::string valMsg = ToString(keyShape->GetStorageShape()) + " and " +
                 ToString(valueShape->GetStorageShape());
             std::string reason = "The last axis of key and value must both be equal "
-                "to 16 when layout is PA_NZ."
+                "to 16 when layout is PA_NZ.";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value",
                 valMsg.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
