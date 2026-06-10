@@ -76,7 +76,7 @@ struct QL1BuffSel {
                                                                          std::is_same_v<INPUT_T, fp8_e5m2_t> ||
                                                                          std::is_same_v<INPUT_T, hifloat8_t>) &&
                                                                        dBaseSize > 256),
-                                    BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>;
+                                    BuffersPolicySingleBuffer<AscendC::Te::Location::L1>, BuffersPolicyDB<AscendC::Te::Location::L1>>;
 };
 
 /* ============确定Key的L1类型============= */
@@ -86,16 +86,16 @@ struct KVL1BuffSel {
                                        std::is_same_v<INPUT_T, fp8_e5m2_t> ||
                                        std::is_same_v<INPUT_T, hifloat8_t>;
     using Type = std::conditional_t<
-        (isFP8DType && s2BaseSize == 128 && dBaseSize == 576), BuffersPolicy4buff<BufferType::L1>,
+        (isFP8DType && s2BaseSize == 128 && dBaseSize == 576), BuffersPolicy4buff<AscendC::Te::Location::L1>,
         std::conditional_t<(!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
-                           BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>>;
+                           BuffersPolicySingleBuffer<AscendC::Te::Location::L1>, BuffersPolicyDB<AscendC::Te::Location::L1>>>;
 };
 
 /* ============确定L0A的类型============= */
 template <typename INPUT_T>
 struct L0ABuffSel {
-    using Type = std::conditional_t<std::is_same_v<INPUT_T, float>, BuffersPolicySingleBuffer<BufferType::L0A>,
-                                    BuffersPolicyDB<BufferType::L0A>>;
+    using Type = std::conditional_t<std::is_same_v<INPUT_T, float>, BuffersPolicySingleBuffer<AscendC::Te::Location::L0A>,
+                                    BuffersPolicyDB<AscendC::Te::Location::L0A>>;
 };
 /* ============确定L0B的类型============= */
 template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
@@ -104,14 +104,14 @@ struct L0BBuffSel {
                                         (s2BaseSize == 256 && dBaseSize > 128 &&
                                          !(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
                                            std::is_same_v<INPUT_T, fp8_e5m2_t> || std::is_same_v<INPUT_T, hifloat8_t>)),
-                                    BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+                                    BuffersPolicySingleBuffer<AscendC::Te::Location::L0B>, BuffersPolicyDB<AscendC::Te::Location::L0B>>;
 };
 /* ============确定L0C的类型============= */
 template <typename INPUT_T, uint32_t s1BaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
 struct L0CBuffSel {
     using Type = std::conditional_t<(s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                                      s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                    BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
+                                    BuffersPolicy4buff<AscendC::Te::Location::L0C>, BuffersPolicyDB<AscendC::Te::Location::L0C>>;
 };
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -124,29 +124,26 @@ class CubeBlockBase {
 public:
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
-        using Type = std::conditional_t<(dBaseSize > 256),
-                                        BuffersPolicySingleBuffer<BufferType::L1>,
-                                        BuffersPolicyDB<BufferType::L1>>;
+        using Type = std::conditional_t<(dBaseSize > 256), BuffersPolicySingleBuffer<AscendC::Te::Location::L1>,
+                                        BuffersPolicyDB<AscendC::Te::Location::L1>>;
     };
 
     /* ============确定Key的L1类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct KVL1BuffSel {
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
-                                        BuffersPolicySingleBuffer<BufferType::L1>,
-                                        BuffersPolicyDB<BufferType::L1>>;
+                                        BuffersPolicySingleBuffer<AscendC::Te::Location::L1>, BuffersPolicyDB<AscendC::Te::Location::L1>>;
     };
 
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
-        using Type = BuffersPolicyDB<BufferType::L0A>;
+        using Type = BuffersPolicyDB<AscendC::Te::Location::L0A>;
     };
     /* ============确定L0B的类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct L0BBuffSel {
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
-                                        BuffersPolicySingleBuffer<BufferType::L0B>,
-                                        BuffersPolicyDB<BufferType::L0B>>;
+                                        BuffersPolicySingleBuffer<AscendC::Te::Location::L0B>, BuffersPolicyDB<AscendC::Te::Location::L0B>>;
     };
 
     /* ============确定L0C的类型============= */
@@ -154,7 +151,7 @@ public:
     struct L0CBuffSel {
         using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                                          mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
+                                        BuffersPolicy4buff<AscendC::Te::Location::L0C>, BuffersPolicyDB<AscendC::Te::Location::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -175,12 +172,13 @@ public:
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<AscendC::Te::Location::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<AscendC::Te::Location::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM1_DBUF_T = Buffer<AscendC::Te::Location::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_DBUF_T = mm2ResPos;
 
     using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
     using L1QType = typename QL1BuffSel<dBaseSize>::Type;
@@ -215,29 +213,26 @@ public:
 
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
-        using Type = std::conditional_t<(dBaseSize > 256), 
-                                        BuffersPolicySingleBuffer<BufferType::L1>,
-                                        BuffersPolicyDB<BufferType::L1>>;
+        using Type = std::conditional_t<(dBaseSize > 256), BuffersPolicySingleBuffer<AscendC::Te::Location::L1>,
+                                        BuffersPolicyDB<AscendC::Te::Location::L1>>;
     };
 
     /* ============确定Key的L1类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct KVL1BuffSel {
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
-                                        BuffersPolicySingleBuffer<BufferType::L1>,
-                                        BuffersPolicyDB<BufferType::L1>>;
+                                        BuffersPolicySingleBuffer<AscendC::Te::Location::L1>, BuffersPolicyDB<AscendC::Te::Location::L1>>;
     };
 
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
-        using Type = BuffersPolicyDB<BufferType::L0A>;
+        using Type = BuffersPolicyDB<AscendC::Te::Location::L0A>;
     };
     /* ============确定L0B的类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct L0BBuffSel {
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
-                                        BuffersPolicySingleBuffer<BufferType::L0B>,
-                                        BuffersPolicyDB<BufferType::L0B>>;
+                                        BuffersPolicySingleBuffer<AscendC::Te::Location::L0B>, BuffersPolicyDB<AscendC::Te::Location::L0B>>;
     };
 
     /* ============确定L0C的类型============= */
@@ -245,8 +240,7 @@ public:
     struct L0CBuffSel {
         using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                                          mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>,
-                                        BuffersPolicyDB<BufferType::L0C>>;
+                                        BuffersPolicy4buff<AscendC::Te::Location::L0C>, BuffersPolicyDB<AscendC::Te::Location::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -267,12 +261,13 @@ public:
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using MM_T = T;
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<AscendC::Te::Location::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<AscendC::Te::Location::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM1_DBUF_T = Buffer<AscendC::Te::Location::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_DBUF_T = mm2ResPos;
 
     using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
     using L1QType = typename QL1BuffSel<dBaseSize>::Type;
@@ -312,10 +307,10 @@ public:
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
     /* =====================LocalBuffer变量====================*/
-    BufferManager<BufferType::L1> *l1BufferManagerPtr;
-    BufferManager<BufferType::L0A> l0aBufferManager;
-    BufferManager<BufferType::L0B> l0bBufferManager;
-    BufferManager<BufferType::L0C> l0cBufferManager;
+    BufferManager<AscendC::Te::Location::L1> *l1BufferManagerPtr;
+    BufferManager<AscendC::Te::Location::L0A> l0aBufferManager;
+    BufferManager<AscendC::Te::Location::L0B> l0bBufferManager;
+    BufferManager<AscendC::Te::Location::L0C> l0cBufferManager;
 
     L1QType l1QBuffers;
     L1KvType l1KBuffers;
@@ -338,7 +333,7 @@ public:
                         useDn, bmm2Write2Ub, splitD>(constInfo),
           constInfo(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<AscendC::Te::Location::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
                                          QSeqParserType &qParser, KvSeqParserType &kvParser)
     {
@@ -459,7 +454,8 @@ public:
     }
 
     // copy query with full s1g and split D
-    __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
+    template <typename DstTensorType>
+    __aicore__ inline void CopyQuerySlice(const DstTensorType &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
         uint32_t nopeDealSize = dRealSize;
@@ -478,14 +474,16 @@ public:
         }
     }
 
-    __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
+    template <typename DstTensorType>
+    __aicore__ inline void CopyQueryTile(const DstTensorType &dstTensor, RunInfoX &runInfo)
     {
         uint32_t dSize = constInfo.dSize;
         CopyQuerySlice(dstTensor, 0, dSize, runInfo);
     }
 
     // copy key with full s2 and split D
-    __aicore__ inline void CopyKeySlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
+    template <typename DstTensorType>
+    __aicore__ inline void CopyKeySlice(const DstTensorType &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                         RunInfoX &runInfo)
     {
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
@@ -504,7 +502,8 @@ public:
     }
 
     // copy key with full s2 and split D
-    __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
+    template <typename DstTensorType>
+    __aicore__ inline void CopyValueSlice(const DstTensorType &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
@@ -520,13 +519,15 @@ public:
     }
 
     // 全量拷贝
-    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+    template <typename DstTensorType>
+    __aicore__ inline void CopyKeyTile(const DstTensorType &dstTensor, RunInfoX &runInfo)
     {
         uint32_t dSize = constInfo.dSize;
         CopyKeySlice(dstTensor, 0, dSize, runInfo);
     }
 
-    __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
+    template <typename DstTensorType>
+    __aicore__ inline void CopyValueTile(const DstTensorType &dstTensor, RunInfoX &runInfo)
     {
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
@@ -580,7 +581,8 @@ public:
         IterateBmm1NdL0Split(outputBuf, runInfo);
     }
 
-    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
+    template <typename DstTensorType, typename L0CTensorType>
+    __aicore__ inline void FixpipeMm1(const DstTensorType &dstTensor, const L0CTensorType &l0C, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -606,11 +608,6 @@ public:
         AscendC::printf("--- constInfo.dSize = [%ld] ---\n", constInfo.dSize);
         AscendC::printf("--- runInfo.actSingleLoopS2Size = [%ld] ---\n", runInfo.actSingleLoopS2Size);
 
-        // BSN2GD
-        // 依据layout_pattern.h中对NDExt的定义，创建GM Layout只需要提供行和列
-        auto layoutQGm = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>
-                            (constInfo.bSize * constInfo.s1Size * constInfo.gSize, constInfo.n2Size * constInfo.dSize);
-
         // 依据Layout定义，尝试提供多维Layout
         // auto shapeQGm = AscendC::Te::MakeShape(
         //     AscendC::Te::MakeShape(constInfo.s1Size * constInfo.gSize, constInfo.bSize), 
@@ -621,7 +618,6 @@ public:
         //     AscendC::Te::MakeStride(AscendC::Te::_1{}, constInfo.dSize)
         // );
         // auto layoutQGm = AscendC::Te::MakeLayout(shapeQGm, strideQGm);
-        auto gmQ = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(queryGmAddr), layoutQGm);
 
         // auto shapeKGm = AscendC::Te::MakeShape(
         //     AscendC::Te::MakeShape(constInfo.s2Size, constInfo.bSize), 
@@ -632,21 +628,28 @@ public:
         //     AscendC::Te::MakeStride(AscendC::Te::_1{}, constInfo.dSize)
         // );
         // auto layoutKGm = AscendC::Te::MakeLayout(shapeKGm, strideKGm);
+
+        // BSN2GD
+        // 依据layout_pattern.h中对NDExt的定义，创建GM Layout只需要提供行和列
+        auto layoutQGm = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>
+                            (constInfo.bSize * constInfo.s1Size * constInfo.gSize, constInfo.n2Size * constInfo.dSize);
+        auto gmQ = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(queryGmAddr), layoutQGm);
+
         auto layoutKGm = AscendC::Te::MakeFrameLayout<AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>
                             (constInfo.n2Size * constInfo.dSize, constInfo.bSize * constInfo.s2Size);
         auto gmK = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(keyGmAddr), layoutKGm);
 
-        Buffer<BufferType::L1> mm1A;
+        Buffer<AscendC::Te::Location::L1> mm1A;
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1A = l1QBuffers.Get();
         } else {
             mm1A = l1QBuffers.GetPre();
         }            
-        LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+        auto mm1ATensor = mm1A.GetTensor<Q_T>();
         uint64_t offsetQL1 = mm1ATensor.GetPhyAddr();
 
-        Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
-        LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
+        Buffer<AscendC::Te::Location::L1> mm1B = l1KBuffers.Get();
+        auto mm1BTensor = mm1B.GetTensor<KV_T>();
         uint64_t offsetKL1 = mm1BTensor.GetPhyAddr();
 
         // GM-->L1
@@ -688,8 +691,8 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-        LocalTensor<Q_T> mm1ResL0CTensor = mm1ResL0C.GetTensor<T>();
+        Buffer<AscendC::Te::Location::L0C> mm1ResL0C = mmL0CBuffers.Get();
+        auto mm1ResL0CTensor = mm1ResL0C.GetTensor<T>();
         uint64_t offsetMM1ResL0C = mm1ResL0CTensor.GetPhyAddr();
 
         auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<16>>(runInfo.actMSize, runInfo.actSingleLoopS2Size);
@@ -709,7 +712,7 @@ public:
         outputBuf.WaitCrossCore();
 
         auto layoutUB = AscendC::Te::MakeFrameLayout<AscendC::Te::NDLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(((runInfo.actMSize + 1) >> 1 << 1), s2BaseSize);
-        LocalTensor<T> mmRes = outputBuf.template GetTensor<T>();
+        auto mmRes = outputBuf.template GetTensor<T>();
         uint64_t outputUBPtr = mmRes.GetPhyAddr();
         auto tensorUB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(outputUBPtr), layoutUB);
         auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, CopyL0C2UBTraitCustom{});
@@ -722,7 +725,7 @@ public:
     // /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     // __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     // {
-    //     Buffer<BufferType::L1> mm1A;
+    //     Buffer<AscendC::Te::Location::L1> mm1A;
     //     if (unlikely(runInfo.isFirstS2Loop)) {
     //         mm1A = l1QBuffers.Get();
     //         mm1A.Wait<HardEvent::MTE1_MTE2>();
@@ -734,7 +737,7 @@ public:
     //         mm1A.Set<HardEvent::MTE2_MTE1>();
     //     }
 
-    //     Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
+    //     Buffer<AscendC::Te::Location::L1> mm1B = l1KBuffers.Get();
     //     mm1B.Wait<HardEvent::MTE1_MTE2>();
     //     LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
     //     CopyKeyTile(mm1BTensor, runInfo);
@@ -742,7 +745,7 @@ public:
     //     mm1A.Wait<HardEvent::MTE2_MTE1>();
     //     mm1B.Wait<HardEvent::MTE2_MTE1>();
 
-    //     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+    //     Buffer<AscendC::Te::Location::L0C> mm1ResL0C = mmL0CBuffers.Get();
     //     mm1ResL0C.Wait<HardEvent::FIX_M>();
 
     //     MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
@@ -784,26 +787,27 @@ public:
         constexpr uint32_t baseKSize = l1BaseD;
         uint32_t kLoops = (constInfo.dSize + baseKSize - 1) / baseKSize;
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+        Buffer<AscendC::Te::Location::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         uint32_t dstNzC0Stride = ((runInfo.actMSize + 15) >> 4 << 4);
         uint64_t l1BaseKOffset = baseKSize * dstNzC0Stride;
 
-        Buffer<BufferType::L1> mm1A = l1QBuffers.Get();
+        Buffer<AscendC::Te::Location::L1> mm1A = l1QBuffers.Get();
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1A.Wait<HardEvent::MTE1_MTE2>();
         }
 
-        uint32_t realK = baseKSize;
-        for (uint32_t kIdx = 0; kIdx < kLoops; kIdx++) {
-            Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
-            if (kIdx == kLoops - 1) {
-                realK = constInfo.dSize - kIdx * baseKSize;
+        uint32_t realK = baseK;
+        for (uint32_t k = 0; k < kLoops; k++) {
+            Buffer<AscendC::Te::Location::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
+            if (k == kLoops - 1) {
+                realK = constInfo.dSize - k * baseK;
             }
             if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
-                LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-                CopyQuerySlice(mm1ATensor[kIdx * l1BaseKOffset], kIdx * baseKSize, realK, runInfo);
+                auto mm1ATensor = mm1A.GetTensor<Q_T>();
+                CopyQuerySlice(mm1ATensor[k * l1BaseKOffset], k * baseK, realK, runInfo);
+
                 mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
             } else {                              // 非s2的第一次循环直接复用Q
                 mm1A = l1QBuffers.GetPre();
@@ -812,8 +816,8 @@ public:
             // 加载当前轮的右矩阵到L1
             mm1B = l1KBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-            CopyKeySlice(mm1BTensor, kIdx * baseKSize, realK, runInfo);
+            auto mm1BTensor = mm1B.GetTensor<KV_T>();
+            CopyKeySlice(mm1BTensor, k * baseK, realK, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();  // 通知
             mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
             mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
@@ -843,11 +847,11 @@ public:
     /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     __aicore__ inline void IterateBmm1DnSplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1> mm1B;
+        Buffer<AscendC::Te::Location::L1> mm1B;
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            auto mm1BTensor = mm1B.GetTensor<Q_T>();
             CopyQueryTile(mm1BTensor, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
@@ -855,9 +859,9 @@ public:
             mm1B.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
+        Buffer<AscendC::Te::Location::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        auto mm1ATensor = mm1A.GetTensor<KV_T>();
 
         CopyKeyTile(mm1ATensor, runInfo);
 
@@ -865,7 +869,7 @@ public:
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+        Buffer<AscendC::Te::Location::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
@@ -888,7 +892,8 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
+    template <typename DstTensorType, typename L0CTensorType>
+    __aicore__ inline void FixpipeMm1Dn(const DstTensorType &dstTensor, const L0CTensorType &l0C, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5; // 双目标模式, 按照N方向切分，N必须为32的倍数
@@ -904,11 +909,11 @@ public:
 
     __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1> mm1B;
+        Buffer<AscendC::Te::Location::L1> mm1B;
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            auto mm1BTensor = mm1B.GetTensor<Q_T>();
             CopyQueryTile(mm1BTensor, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
@@ -916,16 +921,16 @@ public:
             mm1B.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
+        Buffer<AscendC::Te::Location::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        auto mm1ATensor = mm1A.GetTensor<KV_T>();
         CopyKeyTile(mm1ATensor, runInfo);
 
         mm1A.Set<HardEvent::MTE2_MTE1>();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+        Buffer<AscendC::Te::Location::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size,
@@ -959,7 +964,7 @@ public:
         }
 
 #ifdef SKIP_C2
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
+        Buffer<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
         if constexpr (bmm2Write2Ub) {
             outputBuf.WaitCrossCore();
@@ -992,13 +997,13 @@ public:
                 uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseNSize;
                 realN = tailSize ? tailSize : baseNSize;
             }
-            Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
+            Buffer<AscendC::Te::Location::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-            CopyValueSlice(mm2BTensor, nIdx * baseNSize, realN, runInfo);
+            auto mm2BTensor = mm2B.GetTensor<KV_T>();
+            CopyValueSlice(mm2BTensor, n * baseN, realN, runInfo);
             mm2B.Set<HardEvent::MTE2_MTE1>();
 
-            Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
+            Buffer<AscendC::Te::Location::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
 
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
@@ -1021,8 +1026,8 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, uint32_t realN,
+    template <typename DST_TENSOR_T, typename L0CTensorType>
+    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const L0CTensorType &l0C, uint32_t realN,
                                               RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
@@ -1054,15 +1059,15 @@ public:
 
     __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
-        Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
+        Buffer<AscendC::Te::Location::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
+        Buffer<AscendC::Te::Location::L1> mm2B = l1VBuffers.Get();
         mm2A.WaitCrossCore();
         mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-        LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
+        auto mm2BTensor = mm2B.GetTensor<KV_T>();
         CopyValueTile(mm2BTensor, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
-        Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
+        Buffer<AscendC::Te::Location::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
         MMParam param = {
             (uint32_t)mBaseSize,                   // singleM 128
