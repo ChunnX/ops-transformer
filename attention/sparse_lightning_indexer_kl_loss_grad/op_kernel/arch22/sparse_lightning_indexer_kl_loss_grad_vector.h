@@ -233,6 +233,8 @@ private:
     event_t eventIdMte2ToVInnerVecP;
     event_t eventIdMte2ToVInnerPreW;
     event_t eventIdMte2ToVInnerDwDqDk;
+    // MTE2_S
+    event_t eventIdMte2ToS;
     // V_MTE2
     event_t eventIdVToMte24SY;
     event_t eventIdVToMte2P[2];
@@ -364,6 +366,8 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     eventIdMte2ToVInnerVecP = EVENT_ID1;
     eventIdMte2ToVInnerPreW = EVENT_ID2;
     eventIdMte2ToVInnerDwDqDk = EVENT_ID3;
+    // MTE2_To_S
+    eventIdMte2ToS = EVENT_ID0;
     // V_To_MTE2
     eventIdVToMte2Weight[0] = EVENT_ID0;
     eventIdVToMte2Weight[1] = EVENT_ID1;
@@ -694,13 +698,17 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     AscendC::DataCopyPad(reduceSumPResUb, attnSoftmaxL1NormGm[softmaxOffset], copyParams, copyPadParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
+    Duplicate(reduceSumDwResUb, static_cast<T>(0.0), PSY_SYNC_BLOCK_FLOAT_NUM);
+    uint32_t reduceShape[] = {1U, static_cast<uint32_t>(realKSizeAlign8)};
+    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+        reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, reduceShape, true);
     PipeBarrier<PIPE_V>();
 
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyParams);
     DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumPResUb, pSumCopyParams);
+    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumDwResUb, pSumCopyParams);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
 }
 
@@ -1391,6 +1399,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
 
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
+    T pSumValue = reduceSumResTensor.GetValue(0);
+    (void)pSumValue;
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
@@ -1526,6 +1538,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
 
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToS);
+    T pSumValue = reduceSumResTensor.GetValue(0);
+    (void)pSumValue;
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
