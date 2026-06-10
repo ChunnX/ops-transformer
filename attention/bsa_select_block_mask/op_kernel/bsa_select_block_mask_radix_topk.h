@@ -700,13 +700,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileTopKInWs()
         Duplicate<int32_t>(tileTopK, 0, MAX_TILE_NUM_IN_UB);
         VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB, MAX_TILE_NUM_IN_UB);
-        MTE3ToVSync();
     }
     if (tileNumRemain_ > 0) {
         Duplicate<int32_t>(tileTopK, 0, tileNumRemain_);
         VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB, tileNumRemain_);
-        MTE3ToVSync();
     }
 }
 
@@ -725,7 +723,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
-        MTE3ToVSync();
     }
     if (remain > 0) {
         Duplicate<int32_t>(tileHist, 0, remain);
@@ -734,7 +731,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * remain), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + repeatTimes * MAX_TILE_NUM_IN_UB], tileHist, params);
-        MTE3ToVSync();
     }
 }
 
@@ -833,7 +829,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
             DataCopyPad(tileHistGm_[i * MAX_TILE_NUM_IN_UB], tileHist, params);
-            MTE3ToVSync();
         }
         if (tileNumRemain_ > 0) {
             Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNumRemain_);
@@ -848,7 +843,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
             DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
-            MTE3ToVSync();
         }
         globalHistBoundaryNum_ = (tileNum_ > 0) ? (tileNum_ - 1) * tileLen_ + tailTileLen_ : 0;
     } else {
