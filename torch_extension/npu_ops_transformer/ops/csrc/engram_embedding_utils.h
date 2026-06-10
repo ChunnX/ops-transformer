@@ -23,6 +23,15 @@
 #include <vector>
 #include "hccl_common.h"
 
+
+// torch_npu旧版acl头文件缺少以下函数声明，从CANN官方acl_rt.h补充，
+// 确保acl_rt_api.h中的inline wrapper能正确链接
+extern "C" {
+aclError aclrtHostRegisterV2(void *ptr, uint64_t size, uint32_t flag);
+aclError aclrtHostUnregister(void *ptr);
+aclError aclrtHostGetDevicePointer(void *pHost, void **pDevice, uint32_t flag);
+}
+
 namespace op_api {
 
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
@@ -33,21 +42,22 @@ constexpr int COMM_PROTOCOL_UBC_TP_VALUE  = 5;
 
 struct CommContext {
     uint32_t epRankId = 0;
+    uint32_t rankSize = 0;
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};
 };
 
 void CopyContextToTensor(const CommContext &context, at::Tensor &tensor);
 
-class HcclChannelContextBuilder {
+class EngramEmbedingUtilsBuilder {
 public:
     void *myBufHost_ = nullptr;
     void *selfBufDev_ = nullptr;
     HcclMemHandle memHandle_ = nullptr;
     uint64_t bufBytes_ = 0;
 
-    void Build(const std::string &group, int64_t worldSize, uint64_t bufBytes, at::Tensor &contextTensor);
-    CommContext Build(const std::string &group, int64_t worldSize, uint64_t bufBytes);
+    void Build(const std::string &group, uint64_t bufBytes, at::Tensor &contextTensor);
+    CommContext Build(const std::string &group, uint64_t bufBytes);
     void AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle);
     void BuildContext(const HcclComm &hcclHandle, const std::string &group,
                       CommContext &commContextStruct);
@@ -65,22 +75,22 @@ public:
                         CommContext &commContextStruct);
 };
 
-class CommContextManager {
+class EngramEmbeddingUtils {
 public:
-    CommContextManager(const std::string &group, int64_t worldSize, int64_t cclBufferSize);
-    ~CommContextManager();
+    EngramEmbeddingUtils(const std::string &group, int64_t cclBufferSize);
+    ~EngramEmbeddingUtils();
 
     at::Tensor create_context();
     CommContext get_comm_context();
     void update_group(const std::string &group, at::Tensor &contextTensor);
     void update_comm_context(const std::string &group, CommContext &commContext);
     int64_t ccl_buffer_size() const;
+    int64_t host_ptr() const;
 
 private:
     static int64_t context_tensor_size();
 
     std::string group_;
-    int64_t worldSize_;
     int64_t cclBufferSize_;
     bool initialized_ = false;
     void *myBufHost_ = nullptr;

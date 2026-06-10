@@ -13,12 +13,12 @@ import torch_npu
 from npu_ops_transformer.op_builder.builder import OpBuilder
 
 
-class CommContextChannelOpBuilder(OpBuilder):
+class EngramEmbedingUitlsOpBuilder(OpBuilder):
     def __init__(self):
-        super(CommContextChannelOpBuilder, self).__init__("comm_context_channel")
+        super(EngramEmbedingUitlsOpBuilder, self).__init__("engram_embedding_utils")
 
     def sources(self):
-        return ['ops/csrc/test.cpp']
+        return ['ops/csrc/engram_embedding_utils.cpp']
 
     def schema(self):
         return None
@@ -30,10 +30,11 @@ class CommContextChannelOpBuilder(OpBuilder):
         flags = super().extra_ldflags()
         flags.append('-L' + os.path.join(self._cann_path, 'lib64'))
         flags.append('-lhcomm')
+        flags.append('-lascendcl')
         return flags
 
 
-comm_context_channel_op_builder = CommContextChannelOpBuilder()
-op_module = comm_context_channel_op_builder.load()
+engram_embedding_utils_op_builder = EngramEmbedingUitlsOpBuilder()
+op_module = engram_embedding_utils_op_builder.load()
 
-CommContextManagerChannel = op_module.CommContextManager
+EngramEmbedingUitls = op_module.CommContextManager
