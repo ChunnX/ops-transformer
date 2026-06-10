@@ -204,7 +204,7 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # Pipeline 1: C1(Matmul1+2) + V1(softmax/grad) per s1_row
             # ============================================================
-            for s1_id in T.Pipelined(T.serial(s1_start, s1_end), num_stages=num_stages):
+            for s1_id in T.Pipelined(s1_start, s1_end, num_stages=num_stages):
                 with T.Scope("C"):
                     Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
                     GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
@@ -548,7 +548,7 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # Pipeline 2: C2(Matmul4) + V2(cast) per s1_row
             # ============================================================
-            for s1_id in T.Pipelined(T.serial(s1_start, s1_end), num_stages=num_stages):
+            for s1_id in T.Pipelined(s1_start, s1_end, num_stages=num_stages):
                 with T.Scope("C"):
                     RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                     GKIT_L1 = T.alloc_L1((k_block, n_block), input_dtype)
