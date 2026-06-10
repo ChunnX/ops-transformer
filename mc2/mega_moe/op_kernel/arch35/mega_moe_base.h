@@ -27,7 +27,8 @@
 // 段 A/B UB 峰值仍安全(triple 用 DISPATCH_TRIPLE_TILE 解耦, 不随 CHUNK 增长)。不改 win 槽位大小。
 constexpr int32_t DISPATCH_TOKEN_CHUNK = 8192;
 constexpr int32_t DISPATCH_MASK_SLICE_BYTES = DISPATCH_TOKEN_CHUNK / 8;  // 1024B / chunk
-// tripleTensor_ 每批最多这么多行(*32B), 与 CHUNK 解耦, 使 CHUNK 可调大而 UB 不爆。
+// tripleTensor_ 每批最多这么多行(每行 32B = INT32_PER_256B 个 int32), 与 CHUNK 解耦, 使 CHUNK 可调大而 UB 不爆。
+// 2048 行 * 32B = 64KB, 叠加段 B 固定布局(~116KB)后 ≤ 256KB UB。
 constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
 
 struct Mc2MoeContext {

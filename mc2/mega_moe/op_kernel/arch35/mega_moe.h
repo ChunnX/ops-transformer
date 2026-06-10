@@ -160,7 +160,8 @@ private:
     LocalTensor<bfloat16_t> dataResTensor_;
     LocalTensor<int32_t> resetTokenTensor_;
     LocalTensor<float> dataResFp32Tensor_;
-    LocalTensor<float> topKWeightsTensor_;
+    LocalTensor<float> topKWeightsTensor_;    // 仅存本核 token 段的 weights(大 bs 适配)
+    int32_t wCoreOffset_ = 0;                 // 本核 Unpermute token 段起点(与 Unpermute 的 TilingByCore 一致)
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
@@ -255,13 +256,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 // 时段 B: FirstBuffInit (dispatch + GMM1 循环, 覆盖时段 A 同一片 UB)
 //   [0)                expertTokenCntTensor_   32B
 //   [+32)              cumsumInfoTensor_       align32(ws*epr*4)   全程驻留
-//   [+...)             sendCntTensor_          align32(ws*4)       接收端 count-only 读
+//   [+...)             sendCntTensor_          ws*32B(每 rank 1 个 32B 对齐 burst)  接收端 count-only 读
 //   [+...)             maskChunk_/U32_         CK/8     ★两 tensor 同地址别名(u8/u32 视图), 单 dstRank mask 切片
 //   [+...)             validTopkIndexTensor_   align32(4CK)
 //   [+...)             topkIndexTensor_        align32(4CK)  每 chunk 重 CreateVecIndex
 //   [+...)             copyTmpTensors_[6]      6×8KB=48KB  token+scale 软流水
 //   [+...)             expertTokenNumsOutTensor_ align32(epr*4)
-//   [ubBufferUsedAddr_) tripleTensor_(动态)    ≤TT*32B  尾部剩余区, triple-tile 分批重建(与 CK 解耦)
+//   [ubBufferUsedAddr_) tripleTensor_(动态)    ≤TT*32B(行=INT32_PER_256B 个 int32)  尾部剩余区, triple-tile 分批重建
 //   合计 ≈ 8*CK + 48KB + TT*32 + 小项 ≈ 179KB @ CK=8192,TT=2048 —— 与 bs 无关。
 //
 // 时段 C: SecondBuffInit (Unpermute, 再次覆盖地址 0 起整片)
@@ -332,7 +333,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
         expertTokenNumsOutTensorSize / sizeof(int32_t));
     // [ubBufferUsedAddr_, 256KB): 时段 B 剩余空间, 留给 TripleInfoCalAndDispatch 每 sub-slice 动态重建的
-    // tripleTensor_(subNum*32B ≤ CK*32B), 是隐式上限: CK*32 ≤ 256KB - ubBufferUsedAddr_。
+    // tripleTensor_(每行 32B = INT32_PER_256B 个 int32), 上限 TT*32B ≤ 256KB - ubBufferUsedAddr_。
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     // topkIndexTensor_ 改为每 chunk CreateVecIndex(chunkStart, CK), 此处不再一次性生成。
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
@@ -858,12 +859,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
                 int32_t subNum = hi - lo;
                 int32_t subDst = static_cast<int32_t>(rowStartIdxInDst) + lo;  // 绝对 dispatchRevData 行
                 // triple-tile 解耦: subNum 可达 CK(调大后很大), 按 DISPATCH_TRIPLE_TILE 行分批,
-                // tripleTensor_ 每批 ≤ DISPATCH_TRIPLE_TILE*32B, 与 CK 解耦, 保证 UB 不爆。
+                // tripleTensor_ 每行 32B(INT32_PER_256B=8 个 int32), 每批 ≤ TT*32B, 与 CK 解耦, 保证 UB 不爆。
                 for (int32_t off = 0; off < subNum; off += DISPATCH_TRIPLE_TILE) {
                     int32_t n = subNum - off;
                     if (n > DISPATCH_TRIPLE_TILE) { n = DISPATCH_TRIPLE_TILE; }
                     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, ubBufferUsedAddr_,
-                        static_cast<uint32_t>(n) * ALIGN_32 / sizeof(int32_t));
+                        static_cast<uint32_t>(n) * INT32_PER_256B);
                     CopyGMToGMPerToken(subDst + off, dstRankIdx, subStart + off, n, pingpongId);
                 }
                 rowsThisCore += subNum;
@@ -995,10 +996,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
     int32_t num = worldSize_ * Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
+    // 大 bs 适配: weights 只载本核负责的 token 段(Unpermute 按 TilingByCore 分核, 每核只读自己
+    // [coreOffset, coreOffset+coreLen) 的 weights), UB 占用 O(bs/coreNum) 而非 O(bs)。
+    int32_t wCoreLen = 0;
+    TilingByCore(m_, wCoreLen, wCoreOffset_, 1);
+    if (wCoreLen < 0) { wCoreLen = 0; }
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+        static_cast<uint32_t>(wCoreLen * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     uint32_t tempBufAlign = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+        static_cast<uint32_t>(wCoreLen * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
 
     // 时段 C 布局从 UB 地址 0 起, 整体覆盖时段 B(FirstBuffInit)区域(GMM2/combine 已完成, 有 SyncAll 隔离)。
     // [0, 3H*2B): bf16 区 —— [0,H) 最终输出, [H,2H)/[2H,3H) 是 topK 累加的搬入 ping-pong。
@@ -1013,16 +1019,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
     dataResFp32Addr_ = resetTokenAddr_ + num;
     dataResFp32Size_ = dataResFp32BufAlign / sizeof(float);
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr_, dataResFp32Size_);
-    // [+bs*topK*4B): 全量 topkWeights(fp32), Unpermute 全程驻留只读。
+    // [+coreLen*topK*4B): 本核 token 段的 topkWeights(fp32), Unpermute 驻留只读(下标 = (token-wCoreOffset_)*topK)。
     topKWeightsAddr_ = dataResFp32Addr_ + dataResFp32BufAlign;
     topKWeightsSize_ = topKWeightsBufAlign / sizeof(float);
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, topKWeightsAddr_, topKWeightsSize_);
-    // [+bs*topK*2B): bf16 topkWeights Cast 前临时区(仅 bf16 输入时使用)。
+    // [+coreLen*topK*2B): bf16 topkWeights Cast 前临时区(仅 bf16 输入时使用)。
     uint32_t tempAddr = topKWeightsAddr_ + topKWeightsBufAlign;
+    if (wCoreLen <= 0) {
+        return;   // 本核无 token(核数 > bs), Unpermute 循环也是空
+    }
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
-        topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(float)), 0U, 0U, 0U};
+        topKWeightsGlobalTensor_.SetGlobalBuffer(
+            (__gm__ float*)params_.probsGmAddr + static_cast<uint64_t>(wCoreOffset_) * topK_);
+        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(wCoreLen * topK_ * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
     }
@@ -1030,12 +1040,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
         uint32_t tempSize = tempBufAlign / sizeof(bfloat16_t);
         LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, tempAddr, tempSize);
         GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
-        topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
+        topkWeightsGlobalTensor.SetGlobalBuffer(
+            (__gm__ bfloat16_t*)params_.probsGmAddr + static_cast<uint64_t>(wCoreOffset_) * topK_);
+        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(wCoreLen * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
+        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, wCoreLen * topK_);
     }
 }
 
@@ -1057,7 +1068,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
         for (int32_t expId = 0; expId < topK_; ++expId) {
-            float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
+            float expScale = topKWeightsTensor_.GetValue((tokenIdx - wCoreOffset_) * topK_ + expId);
             auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;

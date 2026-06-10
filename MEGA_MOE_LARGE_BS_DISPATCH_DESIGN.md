@@ -28,7 +28,7 @@
 | `validTopkIndexTensor_`（命中 token 位置） | `4·ST` | 接收端 Triple |
 | `topkIndexTensor_`（0..ST-1 索引） | `4·ST` | 接收端 Triple |
 | `tripleTensor_`（动态，每核派发行的三元组） | `rows·32B`（∝ bs） | 接收端 Triple |
-| `topKWeightsTensor_`（unpermute 权重） | `bs·topK·4` | 时段 C |
+| `topKWeightsTensor_`（unpermute 权重） | `bs·topK·4` | 时段 C（§6.5 已改为每核段） |
 
 当 `bs` 很大时这些之和远超 256KB → **OOM**。例如 `bs=10^5, topK=8` ⇒ `ST=8·10^5`，仅
 `topkIdsTensor_` 就要 3.2MB。
@@ -71,7 +71,7 @@
   ```cpp
   constexpr int32_t DISPATCH_TOKEN_CHUNK     = 8192;            // CK: 每批 token 数
   constexpr int32_t DISPATCH_MASK_SLICE_BYTES = CK / 8;          // 1024B: 每批 bit-packed mask 切片
-  constexpr int32_t DISPATCH_TRIPLE_TILE     = 2048;            // TT: tripleTensor 每批最多行数
+  constexpr int32_t DISPATCH_TRIPLE_TILE     = 2048;            // TT: tripleTensor 每批最多行数(每行 32B)
   ```
 - `CK` 取 8192（=32·256）：`CK/8=1024B` 的 mask 切片天然 32B/256B 对齐；`CK` 越大 ⇒ 大 bs 时
   分片数越少 ⇒ 源跨卡 MTE 搬运次数 & 接收端迭代越少（见 §6）。
@@ -119,7 +119,7 @@ dispatch 段在 `Process()` 里的调用骨架，以及卡间数据流，**修�
               ┌─────────────────────────── 修改后（每次处理 CK=8192）──────────────────────────┐
  源 SendMaskCal│  topkChunk[4·CK]  +  maskScratch[4·CK]                            ≈ 8·CK     │
  接收 Triple   │  validTopkIdx[4·CK] + topkIdx[4·CK] + maskChunk[CK/8]                         │  与 bs 无关
-              │  + tripleTensor[≤ TT·32]                                                       │  (常数)
+              │  + tripleTensor[≤ TT·32]                                                        │  (常数)
               └──────────────────────────────────────────────────────────────────────────────┘   ⇒ 任意 bs
                                                                                                    段A≈118KB
                                                                                                    段B≈179KB
@@ -478,9 +478,12 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
 - **收益**：单 chunk 场景恢复成与改前一样的"1 写/专家"，**消除常规 bs 的回退**。
 
 ### 6.2 triple-tile 解耦
-- **问题**：`tripleTensor_ ≤ subNum·32B`，而 `subNum` 可达 `CK`；`CK` 调大后单批会撑爆 UB。
+- **问题**：`tripleTensor_` 随 `subNum` 增长，而 `subNum` 可达 `CK`；`CK` 调大后单批会撑爆 UB。
 - **做法**：把一个 sub-slice 的派发按 `TT=2048` 行分批，`tripleTensor_` 每批 `≤ TT·32B`(64KB)，
   **与 `CK` 解耦**。这是"能把 `CK` 调大"的前提。
+- **行距说明**：`CopyGMToGMPerToken` 写 triple 用 `tripleTensor_[i * INT32_PER_256B]`，
+  `INT32_PER_256B = 8`（256 **bit** = 32B 内的 int32 数，命名易误读为 256 Byte）。
+  即每行 32B，分配 `n*INT32_PER_256B` 个 int32 = n·32B，TT=2048 ⇒ 上限 64KB。
 
 ### 6.3 调大 CHUNK（2048 → 8192）
 - `numChunks` 减为 1/4 ⇒ 源 mask 写对端的跨卡 MTE 搬运次数、接收端 chunk 迭代/leading 扫描各 **~4×** 减少。
@@ -490,6 +493,15 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
 - 可让接收端读"每块命中数向量"前缀和后直接跳到自己的首个重叠块，省掉 leading 扫描。
 - **不做**：它要把 per-chunk count 写进 win 槽 → 槽变大 → 重新与 host CCL buffer 分配耦合（§4.1 的风险），
   而收益在跨卡关键路径之外，且 §6.3 已把 leading 扫描减少 4×。**风险 > 收益，本地又无法验证。**
+
+### 6.5 时段 C（combine/unpermute）大 bs 适配：weights 只载本核段（实测 bs=7168 修复）
+- **症状**：bs=2048 正常、bs=7168 报 "MTE write UB out of bounds"。dispatch 段已与 bs 解耦，
+  炸的是时段 C：`SecondBuffInit` 把**全量** `topKWeightsTensor_`（`bs·topK·4`）和 bf16 临时区
+  （`bs·topK·2`）整块驻留 UB —— bs=7168、topK=8 时仅这两项 ≈344KB > 256KB。
+- **改法**：`Unpermute` 本就 `TilingByCore(m_)` 按核分 token，每核只需自己
+  `[wCoreOffset_, +coreLen)` 段的 weights。`SecondBuffInit` 改为只分配/加载 `coreLen·topK`，
+  `Unpermute` 取数下标改为 `(tokenIdx - wCoreOffset_)·topK + expId`。UB 从 O(bs) → O(bs/核数)，
+  数值与改前逐位一致（各核只读不写、且只读自己的段）。
 
 ---
 
