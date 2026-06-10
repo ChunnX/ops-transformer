@@ -263,7 +263,7 @@ void FiaTilingFullQuantMxArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength,
         } else {
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
-    } else if (fiaInfo_->sparseMode == SPARSE_MODE_BAND) {
+    } else if (fiaInfo_->sparseMode == SPARSE_MODE_BAND || fiaInfo_->sparseMode == SPARSE_MODE_INIT_SWA) {
         preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLength;
         nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLength;
     } else {
@@ -311,7 +311,7 @@ bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
         return false;
     }
 
-    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
+    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND || fiaInfo_->sparseMode == SPARSE_MODE_INIT_SWA ||
         (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
         return false;
     }

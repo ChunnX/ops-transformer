@@ -34,6 +34,7 @@ enum SparseMode : uint8_t {
     LEFT_UP_CAUSAL,
     RIGHT_DOWN_CAUSAL,
     BAND,
+    INIT_SWA,
 };
 
 struct MaskInfo {
@@ -81,6 +82,25 @@ __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t mask
         Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
         Or(vreg_or, vreg_not, vreg_next, preg_all);
         StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_or, preg_all);
+    }
+}
+
+__simd_vf__ inline void MergeBandDn(const uint64_t maskNextUb, const uint64_t maskPreUb, const uint16_t loopCount)
+{
+    RegTensor<uint32_t> vreg_pre;
+    RegTensor<uint32_t> vreg_next;
+    RegTensor<uint32_t> vreg_xor;
+    RegTensor<uint32_t> vreg_not;
+    RegTensor<uint32_t> vreg_and;
+    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
+    Duplicate(vreg_xor, 0x1010101);
+
+    for (uint16_t i = 0; i < loopCount; ++i) {
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
+        Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
+        And(vreg_and, vreg_not, vreg_next, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_and, preg_all);
     }
 }
 
@@ -151,6 +171,16 @@ __aicore__ inline void MergeMask(LocalTensor<T> &maskNext, LocalTensor<T> &maskP
     uint16_t loopCount = (halfS1RealSizeLoop / rowNumEachLoop) * rowNumTimesEachLoop;
 
     MergeBand(maskNextUb, maskPreUb, loopCount);
+}
+
+template <typename T>
+__aicore__ inline void MergeMaskDn(LocalTensor<T> &maskNext, LocalTensor<T> &maskPre, uint32_t byteSize)
+{
+    uint64_t maskPreUb = maskPre.GetPhyAddr();
+    uint64_t maskNextUb = maskNext.GetPhyAddr();
+    uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
+
+    MergeBandDn(maskNextUb, maskPreUb, loopCount);
 }
 
 template <typename T, uint32_t s2BaseSize>
@@ -225,7 +255,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1Sta
 
 __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
 {
-    if (info.sparseMode != BAND) {
+    if (info.sparseMode != BAND && info.sparseMode != INIT_SWA) {
         return true;
     }
 
@@ -260,7 +290,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
         nextToken =
             static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算Token
-    } else if (info.sparseMode == BAND) {                                          // 4
+    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {                                          // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
 
@@ -431,13 +461,26 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
     }
 }
 
+__aicore__ inline uint64_t ComputeAttenMaskOffsetByDeltaDn(MaskInfo &info, int64_t delta)
+{
+    uint64_t offset = 0;
+    uint32_t attenMaskSizeAlign = info.gs1dealNum;
+    if (delta >= 0) {
+        offset = (delta < static_cast<int64_t>(info.nBaseSize)) ? delta : info.nBaseSize;
+    } else {
+        offset = (-delta < static_cast<int64_t>(attenMaskSizeAlign) ? -delta : attenMaskSizeAlign) *
+                 info.attenMaskS1Stride;
+    }
+    return offset + 1;
+}
+
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
         nextToken =
             static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
-    } else if (info.sparseMode == BAND) {                                          // 4
+    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {                                          // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
     uint64_t offset = 0;
@@ -452,10 +495,25 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint
     return offset + 1;
 }
 
-template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
-__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info)
+__aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPreDn(MaskInfo &info, uint32_t s1StartIdx)
 {
-    uint64_t maskOffset = ComputeAttenMaskOffsetCompressDn(info, info.gs1StartIdx);
+    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size);
+    int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
+    return ComputeAttenMaskOffsetByDeltaDn(info, delta);
+}
+
+template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
+__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             bool isPre = false)
+{
+    uint32_t s1ForOffset;
+    if constexpr (layoutQ == LAYOUT_Q::SG) {
+        s1ForOffset = info.gs1StartIdx / info.gSize;
+    } else {
+        s1ForOffset = info.gs1StartIdx % info.s1Size;
+    }
+    uint64_t maskOffset = isPre ? ComputeAttenMaskOffsetCompressPreDn(info, s1ForOffset) :
+                                  ComputeAttenMaskOffsetCompressDn(info, s1ForOffset);
     if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;

@@ -53,6 +53,9 @@ ENABLE_PA = True
 BLOCK_SIZE = 512
 
 SPARSE_MODE = 3
+PRE_TOKENS = 1023
+NEXT_TOKENS = 0
+GLOBAL_WINDOW_SIZE = 4
 FP8_DTYPE = torch.float8_e4m3fn
 QUANT_GROUP_SIZE = 32
 
@@ -579,6 +582,51 @@ def make_accum_seq(seq_lens):
     return result
 
 
+def build_attention_mask(actual_seq_q, actual_seq_kv, sq, skv,
+                         sparse_mode=None, pre_tokens=None, next_tokens=None,
+                         global_window_size=None, device=None, batch=None):
+    """Build CPU golden attention mask. True means masked out."""
+    sparse_mode = SPARSE_MODE if sparse_mode is None else int(sparse_mode)
+    pre_tokens = PRE_TOKENS if pre_tokens is None else int(pre_tokens)
+    next_tokens = NEXT_TOKENS if next_tokens is None else int(next_tokens)
+    global_window_size = GLOBAL_WINDOW_SIZE if global_window_size is None else int(global_window_size)
+    if global_window_size < 0:
+        raise ValueError(f"GLOBAL_WINDOW_SIZE must be non-negative, got {global_window_size}")
+
+    batch = len(actual_seq_q) if batch is None else int(batch)
+    if len(actual_seq_q) != batch or len(actual_seq_kv) != batch:
+        raise ValueError(
+            f"actual_seq length must match batch, got batch={batch}, "
+            f"len(actual_seq_q)={len(actual_seq_q)}, len(actual_seq_kv)={len(actual_seq_kv)}"
+        )
+    q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int64, device=device)
+    k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int64, device=device)
+    q_lens_acl = q_lens_t.view(batch, 1, 1, 1)
+    k_lens_acl = k_lens_t.view(batch, 1, 1, 1)
+
+    q_range = torch.arange(sq, dtype=torch.int64, device=device).view(1, 1, -1, 1)
+    k_range = torch.arange(skv, dtype=torch.int64, device=device).view(1, 1, 1, -1)
+    q_padding_mask = q_range >= q_lens_acl
+    k_padding_mask = k_range >= k_lens_acl
+
+    if sparse_mode == 3:
+        delta = k_lens_acl - q_lens_acl
+        causal_mask = k_range > (q_range + delta)
+        return causal_mask | q_padding_mask | k_padding_mask
+
+    if sparse_mode == 5:
+        delta = k_lens_acl - q_lens_acl
+        next_mask = k_range > (q_range + delta + next_tokens)
+        pre_mask = k_range < (q_range + delta - pre_tokens)
+        if global_window_size > 0:
+            # SWA global tokens stay visible even when they are outside the local left window.
+            global_keep = k_range < global_window_size
+            pre_mask = pre_mask & (~global_keep)
+        return next_mask | pre_mask | q_padding_mask | k_padding_mask
+
+    return q_padding_mask | k_padding_mask
+
+
 # ==============================================================================
 # 数据生成
 # ==============================================================================
@@ -673,6 +721,11 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         delta = k_lens_acl - q_lens_acl
         causal_mask = k_range > (q_range + delta)
         return causal_mask | q_padding_mask | k_padding_mask
+    elif sparse_mode == 5:
+        delta = k_lens_acl - q_lens_acl
+        next_mask = k_range > (q_range + delta + NEXT_TOKENS)
+        pre_mask = k_range < (q_range + delta - PRE_TOKENS)
+        return next_mask | pre_mask | q_padding_mask | k_padding_mask
     else:
         return q_padding_mask | k_padding_mask
 
@@ -748,7 +801,14 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     TILES_Q = (Sq + Q_BLOCK_SIZE - 1) // Q_BLOCK_SIZE
     TILES_KV = (Skv + K_BLOCK_SIZE - 1) // K_BLOCK_SIZE
 
-    mask_global = _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, SPARSE_MODE)
+    mask_global = build_attention_mask(
+        actual_seq_q,
+        actual_seq_kv,
+        Sq,
+        Skv,
+        device=q_tensor.device,
+        batch=b,
+    )
 
     Q_BLOCKS = list(torch.split(q_tensor, Q_BLOCK_SIZE, dim=2))
     K_BLOCKS = list(torch.split(k_tensor, K_BLOCK_SIZE, dim=2))
@@ -877,6 +937,8 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
         num_key_value_heads=kv_n,
         softmax_scale=softmax_scale,
         input_layout=layout,
+        pre_tokens=PRE_TOKENS,
+        next_tokens=NEXT_TOKENS,
         sparse_mode=sparse_mode,
         quant_scale_p=p_scale,
         out_dtype=out_dtype,
@@ -911,6 +973,8 @@ class Network(nn.Module):
             num_key_value_heads=kv_n,
             softmax_scale=softmax_scale,
             input_layout=layout,
+            pre_tokens=PRE_TOKENS,
+            next_tokens=NEXT_TOKENS,
             sparse_mode=sparse_mode,
             quant_scale_p=p_scale,
             out_dtype=out_dtype,
@@ -1110,6 +1174,8 @@ if __name__ == '__main__':
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+    logger.info("SPARSE_MODE=%d, PRE_TOKENS=%d, NEXT_TOKENS=%d, GLOBAL_WINDOW_SIZE=%d",
+                SPARSE_MODE, PRE_TOKENS, NEXT_TOKENS, GLOBAL_WINDOW_SIZE)
 
     logger.info("\n[Step 1] 数据生成")
     (q_fp8, k_fp8, v_fp8,

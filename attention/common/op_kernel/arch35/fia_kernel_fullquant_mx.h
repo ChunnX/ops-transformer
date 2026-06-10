@@ -51,6 +51,7 @@ public:
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -111,6 +112,7 @@ public:
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
+    uint32_t bandHeadTokenOffset = 0U; // intra-block offset of first valid token (token-level precision)
 
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
@@ -471,23 +473,53 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
+        if (IsSpecialBandSparse()) {
+            if (curS2Start >= curS2End) {
+                return TASK_DEAL_MODE::SKIP;
+            }
 
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
-        }
+            if (!ShouldDispatchBandTask(s2Cur)) {
+                return TASK_DEAL_MODE::SKIP;
+            }
 
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
-        }
+            if (s2Cur == 0) {
+                mloop++;
+            }
+        } else {
+            if (curS2Start < curS2End && s2Cur >= curS2End) {
+                return TASK_DEAL_MODE::S2_END;
+            }
 
-        if (s2Cur == curS2Start) {
-            mloop++;
+            if (s2Cur < curS2Start || s2Cur >= curS2End) {
+                return TASK_DEAL_MODE::SKIP;
+            }
+
+            if (SkipForS1OutSplit()) {
+                return TASK_DEAL_MODE::SKIP_S1OUT;
+            }
+
+            if (s2Cur == curS2Start) {
+                mloop++;
+            }
+
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
+    }
+
+    __aicore__ inline bool IsSpecialBandSparse()
+    {
+        if constexpr (USE_DN && HAS_MASK) {
+            if (constInfo.sparseMode == fa_base_vector::INIT_SWA) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline bool ShouldDispatchBandTask(uint32_t s2Cur)
+    {
+        return s2Cur == 0U || (curS2Start < curS2End && s2Cur >= curS2Start && s2Cur < curS2End);
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
@@ -498,13 +530,13 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
-        if (constInfo.sparseMode == fa_base_vector::BAND) {
+        if (constInfo.sparseMode == fa_base_vector::BAND || constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
         if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
+        } else if (constInfo.sparseMode == fa_base_vector::BAND || constInfo.sparseMode == fa_base_vector::INIT_SWA) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
@@ -576,6 +608,12 @@ public:
         curS2Start = s2StartWithSparse;
         curS2End = s2EndWithSparse;
 
+        if (IsSpecialBandSparse()) {
+            uint32_t intraBlockOffset = static_cast<uint32_t>(s2FirstToken) - s2StartWithSparse * s2BaseSize;
+            constexpr uint32_t COPY_SKIP_ALIGN = 32U;
+            bandHeadTokenOffset = (intraBlockOffset / COPY_SKIP_ALIGN) * COPY_SKIP_ALIGN;
+        }
+
         if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) { // first line
             headS2Split = constInfo.s2OStart > s2StartWithSparse ? true : false;
             curS2Start = Max(s2StartWithSparse, constInfo.s2OStart);
@@ -583,6 +621,10 @@ public:
         if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) { // last line
             tailS2Split = constInfo.s2OEnd > 0U ? true : false;
             curS2End = constInfo.s2OEnd > 0U ? Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
+        }
+
+        if (IsSpecialBandSparse() && curS2Start != s2StartWithSparse) {
+            bandHeadTokenOffset = 0U;
         }
         return;
     }
@@ -683,6 +725,16 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
+        if (IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End)) {
+            info.actSingleLoopS2Size = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
+        }
+
+        info.bandHeadCopySkip = 0U;
+        if (IsSpecialBandSparse() && s2Cur !=0 && s2Cur == curS2Start && bandHeadTokenOffset > 0U &&
+            bandHeadTokenOffset < info.actSingleLoopS2Size) {
+            info.bandHeadCopySkip = bandHeadTokenOffset;
+        }
+
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
@@ -693,7 +745,9 @@ public:
             if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
                 info.isChangeBatch = true;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+                bool isFirstS2Loop = IsSpecialBandSparse() ? s2Cur == 0U :
+                                                             (s2Cur == curS2Start);
+                info.isChangeBatch = (info.n2Idx == 0 && isFirstS2Loop);
             }
         }
 
@@ -703,7 +757,11 @@ public:
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        if (IsSpecialBandSparse()) {
+            info.isFirstS2Loop = ((loop == 0) || s2Cur == 0U);
+        } else {
+            info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        }
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);

@@ -61,7 +61,7 @@ uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
 {
     auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
-    if (mode == SparseMode::BAND) {
+    if (mode == SparseMode::BAND || mode == SparseMode::INIT_SWA) {
         return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + baseInfo.preToken;
     }
     return baseInfo.preToken;
@@ -78,6 +78,7 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
         case SparseMode::RIGHT_DOWN_CAUSAL:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
+        case SparseMode::INIT_SWA:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + baseInfo.nextToken;
         default:
             return baseInfo.nextToken;
@@ -718,6 +719,76 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         result.s2End[0] = 0U;
         return;
     }
+
+    // BAND prefill 简单分核：按有效行均分，不做S2方向拆分
+    auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
+    uint32_t s1Size0 = GetS1SeqSize(0U, baseInfo);
+    if (mode == SparseMode::INIT_SWA) {
+        std::vector<uint32_t> validStartPerBatch(baseInfo.bSize, 0U);
+        uint32_t totalBaseNum = 0;
+        for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
+            BatchCache bCache;
+            CalcBatchCache(bIdx, splitContext, bCache);
+            uint32_t batchS1GNum = splitContext.splitInfo.s1GBaseNum[bIdx];
+            uint32_t batchValidStart = batchS1GNum;  // default: all invalid
+            for (uint32_t s1GIdx = 0; s1GIdx < batchS1GNum; s1GIdx++) {
+                auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
+                if (s2Range.second > s2Range.first) {
+                    batchValidStart = s1GIdx;
+                    break;
+                }
+            }
+            validStartPerBatch[bIdx] = batchValidStart;
+            uint32_t validRows = (batchS1GNum > batchValidStart) ? (batchS1GNum - batchValidStart) : 0U;
+            totalBaseNum += validRows * baseInfo.n2Size;
+        }
+
+        if (totalBaseNum == 0U) {
+            result.usedCoreNum = 1U;
+            result.bN2End[0] = baseInfo.bSize * baseInfo.n2Size;
+            result.mEnd[0] = 0U;
+            result.s2End[0] = 0U;
+            return;
+        }
+
+        uint32_t avgBaseNum = 1;
+        if (totalBaseNum > coreNum) {
+            avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+        }
+
+        uint32_t accumBaseNum = 0;
+        uint32_t currCoreIdx = 0;
+        // 分核流程：只对有效行计数，分切点落在有效行上
+        for (uint32_t bN2Idx = 0; bN2Idx < baseInfo.bSize * baseInfo.n2Size; bN2Idx++) {
+            uint32_t bIdx = bN2Idx / baseInfo.n2Size;
+            for (uint32_t s1GIdx = 0; s1GIdx < splitContext.splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
+                if (s1GIdx < validStartPerBatch[bIdx]) {
+                    continue;  // 无效行不计入负载
+                }
+                accumBaseNum += 1;
+                uint32_t targetBaseNum = (currCoreIdx + 1) * avgBaseNum + 1;
+                if (accumBaseNum >= targetBaseNum && currCoreIdx < coreNum - 1) {
+                    result.bN2End[currCoreIdx] = bN2Idx;
+                    result.mEnd[currCoreIdx] = s1GIdx;
+                    result.s2End[currCoreIdx] = 0U;
+                    result.firstFdDataWorkspaceIdx[currCoreIdx] = 0U;
+                    currCoreIdx += 1;
+                }
+            }
+        }
+        // 设置最后一个核
+        result.bN2End[currCoreIdx] = baseInfo.bSize * baseInfo.n2Size;
+        result.mEnd[currCoreIdx] = 0;
+        result.s2End[currCoreIdx] = 0;
+        result.firstFdDataWorkspaceIdx[currCoreIdx] = 0;
+        currCoreIdx += 1;
+
+        result.maxCost = 0;
+        result.fdRes.fdNum = 0U;
+        result.usedCoreNum = currCoreIdx;
+        return;
+    }
+
     CalcCostInfo(splitContext);
 
     // 2、获取每个核的分配方案

@@ -72,6 +72,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr uint32_t s2SplitSize = 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
+    static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
@@ -334,7 +335,6 @@ public:
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
-
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>();
@@ -852,6 +852,11 @@ public:
         if constexpr (HAS_MASK) {
             int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
             int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            if constexpr (USE_DN) {
+                if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.actS2Size > 0) {
+                    s1LastValidToken = runInfo.actS1Size;
+                }
+            }
             s1LastValidToken = Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
@@ -1180,16 +1185,33 @@ public:
         maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
-        isSkipMask = IsSkipAttentionmask(maskInfo);
+        bool isSkipMaskForNext = IsSkipAttentionmask(maskInfo);
+        bool isSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
+        isSkipMask = isSkipMaskForNext && isSkipMaskForPre;
+        uint32_t maskSize = (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur;
         if (isSkipMask) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
             return;
         }
 
-        if (!isSkipMask) {
+        if (!isSkipMaskForNext) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(1U), maskSize);
+        }
+
+        if (!isSkipMaskForPre) {
+            LocalTensor<uint8_t> attenMaskUbPre =
+                this->stage1OutQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
+            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
+                maskInfo, true);
+            MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
+            this->stage1OutQue[runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
+        }
+        if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.s2Idx == 0U && subLoop == 0U &&
+            isSkipMaskForNext) {
+            uint32_t globalKeepSize = Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) * (maskInfo.gs1dealNum >> 1);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(1U), globalKeepSize);
         }
     }
 
