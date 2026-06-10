@@ -178,6 +178,7 @@ public:
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
     this->AICore().AddConfig("ascend950", aicore_config);
+    this->AICore().AddConfig("ascend910_93", aicore_config);
     this->MC2().HcclGroup({"group_ep", "group_tp"});
   }
 };
