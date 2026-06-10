@@ -292,10 +292,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
         cumsumInfoTensorSize / sizeof(int32_t));
-    // [+ws*4): SendInfoCal 用 stride 一次性读本 expert 的 ws 个 srcRank count(只读 count, 不读 mask)。
+    // [+ws*32B): SendInfoCal 用 stride 一次性读本 expert 的 ws 个 srcRank count(只读 count, 不读 mask)。
+    // DataCopyPad GM->UB 每个 burst(4B count)在 UB 内 32B 对齐落位, 故每 rank 占 32B, 读取下标 = rank*8。
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t sendCntTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(worldSize_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr,
         sendCntTensorSize / sizeof(int32_t));
     // [+CK/8): 接收端单个 (dstRank,chunk) 的 mask 切片。maskChunk_(u8)/maskChunkU32_(u32) 同址别名:
@@ -625,9 +625,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendInfoCal(int32_t loc
     DataCopyPad(sendCntTensor_, cntSrcGlobal, cntCopyParams, cntPad);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
 
-    // ----- 2. 逐源卡读取 count + cumsum -----
+    // ----- 2. 逐源卡读取 count + cumsum (每 burst 在 UB 内 32B 对齐落位 → 下标 = rank*8) -----
+    constexpr int32_t CNT_STRIDE_I32 = ALIGN_32 / sizeof(int32_t);
     for (int32_t calRankId = 0; calRankId < static_cast<int32_t>(worldSize_); ++calRankId) {
-        int32_t sendCnt = sendCntTensor_.GetValue(calRankId);
+        int32_t sendCnt = sendCntTensor_.GetValue(calRankId * CNT_STRIDE_I32);
         totalSendCntInExp_ += static_cast<uint64_t>(sendCnt);
         cumsumRevCntInRank_ += static_cast<uint64_t>(sendCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));

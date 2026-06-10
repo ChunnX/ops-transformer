@@ -382,7 +382,7 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 | 删 `gatherMaskTensor_` / `gatherMaskInt32Tensor_`（`ws·slot`） | 分块后 mask 不再常驻，接收端按 (dstRank,chunk) 现读现用。 |
 | `topkIdsTensor_` → 重命名 `topkChunk_`（`4·CK`） | 语义从"全 ST topk"变为"当前 chunk 的 topk"。 |
 | 新增 `maskChunk_`(u8) / `maskChunkU32_`(u32，同址别名，`CK/8`) | 接收端单个 (dstRank,chunk) 的 mask 切片；u8 给 DataCopy、u32 给 GatherMask。 |
-| 新增 `sendCntTensor_`（`ws`） | 接收端 `SendInfoCal` 用 stride **只读 count**。 |
+| 新增 `sendCntTensor_`（`ws*32B`，每 rank 一个 32B 对齐 burst） | 接收端 `SendInfoCal` 用 stride **只读 count**，下标 `r*8`（§5.7）。 |
 | 新增 `sendCntAcc_`（`numMyExperts`） | 源卡每核 per-owned-expert 跨 chunk 的 count 累加器。 |
 
 ### 5.3 `Init`
@@ -396,7 +396,7 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 - `resetTensor_` / `mxTempTensor_` / `xOut*` / `xIn*`（量化缓冲，`O(flag)/O(H)`）不变。
 
 ### 5.5 `FirstBuffInit`（时段 B，dispatch+GMM1，覆盖时段 A 同片 UB）
-- **删** `gatherMask` 的 `ws·slot` 大块；**加** `sendCntTensor_`(`ws·4`) + `maskChunk_`/`maskChunkU32_`(`CK/8`)。
+- **删** `gatherMask` 的 `ws·slot` 大块；**加** `sendCntTensor_`(`ws·32B`) + `maskChunk_`/`maskChunkU32_`(`CK/8`)。
 - `validTopkIndexTensor_` / `topkIndexTensor_` 各降为 `4·CK`；`topkIndexTensor_` 不再一次性
   `CreateVecIndex`，改为**每 chunk** `CreateVecIndex(chunkStart, CK)` 生成本块全局 token 位置。
 - 尾部 `[ubBufferUsedAddr_, 256KB)` 留给 `tripleTensor_`，每批 `≤ TT·32B`（triple-tile，§6.2）。
@@ -423,7 +423,11 @@ for c in [0, numChunks_):
 ### 5.7 `SendInfoCal`（接收端）—— 只读 count
 - 把原"一次性 `DataCopy` 全 `ws·slot`（含 mask）"换成**带 stride 的 count-only 读**：
   `DataCopyPad`，`blockCount=ws`、`blockLen=4B`、`srcStride=maskSlotSize_-4`，把 ws 个 count
-  紧凑读进 `sendCntTensor_`。
+  读进 `sendCntTensor_`。
+- **落位不是紧凑的（已修 bug）**：`DataCopyPad` GM→UB 每个 burst 在 UB 内 **32B 对齐落位**
+  （4B count + 28B pad），所以 rank r 的 count 在 int 下标 `r*8`，不是 `r`。最初按 `GetValue(r)`
+  紧凑读，r≥1 读到 pad 垃圾 → cumsum 错 → GMM1 等不到行数 → **卡死**（bs=1/ws=2 实测复现）。
+  现 `sendCntTensor_` 按 `ws*32B` 分配、按 `GetValue(r*8)` 取数。
 - cumsum 循环从 `sendCntTensor_` 取数；`totalSendCntInExp_` / `expertRevNumsGloablTensor_` 写出
   / `CrossCoreSetFlag` 通知 AIC **全不变**。mask 不再需要常驻（接收端按需现读）。
 
