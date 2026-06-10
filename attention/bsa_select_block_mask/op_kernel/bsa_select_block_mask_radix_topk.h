@@ -427,10 +427,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
-        if (GetBlockIdx() == 0) {
-            BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after Update round=%d remainK=%lu total=%lu\n",
-                roundId, remainK_, totalDefinitelyInTopK_);
-        }
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
@@ -1186,16 +1182,8 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     MTE2ToVSync();
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
-    if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] update after reduce/find round=%d boundary=%d prev=%d\n",
-            roundId, boundaryBin, boundaryBinPrev);
-    }
 
     AddTileHistToTileTopK(globalHist);
-    if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] update after add round=%d total=%lu\n",
-            roundId, totalDefinitelyInTopK_);
-    }
 
     remainK_ = kValue_ - totalDefinitelyInTopK_;
     LocalTensor<float> tileHistFp32 = resTensor.ReinterpretCast<float>();
