@@ -575,5 +575,5 @@ if __name__ == '__main__':
 
     if ENABLE_LSE:
         print("\n[Step 5] lse精度对比")
-        result_compare_method.check_result(cpu_lse[1], npu_out[1])
+        result_compare_method.check_result(cpu_out[1], npu_out[1])
     print("#" * 60)
