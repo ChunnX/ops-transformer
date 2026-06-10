@@ -206,11 +206,13 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "The axis KV_S must be greater than 0, the current is %ld.", faInfo.s2Size),
                 return ge::GRAPH_FAILED);
 
+    const std::vector<int64_t> supportedHeadDims = {64, 128, 256};
     OP_CHECK_IF(
-        faInfo.qkHeadDim != 64 && faInfo.qkHeadDim != 128 && faInfo.qkHeadDim != 256,
+        CheckValueSupport(static_cast<int64_t>(faInfo.qkHeadDim), supportedHeadDims) != ge::GRAPH_SUCCESS,
         OP_LOGE(faInfo.opName, "The axis D of query and key only support 64/128/256, the current is %ld.", faInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.vHeadDim != 64 && faInfo.vHeadDim != 128 && faInfo.vHeadDim != 256,
+    OP_CHECK_IF(
+        CheckValueSupport(static_cast<int64_t>(faInfo.vHeadDim), supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE(faInfo.opName, "The axis D of value only support 64/128/256, the current is %ld.", faInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
 
