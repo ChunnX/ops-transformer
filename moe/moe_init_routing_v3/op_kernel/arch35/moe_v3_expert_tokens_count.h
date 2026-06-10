@@ -41,6 +41,7 @@ private:
     __aicore__ inline void expertCountCopyIn();
     __aicore__ inline void expertCountCompute();
     __aicore__ inline void expertCountCopyOut();
+    __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
     GlobalTensor<int32_t> sortedExpertIdxGm_;
@@ -112,8 +113,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeExpertCo
     }
 }
 
-__aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                               const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void ExpertTokensCount::InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                          TPipe *tPipe)
 {
     pipe_ = tPipe;
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
@@ -146,14 +147,20 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     } else {
         expertCountElements_ = actualExpertNum_;
     }
+}
+
+__aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
+                                               const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBasicParams(tilingData, tPipe);
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
     expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
+                                        Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+                                        Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
     if (dropPadMode_ == DROP_PAD_MODE) {
         expertIdxValueGm_.SetGlobalBuffer(

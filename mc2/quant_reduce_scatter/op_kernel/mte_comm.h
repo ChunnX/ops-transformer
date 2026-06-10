@@ -366,7 +366,6 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     float minTarget = rankDimHccl_ - (float)0.5;
     float maxTarget = rankDimHccl_ + (float)0.5;
     // 读取statusCnt个数据求和
-    AscendC::PRINTF("MTECommunication<TemplateType>::ReadStatus");
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);

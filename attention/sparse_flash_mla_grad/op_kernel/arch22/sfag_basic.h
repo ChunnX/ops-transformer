@@ -142,6 +142,8 @@ private:
 
     // gm
     GlobalTensor<int32_t> topkIndicesGm;
+
+    event_t vWaitMte3Proc;
 };
 
 template <typename SMLAGT>
@@ -252,6 +254,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
                     cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
         SyncAll();
+
+        vWaitMte3Proc = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
+        SET_FLAG(MTE3, V, vWaitMte3Proc);
+        
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
@@ -287,6 +293,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             vecOp.ScatterAdd(runInfo[1 - mmPingPongIdx]);
         }
+        WAIT_FLAG(MTE3, V, vWaitMte3Proc);
+        vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
 
@@ -320,16 +328,10 @@ template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLAGT> &vecOp)
 {
     int64_t taskMod = runInfo[mmPingPongIdx].task & 1;
-    if (cubeBlockIdx < usedCoreNum) {
+    if (cubeBlockIdx < usedCoreNum && !runInfo[mmPingPongIdx].isOri) {
         vecOp.GatherKV(n2Index, t1Offset, runInfo[mmPingPongIdx]);
     }
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_GATHER_PING : CUBE_WAIT_VEC_GATHER_PONG);
-
-    if (scatterRunInfo.changeS1) {
-        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-        vecOp.ScatterAdd(scatterRunInfo);
-        scatterRunInfo.changeS1 = false;
-    }
 
     if (runInfo[mmPingPongIdx].task > 0) {
         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
@@ -338,6 +340,12 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLA
             vecOp.Process(runInfo[1 - mmPingPongIdx]);
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+
+        if (scatterRunInfo.changeS1) {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+            vecOp.ScatterAdd(scatterRunInfo);
+            scatterRunInfo.changeS1 = false;
+        }
 
         if (runInfo[1 - mmPingPongIdx].changeS1) {
             scatterRunInfo = runInfo[1 - mmPingPongIdx];
@@ -378,9 +386,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_
     mm12GmOffset = mmPingPongIdx * mm12WorkspaceLen;
     mm345GmOffset = mmPingPongIdx * mm345WorkspaceLen;
     selectedKGmOffset = selectdKPPPidx * selectedKWspOffset;
-    selectedVGmOffset = selectedKGmOffset;
 
-    if (loop == 0) {
+    if (loop == 0 || loop == oriS2Loop) {
         blkCntOffset = 0;
     } else {
         blkCntOffset += actualSelCntOffset;
@@ -414,12 +421,13 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateGmOffset(int64_
     runInfo[mmPingPongIdx].actualSelectedBlockCount = actualSelectedBlockCount;
     runInfo[mmPingPongIdx].curS1 = curS1;
     runInfo[mmPingPongIdx].curS3 = curS3;
-    runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
-    runInfo[mmPingPongIdx].selectedVGmOffset = selectedVGmOffset;
+    runInfo[mmPingPongIdx].selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : selectedKGmOffset;
+    runInfo[mmPingPongIdx].selectedVGmOffset = runInfo[mmPingPongIdx].selectedKGmOffset;
     runInfo[mmPingPongIdx].oriWinStart = oriWinStart;
     runInfo[mmPingPongIdx].oriWinEnd = oriWinEnd;
     runInfo[mmPingPongIdx].curS1g = s1BasicSize * dimG;
     runInfo[mmPingPongIdx].curS1Basic = s1BasicSize;
+    runInfo[mmPingPongIdx].vWaitMte3Proc = vWaitMte3Proc;
 }
 
 template <typename SMLAGT>
@@ -491,7 +499,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetActualSelCount(con
     oriS2Loop = CeilDiv(oriWinS2Len, selectedCountOffset);
     oriS2Tail = oriWinS2Len % selectedCountOffset ? oriWinS2Len % selectedCountOffset : selectedCountOffset;
 
-    actualSelectedBlockCount += oriWinS2Len;
     curS2Loop = oriS2Loop + cmpS2Loop;
 }
 

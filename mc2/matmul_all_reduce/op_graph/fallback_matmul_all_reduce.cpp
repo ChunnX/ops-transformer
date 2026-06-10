@@ -119,6 +119,7 @@ struct CommParas {
     const char* op;
     const int64_t stream_mode = 1; // STOP_ON_FAILURE
     int64_t comm_turn;
+    const char* comm_mode;
 };
 
 inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
@@ -134,6 +135,9 @@ inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, C
 
     const int64_t* comm_turn_ptr = attrs->GetInt(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_TURN));
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
+
+    para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+    para.comm_mode = (para.comm_mode == nullptr ? "" : para.comm_mode);
 
     return ge::SUCCESS;
 }
@@ -201,36 +205,80 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(ops::MC2OutputIdx::K_Y));
     OPS_CHECK(y == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "y"), return ge::GRAPH_FAILED);
 
+    bool isCommMode = false;
+    if (comm_para.comm_mode != nullptr) {
+        isCommMode =
+            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
+            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+    }
+
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:
-            if (x3 != nullptr) {
+            if (isCommMode) {
                 return EXEC_OPAPI_CMD(
-                    aclnnMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, comm_para.group,
-                    comm_para.op, comm_para.comm_turn, comm_para.stream_mode, y);
+                    aclnnMatmulAllReduceV3, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, comm_para.group,
+                    comm_para.op, comm_para.comm_mode, comm_para.comm_turn, comm_para.stream_mode, y);
             } else {
-                return EXEC_OPAPI_CMD(
-                    aclnnMatmulAllReduce, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, comm_para.group, comm_para.op,
-                    comm_para.comm_turn, comm_para.stream_mode, y);
+                if (x3 != nullptr) {
+                    return EXEC_OPAPI_CMD(
+                        aclnnMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, comm_para.group,
+                        comm_para.op, comm_para.comm_turn, comm_para.stream_mode, y);
+                } else {
+                    return EXEC_OPAPI_CMD(
+                        aclnnMatmulAllReduce, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, comm_para.group,
+                        comm_para.op, comm_para.comm_turn, comm_para.stream_mode, y);
+                }
             }
         case Mc2QuantType::K_WEIGHT_QUANT:
+            if (isCommMode) {
+                return EXEC_OPAPI_CMD(
+                    aclnnWeightQuantMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias,
+                    quant_para.antiquant_scale_acl, quant_para.antiquant_offset_acl, x3, comm_para.group,
+                    comm_para.op, comm_para.comm_mode, comm_para.comm_turn, comm_para.stream_mode,
+                    quant_para.antiquant_group_size, y);
+            }
             return EXEC_OPAPI_CMD(
                 aclnnWeightQuantMatmulAllReduce, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias,
                 quant_para.antiquant_scale_acl, quant_para.antiquant_offset_acl, x3, comm_para.group, comm_para.op,
                 comm_para.comm_turn, comm_para.stream_mode, quant_para.antiquant_group_size, y);
         case Mc2QuantType::K_QUANT:
             if (all_reduce_para.y_dtype != static_cast<uint64_t>(ge::DataType::DT_UNDEFINED)) {
+                if (isCommMode) {
+                    return EXEC_OPAPI_CMD(
+                        aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
+                        quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
+                        quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_mode,
+                        comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
+                        all_reduce_para.comm_quant_mode, y);
+                }
                 return EXEC_OPAPI_CMD(
-                    aclnnQuantMatmulAllReduceV4, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, 
+                    aclnnQuantMatmulAllReduceV4, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
                     quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_turn,
                     comm_para.stream_mode, all_reduce_para.group_size, all_reduce_para.comm_quant_mode, y);
             } else if ((comm_quant_scale_1 != nullptr) && (comm_quant_scale_2 != nullptr)) {
+                if (isCommMode) {
+                    return EXEC_OPAPI_CMD(
+                        aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
+                        quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
+                        quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_mode,
+                        comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
+                        all_reduce_para.comm_quant_mode, y);
+                }
                 return EXEC_OPAPI_CMD(
                     aclnnQuantMatmulAllReduceV3, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.dequant_scale, quant_para.pertoken_scale, quant_para.comm_quant_scale_1,
                     quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_turn,
                     comm_para.stream_mode, y);
             } else {
+                if (isCommMode) {
+                    return EXEC_OPAPI_CMD(
+                        aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
+                        quant_para.dequant_scale, quant_para.pertoken_scale, quant_para.comm_quant_scale_1,
+                        quant_para.comm_quant_scale_2, comm_para.group, comm_para.op, comm_para.comm_mode,
+                        comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
+                        all_reduce_para.comm_quant_mode, y);
+                }
                 return EXEC_OPAPI_CMD(
                     aclnnQuantMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.dequant_scale, quant_para.pertoken_scale, comm_para.group, comm_para.op,

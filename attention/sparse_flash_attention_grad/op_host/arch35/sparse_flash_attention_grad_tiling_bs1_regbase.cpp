@@ -409,11 +409,12 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
        
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
-    if (sparse_mode == 3) {
+    if (sparse_mode == 3 || sparse_mode == 0) {
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
     } else {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode = 3, now sparse_mode=%d.", sparse_mode);
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_mode = 0 or 3, now sparse_mode=%d.",
+                sparse_mode);
         return ge::GRAPH_FAILED;
     }
     if (dimDq != D_SIZE && dimDq != D_SIZE) {
@@ -474,11 +475,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (queryShape.GetDim(DIM_0) != keyShape.GetDim(DIM_0)){
-            OP_LOGE(context_, "SparseFlashAttentionGrad batchsize of query[%ld] and key[%ld] should be equal.",
-            queryShape.GetDim(DIM_0), keyShape.GetDim(DIM_0));
-            return ge::GRAPH_FAILED;            
-        }
         tmpData.ropeEnable = false;
         tmpData.ropeDim = 0;
     }

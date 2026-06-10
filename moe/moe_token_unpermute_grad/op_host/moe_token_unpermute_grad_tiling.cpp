@@ -242,7 +242,7 @@ static bool CoreSplitInfoProbIsNotNone(
 static ge::graphStatus MoeTokenUnpermuteGradCoreSplitInfo(
     const gert::TilingContext* context, MoeTokenUnpermuteGradTilingData& tiling)
 {
-    auto tokensDtype = context->GetInputDesc(INPUT_PERMUTED_TOKENS_IDX)->GetDataType();
+    auto tokensDtype = context->GetOptionalInputDesc(INPUT_UNPERMUTEDOUTPUTD_IDX)->GetDataType();
     uint32_t tokensTypeLength = GetLengthByType(tokensDtype); // sizeof(bfloat16)
 
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
@@ -253,7 +253,7 @@ static ge::graphStatus MoeTokenUnpermuteGradCoreSplitInfo(
         probTypeLength = GetLengthByType(probDtype);
     }
 
-    auto rowIdMapDtype = context->GetInputDesc(INPUT_ROWIDMAP_IDX)->GetDataType();
+    auto rowIdMapDtype = context->GetOptionalInputDesc(INPUT_ROWIDMAP_IDX)->GetDataType();
     uint32_t rowIdMapTypeLength = GetLengthByType(rowIdMapDtype); // sizeof(int32)
     OP_CHECK_IF(
         tokensTypeLength == 0 || rowIdMapTypeLength == 0 || probTypeLength == 0,
@@ -287,16 +287,18 @@ static ge::graphStatus Tiling4MoeTokenUnpermuteGrad(gert::TilingContext* context
 {
     OP_LOGD("MoeTokenUnpermuteGradTiling tiling start");
     MoeTokenUnpermuteGradTilingData tiling;
-    const gert::StorageShape* permutedTokensShape = context->GetInputShape(INPUT_PERMUTED_TOKENS_IDX);
-    const gert::StorageShape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensShape);
+    const gert::StorageShape* unpermutedOutputDShape = context->GetOptionalInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
+
     auto probTensor = context->GetOptionalInputTensor(INPUT_PROB_IDX);
     const gert::StorageShape* probShape = (probTensor == nullptr) ? nullptr : context->GetOptionalInputShape(INPUT_PROB_IDX);
+    
     int64_t tokensNum = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_0);
     int64_t hiddenSize = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_1);
     int64_t topK = (probShape == nullptr) ? 1 : probShape->GetStorageShape().GetDim(DIM_1);
-    int64_t numOutTokens = permutedTokensShape->GetStorageShape().GetDim(DIM_0);
+    const gert::StorageShape* sortedIndicesShape = context->GetOptionalInputShape(INPUT_ROWIDMAP_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sortedIndicesShape);
+    int64_t numOutTokens = sortedIndicesShape->GetStorageShape().GetDim(DIM_0);
     tiling.set_tokensNum(tokensNum);
     tiling.set_topK(topK);
     tiling.set_hiddenSize(hiddenSize);

@@ -71,7 +71,7 @@ static graphStatus PrepareOutputTensorListGMMAllReduce(OpExecuteContext* host_ap
 }
 
 static graphStatus GroupedMatMulAllReduceExecuteFunc(OpExecuteContext* host_api_ctx) {
-    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("gmm_all_reduce_fallback", "host_api_ctx is null"), return GRAPH_FAILED);
+    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("gmm_all_reduce_fallback", "host_api_ctx"), return GRAPH_FAILED);
     std::vector<const gert::Tensor*> geTensorListX;
     size_t numGeX = 0;
     PrepareInputTensorListGMMAllReduce(host_api_ctx, geTensorListX, GMMAllReduceInOutIdx::INPUT_X, numGeX);

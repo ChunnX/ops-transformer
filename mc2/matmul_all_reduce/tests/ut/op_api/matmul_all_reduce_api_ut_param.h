@@ -33,6 +33,7 @@ struct MatmulAllReduceApiUtParam {
     TensorDesc output;
     std::string group;
     std::string reduceOp;
+    std::string commMode;
     int64_t commTurn;
     int64_t streamMode;
     int64_t groupSize;
@@ -71,6 +72,10 @@ struct MatmulAllReduceApiUtParam {
             "output_shape", "output_dtype", "output_format");
         this->group = ReadMap(csvMap, "group");
         this->reduceOp = ReadMap(csvMap, "reduce_op");
+        this->commMode = ReadMap(csvMap, "comm_mode", "");
+        if (this->commMode == "_") {
+            this->commMode = "";
+        }
         this->commTurn = stoll(ReadMap(csvMap, "comm_turn", "0"));
         this->streamMode = stoll(ReadMap(csvMap, "stream_mode", "0"));
         this->groupSize = stoll(ReadMap(csvMap, "group_size", "0"));

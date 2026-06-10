@@ -307,7 +307,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 - 确定性计算：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
   - Ascend 950PR/Ascend 950DT：`aclnnWeightQuantMatmulAllReduce`默认确定性实现。
-- 增量场景不使能MC2，全量场景使能MC2。
+- 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。
 - x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。
 - 传入的x1、x2、antiquantScale或者output不为空指针。

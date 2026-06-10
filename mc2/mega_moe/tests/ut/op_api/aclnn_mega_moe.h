@@ -36,6 +36,10 @@ extern "C" {
  *                                    量化场景需要，GroupMatmul1右矩阵反量化参数。
  * @param [in] weightScales2Optional: 计算可选输入，TensorList，数据类型float8_e8m0，数据格式支持ND。
  *                                    量化场景需要，GroupMatmul2右矩阵反量化参数。
+ * @param [in] bias1Optional: 计算可选输入，TensorList，数据类型float32，数据格式支持ND。
+ *                             GroupMatmul1的偏置参数。
+ * @param [in] bias2Optional: 计算可选输入，TensorList，数据类型float32，数据格式支持ND。
+ *                             GroupMatmul2的偏置参数。
  * @param [in] xActiveMaskOptional: 计算可选输入，Tensor，数据类型int8，数据格式支持ND。预留参数，暂不支持。
  * @param [in] scalesOptional: 计算可选输入，Tensor，数据类型float32或float8_e8m0，数据格式支持ND。预留参数，暂不支持。
  * @param [in] moeExpertNum: 计算输入，int。MoE模型的总专家数量。
@@ -43,10 +47,16 @@ extern "C" {
  * @param [in] cclBufferSize: 计算输入，int。CCL通信缓冲区大小。
  * @param [in] maxRecvTokenNum: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示自动计算。
  * @param [in] dispatchQuantMode: 计算可选输入，int。dispatch通信时量化模式，目前仅支持4（MXFP模式）。默认值为0。
- * @param [in] dispatchQuantOutType: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
+ * @param [in] dispatchQuantOutDtype: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
  * @param [in] combineQuantMode: 计算可选输入，int。预留参数，暂不支持。默认值为0。
  * @param [in] commAlg: 计算可选输入，str。预留参数，暂不支持。默认值为""。
- * @param [in] globalBs: 计算可选输入，int。全局batch size，多卡场景下的总Token数，默认值为0表示使用单卡BS。
+ * @param [in] numMaxTokensPerRank: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
+ * @param [in] activation: 计算可选输入，str。激活函数类型，支持"swiglu"、"gelu"、"silu"、"relu"等，默认值为"swiglu"。
+ * @param [in] activationClamp: 计算可选输入，float。激活函数截断值，默认值为float最大值。
+ * @param [in] activationOutDtype: 计算可选输入，int。GMM2的x数据类型，默认值为DT_UNDEFINED。
+ * @param [in] transposeWeight1: 计算可选输入，bool。是否转置weight1，默认值为false。
+ * @param [in] transposeWeight2: 计算可选输入，bool。是否转置weight2，默认值为false。
+ * @param [in] weight1Interleave: 计算可选输入，int。weight1交织粒度大小，默认值为0标识不交织。
  * @param [out] yOut: 计算输出，Tensor，必选输出，数据类型bfloat16，仅支持2维，数据格式支持ND。
  *                    计算输出结果，与输入x shape相同。
  * @param [out] expertTokenNumsOut: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。
@@ -59,10 +69,13 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIds, const aclTensor* topkWeights,
     const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
-    const aclTensorList* weightScales2Optional, const aclTensor* xActiveMaskOptional,
+    const aclTensorList* weightScales2Optional, const aclTensorList* bias1Optional,
+    const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
-    const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
+    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
+    const char* commAlg, int64_t numMaxTokensPerRank, const char* activation, double activationClamp,
+    int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
+    aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
 /**
