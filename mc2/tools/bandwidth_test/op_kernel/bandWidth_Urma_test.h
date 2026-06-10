@@ -155,8 +155,6 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
 
     // ==================== 全局内存地址 ====================
-    GM_ADDR xGM_;              // 输入x的GM地址
-    GM_ADDR expertIdGM_;       // 专家ID的GM地址
     GM_ADDR yGM_;              // 输出y的GM地址
     GM_ADDR receiveCntGM_;     // 接收计数的GM地址
     GM_ADDR statusSpaceGm_;    // 状态空间的GM地址
@@ -209,8 +207,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
-    xGM_ = x;
-    expertIdGM_ = expertId;
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
     // epRankId_ = tilingData->rank_id; // 获取当前rank ID
@@ -234,7 +230,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     mode_ = tilingData->mode;
 
     sendHandleWorkspace_ = workspaceGM;
-    localUrmaWorkspace_ = sendHandleWorkspace_ + axisBS_ * epWorldSize_ * UB_ALIGN + ONE_MB;
+    localUrmaWorkspace_ = sendHandleWorkspace_ + axisBS_ * epWorldSize_ * sizeof(uint32_t) + ONE_MB;
 
     if (epWorldSize_ < aivNum_) {
         aivNumUsedComm_ = epWorldSize_;
@@ -411,11 +407,13 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-    // if (dstRankId != epRankId_) {
-    //     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    //     sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * UB_ALIGN));
-    //     DataCopy(sendFlagHandleGMTensor_, flagTensor_, UB_ALIGN / sizeof(int32_t));
-    // }
+    if (dstRankId != epRankId_) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        PipeBarrier<PIPE_MTE3>();
+        __gm__ int32_t* sendFlagHandle = (sendHandleWorkspace_ + (dstRankId * axisBS_ + curExpertCnt) * sizeof(int32_t));
+        int32_t sendFlag = 1;
+        WriteGmByPassDCache(sendFlagHandle, sendFlag);
+    }
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -463,8 +461,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     if (startExpert >= endExpert || processExpertNum == 0) { 
         return; 
     }
-    sendFlagHandleGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(sendHandleWorkspace_ + startExpert * axisBS_ * UB_ALIGN));
-    uint32_t lenth = Ceil(processExpertNum * sizeof(uint32_t),UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sendCntBuf_, lenth);
     tpipe_->InitBuffer(sendSumBuf_, lenth);
     sendCntTensor_ = sendCntBuf_.Get<int32_t>();
@@ -478,7 +474,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
     PipeBarrier<PIPE_ALL>();
-    uint32_t toltalTokenNum = (MAX_UB_SIZE - 2 *lenth - totalUsedUB_) / UB_ALIGN; // 一次可以搬运进来的token数
     uint32_t processCnt = 0;
     for(uint32_t i = startExpert; i < endExpert; ++i) {
         if (sendCntTensor_.GetValue(i - startExpert) == 0 || i == epRankId_) { // 无需发送的expert直接标记完成
@@ -486,9 +481,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         }
     }
     uint32_t cnt=0;
-    TBuf<> tempBuf;
-    tpipe_->InitBuffer(tempBuf, toltalTokenNum * UB_ALIGN);
-    LocalTensor<int32_t> flagTensor = tempBuf.Get<int32_t>();
     while(true) {
         // cnt += 1;
         // if (cnt > 100000) {
@@ -497,39 +489,28 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
         for(uint32_t i = startExpert; i < endExpert; ++i) {
             uint32_t curSendCnt = sendCntTensor_(i - startExpert);
             uint32_t curSumCnt = sendSumTensor_(i - startExpert);
-            if (i == epRankId_ || curSendCnt == 0 || curSumCnt == curSendCnt) { 
+            if (curSendCnt == 0 || i == epRankId_ || curSumCnt == curSendCnt) {
                 continue;
             }
-            uint32_t round = 0;
-            uint32_t sendTokenNum = 0;
-            round = Ceil(curSendCnt, toltalTokenNum);
-            sendTokenNum = curSendCnt > toltalTokenNum ? toltalTokenNum : curSendCnt; // 每个round发送的token数
-            for (uint32_t r = 0; r < round; ++r) {
-                uint32_t needProcessCnt = r == (round - 1) ? curSendCnt - sendTokenNum * (round - 1) : sendTokenNum;
-                if (needProcessCnt == 0) {
-                    continue;
+            for (uint32_t j = 0; j < curSendCnt; ++j) {
+                uint32_t sendFlag = 0;
+                __gm__ int32_t* sendFlagHandle = (sendHandleWorkspace_ + (i * axisBS_ + j) * sizeof(int32_t));
+                sendFlag = ReadGmByPassDCache(sendFlagHandle);
+                if (sendFlag == 1) {
+                    uint32_t dstRankId = i;
+                    GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+                                        epRankId_ * expertPerSizeOnWin_ + j * hAlignWinSize_);
+                    GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+                                                epRankId_ * expertPerSizeOnWin_ + j * hAlignWinSize_);
+                    hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, srcRankGM, hAlignWinSize_);
+                    curSumCnt += 1;
+                    sendSumTensor_(i - startExpert) = curSumCnt;
+                    sendFlag = 0;
+                    WriteGmByPassDCache(sendFlagHandle, sendFlag);
+                    if (curSumCnt == curSendCnt) {
+                        processCnt += 1;
+                    }
                 }
-                uint32_t index = (i - startExpert) * axisBS_  + r * sendTokenNum;
-                DataCopy(flagTensor, sendFlagHandleGMTensor_[index * 8], needProcessCnt * 8);
-                SyncFunc<AscendC::HardEvent::MTE2_S>();
-                for (uint32_t j =0; j < needProcessCnt; ++j) {
-                   if (flagTensor.GetValue(j * 8) == 1) {
-                        uint32_t dstRankId = i;
-                        GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
-                                            epRankId_ * expertPerSizeOnWin_ + (r * sendTokenNum + j) * hAlignWinSize_);
-                        GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-                                                    epRankId_ * expertPerSizeOnWin_ + (r * sendTokenNum + j) * hAlignWinSize_);
-                        flagTensor.SetValue(j * 8, 0);
-                        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, srcRankGM, hAlignWinSize_);
-                        sendSumTensor_(i - startExpert) += 1;
-                        if (sendSumTensor_(i - startExpert) == curSendCnt) {
-                            processCnt += 1;
-                        }
-                        SyncFunc<AscendC::HardEvent::S_MTE3>();
-                        DataCopy(sendFlagHandleGMTensor_[index * 8 + j * 8], flagTensor[j * 8], 1);
-                   }
-                }
-               
             }
         }
         if (processCnt == processExpertNum) {
@@ -542,69 +523,40 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
-    // // 发送token到目标rank的窗口
-    // // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
+    // 发送token到目标rank的窗口
+    // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
-    // // ============ 计算当前核处理的token范围 ============
-    // if (aivId_ >= aivNumUsedCompute_) {
-    //     return;
-    // }
-    uint32_t startExpert, endExpert, sendExpertNum; // 每个aiv发送时的起始rankid
-    SplitToCore(epWorldSize_, aivNum_, startExpert, endExpert, sendExpertNum);
+    // ============ 计算当前核处理的token范围 ============
+    if (aivId_ >= aivNumUsedCompute_) {
+        return;
+    }
+    uint32_t startTokenId, endTokenId, sendTokenNum; // 每个aiv发送时的起始rankid
+    SplitToCore(axisBS_, aivNumUsedCompute_, startTokenId, endTokenId, sendTokenNum);
 
-    if (startExpert >= epWorldSize_ || sendExpertNum == 0) { 
+    if (startTokenId >= axisBS_ || sendTokenNum == 0) { 
         return; 
     }
-
-    for (uint32_t i = startExpert; i < endExpert; ++i) {
-        if (i == epRankId_) {
-            continue;
-        }
-        GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(i) +
-                            epRankId_ * expertPerSizeOnWin_);
-        hcomm_.WriteNbi(GetCommHandle(i), remoteAddr, xGM_, axisBS_* axisH_ * sizeof(XType));
-        // for (uint32_t j = 0; j < axisBS_; ++j) {
-        //     uint32_t dstRankId = expertIdsTensor_(j);// expert_id 直接作为目标rank_id
-        //     if (dstRankId != i) {
-        //         continue;
-        //     }
-        //     int32_t curExpertCnt = 0;
-        //     SyncFunc<AscendC::HardEvent::S_V>();
-        //     CalTokenSendExpertCnt(dstRankId, j, curExpertCnt);
-        //     GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-        //                     epRankId_ * expertPerSizeOnWin_ +
-        //                     curExpertCnt * hAlignWinSize_);
-
-        //     GM_ADDR localAddr = (GM_ADDR)(xGM_ + j * axisH_);
-        //     if (dstRankId == epRankId_) {
-        //         ProcessToken(localAddr, remoteAddr, j, dstRankId, curExpertCnt);
-        //         continue;
-        //     }
-        //     hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, axisH_ * sizeof(XType));
-        // }
-    }
-
-    // //PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
+    //PRINTF("SendToMoeExpert aivId_ = %d, startTokenId_ = %d, endTokenId_ = %d, sendTokenNum_ = %d\n", aivId_, startTokenId, endTokenId, sendTokenNum);
     
-    // // ============ 遍历token并发送到目标rank ============
-    // for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-    //     uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
-    //     int32_t curExpertCnt = 0;
+    // ============ 遍历token并发送到目标rank ============
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
+        uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
+        int32_t curExpertCnt = 0;
 
-    //     SyncFunc<AscendC::HardEvent::S_V>();
-    //     CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+        SyncFunc<AscendC::HardEvent::S_V>();
+        CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
 
-    //     GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
-    //                                         epRankId_ * expertPerSizeOnWin_ +
-    //                                         curExpertCnt * hAlignWinSize_);
-    //     GM_ADDR remoteAddr = rankGM;
-    //     if (dstRankId == epRankId_) {
-    //         remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
-    //                         epRankId_ * expertPerSizeOnWin_ +
-    //                         curExpertCnt * hAlignWinSize_);
-    //     }
-    //     ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId, curExpertCnt);
-    // }
+        GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+                                            epRankId_ * expertPerSizeOnWin_ +
+                                            curExpertCnt * hAlignWinSize_);
+        GM_ADDR remoteAddr = rankGM;
+        if (dstRankId == epRankId_) {
+            remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
+                            epRankId_ * expertPerSizeOnWin_ +
+                            curExpertCnt * hAlignWinSize_);
+        }
+        ProcessToken(rankGM, remoteAddr, tokenIndex, dstRankId, curExpertCnt);
+    }
 
 }
 
@@ -826,7 +778,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // mode=0: 完整流程 (发送 + 同步 + 接收)
     // mode=1: 仅发送模式 (用于单向带宽测试)
     if ASCEND_IS_AIV {
-        //CommProcess();
+        CommProcess();
         SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
         SetStatus();
         WaitDispatch();
