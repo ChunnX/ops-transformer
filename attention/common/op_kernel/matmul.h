@@ -15,6 +15,7 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
+#include "buffers_policy_tensor_api.h"
 #include "../include/tensor_api/include/tensor_api/tensor.h"
 #include "utils/debug/asc_dump.h"
 using namespace AscendC;

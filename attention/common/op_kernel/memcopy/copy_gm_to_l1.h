@@ -22,8 +22,8 @@
 #include "../const_def.h"
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
-template <typename T>
-__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
+template <typename T, typename L1TensorType, typename GmTensorType>
+__aicore__ inline void CopySingleMatrixNDToNZ(L1TensorType l1Tensor, const GmTensorType gmTensor, uint32_t nValue,
                                               uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     constexpr uint32_t SRCDVALUE_LIMIT = 65536;
@@ -71,8 +71,8 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         }
     }
 }
-template <typename T>
-__aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
+template <typename T, typename L1TensorType, typename GmTensorType>
+__aicore__ inline void CopyMultiMatrixNDToNZ(L1TensorType l1Tensor, const GmTensorType gmTensor,
                                              uint32_t srcNdMatrixNum, uint32_t srcNdMatrixStride,
                                              uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue,
                                              uint32_t srcDValue, uint32_t dstNzC0Stride)
@@ -444,8 +444,8 @@ private:
 
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
 // ----------------------------------------------CopyQueryScaleGmToL1--------------------------------
-template <typename T>
-__aicore__ inline void CopySingleMXScaleDNToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
+template <typename T, typename L1TensorType, typename GmTensorType>
+__aicore__ inline void CopySingleMXScaleDNToNZ(L1TensorType l1Tensor, const GmTensorType gmTensor, uint32_t nValue,
                                                uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     Dn2NzParams dn2nzPara;
@@ -464,8 +464,8 @@ __aicore__ inline void CopySingleMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Gl
     DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
 }
 
-template <typename T>
-__aicore__ inline void CopyMultiMXScaleDNToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
+template <typename T, typename L1TensorType, typename GmTensorType>
+__aicore__ inline void CopyMultiMXScaleDNToNZ(L1TensorType l1Tensor, const GmTensorType gmTensor,
                                               uint32_t srcNdMatrixNum, uint32_t srcDnMatrixStride,
                                               uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue,
                                               uint32_t srcDValue, uint32_t dstNzC0Stride)
@@ -684,8 +684,8 @@ private:
 };
 
 // ----------------------------------------------CopyValueScaleGmToL1--------------------------------
-template <typename T>
-__aicore__ inline void CopySingleMXScaleNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
+template <typename T, typename L1TensorType, typename GmTensorType>
+__aicore__ inline void CopySingleMXScaleNDToNZ(L1TensorType l1Tensor, const GmTensorType gmTensor, uint32_t nValue,
                                                uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     Nd2NzParams nd2nzPara;
