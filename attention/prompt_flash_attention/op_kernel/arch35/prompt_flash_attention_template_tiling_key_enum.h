@@ -109,20 +109,22 @@ enum class inferImplModeEnum {
 #define ImplMode_AA_HIGH_PERFORMANCE 1
 #define ImplMode_AA_INVALID_LINE_HIGH_PRECISION 2
 
-static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] = {
+static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[6][2] = {
     {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
     {inferFaLayOutTypeEnum::LAYOUT_BSH, inferFaLayOutTypeEnum::LAYOUT_BSH},
     {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
     {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BSH},
     {inferFaLayOutTypeEnum::LAYOUT_NTD, inferFaLayOutTypeEnum::LAYOUT_NTD},
+    {inferFaLayOutTypeEnum::LAYOUT_NTD, inferFaLayOutTypeEnum::LAYOUT_TND},
 };
 
-static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
+static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[6][2] = {
     {inferPFALayoutTypeEnum::LAYOUT_BNSD, inferPFALayoutTypeEnum::LAYOUT_BNSD},
     {inferPFALayoutTypeEnum::LAYOUT_BSH, inferPFALayoutTypeEnum::LAYOUT_BSH},
     {inferPFALayoutTypeEnum::LAYOUT_TND, inferPFALayoutTypeEnum::LAYOUT_TND},
     {inferPFALayoutTypeEnum::LAYOUT_BNSD, inferPFALayoutTypeEnum::LAYOUT_BSH}, // bsndout占位
     {inferPFALayoutTypeEnum::LAYOUT_NTD, inferPFALayoutTypeEnum::LAYOUT_NTD},
+    {inferPFALayoutTypeEnum::LAYOUT_NTD, inferPFALayoutTypeEnum::LAYOUT_TND},
 };
 
 #define InOutLayoutType_BNSD_BNSD 0
@@ -130,6 +132,7 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define InOutLayoutType_TND_TND 2
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
+#define InOutLayoutType_NTD_TND 5
 
 struct ConfigParams {
     inferS1TemplateType s1;
