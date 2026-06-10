@@ -217,4 +217,4 @@ public:
 };
 
 }
-#endif // BASE_INFO_H
+#endif //BASE_INFO_H
