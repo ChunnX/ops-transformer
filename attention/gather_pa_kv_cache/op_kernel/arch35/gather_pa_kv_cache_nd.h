@@ -222,6 +222,12 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
             } else {
                 isFilledWithZero = false;
                 blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
+                // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0,
+                // 而block_tables中的blockId按storage范围取值, 可能 >= numBlocks_导致GM访存越界)。
+                if (blockId >= numBlocks_ || blockId < 0) {
+                    isFilledWithZero = true;
+                    blockId = 0;
+                }
             }
 
             uint64_t curBlockSize = cacheBlockSize_;
