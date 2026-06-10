@@ -209,40 +209,46 @@ int main() {
                                maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
     }
 
-    LOG_PRINT("Calling aclnnBSASelectBlockMask...\n");
-    
-    ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBSASelectBlockMask failed. ERROR: %d\n", ret);
-              aclDestroyIntArray(blockShape);
-              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
-
-    LOG_PRINT("Synchronizing stream...\n");
-    
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
-              aclDestroyIntArray(blockShape);
-              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
-
-    LOG_PRINT("Copying result back to host...\n");
-    
     std::vector<int8_t> resultData(maskOutSize, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int8_t), maskOutDeviceAddr,
-                      resultData.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
-              aclDestroyIntArray(blockShape);
-              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
-                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
-
     int64_t selectedCount = 0;
-    for (int64_t i = 0; i < maskOutSize; i++) {
-        if (resultData[i] != 0) {
-            selectedCount++;
+    double actualSparsity = 0.0;
+    constexpr int32_t kernelRunTimes = 100;
+
+    LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors/workspace...\n", kernelRunTimes);
+    for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
+        ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("aclnnBSASelectBlockMask failed at run %d. ERROR: %d\n", runId + 1, ret);
+                  aclDestroyIntArray(blockShape);
+                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+        ret = aclrtSynchronizeStream(stream);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("aclrtSynchronizeStream failed at run %d. ERROR: %d\n", runId + 1, ret);
+                  aclDestroyIntArray(blockShape);
+                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+        ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int8_t), maskOutDeviceAddr,
+                          resultData.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("copy result from device to host failed at run %d. ERROR: %d\n", runId + 1, ret);
+                  aclDestroyIntArray(blockShape);
+                  FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                               maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+        selectedCount = 0;
+        for (int64_t i = 0; i < maskOutSize; i++) {
+            if (resultData[i] != 0) {
+                selectedCount++;
+            }
         }
+
+        actualSparsity = 1.0 - static_cast<double>(selectedCount) / static_cast<double>(maskOutSize);
+        LOG_PRINT("Run %03d/%03d: Selected=%ld, Actual sparsity=%.4f (expected: %.4f)\n",
+                  runId + 1, kernelRunTimes, selectedCount, actualSparsity, sparsity);
     }
-    
-    double actualSparsity = 1.0 - static_cast<double>(selectedCount) / static_cast<double>(maskOutSize);
     
     LOG_PRINT("\n=== Results ===\n");
     LOG_PRINT("maskOut shape: [%d, %d, %d, %d]\n", batch, numHeads, xBlocks, yBlocks);
