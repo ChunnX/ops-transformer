@@ -46,11 +46,16 @@ struct TempLoopInfo {
     uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
     uint32_t actS2Size = 0ULL;
     uint32_t actS2SizeOrig = 0ULL;//压缩前s2
+    uint32_t actQTokenLen = 0ULL;
+    uint32_t actKVTokenLen = 0ULL;
+    uint32_t promptTokenLen = 0ULL;
+    uint32_t s2ValidSize = 0ULL;
     bool curActSeqLenIsZero = false;
     bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
     uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
+    bool isDecode = false;
     bool isNeedLD = false;     // 该基本块是否需要LD
 };
 
@@ -77,7 +82,7 @@ public:
     using SCORE_T = typename SIT::scoreType;
 
     QLIMatmul<SIT> matmulService;
-    QLIVector<SIT> vectorService;
+    SIVector<SIT> vectorService;
 
     // =================================常量区=================================
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
@@ -102,6 +107,7 @@ protected:
     uint64_t keyScaleCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    uint64_t indiceLenCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -112,6 +118,7 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
+    GlobalTensor<int32_t> indiceLenGm;
     GlobalTensor<int32_t> blockTableGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
@@ -143,11 +150,11 @@ protected:
     // ================================Split Core================================
     __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2SizeOrig);
+    __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2SizeOrig);
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
                                             QLICommon::RunInfo runInfo);
-    __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -156,6 +163,7 @@ protected:
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                             GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen, uint32_t cmpRatio);                                              
+    __aicore__ inline uint32_t GetPromptTokenLen(uint32_t bIdx);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo);
@@ -172,8 +180,8 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kvHeadNum = tilingData->kvHeadNum;
     constInfo.kHeadNum = tilingData->kvHeadNum;
     constInfo.gSize = tilingData->gSize;
-    constInfo.maxQb = tilingData->maxQb; // ???
-    constInfo.maxKb = tilingData->maxKb; // ???
+    constInfo.maxQb = tilingData->maxQb;
+    constInfo.maxKb = tilingData->maxKb;
     constInfo.flattenDim = tilingData->flattenDim;
     constInfo.qSeqSize = tilingData->maxQb;
     constInfo.kSeqSize = tilingData->maxKb;
@@ -195,6 +203,7 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
+    constInfo.attenMaskFlag = tilingData->causal != 0U;
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
@@ -263,26 +272,63 @@ __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLenKey(uint32_t bIdx, uin
 template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
 {
-    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
-                                constInfo.qSeqSize);
-    actS2SizeOrig =
-        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio); // 压缩前的actS2Size
-    actS2Size = actS2SizeOrig / constInfo.cmpRatio;   // 真实使用的压缩后S2长度    
+    uint32_t qTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
+                                         constInfo.qSeqSize * constInfo.stemBlockSize);
+    uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm,
+                                         constInfo.kSeqSize * constInfo.stemBlockSize);
+    uint32_t promptTokenLen = GetPromptTokenLen(bIdx);
+    uint32_t lastKvTokenIdx = (kTokenLen > 0U) ? (kTokenLen - 1U) : 0U;
+    tempLoopInfo.actQTokenLen = qTokenLen;
+    tempLoopInfo.actKVTokenLen = kTokenLen;
+    tempLoopInfo.promptTokenLen = promptTokenLen;
+    tempLoopInfo.isDecode = (qTokenLen == 1U) && (promptTokenLen >= lastKvTokenIdx);
+    actS1Size = Min(CeilDiv(qTokenLen, constInfo.stemBlockSize), static_cast<uint32_t>(constInfo.qSeqSize));
+    actS2SizeOrig = Min(CeilDiv(kTokenLen, constInfo.stemBlockSize), static_cast<uint32_t>(constInfo.kSeqSize));
+    actS2Size = actS2SizeOrig;
+}
+
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::GetPromptTokenLen(uint32_t bIdx)
+{
+    uint32_t promptEnd = static_cast<uint32_t>(numPromptTokensGm.GetValue(bIdx));
+    if (bIdx == 0) {
+        return promptEnd;
+    }
+    uint32_t promptStart = static_cast<uint32_t>(numPromptTokensGm.GetValue(bIdx - 1));
+    return (promptEnd > promptStart) ? (promptEnd - promptStart) : 0U;
 }
 
 template <typename SIT>
 __aicore__ inline uint32_t SIPreload<SIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                      uint32_t actS2SizeOrig)
 {
-    if (actS2SizeOrig / constInfo.cmpRatio == 0) {
+    uint32_t s2ValidSize = CalcS2ValidSize(s1gIdx, actS1Size, actS2SizeOrig);
+    if (s2ValidSize == 0U) {
         return 0;
     }
-    uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
-    int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);    // 压缩前的validS2LenBase
-    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize)) / static_cast<int32_t>(constInfo.cmpRatio);  
-    validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
-    validS2Len = Max(validS2Len, 1);
-    return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    uint32_t candidateS2Size = s2ValidSize;
+    if (candidateS2Size > constInfo.initialBlocks + constInfo.windowSize) {
+        candidateS2Size -= constInfo.windowSize;
+    }
+    return CeilDiv(candidateS2Size, constInfo.s2BaseSize);
+}
+
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size,
+                                                            uint32_t actS2SizeOrig)
+{
+    if (actS2SizeOrig == 0U) {
+        return 0U;
+    }
+    if (!constInfo.attenMaskFlag || tempLoopInfo.isDecode) {
+        return actS2SizeOrig;
+    }
+    uint32_t qBlockStart = gS1Idx * constInfo.s1BaseSize;
+    if (qBlockStart >= actS1Size) {
+        return 0U;
+    }
+    uint32_t qBlockEnd = Min(qBlockStart + constInfo.s1BaseSize, actS1Size);
+    return Min(actS2SizeOrig, qBlockEnd);
 }
 
 template <typename SIT>
@@ -327,13 +373,8 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
             uint32_t actS1Size, actS2Size, actS2SizeOrig;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
             // s2的切块数量
-            uint32_t s2BaseNum;
-            if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
-            } else {
-                s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
-            }
-            splitCoreInfo.s2End = s2BaseNum - 1;
+            uint32_t s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+            splitCoreInfo.s2End = (s2BaseNum == 0U) ? 0U : s2BaseNum - 1U;
         } else { 
             // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
@@ -349,13 +390,8 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
             splitCoreInfo.gS1End = s1GBaseNum - 1;
 
             // s2的切块数量
-            uint32_t s2BaseNum;
-            if (constInfo.attenMaskFlag) {
-                s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
-            } else {
-                s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
-            }
-            splitCoreInfo.s2End = s2BaseNum - 1;
+            uint32_t s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2SizeOrig);
+            splitCoreInfo.s2End = (s2BaseNum == 0U) ? 0U : s2BaseNum - 1U;
         }
     }
     uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(cubeCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
@@ -401,25 +437,38 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_LAYOUT::TND) {
-            uint32_t tSizeIdx = (constInfo.batchSupperFlag) ? constInfo.batchSize : constInfo.batchSize - 1;
-            uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
-            uint32_t tSize = actualSeqLengthsGmQ.GetValue(tSizeIdx);
-            uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(tBaseIdx);
+            uint32_t tBase = 0;
+            if (bIdx > 0) {
+                uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
+                tBase = actualSeqLengthsGmQ.GetValue(tBaseIdx);
+            }
             uint32_t s1Count = tempLoopInfo.actS1Size;
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
-                uint64_t indiceOutOffset =
-                    (tBase + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount +  // T轴、s1轴偏移
-                    n2Idx * constInfo.sparseCount;                                  // N2轴偏移
-                vectorService.CleanInvalidOutput(indiceOutOffset);
+                for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
+                    uint64_t indiceOutOffset =
+                        (((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) *
+                        constInfo.sparseCount;
+                    uint64_t indiceLenOffset =
+                        ((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx;
+                    AscendC::InitGlobalMemory(indiceOutGm[indiceOutOffset], constInfo.sparseCount,
+                                              constInfo.INVALID_IDX);
+                    AscendC::InitGlobalMemory(indiceLenGm[indiceLenOffset], 1, 0);
+                }
             }
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
-                // B,S1,N2,K
-                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
-                                           s1Idx * constInfo.kHeadNum * constInfo.sparseCount +  // B轴、S1轴偏移
-                                           n2Idx * constInfo.sparseCount;                        // N2轴偏移
-                vectorService.CleanInvalidOutput(indiceOutOffset);
+                for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
+                    uint64_t indiceOutOffset =
+                        (((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize +
+                         s1Idx) *
+                        constInfo.sparseCount;
+                    uint64_t indiceLenOffset =
+                        ((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
+                    AscendC::InitGlobalMemory(indiceOutGm[indiceOutOffset], constInfo.sparseCount,
+                                              constInfo.INVALID_IDX);
+                    AscendC::InitGlobalMemory(indiceLenGm[indiceLenOffset], 1, 0);
+                }
             }
         }
     }
@@ -443,27 +492,46 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
+    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
 
-    // 计算分核
-    // SplitCore(aiCoreIdx, usedCoreNum, splitCoreInfo); // ？？？？？？？？？？
+    // 获取 AICPU metadata 算好的分核信息。
+    metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
+    SplitCoreByAICPU(aiCoreIdx, tmpBlockIdx, metadataGm);
 
     pipe = tPipe;
+
+    uint64_t singleCoreScoreWorkspaceBytes =
+        static_cast<uint64_t>(constInfo.mBaseSize) * constInfo.nBaseSize * sizeof(SCORE_T) * WS_DOUBLE;
+    GlobalTensor<SCORE_T> scoreGm;
+    scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + static_cast<uint64_t>(aiCoreIdx) *
+                                                          singleCoreScoreWorkspaceBytes));
+    GlobalTensor<SCORE_T> ldScoreGm;
+    GlobalTensor<int32_t> ldIndexGm;
+
+    qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+    kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+    vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
+    qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
+    kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
+    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
+
+    queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+    keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+    weightsGm.SetGlobalBuffer((__gm__ float *)vbias);
+    qScaleGm.SetGlobalBuffer((__gm__ float *)vbias);
+    kScaleGm.SetGlobalBuffer((__gm__ float *)vbias);
+    indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    indiceLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
+    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+
     if ASCEND_IS_AIV {
-        // vectorService.InitParams(constInfo, tiling);
-        vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
-        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
-        kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
-        numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
-        metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
-        sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
-        // vectorService.InitVecInputTensor(vbiasGm, qSeqLensGm, kvSeqLensGm, numPromptTokensGm, metadataGm, sparseIndicesGm, sparseSeqLenGm);
-        // vectorService.InitVecWorkspaceTensor();  // 预留
+        vectorService.InitParams(constInfo, ldInfo, tiling);
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, indiceLenGm, blockTableGm);
+        vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
     } else {
-        // matmulService.InitParams(constInfo);
-        qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-        kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
-        // matmulService.InitMm1GlobalTensor(kflatGm, qflatGm);
+        matmulService.InitParams(constInfo);
+        matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
 
     if (GetBlockIdx() == 0) {
@@ -471,7 +539,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
                         "flattenDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
                         "initialBlocks=%u windowSize=%u mBaseSize=%u nBaseSize=%u scoreScale=%f alpha=%f "
                         "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
-                        "kBlockNumBiasLarge=%u\n",
+                        "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
                         static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
                         static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
                         static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
@@ -479,7 +547,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
                         constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
                         constInfo.mBaseSize, constInfo.nBaseSize, constInfo.scoreScale, constInfo.alpha,
                         constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
-                        constInfo.kBlockNumBiasLarge);
+                        constInfo.kBlockNumBiasLarge, static_cast<uint32_t>(singleCoreScoreWorkspaceBytes));
     }
 
     InitBuffers();
@@ -502,15 +570,25 @@ __aicore__ inline void SIPreload<SIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uin
     if (remainedGS1Size <= constInfo.mBaseSize && remainedGS1Size > 0) {
         tempLoopInfo.actMBaseSize = tempLoopInfo.mBasicSizeTail;
     }
+    tempLoopInfo.s2ValidSize =
+        CalcS2ValidSize(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
+    tempLoopInfo.actS2Size = tempLoopInfo.s2ValidSize;
+    if (tempLoopInfo.actS2Size > constInfo.initialBlocks + constInfo.windowSize) {
+        tempLoopInfo.actS2Size -= constInfo.windowSize;
+    }
+    tempLoopInfo.s2BasicSizeTail = tempLoopInfo.actS2Size % constInfo.s2BaseSize;
+    tempLoopInfo.s2BasicSizeTail =
+        (tempLoopInfo.s2BasicSizeTail == 0) ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
 
     bool isEnd = (bN2LoopIdx == splitCoreInfo.bN2End) && (gS1LoopIdx == splitCoreInfo.gS1End);
-    uint32_t s2BlockNum;
-    if (constInfo.attenMaskFlag) {
-        s2BlockNum = GetS2BaseBlockNumOnMask(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
-    } else {
-        s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    uint32_t s2BlockNum = CeilDiv(tempLoopInfo.actS2Size, constInfo.s2BaseSize);
+    if (s2BlockNum == 0U) {
+        tempLoopInfo.s2LoopEnd = 0U;
+        tempLoopInfo.isNeedLD = false;
+        return;
     }
-    tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : s2BlockNum - 1;
+    uint32_t tileS2LoopEnd = s2BlockNum - 1U;
+    tempLoopInfo.s2LoopEnd = isEnd ? Min(splitCoreInfo.s2End, tileS2LoopEnd) : tileS2LoopEnd;
     if (splitCoreInfo.s2Start > 0 || tempLoopInfo.s2LoopEnd < s2BlockNum - 1) {
         tempLoopInfo.isNeedLD = true;
     } else {
@@ -522,15 +600,15 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
     GetBN2Idx(bN2LoopIdx);
+    tempLoopInfo.needDealActS1LessThanS1 = false;
+    tempLoopInfo.isNeedLD = false;
+    tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
         return;
     }
     tempLoopInfo.curActSeqLenIsZero = false;
-    tempLoopInfo.s2BasicSizeTail = tempLoopInfo.actS2Size % constInfo.s2BaseSize;
-    tempLoopInfo.s2BasicSizeTail =
-        (tempLoopInfo.s2BasicSizeTail == 0) ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
     tempLoopInfo.mBasicSizeTail = (tempLoopInfo.actS1Size * constInfo.gSize) % constInfo.mBaseSize;
     tempLoopInfo.mBasicSizeTail =
         (tempLoopInfo.mBasicSizeTail == 0) ? constInfo.mBaseSize : tempLoopInfo.mBasicSizeTail;
@@ -589,14 +667,16 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         } else {  // BSND
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
-        uint64_t tndBIdxOffset = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDim;
-        // B,S1,N1(N2,G),D
-        queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
-        // B,S1,N1(N2,G)/T,N1(N2,G)
-        weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
-        // B,S1,N2,k/T,N2,k
-        indiceOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
+        uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
+        uint64_t qHeadOffset = runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+        uint64_t qBlockOffset = runInfo.gS1Idx * constInfo.s1BaseSize;
+        // qflat: B,N1,Qb,D. gS1Idx is a Qb tile index; M = QbTile * G.
+        queryCoreOffset = (qBatchOffset + qHeadOffset + qBlockOffset) *
+                          constInfo.headDim;
+        // sparse_indices: B,N2,G,S1,S2
+        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
+        // sparse_seq_len: B,N2,G,S1
+        indiceLenCoreOffset = qBatchOffset + qHeadOffset;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
@@ -605,14 +685,19 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
-    uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
-    keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
-    keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
+    runInfo.numPromptTokens = GetPromptTokenLen(runInfo.bIdx);
+    uint64_t kBatchOffset = actualSeqKPrefixSum * constInfo.kHeadNum;
+    uint64_t kHeadOffset = runInfo.n2Idx * constInfo.kSeqSize;
+    keyCoreOffset =
+        (kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.headDim;
+    keyScaleCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
+    weightsCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    runInfo.indiceLenOffset = indiceLenCoreOffset;
 }
 
 template <typename SIT>
@@ -625,8 +710,6 @@ __aicore__ inline void SIPreload<SIT>::Process()
     }
 
     ProcessMain();
-
-    ProcessDecode();
 }
 
 template <typename SIT>
@@ -634,16 +717,26 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
-        uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
-        uint64_t singleCoreSize =
-            QLICommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
-        uint64_t baseSize = tmpBlockIdx * singleCoreSize;
-        if (baseSize < totalOutputSize) {
-            uint64_t dealSize =
-                (baseSize + singleCoreSize <= totalOutputSize) ? singleCoreSize : totalOutputSize - baseSize;
-            GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
-            AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
+        uint64_t totalIndiceSize =
+            constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount;
+        uint64_t singleCoreIndiceSize = QLICommon::Align((totalIndiceSize + aivCoreNum - 1) / aivCoreNum,
+                                                         GM_ALIGN_BYTES / sizeof(int32_t));
+        uint64_t indiceBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreIndiceSize;
+        if (indiceBaseSize < totalIndiceSize) {
+            uint64_t dealIndiceSize = (indiceBaseSize + singleCoreIndiceSize <= totalIndiceSize)
+                                          ? singleCoreIndiceSize
+                                          : totalIndiceSize - indiceBaseSize;
+            AscendC::InitGlobalMemory(indiceOutGm[indiceBaseSize], dealIndiceSize, constInfo.INVALID_IDX);
+        }
+
+        uint64_t totalLenSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize;
+        uint64_t singleCoreLenSize = QLICommon::Align((totalLenSize + aivCoreNum - 1) / aivCoreNum,
+                                                      GM_ALIGN_BYTES / sizeof(int32_t));
+        uint64_t lenBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreLenSize;
+        if (lenBaseSize < totalLenSize) {
+            uint64_t dealLenSize =
+                (lenBaseSize + singleCoreLenSize <= totalLenSize) ? singleCoreLenSize : totalLenSize - lenBaseSize;
+            AscendC::InitGlobalMemory(indiceLenGm[lenBaseSize], dealLenSize, 0);
         }
     }
 }
@@ -671,13 +764,63 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
+
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
-            runInfo.s2Start = splitCoreInfo.s2Start;
-            runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
-            for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
-                ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
-                ++gloop;
+            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
+                if ASCEND_IS_AIV {
+                    if (splitCoreInfo.s2Start != 0U) {
+                        splitCoreInfo.s2Start = 0;
+                        continue;
+                    }
+                    QLICommon::RunInfo directRunInfo;
+                    directRunInfo.loop = gloop;
+                    directRunInfo.bN2Idx = tempLoopInfo.bN2Idx;
+                    directRunInfo.bIdx = tempLoopInfo.bIdx;
+                    directRunInfo.n2Idx = tempLoopInfo.n2Idx;
+                    directRunInfo.gS1Idx = tempLoopInfo.gS1Idx;
+                    directRunInfo.s2Idx = 0U;
+                    directRunInfo.s2Start = 0U;
+                    directRunInfo.s2LoopEnd = 0U;
+                    directRunInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
+                    directRunInfo.actS1Size = tempLoopInfo.actS1Size;
+                    directRunInfo.actS2Size = tempLoopInfo.actS2Size;
+                    directRunInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+                    directRunInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2ValidSize;
+                    directRunInfo.actualSingleProcessSInnerSizeAlign = QLICommon::Align(
+                        tempLoopInfo.s2ValidSize, QLICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
+                    directRunInfo.isFirstS2InnerLoop = true;
+                    directRunInfo.isLastS2InnerLoop = true;
+                    directRunInfo.isAllLoopEnd = (directRunInfo.bN2Idx == splitCoreInfo.bN2End) &&
+                                                 (directRunInfo.gS1Idx == splitCoreInfo.gS1End);
+                    directRunInfo.isValid = true;
+                    directRunInfo.isNeedLD = false;
+
+                    uint64_t actualSeqQPrefixSum;
+                    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+                        uint32_t actualSeqLengthsGmQIdx =
+                            (constInfo.batchSupperFlag) ? directRunInfo.bIdx : directRunInfo.bIdx - 1;
+                        actualSeqQPrefixSum =
+                            (directRunInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
+                    } else {
+                        actualSeqQPrefixSum =
+                            (directRunInfo.bIdx <= 0) ? 0 : directRunInfo.bIdx * constInfo.qSeqSize;
+                    }
+                    uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
+                    uint64_t qHeadOffset = directRunInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+                    directRunInfo.indiceOutOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
+                    directRunInfo.indiceLenOffset = qBatchOffset + qHeadOffset;
+                    directRunInfo.numPromptTokens = GetPromptTokenLen(directRunInfo.bIdx);
+
+                    vectorService.ProcessDirectOutput(directRunInfo);
+                }
+            } else {
+                runInfo.s2Start = splitCoreInfo.s2Start;
+                runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
+                for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
+                    ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
+                    ++gloop;
+                }
             }
             splitCoreInfo.s2Start = 0;
         }
@@ -704,25 +847,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
-        }
-    }
-}
-
- template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessDecode()
-{
-    if ASCEND_IS_AIV {
-        vectorService.InitLDBuffers(pipe, ldInfo);
-        ICachePreLoad(LD_PREFETCH_LEN);
-        SyncAll();
-        if (ldInfo.isLdCoreEnable) {
-            vectorService.ProcessLD();
-        }
+        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
 
 }  // namespace QLIKernel
 #endif  // stem_indexer_KERNEL_H
-
