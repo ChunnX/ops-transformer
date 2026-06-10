@@ -161,9 +161,12 @@ def gen_inputs_corrected(case_config, seed=42):
         sparse_indices = sparse_indices_bsnd
 
     if layout == "TND":
-        s2_real_len = min(S2, K)
         for s1_idx in range(S1):
-            indices = torch.randperm(S2)[:s2_real_len]
+            s2_real_size = S2 - S1 + s1_idx + 1
+            if s2_real_size <= 0:
+                s2_real_size = S2
+            s2_real_len = min(s2_real_size, K)
+            indices = torch.randperm(s2_real_size)[:s2_real_len]
             sparse_indices[s1_idx, 0, :s2_real_len] = indices.to(torch.int32).npu()
             if s2_real_len < K:
                 sparse_indices[s1_idx, 0, s2_real_len:] = -1
