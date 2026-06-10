@@ -1023,12 +1023,11 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             double_vscale = double_vscale.npu()
             deq_k_npu = double_kscale[:, :, 0]  # 覆写为非连续
             deq_v_npu = double_vscale[:, :, 0]
-            logger.info(f"[NPU] kscale is_contiguous={deq_k_npu.is_contiguous()}, vscale is_contiguous={deq_v_npu.is_contiguous()}")
+            logger.info(f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous()}")
 
-
-        logger.info(f"[NPU PA] kv_layout={KV_CACHE_LAYOUT}")
-        logger.info(f"[NPU PA] k={k_npu.shape}, v={v_npu.shape}")
-        logger.info(f"[NPU PA] deq_k={deq_k_npu.shape}, deq_v={deq_v_npu.shape}")
+         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)	 
+         logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)	 
+         logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
 
         block_table_npu = block_table_torch.npu() if isinstance(block_table_torch, torch.Tensor) else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         accum_seq_q = make_accum_seq(actual_seq_q)
