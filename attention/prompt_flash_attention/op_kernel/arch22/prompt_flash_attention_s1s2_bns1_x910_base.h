@@ -1914,12 +1914,14 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::InitOutputSin
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::initOffset() {
-    offsetSS = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.seqSize;
-    offsetSH = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.headSize;
-    offsetSTypeNum = tilingData->promptAttentionBaseParams.seqSize * typeByteNum;
-    offsetNSTypeNum = tilingData->promptAttentionBaseParams.headNumSize * offsetSTypeNum;
-    offsetNSS = tilingData->promptAttentionBaseParams.headNumSize * offsetSS;
-    offsetNSH = tilingData->promptAttentionBaseParams.headNumSize * offsetSH;
+    offsetSS = static_cast<int64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.seqSize;
+    offsetSH = static_cast<int64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.headSize;
+    offsetSTypeNum = static_cast<int64_t>(tilingData->promptAttentionBaseParams.seqSize) * typeByteNum;
+    offsetNSTypeNum = static_cast<int64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSTypeNum;
+    offsetNSS = static_cast<int64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSS;
+    offsetNSH = static_cast<int64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSH;
 }
 
 template<typename PFAT>
