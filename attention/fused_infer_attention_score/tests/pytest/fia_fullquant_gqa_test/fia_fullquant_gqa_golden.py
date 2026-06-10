@@ -575,5 +575,6 @@ if __name__ == '__main__':
 
     if ENABLE_LSE:
         print("\n[Step 5] lse精度对比")
-        result_compare_method.check_result(cpu_out[1], npu_out[1])
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_out[1], ACTUAL_SEQ_Q, "TND")
+        result_compare_method.check_result(cpu_lse_tnd_torch, npu_out[1])
     print("#" * 60)
