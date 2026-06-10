@@ -423,6 +423,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // h. Update
         earlyExit = Update(roundId);
+        if (GetBlockIdx() == 0) {
+            BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after Update round=%d remainK=%lu total=%lu\n",
+                roundId, remainK_, totalDefinitelyInTopK_);
+        }
 
         // === DUMP 500: After Update - boundaryBin, involvedMask16_, remainK_ ===
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
@@ -1322,8 +1326,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
     // === DUMP 600: TileTopK entry - boundaryHalf ===
     if (GetBlockIdx() == 0) {
-        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileTopK boundary involved=0x%04x int16=0x%04x half=%f\n",
-            involvedMask16_, boundaryInt16, static_cast<float>(boundaryHalf));
+        BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] tileTopK boundary involved=%d int16=%d\n",
+            static_cast<int32_t>(involvedMask16_), static_cast<int32_t>(boundaryInt16));
     }
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[DUMP600] TileTopK: involvedMask16_=0x%04x boundaryInt16=0x%04x boundaryHalf=%f\n",
