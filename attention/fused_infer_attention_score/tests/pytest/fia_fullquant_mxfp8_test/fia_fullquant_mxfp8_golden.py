@@ -43,11 +43,11 @@ N_q = 1           # query heads
 N_kv = 1           # kv heads
 D = 128
 
-ENABLE_ROPE = False
-D_rope = 0
+ENABLE_ROPE = True
+D_rope = 64
 
 ACTUAL_SEQ_Q = [4]
-ACTUAL_SEQ_KV = [512]
+ACTUAL_SEQ_KV = [1024]
 
 ENABLE_PA = True
 BLOCK_SIZE = 512
@@ -65,9 +65,9 @@ P_SCALE = 1.0
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
 # PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
-KV_CACHE_LAYOUT = "PA_NZ"
+KV_CACHE_LAYOUT = "BnNBsD"
 
-IS_CONTIGUOUS = False
+IS_CONTIGUOUS = True
 
 ENABLE_LSE = False
 
@@ -523,7 +523,6 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     else:
         raise ValueError(f"Unsupported kv_layout: {kv_layout}")
 
-
 def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
     """
     V scale 偶奇行交错 packing，用于 PA 预处理
@@ -688,7 +687,8 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
     return S_ij / math.sqrt(d_total)
 
 
-def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
+def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale,
+                           q_scale_is_tnd, LN2):
     """Online softmax: 计算 m, P, s 更新
     1. mask 位置填 -inf
     2. 求 block 内 max (m_block_j)
@@ -701,7 +701,8 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
     S_ij = S_ij.masked_fill(mask_j, float('-inf'))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    if q_scale_is_tnd:
+        m_block_j = torch.ceil(m_block_j / LN2) * LN2
     m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
 
@@ -722,6 +723,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 512
+
+    q_scale_is_tnd = resolve_q_scale_layout(actual_seq_q)[0] == "TND"
 
     # FP8 → FP32 反量化
     q_tensor = q_fp8.to(torch.float32)
@@ -795,7 +798,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total, Qri, Krj)
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
-                S_ij, mask_j, mi, si, oi, ln_p_scale, LN2)
+                S_ij, mask_j, mi, si, oi, ln_p_scale, q_scale_is_tnd, LN2)
 
             if j + 1 < TILES_KV:
                 # --- 第二个 K block (j+1) ---
@@ -808,7 +811,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 S_ij1 = _compute_s_block(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, d_total, Qri, Krj1)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2)
+                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, q_scale_is_tnd, LN2)
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
                 Vj = V_BLOCKS[j // 2]
@@ -819,7 +822,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                 V_part1 = Vj_dequant[:, :, :Kj.shape[2], :]
                 V_part2 = Vj_dequant[:, :, Kj.shape[2]:Kj.shape[2] + Kj1.shape[2], :]
-                P_ij_Vj = torch.matmul(P_ij_drop * torch.exp(m_block_j - m_block_j1), V_part1) + torch.matmul(P_ij1_drop, V_part2)
+                if q_scale_is_tnd:
+                    P_ij_Vj = torch.matmul(P_ij_drop * torch.exp(m_block_j - m_block_j1), V_part1) + torch.matmul(P_ij1_drop, V_part2)
+                else:
+                    P_ij_Vj = torch.matmul(P_ij_drop, V_part1) + torch.matmul(P_ij1_drop, V_part2)
 
                 update_mul_si = torch.exp(mi - m_block_j1)
                 si_new = update_mul_si * si + s_block_j * torch.exp(m_block_j - m_block_j1) + s_block_j1
@@ -946,10 +952,10 @@ def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
         if not IS_CONTIGUOUS:
             # ---- 构造krope不连续 ----
             fake_krope_tensor = torch.ones_like(k_rope_pa)
-            double_krope = torch.stack([k_rope_pa, fake_krope_tensor], dim=1)
+            double_krope = torch.stack([k_rope_pa, fake_krope_tensor], dim=2)
             double_krope = double_krope.npu()
-            k_rope_npu = double_krope[:, 0]  # 覆写为非连续
-            logger.info(f"[NPU] k_rope is_contiguous={k_rope.is_contiguous()}")
+            k_rope_npu = double_krope[:, :, 0]  # 覆写为非连续
+            logger.info(f"[NPU] k_rope is_contiguous={k_rope_npu.is_contiguous()}")
     else:
         k_rope_npu = convert_qk_rope_bnsd_to_layout(kr_bf16, actual_seq_kv, npu_input_layout).npu()
 
@@ -998,10 +1004,10 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
         if not IS_CONTIGUOUS:
             # ---- 构造kv不连续 ----
-            kv_cache = torch.stack([k_pa, v_pa], dim=1)
+            kv_cache = torch.stack([k_pa, v_pa], dim=2)
             kv_cache = kv_cache.npu()
-            k_npu = kv_cache[:, 0]
-            v_npu = kv_cache[:, 1]
+            k_npu = kv_cache[:, :, 0]
+            v_npu = kv_cache[:, :, 1]
             logger.info(f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous()}")
 
         k_scale_pa = mxfp8_pa_preprocessing(dequant_scale_k, actual_seq_kv, BLOCK_SIZE, block_table_torch,
@@ -1018,17 +1024,18 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         if not IS_CONTIGUOUS:
             fake_kscale_tensor = torch.ones_like(k_scale_e8m0_pa)
             fake_vscale_tensor = torch.ones_like(v_scale_e8m0_pa)
-            double_kscale = torch.stack([k_scale_e8m0_pa, fake_kscale_tensor], dim=1)
-            double_vscale = torch.stack([v_scale_e8m0_pa, fake_vscale_tensor], dim=1)
+            double_kscale = torch.stack([k_scale_e8m0_pa, fake_kscale_tensor], dim=2)
+            double_vscale = torch.stack([v_scale_e8m0_pa, fake_vscale_tensor], dim=2)
             double_kscale = double_kscale.npu()
             double_vscale = double_vscale.npu()
-            deq_k_npu = double_kscale[:, 0]  # 覆写为非连续
-            deq_v_npu = double_vscale[:, 0]
-            logger.info(f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous()}")
+            deq_k_npu = double_kscale[:, :, 0]  # 覆写为非连续
+            deq_v_npu = double_vscale[:, :, 0]
+            logger.info(f"[NPU] kscale is_contiguous={deq_k_npu.is_contiguous()}, vscale is_contiguous={deq_v_npu.is_contiguous()}")
 
-        logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
-        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
-        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
+
+        print(f"[NPU PA] kv_layout={KV_CACHE_LAYOUT}")
+        print(f"[NPU PA] k={k_npu.shape}, v={v_npu.shape}")
+        print(f"[NPU PA] deq_k={deq_k_npu.shape}, deq_v={deq_v_npu.shape}")
 
         block_table_npu = block_table_torch.npu() if isinstance(block_table_torch, torch.Tensor) else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         accum_seq_q = make_accum_seq(actual_seq_q)
