@@ -265,7 +265,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
     int64_t pOffset = topKSize * (constInfo.dSizeQuery + constInfo.dSizeQueryRope) * sizeof(KV_T); // * 2;
     int64_t syOffset = topKSize * constInfo.dSizeQueryIndex * sizeof(KV_T); // * 2;
     int64_t bmm1Offset = constInfo.gSizeQuery * topKSize * sizeof(float); // * 2;
-    int64_t psySyncSize = topKSize * sizeof(float) * 2;
+    int64_t psySyncSize = (topKSize * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm2Offset = constInfo.gSizeQueryIndex * topKSize * sizeof(float); // * 2;
     int64_t reluGradOffset = constInfo.gSizeQueryIndex * topKSize * sizeof(float); // * 2;
     int64_t bmm3Offset =  topKSize * constInfo.dSizeQueryIndex * sizeof(float); // * 2;

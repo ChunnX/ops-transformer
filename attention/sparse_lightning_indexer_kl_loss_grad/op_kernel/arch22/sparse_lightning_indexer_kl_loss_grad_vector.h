@@ -44,6 +44,9 @@ public:
 
     static constexpr uint32_t topKSize = static_cast<uint32_t>(SLIT::topKRange);
     static constexpr bool isTopkLess2k = (topKSize <= SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K);
+    static constexpr uint32_t PSY_SYNC_BLOCK_FLOAT_NUM = 32 / sizeof(T);
+    static constexpr uint32_t PSY_SYNC_SUM_P_OFFSET = topKSize * 2;
+    static constexpr uint32_t PSY_SYNC_STRIDE = PSY_SYNC_SUM_P_OFFSET + PSY_SYNC_BLOCK_FLOAT_NUM;
     static constexpr SLILayout LAYOUT_T = SLIT::inputQLayout;
     static constexpr SLILayout KV_LAYOUT_T = SLIT::inputKLayout;
     static constexpr UBAllocPolicy<isTopkLess2k> ubAllocPolicy;
@@ -230,6 +233,10 @@ private:
     event_t eventIdMte2ToVInnerVecP;
     event_t eventIdMte2ToVInnerPreW;
     event_t eventIdMte2ToVInnerDwDqDk;
+    // MTE2_S
+    event_t eventIdMte2ToSPsum;
+    // S_V
+    event_t eventIdSToVPsum;
     // V_MTE2
     event_t eventIdVToMte24SY;
     event_t eventIdVToMte2P[2];
@@ -293,8 +300,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector1GM(const GlobalT
     this->attnSoftmaxL1NormGm = attnSoftmaxL1Norm;
     this->bmm2ResGm = bmm2Res;
     this->weightGm = weight;
-    this->psySyncGm = psySync[constInfo.subBlockIdx * topKSize * 2];
-    this->psySyncOtherGm = psySync[!constInfo.subBlockIdx * topKSize * 2];
+    this->psySyncGm = psySync[constInfo.subBlockIdx * PSY_SYNC_STRIDE];
+    this->psySyncOtherGm = psySync[!constInfo.subBlockIdx * PSY_SYNC_STRIDE];
 
     this->softmaxOutGm = softmaxOut;
     this->dWeightGm = dWeight;
@@ -361,6 +368,10 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     eventIdMte2ToVInnerVecP = EVENT_ID1;
     eventIdMte2ToVInnerPreW = EVENT_ID2;
     eventIdMte2ToVInnerDwDqDk = EVENT_ID3;
+    // MTE2_To_S
+    eventIdMte2ToSPsum = EVENT_ID0;
+    // S_To_V
+    eventIdSToVPsum = EVENT_ID0;
     // V_To_MTE2
     eventIdVToMte2Weight[0] = EVENT_ID0;
     eventIdVToMte2Weight[1] = EVENT_ID1;
@@ -696,6 +707,24 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyParams);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
+
+    Duplicate(reduceSumDwResUb, static_cast<T>(0.0), PSY_SYNC_BLOCK_FLOAT_NUM);
+    SumParams sumPParams = {
+        static_cast<uint32_t>(1),
+        static_cast<uint32_t>(realKSizeAlign8),
+        static_cast<uint32_t>(runInfo.kRealSize)
+    };
+    AscendC::Sum(reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, sumPParams);
+    PipeBarrier<PIPE_V>();
+
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
+    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumDwResUb, pSumCopyParams);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
 }
 
@@ -1376,9 +1405,23 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm, kRealSizeAlign16);
     }
-
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (runInfo.calcP) {
+        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    } else {
+        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    T pSumValue = reduceSumDwResUb.GetValue(0);
+    SetFlag<HardEvent::S_V>(eventIdSToVPsum);
+    WaitFlag<HardEvent::S_V>(eventIdSToVPsum);
+    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
+    PipeBarrier<PIPE_V>();
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
@@ -1504,9 +1547,23 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSizeAlign16);
     }
-
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (runInfo.calcP) {
+        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    } else {
+        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    T pSumValue = reduceSumDwResUb.GetValue(0);
+    SetFlag<HardEvent::S_V>(eventIdSToVPsum);
+    WaitFlag<HardEvent::S_V>(eventIdSToVPsum);
+    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
+    PipeBarrier<PIPE_V>();
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();

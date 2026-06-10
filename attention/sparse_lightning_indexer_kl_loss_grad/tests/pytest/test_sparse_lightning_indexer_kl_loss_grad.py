@@ -151,6 +151,7 @@ class TndCase:
     sparse_mode: int = 3
     layout: str = "TND"
     cmp_residual_k: tuple = 0
+    attn_l1_scale: float = 1.0
 
     @property
     def q_lens_tuple(self):
@@ -192,8 +193,8 @@ class TndCase:
 
 
 DEFAULT_CASES = (
-    TndCase(name="single_tiny_c4", q_lens=(16,), kv_lens=(4,)),
-    TndCase(name="single_mid_c4", q_lens=(512,), kv_lens=(128,)),
+    TndCase(name="single_tiny_c4", q_lens=(16,), kv_lens=(4,), attn_l1_scale=0.39),
+    TndCase(name="single_mid_c4", q_lens=(512,), kv_lens=(128,), attn_l1_scale=0.55),
     TndCase(name="multi_base_c4", q_lens=(128, 16, 8), kv_lens=(32, 4, 2)),
     TndCase(name="multi_unaligned_c4", q_lens=(20, 36, 68), kv_lens=(5, 9, 17)),
     TndCase(name="multi_mixed_c4", q_lens=(4, 8, 32, 128), kv_lens=(1, 2, 8, 32)),
@@ -201,6 +202,7 @@ DEFAULT_CASES = (
     TndCase(name="single_int_lengths_c4", q_lens=128, kv_lens=32),
     TndCase(name="single_kv_extra", q_lens=(128,), kv_lens=(128,)),
     TndCase(name="multi_kv_extra", q_lens=(16, 64, 128), kv_lens=(8, 32, 128)),
+    TndCase(name="single_scaled_l1_c4", q_lens=(512,), kv_lens=(128,), attn_l1_scale=0.37),
 )
 
 
@@ -209,7 +211,8 @@ def list_cases(cases):
     for idx, case in enumerate(cases):
         print(
             f"  {idx}: {case.name}, q_lens={case.q_lens_tuple}, "
-            f"kv_lens={case.kv_lens_tuple}, cmp_residual_k={case.cmp_residual_tuple}"
+            f"kv_lens={case.kv_lens_tuple}, cmp_residual_k={case.cmp_residual_tuple}, "
+            f"attn_l1_scale={case.attn_l1_scale}"
         )
 
 
@@ -292,6 +295,7 @@ class SparseLightningIndexerKLLossGradRef:
         cmp_residual_k=0,
         cmp_ratio=4,
         scale=None,
+        attn_l1_scale=1.0,
         dtype_internal=torch.float32,
     ):
         assert k.shape[1] == 1, "Only N2=1 is supported."
@@ -308,6 +312,7 @@ class SparseLightningIndexerKLLossGradRef:
         self.cu_kv = get_cu_seqlens(self.actual_kv_len)
         self.cmp_ratio = cmp_ratio
         self.scale = scale if scale is not None else 1.0 / math.sqrt(q.shape[-1])
+        self.attn_l1_scale = float(attn_l1_scale)
         self.input_dtype = q_index.dtype
         self.dtype_internal = dtype_internal
 
@@ -359,6 +364,8 @@ class SparseLightningIndexerKLLossGradRef:
             p = p_full.reshape(q_len, nk, group, topk).sum(dim=2) / group
             p = p.masked_fill(invalid_topk_mask.unsqueeze(1), 0.0)
             p = p.masked_fill(invalid_row.unsqueeze(-1), 0.0)
+            if self.attn_l1_scale != 1.0:
+                p = p * self.attn_l1_scale
 
             k_index_main = k_index_b.squeeze(1)
             k_index_topk = k_index_main[safe_id].masked_fill(~valid.unsqueeze(-1), 0.0)
@@ -371,7 +378,8 @@ class SparseLightningIndexerKLLossGradRef:
             s_softmax = s_softmax.masked_fill(invalid_topk_mask.unsqueeze(1), 0.0)
             s_softmax = s_softmax.masked_fill(invalid_row.unsqueeze(-1), 0.0)
 
-            ds_reduce = s_softmax - p
+            p_reduce = p.sum(dim=-1, keepdim=True)
+            ds_reduce = s_softmax * p_reduce - p
             ds_sq = ds_reduce.squeeze(1)
 
             dw = torch.einsum("tjs,ts->tj", relu_s, ds_sq)
@@ -423,6 +431,7 @@ def run_golden(case, tensors, cmp_ratio):
         cmp_residual_k=case.cmp_residual_tuple,
         cmp_ratio=cmp_ratio,
         scale=case.scale,
+        attn_l1_scale=case.attn_l1_scale,
         dtype_internal=torch.float32,
     )
     out = ref.forward()
@@ -528,7 +537,7 @@ def print_case_summary(case):
     print(
         f"case={case.name}, layout={case.layout}, dtype={case.dtype}, "
         f"q_lens={case.q_lens_tuple}, kv_lens={case.kv_lens_tuple}, "
-        f"cmp_residual_k={case.cmp_residual_tuple}"
+        f"cmp_residual_k={case.cmp_residual_tuple}, attn_l1_scale={case.attn_l1_scale}"
     )
     print(
         f"Tq={case.total_q}, Tkv={case.total_kv}, "
@@ -592,7 +601,7 @@ def make_cp_q_ranges(total_q, cp_parts, random_splits=False, seed=2026, min_firs
     return [(boundaries[idx], boundaries[idx + 1]) for idx in range(len(boundaries) - 1)]
 
 
-def make_cp_shard_case(q_start, q_end, cmp_ratio):
+def make_cp_shard_case(q_start, q_end, cmp_ratio, attn_l1_scale=1.0):
     pre_compress_k_len = q_end
     kv_len = pre_compress_k_len // cmp_ratio
     cmp_residual_k = pre_compress_k_len % cmp_ratio
@@ -606,6 +615,7 @@ def make_cp_shard_case(q_start, q_end, cmp_ratio):
         q_lens=(q_end - q_start,),
         kv_lens=(kv_len,),
         cmp_residual_k=(cmp_residual_k,),
+        attn_l1_scale=attn_l1_scale,
     )
 
 
@@ -632,6 +642,7 @@ def run_cp_validation(device, cmp_ratio, cp_parts=4, random_splits=False, cp_see
         q_lens=(ori_q_len,),
         kv_lens=(full_kv_len,),
         cmp_residual_k=(full_residual,),
+        attn_l1_scale=0.37,
     )
     full_inputs = make_inputs(full_case, cmp_ratio)
     cp_ranges = make_cp_q_ranges(full_case.total_q, cp_parts, random_splits, cp_seed, min_first=cmp_ratio)
@@ -664,7 +675,7 @@ def run_cp_validation(device, cmp_ratio, cp_parts=4, random_splits=False, cp_see
     print("[CP 3/5] Run fused op per CP shard")
     print(f"CP ranges={cp_ranges}, random_splits={random_splits}, seed={cp_seed}")
     for shard_idx, (q_start, q_end) in enumerate(cp_ranges):
-        cp_case = make_cp_shard_case(q_start, q_end, cmp_ratio)
+        cp_case = make_cp_shard_case(q_start, q_end, cmp_ratio, full_case.attn_l1_scale)
         kv_end = cp_case.kv_lens_tuple[0]
         cp_inputs = slice_cp_inputs(full_inputs, q_start, q_end, kv_end)
         print(f"\n---- CP shard {shard_idx}: q=[{q_start}, {q_end}), kv=[0, {kv_end}) ----")
