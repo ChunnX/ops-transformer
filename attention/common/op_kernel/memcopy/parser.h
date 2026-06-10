@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file parser.h
@@ -31,16 +31,17 @@ enum class ActualSeqLensMode
     ACCUM = 1,
 };
 
-template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
+template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false,
+          typename GmTensorType = GlobalTensor<ACTLEN_T>>
 class ActualSeqLensParser {
 };
 
-template <typename ACTLEN_T>
-class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, false> {
+template <typename ACTLEN_T, typename GmTensorType>
+class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, false, GmTensorType> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
+    __aicore__ inline void Init(GmTensorType actualSeqLengthsGm, uint32_t actualLenDims,
                                 uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
@@ -85,16 +86,16 @@ public:
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
 private:
-    GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
+    GmTensorType actualSeqLengthsGm;
     uint32_t actualLenDims;
 };
 
-template <typename ACTLEN_T>
-class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T, false> {
+template <typename ACTLEN_T, typename GmTensorType>
+class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T, false, GmTensorType> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
+    __aicore__ inline void Init(GmTensorType actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -117,17 +118,18 @@ public:
         return actualLenDims;
     }
 private:
-    GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
+    GmTensorType actualSeqLengthsGm;
     uint32_t actualLenDims = 0;
     uint64_t defaultVal = 0;
 };
 
 // ----------------------------------------------BlockTableParser--------------------------------
+template <typename GmTensorType = GlobalTensor<int32_t>>
 class BlockTableParser {
 public:
     __aicore__ inline BlockTableParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+    __aicore__ inline void Init(GmTensorType blockTableGm, uint32_t maxblockNumPerBatch)
     {
         this->blockTableGm = blockTableGm;
         this->maxblockNumPerBatch = maxblockNumPerBatch;
@@ -138,17 +140,17 @@ public:
         return blockTableGm.GetValue(bIdx * maxblockNumPerBatch + blockIdxInBatch);
     }
 private:
-    GlobalTensor<int32_t> blockTableGm;
+    GmTensorType blockTableGm;
     uint32_t maxblockNumPerBatch;
 };
 
 // ----------------------------------------------WITH_ZERO_HEAD=true--------------------------------
-template <ActualSeqLensMode MODE, typename ACTLEN_T>
-class ActualSeqLensParser<MODE, ACTLEN_T, true> {
+template <ActualSeqLensMode MODE, typename ACTLEN_T, typename GmTensorType>
+class ActualSeqLensParser<MODE, ACTLEN_T, true, GmTensorType> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> cuSeqLensGm, GlobalTensor<ACTLEN_T> seqUsedGM,
+    __aicore__ inline void Init(GmTensorType cuSeqLensGm, GmTensorType seqUsedGM,
                                 uint32_t cuSeqLensSize, uint32_t seqUsedSize, uint64_t defaultVal = 0)
     {
         this->cuSeqLensGm = cuSeqLensGm;
@@ -180,8 +182,8 @@ public:
         return cuSeqLensGm.GetValue(cuSeqLensSize);
     }
 private:
-    GlobalTensor<ACTLEN_T> cuSeqLensGm;
-    GlobalTensor<ACTLEN_T> seqUsedGM;
+    GmTensorType cuSeqLensGm;
+    GmTensorType seqUsedGM;
     uint32_t cuSeqLensSize;
     uint32_t seqUsedSize;
 };

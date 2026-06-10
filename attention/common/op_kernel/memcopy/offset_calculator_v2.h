@@ -180,8 +180,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, g, s1, d);
     }
 
+    template <typename GmTensorType>
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
-                                GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ, uint32_t actualLenQDims,
+                                GmTensorType actualSeqLengthsGmQ, uint32_t actualLenQDims,
                                 bool isQPaddingFlag = false, uint64_t qPaddingSize = 0)
     {
         this->isQPaddingFlag = isQPaddingFlag;
@@ -275,7 +276,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ,
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, GmTensorType actualSeqLengthsGmQ,
                                 uint32_t actualLenQDims)
     {
         actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims);
@@ -357,8 +359,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, s2, d);
     }
 
+    template <typename GmTensorType>
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
-                                GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenKvDims,
+                                GmTensorType actualSeqLengthsGm, uint32_t actualLenKvDims,
                                 bool isKvPaddingFlag = false, uint64_t kvPaddingSize = 0)
     {
         this->isKvPaddingFlag = isKvPaddingFlag;
@@ -435,7 +438,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmKV,
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, GmTensorType actualSeqLengthsGmKV,
                                 uint32_t actualLenKVDims)
     {
         actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualLenKVDims);
@@ -500,7 +504,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmKV,
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, GmTensorType actualSeqLengthsGmKV,
                                 uint32_t actualLenKVDims)
     {
         actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualLenKVDims);
@@ -565,7 +570,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d, GlobalTensor<int32_t> blockTableGm,
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d, GmTensorType blockTableGm,
                                 uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
@@ -628,8 +634,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
+    template <typename GmTensorType>
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d1, uint32_t d0,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+                                GmTensorType blockTableGm, uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(n2, blockSize, d1, d0);
@@ -703,8 +710,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_K_SCALE_PA_NZ, ACTLEN_T> 
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
+    template <typename GmTensorType>
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d1, uint32_t d0,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+                                GmTensorType blockTableGm, uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(n2, blockSize, d1, d0);
@@ -967,7 +975,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t blockSize, GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t blockSize, GmTensorType blockTableGm, uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(blockSize);
@@ -1009,7 +1018,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n, uint32_t blockSize, GlobalTensor<int32_t> blockTableGm,
+    template <typename GmTensorType>
+    __aicore__ inline void Init(uint32_t n, uint32_t blockSize, GmTensorType blockTableGm,
                                 uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
@@ -1065,8 +1075,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
+    template <typename GmTensorType>
     __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t s2,
-                                GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ, uint32_t actualLenQDims,
+                                GmTensorType actualSeqLengthsGmQ, uint32_t actualLenQDims,
                                 bool isQPaddingFlag = false, uint64_t qPaddingSize = 0)
     {
         this->isQPaddingFlag = isQPaddingFlag;
