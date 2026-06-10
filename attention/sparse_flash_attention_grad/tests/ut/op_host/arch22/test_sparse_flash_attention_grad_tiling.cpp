@@ -29,31 +29,32 @@ protected:
 };
 
 namespace {
-// key = ((((10 + atten) * 10 + hasRope) * 10 + isBsnd) * 10 + deterministic) * 10 + kvMerge
-constexpr uint64_t kTilingKeyBsndAttenNoRope = 110100UL;   // sparse_mode=3, no rope, BSND, non-deter, non-kv-merge
-constexpr uint64_t kTilingKeyBsndAttenWithRope = 111100UL; // sparse_mode=3, rope,    BSND, non-deter, non-kv-merge
-constexpr uint64_t kTilingKeyTndAttenNoRope = 110000UL;    // sparse_mode=3, no rope, TND,  non-deter, non-kv-merge
+// 基本 host 模板 GetTilingKey() 由 (attenEnable, ropeDim!=0, BSND) 拼出
+// key = ((10 + atten) * 10 + (ropeDim!=0 ? 1 : 0)) * 10 + (BSND ? 1 : 0)
+constexpr uint64_t kTilingKeyBsndAttenNoRope = 1101UL;   // sparse_mode=3, no rope, BSND
+constexpr uint64_t kTilingKeyBsndAttenWithRope = 1111UL; // sparse_mode=3, rope,    BSND
+constexpr uint64_t kTilingKeyTndAttenNoRope = 1100UL;    // sparse_mode=3, no rope, TND
 } // namespace
 
-// =================== A1: BSND + sparse_mode=3 + no rope, fp16 (正例) ===================
+// =================== A1: BSND + sparse_mode=3 + no rope, fp16 (正例, key=1101) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A1_bsnd_fp16_norope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // query            input0
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // key              input1
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // value            input2
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},             // sparse_indices   input3
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // d_out            input4
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // out              input5
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_max      input6
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_sum      input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                   // actual_seq_q     input8
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                   // actual_seq_kv    input9
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // query_rope       input10
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}                                  // key_rope         input11
         },
         {
             {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // d_query
@@ -75,25 +76,25 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A1_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenNoRope);
 }
 
-// =================== A2: BSND + sparse_mode=3 + no rope, bf16 (正例) ===================
+// =================== A2: BSND + sparse_mode=3 + no rope, bf16 (正例, key=1101) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A2_bsnd_bf16_norope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{2, 32, 1, 8}, {2, 32, 1, 8}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // d_out            input3
-            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // out              input4
-            {{{2, 16, 32}, {2, 16, 32}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{2, 16, 32}, {2, 16, 32}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input11
+            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // query
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},          // key
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},          // value
+            {{{2, 32, 1, 8}, {2, 32, 1, 8}}, ge::DT_INT32, ge::FORMAT_ND},             // sparse_indices
+            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // d_out
+            {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // out
+            {{{2, 16, 32}, {2, 16, 32}}, ge::DT_FLOAT, ge::FORMAT_ND},                 // softmax_max
+            {{{2, 16, 32}, {2, 16, 32}}, ge::DT_FLOAT, ge::FORMAT_ND},                 // softmax_sum
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{2, 32, 16, 128}, {2, 32, 16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -115,25 +116,25 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A2_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenNoRope);
 }
 
-// =================== A3: BSND + sparse_mode=3 + rope (正例) ===================
+// =================== A3: BSND + sparse_mode=3 + rope (正例, key=1111) ===================
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A3_bsnd_bf16_rope)
 {
     struct SparseFlashAttentionGradCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{1, 64, 8, 64}, {1, 64, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input10
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},          // query
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // key
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // value
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},             // sparse_indices
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},          // d_out
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},          // out
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_max
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_sum
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                   // actual_seq_q
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                   // actual_seq_kv
+            {{{1, 64, 8, 64}, {1, 64, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},            // query_rope (ropeDim=64)
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}           // key_rope
         },
         {
             {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -155,7 +156,7 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A3_b
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kTilingKeyBsndAttenWithRope);
 }
 
-// =================== A4: TND + sparse_mode=3 + no rope (正例) ===================
+// =================== A4: TND + sparse_mode=3 + no rope (正例, key=1100) ===================
 // TND 下 actual_seq_lengths_query / actual_seq_lengths_kv 必须实例化（GetBaseShapeInfo 强校验）
 TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A4_tnd_bf16_norope)
 {
@@ -165,18 +166,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_A4_t
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // d_out            input3
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // out              input4
-            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input7
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQList}, // actual_seq_q     input8
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKvList}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input11
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},                // query [t1, n1, d]
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},              // key   [t2, n2, d]
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},              // value [t2, n2, d2]
+            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},                   // sparse_indices [t1, n2, count]
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},                // d_out [t1, n1, d2]
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},                // out
+            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_max [n2, t1, g]
+            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // softmax_sum [n2, t1, g]
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQList},           // actual_seq_lengths_query [b]
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKvList},          // actual_seq_lengths_kv    [b]
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},                                    // query_rope (空)
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}                                     // key_rope (空)
         },
         {
             {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -205,18 +206,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E1_i
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -245,18 +246,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E2_n
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 2, 128}, {1, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 2, 4}, {1, 64, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 4, 64}, {1, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 4, 64}, {1, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 2, 128}, {1, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // n1=4
+            {{{1, 128, 2, 128}, {1, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},      // n2=2 (违反 n2==1)
+            {{{1, 128, 2, 128}, {1, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 2, 4}, {1, 64, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 4, 64}, {1, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 4, 64}, {1, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{1, 64, 4, 128}, {1, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -285,18 +286,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E3_n
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 3, 64}, {1, 3, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 3, 64}, {1, 3, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // n1=3 非法
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 3, 64}, {1, 3, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 3, 64}, {1, 3, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{1, 64, 3, 128}, {1, 64, 3, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -325,18 +326,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E4_d
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 8, 64}, {1, 64, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // query            input0
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},         // sparse_indices   input2
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // d_out            input3
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},               // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},               // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7, d2 > d
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}                              // key_rope         input11
+            {{{1, 64, 8, 64}, {1, 64, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},          // d=64
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // d=64
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},      // d2=128 > d=64
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{1, 64, 8, 64}, {1, 64, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -365,18 +366,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E5_i
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -406,18 +407,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E6_t
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // d_out            input3
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // out              input4
-            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input11
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 64, 8}, {1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},         // actual_seq_q 缺失
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},         // actual_seq_kv 缺失
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -447,18 +448,18 @@ TEST_F(SparseFlashAttentionGradTiling, SparseFlashAttentionGrad_910b_tiling_E7_l
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttentionGrad",
         {
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // d_out            input3
-            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // out              input4
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max      input5
-            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_sum      input6
-            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input7
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_q     input8
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_kv    input9
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query_rope       input10
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key_rope         input11
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},              // 3 维
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128, 1, 128}, {128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 4}, {64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 64}, {1, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}
         },
         {
             {{{64, 8, 128}, {64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},

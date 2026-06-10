@@ -31,7 +31,6 @@ class SelectedAttentionGradBasic {
     static constexpr bool HAS_ROPE = SFAGT::has_rope;
     static constexpr bool IS_BSND = SFAGT::is_bsnd;
     static constexpr bool IS_DETERMINISTIC = SFAGT::is_deterministic;
-    static constexpr bool KV_MERGE = SFAGT::kv_merge;
 
 public:
     __aicore__ inline SelectedAttentionGradBasic(){};
@@ -404,15 +403,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        if constexpr (KV_MERGE) {
-            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
-            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-            opCast.Process();
-        } else {
-            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-            opCast.Process();
-        }
+        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+        opCast.Process();
     }
 }
 
@@ -620,15 +613,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        if constexpr (KV_MERGE) {
-            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
-            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-            opCast.Process();
-        } else {
-            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-            opCast.Process();
-        }
+        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+        opCast.Process();
     }
 }
 
