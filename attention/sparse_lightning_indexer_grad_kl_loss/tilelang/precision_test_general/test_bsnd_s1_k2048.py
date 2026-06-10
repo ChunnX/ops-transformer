@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 
 WARMUP_ITERS = 3
-BENCH_ITERS = 20
+BENCH_ITERS = 5
 
 CASE_CONFIG = {
     "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
@@ -149,12 +149,14 @@ def main():
 
     # TileLang
     print("\n[1] TileLang...")
+    torch.npu.synchronize()
     d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
     torch.npu.synchronize()
     print("  完成")
 
     # 官方
     print("\n[2] 官方...")
+    torch.npu.synchronize()
     d_qi_off, d_ki_off, dw_off, loss_off = call_official(inputs)
     torch.npu.synchronize()
     print("  完成")
@@ -178,7 +180,9 @@ def main():
 
     # 性能
     print(f"\n[4] 性能测试 (warmup={WARMUP_ITERS}, bench={BENCH_ITERS})...")
+    torch.npu.synchronize()
     tl_avg, tl_med, tl_min = bench(lambda: call_tl(inputs))
+    torch.npu.synchronize()
     off_avg, off_med, off_min = bench(lambda: call_official(inputs))
     speedup = off_med / tl_med
     print(f"  TileLang: avg={tl_avg*1e3:.3f}ms, med={tl_med*1e3:.3f}ms, min={tl_min*1e3:.3f}ms")
