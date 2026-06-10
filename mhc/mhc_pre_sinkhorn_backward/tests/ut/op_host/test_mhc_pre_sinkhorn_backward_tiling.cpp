@@ -10,7 +10,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/op_tiling/arch32/mhc_pre_sinkhorn_backward_tiling.h"
+#include "../../../op_host/op_tiling/mhc_pre_sinkhorn_backward_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 

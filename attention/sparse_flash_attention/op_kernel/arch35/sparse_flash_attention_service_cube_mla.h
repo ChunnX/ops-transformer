@@ -70,10 +70,10 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline SFAMatmulService() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr,
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &sfaL1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *queryRope);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-                        __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo);
+                        __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -85,7 +85,7 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr);
+    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -132,19 +132,19 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
+    TPipe *pipe, BufferManager<BufferType::L1> &sfaL1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
-        InitLocalBuffer(l1BuffMgr);
+        InitLocalBuffer(sfaL1BuffMgr);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
+    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ,
     const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
@@ -154,16 +154,16 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uin
         mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
         mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
         mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        InitGmTensor(actualSeqLengthsQ, constInfo);
+        InitGmTensor(sfaActualSeqLengthsQ, constInfo);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr)
+SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr)
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init(l1BuffMgr, mm1LeftSize);
+    l1QBuffers.Init(sfaL1BuffMgr, mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
@@ -177,7 +177,7 @@ SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo)
+SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
@@ -186,7 +186,7 @@ SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ,
             constInfo.s1Size, constInfo.dSizeRope);
     } else {  // SFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
+        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)sfaActualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             actualSeqQLen, constInfo.actualSeqLenSize);
         this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeRope,
@@ -346,10 +346,10 @@ class SFAMatmulServiceDummy {
 public:
     __aicore__ inline SFAMatmulServiceDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe,
-        BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
+        BufferManager<BufferType::L1> &sfaL1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
-        __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo) {}
+        __gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         RunInfo &runInfo, ConstInfo &constInfo) {}

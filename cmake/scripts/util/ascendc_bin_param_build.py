@@ -528,7 +528,7 @@ check_stop
             build_cmd_var += f' --tiling_key="{tiling_key_str}"'
             enable_tiling_keys = True
 
-        if self.op_debug_config:
+        if not bisheng_flags and self.op_debug_config:
             op_debug_str = ','.join([str(_key) for _key in list(self.op_debug_config)])
             build_cmd_var += f' --op_debug_config={op_debug_str}'
 
@@ -678,15 +678,25 @@ def parse_args(argv):
     return parser.parse_args(argv)
 
 
+def get_bisheng_flags(input_options):
+    bisheng_flags_option = {'oom', 'dump_cce', 'dump_bin', 'dump_loc', 'ccec_o0', 'ccec_g', 'check_flag', 'sanitizer'}
+
+    found_flags = set()
+    for elem in args.argv:
+        parts = elem.split(',')
+        # 使用集合操作来找出有效标志
+        valid_parts = {part.strip() for part in parts if part.strip() in bisheng_flags_option}
+        if valid_parts:
+            found_flags.update(valid_parts)
+
+    return ",".join(found_flags) if found_flags else ""
+
+
 if __name__ == '__main__':
     args = parse_args(sys.argv)
     if len(args.argv) <= 3:
         raise RuntimeError('arguments must greater than 3')
-    bisheng_flags_option = ['oom', 'dump_cce', 'dump_bin', 'dump_loc', 'ccec_o0', 'ccec_g', 'check_flag_sanitizer']
-    input_bisheng_flags = ""
-    for elem in args.argv:
-        if elem in bisheng_flags_option:
-            input_bisheng_flags = elem
+    input_bisheng_flags = get_bisheng_flags(args.argv)
     gen_bin_param_file(args.argv[1],
                     args.argv[2],
                     args.argv[3],

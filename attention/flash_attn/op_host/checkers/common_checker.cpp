@@ -171,6 +171,10 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
             shapeStr.c_str(), "N of query and key must be greater than or equal to 0.");
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(faInfo.n1Size < faInfo.n2Size,
+                OP_LOGE(faInfo.opName, "numHeads(%ld) should be greater than or equal to numKeyValueHeads(%ld)!",
+                        faInfo.n1Size, faInfo.n2Size),
+                return ge::GRAPH_FAILED);
 
     if (faInfo.n1Size % faInfo.n2Size != 0) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +

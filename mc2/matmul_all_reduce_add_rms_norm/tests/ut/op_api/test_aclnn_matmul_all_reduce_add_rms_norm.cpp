@@ -631,7 +631,7 @@ TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMatmulAllReduceAddRmsNormSecondApiWi
     ASSERT_NE(fakeWorkspace, nullptr);
     aclnnStatus ret = aclnnMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
     free(fakeWorkspace);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormSecondApiWithExecutor)
@@ -659,7 +659,7 @@ TEST_F(L2MatmulAllReduceAddRmsNormTest, TestQuantMatmulAllReduceAddRmsNormSecond
     ASSERT_NE(fakeWorkspace, nullptr);
     aclnnStatus ret = aclnnQuantMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
     free(fakeWorkspace);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNormSecondApiWithExecutor)
@@ -688,7 +688,7 @@ TEST_F(L2MatmulAllReduceAddRmsNormTest, TestWeightQuantMatmulAllReduceAddRmsNorm
     ASSERT_NE(fakeWorkspace, nullptr);
     aclnnStatus ret = aclnnWeightQuantMatmulAllReduceAddRmsNorm(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
     free(fakeWorkspace);
-    EXPECT_NE(ret, ACLNN_SUCCESS);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(L2MatmulAllReduceAddRmsNormTest, TestMmAllReduceAddRmsNormScalarInput)

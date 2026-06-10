@@ -34,6 +34,19 @@ public:
 private:
     __aicore__ inline void CopyIn();
     __aicore__ inline void Compute();
+    __aicore__ inline void InitComputeTensor(LocalTensor<T>& input, LocalTensor<T>& output,
+        LocalTensor<float>& oneBuf, LocalTensor<float>& inputCast);
+    __aicore__ inline void ProcessSingleTarget(LocalTensor<T>& output, LocalTensor<uint8_t>& mask1,
+        LocalTensor<float>& workLocal, LocalTensor<float>& inputCast, LocalTensor<float>& targetBuf,
+        LocalTensor<float>& oneBuf, LocalTensor<float>& reduceMaxAnsBuf, LocalTensor<float>& reduceSumAnsBuf,
+        LocalTensor<float>& resultBuf, float target, uint64_t mask, int32_t repeat,
+        BinaryRepeatParams& repeatParamsCompare, BinaryRepeatParams& repeatParamsSelect, int32_t startOffset,
+        int32_t& lastIdx, int32_t& lastVal);
+    __aicore__ inline void ProcessTargetRange(LocalTensor<T>& output, LocalTensor<uint8_t>& mask1,
+        LocalTensor<float>& workLocal, LocalTensor<float>& inputCast, LocalTensor<float>& targetBuf,
+        LocalTensor<float>& oneBuf, LocalTensor<float>& reduceMaxAnsBuf, LocalTensor<float>& reduceSumAnsBuf,
+        LocalTensor<float>& resultBuf, float startTarget, float endTarget, int32_t startOffset, int32_t repeat);
+    __aicore__ inline void FillOutputAfterLastTarget(LocalTensor<T>& output, int32_t lastIdx, int32_t lastVal);
     __aicore__ inline void CopyOut();
     __aicore__ inline int64_t Int32AlignmentProcess(int64_t param);
     __aicore__ inline int64_t Int256AlignmentProcess(int64_t param);
@@ -159,6 +172,78 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::CopyIn()
 }
 
 template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32SS<T>::InitComputeTensor(LocalTensor<T>& input,
+    LocalTensor<T>& output, LocalTensor<float>& oneBuf, LocalTensor<float>& inputCast)
+{
+    Duplicate(oneBuf, static_cast<float>(1), 8);
+    Cast(inputCast, input, RoundMode::CAST_NONE, handleNum_);
+    Duplicate(output, 0, numOfExpert_);
+}
+
+template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32SS<T>::ProcessSingleTarget(LocalTensor<T>& output,
+    LocalTensor<uint8_t>& mask1, LocalTensor<float>& workLocal, LocalTensor<float>& inputCast,
+    LocalTensor<float>& targetBuf, LocalTensor<float>& oneBuf, LocalTensor<float>& reduceMaxAnsBuf,
+    LocalTensor<float>& reduceSumAnsBuf, LocalTensor<float>& resultBuf, float target, uint64_t mask, int32_t repeat,
+    BinaryRepeatParams& repeatParamsCompare, BinaryRepeatParams& repeatParamsSelect, int32_t startOffset,
+    int32_t& lastIdx, int32_t& lastVal)
+{
+    Duplicate(targetBuf, target, 8);
+    PipeBarrier<PIPE_V>();
+    Compare(mask1, inputCast, targetBuf, CMPMODE::EQ, mask, repeat, repeatParamsCompare);
+    PipeBarrier<PIPE_V>();
+    Select<float>(resultBuf, mask1, oneBuf, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat,
+        repeatParamsSelect);
+    PipeBarrier<PIPE_V>();
+    ReduceMax<float>(reduceMaxAnsBuf, resultBuf, workLocal, handleNum_, true);
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    bool isFind = reduceMaxAnsBuf.GetValue(0) != 0;
+    if (!isFind) {
+        output.SetValue(static_cast<int32_t>(target), lastVal);
+        return;
+    }
+
+    ReduceSum<float>(reduceSumAnsBuf, resultBuf, workLocal, handleNum_);
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    float index = reduceMaxAnsBuf.GetValue(1);
+    float sumNum = reduceSumAnsBuf.GetValue(0);
+    int32_t targetLocation = (reinterpret_cast<int32_t&>(index) + sumNum);
+    lastVal = startOffset + targetLocation;
+    lastIdx = target;
+    output.SetValue(static_cast<int32_t>(target), lastVal);
+}
+
+template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32SS<T>::ProcessTargetRange(LocalTensor<T>& output,
+    LocalTensor<uint8_t>& mask1, LocalTensor<float>& workLocal, LocalTensor<float>& inputCast,
+    LocalTensor<float>& targetBuf, LocalTensor<float>& oneBuf, LocalTensor<float>& reduceMaxAnsBuf,
+    LocalTensor<float>& reduceSumAnsBuf, LocalTensor<float>& resultBuf, float startTarget, float endTarget,
+    int32_t startOffset, int32_t repeat)
+{
+    int32_t lastIdx = 0;
+    int32_t lastVal = 0;
+    uint64_t mask = 256 / sizeof(float);
+    BinaryRepeatParams repeatParamsCompare = {1, 1, 0, 8, 8, 0};
+    BinaryRepeatParams repeatParamsSelect = {1, 0, 0, 8, 0, 0};
+    for (float target = startTarget; target <= endTarget; target++) {
+        ProcessSingleTarget(output, mask1, workLocal, inputCast, targetBuf, oneBuf, reduceMaxAnsBuf, reduceSumAnsBuf,
+            resultBuf, target, mask, repeat, repeatParamsCompare, repeatParamsSelect, startOffset, lastIdx, lastVal);
+    }
+    FillOutputAfterLastTarget(output, lastIdx, lastVal);
+}
+
+template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32SS<T>::FillOutputAfterLastTarget(
+    LocalTensor<T>& output, int32_t lastIdx, int32_t lastVal)
+{
+    for (int k = lastIdx + 1; k < numOfExpert_; k++) {
+        output.SetValue(k, lastVal);
+    }
+}
+
+template <typename T>
 __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
 {
     LocalTensor<T> input = inputQueue_.DeQue<T>();
@@ -174,58 +259,16 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
     LocalTensor<float> inputCast = totalBuf[Int256AlignmentProcess(handleNum_) * 4];
     LocalTensor<float> resultBuf = totalBuf[Int256AlignmentProcess(handleNum_) * 5];
 
-    uint64_t mask = 256 / sizeof(float);
-    int32_t startIdx = 0;
-    int32_t endIdx = startIdx + handleNum_ - 1;
-    Duplicate(oneBuf, static_cast<float>(1), 8);
-    Cast(inputCast, input, RoundMode::CAST_NONE, handleNum_);
-    Duplicate(output, 0, numOfExpert_);
-
+    InitComputeTensor(input, output, oneBuf, inputCast);
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
-    float startTarget = inputCast.GetValue(startIdx);
-    float endTarget = inputCast.GetValue(endIdx);
 
+    int32_t repeat = (handleNum_ + 256 / sizeof(float) - 1) / (256 / sizeof(float));
     int32_t startOffset = handleNumPerCoreBefore_ * GetBlockIdx();
-    int32_t targetLocation = 0;
-    int32_t lastIdx = 0;
-    int32_t lastVal = 0;
-
-    int32_t repeat = (handleNum_ + mask - 1) / mask;
-    BinaryRepeatParams repeatParamsCompare = {1, 1, 0, 8, 8, 0};
-    BinaryRepeatParams repeatParamsSelect = {1, 0, 0, 8, 0, 0};
-
-    for (float target = startTarget; target <= endTarget; target++) {
-        Duplicate(targetBuf, target, 8);
-
-        PipeBarrier<PIPE_V>();
-        Compare(mask1, inputCast, targetBuf, CMPMODE::EQ, mask, repeat, repeatParamsCompare);
-        PipeBarrier<PIPE_V>();
-        Select<float>(resultBuf, mask1, oneBuf, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat, repeatParamsSelect);
-        PipeBarrier<PIPE_V>();
-        ReduceMax<float>(reduceMaxAnsBuf, resultBuf, workLocal, handleNum_, true);
-
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        bool isFind = reduceMaxAnsBuf.GetValue(0) != 0;
-        if (!isFind) {
-            output.SetValue(static_cast<int32_t>(target), lastVal);
-            continue;
-        }
-        ReduceSum<float>(reduceSumAnsBuf, resultBuf, workLocal, handleNum_);
-
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        float index = reduceMaxAnsBuf.GetValue(1);
-        float sumNum = reduceSumAnsBuf.GetValue(0);
-        targetLocation = (reinterpret_cast<int32_t&>(index) + sumNum);
-        lastVal = startOffset + targetLocation;
-        lastIdx = target;
-        output.SetValue(static_cast<int32_t>(target), lastVal);
-    }
-    for (int k = lastIdx + 1; k < numOfExpert_; k++) {
-        output.SetValue(k, lastVal);
-    }
+    float startTarget = inputCast.GetValue(0);
+    float endTarget = inputCast.GetValue(handleNum_ - 1);
+    ProcessTargetRange(output, mask1, workLocal, inputCast, targetBuf, oneBuf, reduceMaxAnsBuf, reduceSumAnsBuf,
+        resultBuf, startTarget, endTarget, startOffset, repeat);
 
     tmpOutQueue_.EnQue<T>(output);
     inputQueue_.FreeTensor(input);

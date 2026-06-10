@@ -11,6 +11,7 @@
 
 #include <dlfcn.h>
 #include <new>
+#include <sstream>
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/contiguous.h"
@@ -27,6 +28,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_950_checker.h"
@@ -41,34 +43,88 @@ extern "C" {
 #endif
 
 namespace {
+constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAdd";
+
+std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+}
+
+#define QGMM_INPLACE_ADD_CHECK_REPORT(cond, retExpr, reportExpr) \
+    do {                                                         \
+        if (!(cond)) {                                           \
+            reportExpr;                                          \
+            retExpr;                                             \
+        }                                                        \
+    } while (0)
+
 static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
-    CHECK_COND(params.x1 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "x1 must not be nullptr.");
-    CHECK_COND(params.x2 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "x2 must not be nullptr.");
-    CHECK_COND(params.scale2 != nullptr, ACLNN_ERR_PARAM_NULLPTR, "scale2 must not be nullptr.");
-    CHECK_COND(params.groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "groupList must not be nullptr.");
-    CHECK_COND(params.yRef != nullptr, ACLNN_ERR_PARAM_NULLPTR, "yRef must not be nullptr.");
-    CHECK_COND(params.scale1Optional != nullptr, ACLNN_ERR_PARAM_NULLPTR, "scale1Optional must not be nullptr.");
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.x1 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", "nullptr",
+                                              "the value of x1 cannot be nullptr"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.x2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", "nullptr",
+                                              "the value of x2 cannot be nullptr"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.scale2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", "nullptr",
+                                              "the value of scale2 cannot be nullptr"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.groupList != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList", "nullptr",
+                                              "the value of groupList cannot be nullptr"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.yRef != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef", "nullptr",
+                                              "the value of yRef cannot be nullptr"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.scale1Optional != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1", "nullptr",
+                                              "the value of scale1 cannot be nullptr"));
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus CheckFormat(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
-    CHECK_COND(params.x1->GetStorageFormat() == Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
-               "Format of x1 should be ND, current format is invalid.");
-    CHECK_COND(params.x2->GetStorageFormat() == Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
-               "Format of x2 should be ND, current format is invalid.");
-    CHECK_COND(params.scale2->GetStorageFormat() == Format::FORMAT_ND ||
-                   params.scale2->GetStorageFormat() == Format::FORMAT_NCL,
-               ACLNN_ERR_PARAM_INVALID, "Format of scale2 should be ND or NCL, current format is invalid.");
-    CHECK_COND(params.groupList->GetStorageFormat() == Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
-               "Format of groupList should be ND, current format is invalid.");
-    CHECK_COND(params.yRef->GetStorageFormat() == Format::FORMAT_ND ||
-                   params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
-               ACLNN_ERR_PARAM_INVALID, "Format of yRef should be ND or NCL, current format is invalid.");
-    CHECK_COND(params.scale1Optional->GetStorageFormat() == Format::FORMAT_ND ||
-                   params.scale1Optional->GetStorageFormat() == Format::FORMAT_NCL,
-               ACLNN_ERR_PARAM_INVALID, "Format of scale1 should be ND or NCL, current format is invalid.");
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.x1->GetStorageFormat() == Format::FORMAT_ND,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1",
+                                   op::ToString(params.x1->GetStorageFormat()).GetString(), "ND"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.x2->GetStorageFormat() == Format::FORMAT_ND,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2",
+                                   op::ToString(params.x2->GetStorageFormat()).GetString(), "ND"));
+    if (!(params.scale2->GetStorageFormat() == Format::FORMAT_ND ||
+          params.scale2->GetStorageFormat() == Format::FORMAT_NCL)) {
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2",
+                                   op::ToString(params.scale2->GetStorageFormat()).GetString(), "ND or NCL");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.groupList->GetStorageFormat() == Format::FORMAT_ND,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList",
+                                   op::ToString(params.groupList->GetStorageFormat()).GetString(), "ND"));
+    if (!(params.yRef->GetStorageFormat() == Format::FORMAT_ND ||
+          params.yRef->GetStorageFormat() == Format::FORMAT_NCL)) {
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef",
+                                   op::ToString(params.yRef->GetStorageFormat()).GetString(), "ND or NCL");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!(params.scale1Optional->GetStorageFormat() == Format::FORMAT_ND ||
+          params.scale1Optional->GetStorageFormat() == Format::FORMAT_NCL)) {
+        OP_LOGE_FOR_INVALID_FORMAT(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1",
+                                   op::ToString(params.scale1Optional->GetStorageFormat()).GetString(), "ND or NCL");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -77,16 +133,23 @@ static aclnnStatus IsMxQuantDim(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddPara
 {
     auto x1ScaleDimNum = params.scale1Optional->GetViewShape().GetDimNum();
     auto x2ScaleDimNum = params.scale2->GetViewShape().GetDimNum();
-    CHECK_COND(x2ScaleDimNum == gmm::MX_SPLIT_K_SCALE_DIM, ACLNN_ERR_PARAM_INVALID,
-               "In Mx Quant, the scale2 dim num should be 3, but actual is [%zu].", x2ScaleDimNum);
-    CHECK_COND(x1ScaleDimNum == gmm::MX_SPLIT_K_PER_TOKEN_SCALE_DIM, ACLNN_ERR_PARAM_INVALID,
-               "In Mx Quant, the scale1 dim num should be 3, but actual is [%zu].", x1ScaleDimNum);
+    QGMM_INPLACE_ADD_CHECK_REPORT(x2ScaleDimNum == gmm::MX_SPLIT_K_SCALE_DIM, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", std::to_string(x2ScaleDimNum),
+                                     std::to_string(gmm::MX_SPLIT_K_SCALE_DIM)));
+    QGMM_INPLACE_ADD_CHECK_REPORT(x1ScaleDimNum == gmm::MX_SPLIT_K_PER_TOKEN_SCALE_DIM,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1", std::to_string(x1ScaleDimNum),
+                                     std::to_string(gmm::MX_SPLIT_K_PER_TOKEN_SCALE_DIM)));
     auto scale1LastDimValue = params.scale1Optional->GetViewShape().GetDim(gmm::MX_SPLIT_K_PER_TOKEN_SCALE_DIM - 1);
     auto scale2LastDimValue = params.scale2->GetViewShape().GetDim(gmm::MX_SPLIT_K_SCALE_DIM - 1);
-    CHECK_COND(scale1LastDimValue == 2, ACLNN_ERR_PARAM_INVALID, // last dim should be 2 in mx quant mode
-               "The last dim of scale1 should be 2 in mx quant mode, but actual is %ld.", scale1LastDimValue);
-    CHECK_COND(scale2LastDimValue == 2, ACLNN_ERR_PARAM_INVALID, // last dim should be 2 in mx typek quant mode
-               "The last dim of scale2 should be 2 in mx quant mode, but actual is %ld.", scale2LastDimValue);
+    QGMM_INPLACE_ADD_CHECK_REPORT(scale1LastDimValue == 2, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1",
+                                              ViewShapeToString(params.scale1Optional),
+                                              "in mx quant mode, last dim of scale1 must be equal to 2"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(scale2LastDimValue == 2, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2",
+                                              ViewShapeToString(params.scale2),
+                                              "in mx quant mode, last dim of scale2 must be equal to 2"));
     return ACLNN_SUCCESS;
 }
 
@@ -96,14 +159,15 @@ static aclnnStatus CheckShape(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
     auto x1DimNum = params.x1->GetViewShape().GetDimNum();
     auto groupListDimNum = params.groupList->GetViewShape().GetDimNum();
     auto yDimNum = params.yRef->GetViewShape().GetDimNum();
-    CHECK_COND(x1DimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num
-               "The dimension of x1 should be 2, but actual is %zu.", x1DimNum);
-    CHECK_COND(x2DimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num
-               "The dimension of x2 should be 2, but actual is %zu.", x2DimNum);
-    CHECK_COND(groupListDimNum == 1, ACLNN_ERR_PARAM_INVALID,
-               "The dimension of groupList should be 1, but actual is %ld.", groupListDimNum);
-    CHECK_COND(yDimNum == 3, ACLNN_ERR_PARAM_INVALID, // 3 max dim num
-               "The dimension of yRef should be 3, but actual is %zu.", yDimNum);
+    QGMM_INPLACE_ADD_CHECK_REPORT(x1DimNum == 2, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", std::to_string(x1DimNum), "2"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(x2DimNum == 2, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", std::to_string(x2DimNum), "2"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(groupListDimNum == 1, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList",
+                                     std::to_string(groupListDimNum), "1"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(yDimNum == 3, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef", std::to_string(yDimNum), "3"));
     auto aKDim = params.x1->GetViewShape().GetDim(1);
     auto bKDim = params.x2->GetViewShape().GetDim(0);
     auto nDim = params.x2->GetViewShape().GetDim(1);
@@ -114,13 +178,21 @@ static aclnnStatus CheckShape(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
     auto yMDim = params.yRef->GetViewShape().GetDim(1);
     auto yNDim = params.yRef->GetViewShape().GetDim(2);
 
-    CHECK_COND(mDim >= 0, ACLNN_ERR_PARAM_INVALID, "The M value[%ld] in x1 should be positive.", mDim);
+    QGMM_INPLACE_ADD_CHECK_REPORT(mDim >= 0, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", ViewShapeToString(params.x1),
+                                              "axis M of x1 must be a positive number"));
 
-    CHECK_COND(aKDim == bKDim, ACLNN_ERR_PARAM_INVALID,
-               "The kDimNum of x1/x2 should be equal, but the actual is %ld/%ld.", aKDim, bKDim);
-    CHECK_COND(gDim == yGDim && mDim == yMDim && nDim == yNDim, ACLNN_ERR_PARAM_INVALID,
-               "The expected shape of yRef is (%ld, %ld, %ld), but the actual is (%ld, %ld, %ld).", gDim, mDim, nDim,
-               yGDim, yMDim, yNDim);
+    QGMM_INPLACE_ADD_CHECK_REPORT(aKDim == bKDim, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
+            "x1=" + ViewShapeToString(params.x1) + ", x2=" + ViewShapeToString(params.x2),
+            "axis K of x1 must be equal to axis K of x2"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(gDim == yGDim && mDim == yMDim && nDim == yNDim,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE(
+            QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef",
+            "(" + std::to_string(yGDim) + ", " + std::to_string(yMDim) + ", " + std::to_string(yNDim) + ")",
+            "(" + std::to_string(gDim) + ", " + std::to_string(mDim) + ", " + std::to_string(nDim) + ")"));
     return ACLNN_SUCCESS;
 }
 
@@ -128,24 +200,31 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
 {
     auto x1Dtype = params.x1->GetDataType();
     auto x2Dtype = params.x2->GetDataType();
-    CHECK_COND(params.yRef->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "Input yRef dtype should be FLOAT32, actual dtype is %s.",
-               op::ToString(params.yRef->GetDataType()).GetString());
-    CHECK_COND(params.groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
-               "Input groupList dtype should be INT64, actual dtype is %s.",
-               op::ToString(params.groupList->GetDataType()).GetString());
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.yRef->GetDataType() == DataType::DT_FLOAT,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef",
+                                  op::ToString(params.yRef->GetDataType()).GetString(), "FLOAT32"));
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.groupList->GetDataType() == DataType::DT_INT64,
+        return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList",
+                                  op::ToString(params.groupList->GetDataType()).GetString(), "INT64"));
     if ((x1Dtype == DataType::DT_FLOAT8_E4M3FN || x1Dtype == DataType::DT_FLOAT8_E5M2) &&
         (x2Dtype == DataType::DT_FLOAT8_E4M3FN || x2Dtype == DataType::DT_FLOAT8_E5M2)) {
         CHECK_COND(IsMxQuantDim(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Check IsMxQuantDim failed.");
-        CHECK_COND(params.scale2->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
-                   "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale2 dtype should be FLOAT8_E8M0, actual dtype is %s.",
-                   op::ToString(params.scale2->GetDataType()).GetString());
-        CHECK_COND(params.scale1Optional->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
-                   "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale1 dtype should be FLOAT8_E8M0, actual dtype is %s.",
-                   op::ToString(params.scale1Optional->GetDataType()).GetString());
+        QGMM_INPLACE_ADD_CHECK_REPORT(params.scale2->GetDataType() == DataType::DT_FLOAT8_E8M0,
+            return ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2",
+                                      op::ToString(params.scale2->GetDataType()).GetString(), "FLOAT8_E8M0"));
+        QGMM_INPLACE_ADD_CHECK_REPORT(params.scale1Optional->GetDataType() == DataType::DT_FLOAT8_E8M0,
+            return ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1",
+                                      op::ToString(params.scale1Optional->GetDataType()).GetString(), "FLOAT8_E8M0"));
     } else if (!(x1Dtype == DataType::DT_HIFLOAT8 && x2Dtype == DataType::DT_HIFLOAT8)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x1 dtype %s and x2 dtype %s is not supported.",
-                op::ToString(x1Dtype).GetString(), op::ToString(x2Dtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
+            "x1=" + std::string(op::ToString(x1Dtype).GetString()) + ", x2=" + op::ToString(x2Dtype).GetString(),
+            "in quant case, the dtypes of x1 and x2 must be within the range both FLOAT8_E4M3FN/FLOAT8_E5M2 "
+            "or both HIFLOAT8");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -153,10 +232,14 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
 
 static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
-    CHECK_COND(params.groupListType == 0 || params.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
-               "GroupListType must be 0 or 1, but actual value is %ld.", params.groupListType);
-    CHECK_COND(params.groupSize == 0, ACLNN_ERR_PARAM_INVALID,
-               "GroupSize must be 0, but actual value is %ld.", params.groupSize);
+    if (!(params.groupListType == 0 || params.groupListType == 1)) {
+        OP_LOGE_FOR_INVALID_VALUE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupListType",
+                                  std::to_string(params.groupListType), "0 or 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    QGMM_INPLACE_ADD_CHECK_REPORT(params.groupSize == 0, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupSize",
+                                  std::to_string(params.groupSize), "0"));
     CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -207,8 +290,8 @@ static aclnnStatus SetTransViewShapeForPertoken(const aclTensor *&inputTensor, a
     op::Shape shape;
     shape.SetScalar();
     if (viewShape.GetDimNum() < 3) { // only pertoken in mx typek quant mode have to trans, which dim num is 3
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In Mx Quant, pertoken dim num should be 3, actual is %zu",
-                viewShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1",
+                                     std::to_string(viewShape.GetDimNum()), "3");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // swap first two dim
@@ -227,7 +310,8 @@ static aclnnStatus DataContiguous(const aclTensor *&tensor, aclOpExecutor *execu
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ParamsDataContiguous(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams &params, aclOpExecutor *executorPtr)
+static aclnnStatus ParamsDataContiguous(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams &params,
+                                        aclOpExecutor *executorPtr)
 {
     CHECK_COND(DataContiguous(params.x1, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Contiguous x1 failed.");
@@ -250,8 +334,8 @@ static bool IsSpecialTranspose(const aclTensor* const inputTensor)
     return inputShape.GetDim(dim1) == 1 && inputShape.GetDim(dim2) == 1;
 }
 
-static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params,
-                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
+static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
+    QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -272,8 +356,12 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(QGmmI
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
     // when the last two dims of weight are (1, 1), consider tranB as false
     transposeWeight = transposeWeight && !IsSpecialTranspose(params.x2);
-    CHECK_COND(transposeX == true && transposeWeight == false, ACLNN_ERR_PARAM_INVALID,
-               "Only support when transpose of x1 is true and transpose of x2 is false.");
+    QGMM_INPLACE_ADD_CHECK_REPORT(transposeX == true && transposeWeight == false, return ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
+            "x1=" + ViewShapeToString(params.x1) + ", x2=" + ViewShapeToString(params.x2),
+            "when transpose of x1 is true and transpose of x2 is false, only this transposition combination is "
+            "supported"));
 
     if (transposeX) {
         SetTransViewShape(params.x1, executorPtr);
@@ -307,6 +395,8 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(QGmmI
     return ACLNN_SUCCESS;
 }
 } // namespace
+
+#undef QGMM_INPLACE_ADD_CHECK_REPORT
 
 aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
                                                               const aclTensor *scale1Optional, const aclTensor *scale2,

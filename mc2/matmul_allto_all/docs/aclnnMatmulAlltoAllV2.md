@@ -29,7 +29,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai\_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI\_CPU引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI\_CPU引擎。
 
 ## 函数原型
 
@@ -129,7 +129,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -138,8 +138,8 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>commMode</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入空字符串""、"ai\_cpu"或"ccu"。</td>
-    <td>STRING</td>
+    <td>支持输入空字符串""、"ai_cpu"或"ccu"。</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识左矩阵是否转置过。</td>
     <td>暂不支持配置为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识右矩阵是否转置过。</td>
     <td>配置为True时右矩阵Shape为(H2, H1)。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
-    <td>UINT64</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
-    <td>aclOpExecutor*</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
 
 ## 约束说明
 
-* 默认支持确定性计算。
+* aclnnMatmulAlltoAllV2默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
@@ -317,7 +317,10 @@ aclnnStatus aclnnMatmulAlltoAllV2(
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AI\_CPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信和支持AI\_CPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：
+      - 支持CCU通信和AI\_CPU通信。
+      - CCU通信不支持跨机场景。
+      - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
 ## 调用示例
 

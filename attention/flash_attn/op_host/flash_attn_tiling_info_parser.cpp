@@ -291,7 +291,7 @@ void FaInfoParser::GetKeyTSize()
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
 }
 
-ge::graphStatus FaInfoParser::GetQkHeadDim() 
+ge::graphStatus FaInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
@@ -306,21 +306,11 @@ ge::graphStatus FaInfoParser::GetQkHeadDim()
 ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenQ != nullptr) {
-            if (*opParamInfo_.maxSeqlenQ < -1) {
-                std::string reason = "The value of max_seqlen_q must be greater than or equal to -1.";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_q",
-                    std::to_string(*opParamInfo_.maxSeqlenQ).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenQ == -1) {
-                s1Size_ = queryTSize_;
-            } else {
-                s1Size_ = *opParamInfo_.maxSeqlenQ;
-            }
-        } else {
-            s1Size_ = queryTSize_;
-        }
+        OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_q",
+                "max_seqlen_q cannot be empty when layout_q is TND."),
+            return ge::GRAPH_FAILED);
+        s1Size_ = *opParamInfo_.maxSeqlenQ;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -342,21 +332,11 @@ void FaInfoParser::GetKvStorageMode()
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
-        if (opParamInfo_.maxSeqlenKV != nullptr) {
-            if (*opParamInfo_.maxSeqlenKV < -1) {
-                std::string reason = "The value of max_seqlen_kv must be greater than or equal to -1.";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_kv",
-                    std::to_string(*opParamInfo_.maxSeqlenKV).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (*opParamInfo_.maxSeqlenKV == -1) {
-                s2Size_ = keyTSize_;
-            } else {
-                s2Size_ = *opParamInfo_.maxSeqlenKV;
-            }
-        } else {
-            s2Size_ = keyTSize_;
-        }
+        OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_kv",
+                "max_seqlen_kv cannot be empty when layout_kv is TND."),
+            return ge::GRAPH_FAILED);
+        s2Size_ = *opParamInfo_.maxSeqlenKV;
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -490,6 +470,10 @@ void FaInfoParser::SetFaShape()
 ge::graphStatus FaInfoParser::GetGSize()
 {
     // 获取G基准值
+    if (n2Size_ == 0U) {
+        OP_LOGE(opName_, "Kv Heads(%ld) should not be zero.", n2Size_);
+        return ge::GRAPH_FAILED;
+    }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
             ToString(opParamInfo_.key.shape->GetStorageShape());

@@ -219,9 +219,15 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
             return ge::GRAPH_FAILED);
     }
-    CheckHcqSize();
-    CheckDSize();
-    CheckDtileSize();
+    if (CheckHcqSize() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckDSize() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckDtileSize() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

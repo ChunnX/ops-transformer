@@ -738,7 +738,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
-当block_table不为空时，使能Paged Attention
+当block_table不为空时，开启Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -773,8 +773,8 @@ mask_mode参数解释
         </td>
         <td>
             <ul>
-                <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
-                <li>PagedAttention 使能情况下，block_table必须不为空</li>
+                <li>PagedAttention 开启情况下，必须传入 seqused_kv</li>
+                <li>PagedAttention 开启情况下，block_table必须不为空</li>
             </ul>
         </td>
     </tr>

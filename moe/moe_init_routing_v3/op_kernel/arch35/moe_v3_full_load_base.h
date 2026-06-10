@@ -100,6 +100,7 @@ protected:
     int64_t activeNum_;
     int64_t dropPadMode_ = 0;
     int64_t expertCapacity_ = 0;
+    int64_t outputRows_ = 0;
     int64_t expertNum_;
     int64_t expertStart_ = 0;
     int64_t expertEnd_ = 0;
@@ -159,7 +160,9 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->perCoreIndicesElements_ = this->gatherOutTilingData_->perCoreIndicesElements;
     this->activeNum_ = tilingData->activeNum;
     this->dropPadMode_ = tilingData->dropPadMode;
-    this->expertCapacity_ = this->dropPadMode_ == DROP_PAD_MODE ? this->activeNum_ / tilingData->expertNum : 0;
+    this->expertCapacity_ = tilingData->expertCapacity;
+    this->outputRows_ = this->dropPadMode_ == DROP_PAD_MODE ? tilingData->expertNum * tilingData->expertCapacity :
+ 	                    this->activeNum_;
     if (this->blockIdx_ == this->gatherOutTilingData_->needCoreNum - 1) {
         this->coreIndicesElements_ = this->gatherOutTilingData_->lastCoreIndicesElements;
     } else {

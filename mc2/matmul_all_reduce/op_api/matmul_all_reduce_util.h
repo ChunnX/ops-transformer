@@ -49,6 +49,9 @@ constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;
 constexpr char DEBUG_MODE_ENV[] = "ASCEND_MC2_DEBUG_MODE";
 constexpr size_t DIM_LEN_ONE = 1;
 constexpr size_t DIM_LEN_TWO = 2;
+constexpr char COMM_MODE_AICPU[] = "ai_cpu";
+constexpr char COMM_MODE_CCU[] = "ccu";
+constexpr char COMM_MODE_DEFAULT[] = "";
 
 struct NnopbaseDfxId {
     uint32_t id;
@@ -123,6 +126,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* dequant, const aclTensor* pertokenScaleOptional, const char* group, const char* reduceOp,
     int64_t commTurn, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor);
+bool IsCommModeValid(const char* commModePtr);
 #ifdef __cplusplus
 }
 #endif

@@ -223,6 +223,25 @@ ge::graphStatus FiaInfoParser::GetOpName()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FiaInfoParser::GetStrides()
+{
+    // 用opbase版本判断，老版本opbase为tensorv1
+    if (context_->InputIsView(KEY_INDEX) == false) {
+        isTensorV1_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
+    keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
+    if (opParamInfo_.keyAntiquantScale.tensor != nullptr || opParamInfo_.valueAntiquantScale.tensor != nullptr) {
+        kScaleStrides_ = context_->GetInputStride(KEY_ANTIQUANT_SCALE_INDEX);
+        vScaleStrides_ = context_->GetInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
+    }
+    if (opParamInfo_.keyRope.desc != nullptr) {
+        kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
@@ -1336,16 +1355,16 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
             *opParamInfo_.valueAntiquantMode == 7) {
-            fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
-            fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
         } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
                    (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
                     *opParamInfo_.valueAntiquantMode == 0)) {
-            fullQuantMode_ = FiaFullQuantMode::PER_TOKEN_HEAD_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT;
         } else {
-            fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1454,6 +1473,13 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.qSize = qSize_;
     fiaInfo.kvSize = kvSize_;
 
+    fiaInfo.keyStrides = keyStrides_;
+    fiaInfo.valueStrides = valueStrides_;
+    fiaInfo.kRopeStrides = kRopeStrides_;
+    fiaInfo.kScaleStrides = kScaleStrides_;
+    fiaInfo.vScaleStrides = vScaleStrides_;
+    fiaInfo.isTensorV1 = isTensorV1_;
+
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 
     fiaInfo.l2CacheOffFlag = false;
@@ -1466,7 +1492,7 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     }
 
     fiaInfo.actualLenQDims = actualLenQDims_;
-    fiaInfo.actualLenDims = actualLenDims_;
+    fiaInfo.actualLenKvDims = actualLenDims_;
     fiaInfo.maxActualseq = maxActualseq_;
     fiaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
     fiaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
@@ -1560,6 +1586,9 @@ ge::graphStatus FiaInfoParser::ParseAxisInfo()
     }
     GetKeyTSize();
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetRopeHeadDim()) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

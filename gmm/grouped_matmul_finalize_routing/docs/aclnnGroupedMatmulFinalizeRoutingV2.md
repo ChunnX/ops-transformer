@@ -317,15 +317,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
       <td>传入的x1、x2、scaleOptional、biasOptional或out是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="8">161002</td>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
       <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2、或out的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或out的shape不满足校验条件。</td>
-    </tr>
-    <tr>
-      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或out的shape是空tensor。</td>
     </tr>
     <tr>
       <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或out的shape是空tensor。</td>
