@@ -10,7 +10,9 @@
 
 #include <gtest/gtest.h>
 #include "../all_gather_matmul_host_ut_param.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 #include "mc2_tiling_case_executor.h"
+#include "op_tiling_parse_context_builder.h"
 
 namespace AllGatherMatmulUT {
 
@@ -69,5 +71,23 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<AllGatherMatmulTilingUtParam>
 );
+
+class AllGatherMatmulArch22TilingExtraTest : public testing::Test {};
+
+TEST_F(AllGatherMatmulArch22TilingExtraTest, TilingParseSuccess)
+{
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.Build();
+    auto parseContext = holder.GetContext();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("AllGatherMatmul");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+}
 
 } // namespace AllGatherMatmulUT
