@@ -22,8 +22,9 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "stem_indexer_common.h"
-#include "stem_indexer_service_vector.h"
-#include "stem_indexer_service_cube.h"
+// 临时屏蔽真实 vector/cube 实现，仅用于当前阶段编译验证。
+// #include "stem_indexer_service_vector.h"
+// #include "stem_indexer_service_cube.h"
 #include "../stem_indexer_metadata.h"
 
 namespace QLIKernel {
@@ -34,6 +35,45 @@ using namespace optiling::detail;
 using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
+
+template <typename SIT>
+class SIVector {
+public:
+    using SCORE_T = typename SIT::scoreType;
+
+    __aicore__ inline void InitBuffers(TPipe *) {}
+    __aicore__ inline void InitParams(const QLICommon::ConstInfo &, const QLICommon::LdSplitCoreInfo &,
+                                      const StemIndexerTilingData *__restrict)
+    {}
+    __aicore__ inline void InitVecInputTensor(GlobalTensor<float>, GlobalTensor<float>, GlobalTensor<float>,
+                                              GlobalTensor<int32_t>, GlobalTensor<int32_t>, GlobalTensor<int32_t>)
+    {}
+    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T>, GlobalTensor<SCORE_T>,
+                                                  GlobalTensor<int32_t>)
+    {}
+    __aicore__ inline void AllocEventID() {}
+    __aicore__ inline void FreeEventID() {}
+    __aicore__ inline void ProcessDirectOutput(const QLICommon::RunInfo &) {}
+    __aicore__ inline void ProcessVec1(const QLICommon::RunInfo &) {}
+    __aicore__ inline void ProcessTopK(const QLICommon::RunInfo &, bool, bool) {}
+};
+
+template <typename SIT>
+class SIMatmul {
+public:
+    using Q_T = typename SIT::queryType;
+    using K_T = typename SIT::keyType;
+
+    __aicore__ inline SIMatmul() {}
+    __aicore__ inline void InitBuffers(TPipe *) {}
+    __aicore__ inline void InitParams(const QLICommon::ConstInfo &) {}
+    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &, const GlobalTensor<K_T> &,
+                                               const GlobalTensor<Q_T> &)
+    {}
+    __aicore__ inline void AllocEventID() {}
+    __aicore__ inline void FreeEventID() {}
+    __aicore__ inline void ComputeMm1(const QLICommon::RunInfo &) {}
+};
 
 // 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
@@ -81,7 +121,7 @@ public:
 
     using SCORE_T = typename SIT::scoreType;
 
-    QLIMatmul<SIT> matmulService;
+    SIMatmul<SIT> matmulService;
     SIVector<SIT> vectorService;
 
     // =================================常量区=================================
@@ -451,9 +491,11 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
                         ((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx;
-                    AscendC::InitGlobalMemory(indiceOutGm[indiceOutOffset], constInfo.sparseCount,
-                                              constInfo.INVALID_IDX);
-                    AscendC::InitGlobalMemory(indiceLenGm[indiceLenOffset], 1, 0);
+                    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
+                    GlobalTensor<int32_t> indiceLen = indiceLenGm[indiceLenOffset];
+                    AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
+                                              static_cast<int32_t>(constInfo.INVALID_IDX));
+                    AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
                 }
             }
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
@@ -465,9 +507,11 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
                         ((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
-                    AscendC::InitGlobalMemory(indiceOutGm[indiceOutOffset], constInfo.sparseCount,
-                                              constInfo.INVALID_IDX);
-                    AscendC::InitGlobalMemory(indiceLenGm[indiceLenOffset], 1, 0);
+                    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
+                    GlobalTensor<int32_t> indiceLen = indiceLenGm[indiceLenOffset];
+                    AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
+                                              static_cast<int32_t>(constInfo.INVALID_IDX));
+                    AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
                 }
             }
         }
@@ -726,7 +770,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
             uint64_t dealIndiceSize = (indiceBaseSize + singleCoreIndiceSize <= totalIndiceSize)
                                           ? singleCoreIndiceSize
                                           : totalIndiceSize - indiceBaseSize;
-            AscendC::InitGlobalMemory(indiceOutGm[indiceBaseSize], dealIndiceSize, constInfo.INVALID_IDX);
+            GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceBaseSize];
+            AscendC::InitGlobalMemory(indiceOut, dealIndiceSize, static_cast<int32_t>(constInfo.INVALID_IDX));
         }
 
         uint64_t totalLenSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize;
@@ -736,7 +781,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
         if (lenBaseSize < totalLenSize) {
             uint64_t dealLenSize =
                 (lenBaseSize + singleCoreLenSize <= totalLenSize) ? singleCoreLenSize : totalLenSize - lenBaseSize;
-            AscendC::InitGlobalMemory(indiceLenGm[lenBaseSize], dealLenSize, 0);
+            GlobalTensor<int32_t> indiceLen = indiceLenGm[lenBaseSize];
+            AscendC::InitGlobalMemory(indiceLen, dealLenSize, static_cast<int32_t>(0));
         }
     }
 }

@@ -60,6 +60,8 @@ struct RunInfo {
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
+    uint64_t indiceLenOffset;
+    uint32_t numPromptTokens;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
