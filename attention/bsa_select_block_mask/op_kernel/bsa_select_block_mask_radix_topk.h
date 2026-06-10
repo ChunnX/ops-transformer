@@ -489,6 +489,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECI
     LocalTensor<int32_t> maskTensor = outValueBuf_.Get<int32_t>();
 
     Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLen);
+    PipeBarrier<PIPE_V>();
     And(xLocalInt16[tileLen_], xLocalInt16[tileLen_],
         maskTensor.ReinterpretCast<int16_t>(), calcLen);
 }
@@ -502,7 +503,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     LocalTensor<float> xLocalFp32 = xLocalInt16.ReinterpretCast<float>();
 
     Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
+    PipeBarrier<PIPE_V>();
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
+    PipeBarrier<PIPE_V>();
 
     // === DUMP 451: Cast chain results (first round, first tile) ===
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
@@ -695,11 +698,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileTopKInWs()
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
     for (int i = 0; i < static_cast<int>(tileNumRepeatTimes_); i++) {
         Duplicate<int32_t>(tileTopK, 0, MAX_TILE_NUM_IN_UB);
+        VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB, MAX_TILE_NUM_IN_UB);
+        MTE3ToVSync();
     }
     if (tileNumRemain_ > 0) {
         Duplicate<int32_t>(tileTopK, 0, tileNumRemain_);
+        VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB, tileNumRemain_);
+        MTE3ToVSync();
     }
 }
 
@@ -713,17 +720,21 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
     LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
     for (uint32_t i = 0; i < repeatTimes; i++) {
         Duplicate<int32_t>(tileHist, 0, MAX_TILE_NUM_IN_UB);
+        VToMTE3Sync();
         DataCopyExtParams params{
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
+        MTE3ToVSync();
     }
     if (remain > 0) {
         Duplicate<int32_t>(tileHist, 0, remain);
+        VToMTE3Sync();
         DataCopyExtParams params{
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * remain), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + repeatTimes * MAX_TILE_NUM_IN_UB], tileHist, params);
+        MTE3ToVSync();
     }
 }
 
@@ -812,22 +823,32 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
         for (int i = 0; i < static_cast<int>(tileNumRepeatTimes_); i++) {
             Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), MAX_TILE_NUM_IN_UB);
             if (tileNumRemain_ == 0 && tailTileLen_ != tileLen_) {
+                VToSSync();
                 tileHist.SetValue(MAX_TILE_NUM_IN_UB - 1, static_cast<int32_t>(tailTileLen_));
+                SToMTE3Sync();
+            } else {
+                VToMTE3Sync();
             }
             DataCopyExtParams params{
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
             DataCopyPad(tileHistGm_[i * MAX_TILE_NUM_IN_UB], tileHist, params);
+            MTE3ToVSync();
         }
         if (tileNumRemain_ > 0) {
             Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNumRemain_);
             if (tailTileLen_ != tileLen_) {
+                VToSSync();
                 tileHist.SetValue(tileNumRemain_ - 1, static_cast<int32_t>(tailTileLen_));
+                SToMTE3Sync();
+            } else {
+                VToMTE3Sync();
             }
             DataCopyExtParams params{
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
             DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
+            MTE3ToVSync();
         }
         globalHistBoundaryNum_ = (tileNum_ > 0) ? (tileNum_ - 1) * tileLen_ + tailTileLen_ : 0;
     } else {
@@ -889,6 +910,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
     int32_t remain = static_cast<int32_t>(constInfo.aivNum);
     while (remain > coresInBlock) {
         Add(globalHist, globalHist, globalHist[splitPoint * numValue_], (remain - splitPoint) * numValue_);
+        PipeBarrier<PIPE_V>();
         remain = splitPoint;
         splitPoint /= 2;
     }
