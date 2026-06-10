@@ -108,6 +108,12 @@ bool IsAscend950()
     return soc_name != nullptr && std::strstr(soc_name, "Ascend950") != nullptr;
 }
 
+bool IsAscend910B()
+{
+    static const char *soc_name = aclrtGetSocName();
+    return soc_name != nullptr && std::strstr(soc_name, "Ascend910B") != nullptr;
+}
+
 /**
  * @brief ACLNN Warpper for aclnnMoeDistributeDispatchV4
  */
@@ -241,7 +247,7 @@ tensor_list npu_moe_distribute_dispatch_v4(const at::Tensor &x, const at::Tensor
     at::Tensor expert_token_nums = at::empty({local_moe_expert_num}, at::TensorOptions().dtype(at::kLong)
         .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
     at::Tensor ep_recv_counts{nullptr};
-    if (expert_scales.has_value() && expert_scales.value().defined()) {
+    if (expert_scales.has_value() && expert_scales.value().defined() && IsAscend910B()) {
         // 2: 2 buffer, 8 ranknum per server
         ep_recv_cnt_num = ep_world_size * local_moe_expert_num + 2 * global_bs_real * k * (ep_world_size / 8);
     }
