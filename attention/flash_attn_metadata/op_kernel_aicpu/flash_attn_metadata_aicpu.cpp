@@ -234,7 +234,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    if (maskMode_ ==4) {
+    if (maskMode_ == 4) {
         param.fdOn = false;
     }
     return true;
