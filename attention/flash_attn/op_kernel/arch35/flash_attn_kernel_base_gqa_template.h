@@ -817,21 +817,46 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
+        // ─────────────────────────────────────────────────────────────────────────
+        // 进入 FD 前：彻底排干 AIV 侧 FA 路径上残留的所有流水 + 事件 flag。
+        //
+        // 静态 Tensor 模式下 FA 在 AllocEventID 中 SetFlag 了 4 个 MTE3_V flag（IDs 0/1/3/5）。
+        // FA 主循环里这些 flag 以 SetFlag/WaitFlag 配对，循环结束时仍保持 "set" 状态等待
+        // FreeEventID 消费。若 FD 主循环此时继续在 MTE3_V 通道 SetFlag 自己的 2 个 flag
+        // （IDs 2/4），同通道同时挂起的 flag 总数会达到 **6**，可能超过 NPU 硬件
+        // 单通道事件计数器的承载能力，表现为 scalar UB OOB（errcode 271）或
+        // timeout/trap（subErrType 0x4），尤其在 FD 内 tail 块（actualGSplitSize<8）
+        // 触发额外指令时容易越过阈值。
+        //
+        // 解决方案：FD 进入前先 WaitFlag 把 FA 的 4 个 MTE3_V flag 全部消费掉（计数清零），
+        //          FD 结束后再 SetFlag 把这 4 个 flag 重新预置，保证 FA FreeEventID
+        //          仍能找到对应的 set 状态正确消费。
+        // 这样 FD 主循环期间 MTE3_V 通道仅有 FD 自己的 2 个 flag 处于挂起状态。
+        //
+        // 同时插入完整的 PipeBarrier，保证 FA 的 MTE2/MTE3/V 流水彻底排空，
+        // 防止 FA 残留 DMA 与 FD 的 UB 读写产生 RAW/WAR 冲突
+        // （FA stage1OutBuf 与 FD fdMm2Res 共享同一段 UB）。
+        // ─────────────────────────────────────────────────────────────────────────
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                // 1) 排空 AIV 各流水
+                AscendC::PipeBarrier<PIPE_MTE2>();
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::PipeBarrier<PIPE_ALL>();
+                // 2) 消费 FA 在 MTE3_V 通道挂起的全部 4 个 flag，腾空通道
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_1);
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_0);
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_1);
+            }
+        }
+        // 此时 AIV 侧 FA 残留流水已全部排空、MTE3_V flag 通道已清零，
+        // 可以安全初始化 FD 的 UB 句柄和事件 ID（FD AllocEventID 仅在 MTE3_V 加 2 个 flag）
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                AscendC::PipeBarrier<PIPE_MTE3>();
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
         // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
         // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
@@ -839,8 +864,22 @@ public:
         //   不会触发 aicore subErrType 0x4 timeout-trap。
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
+        // FD 结束后：排空 FD 主循环可能残留的 UB→GM DMA（CopyFinalResOut 的 MTE3 写）
+        // 防止后续 section 或外层流程读到未完成的 GM 数据。
+        AscendC::PipeBarrier<PIPE_MTE3>();
+        AscendC::PipeBarrier<PIPE_V>();
         AscendC::SyncAll();
         vecFdBlock.FreeEventID();
+        // 把 FA 的 4 个 MTE3_V flag 重新预置回 "set" 状态，
+        // 与 FA AllocEventID 的初始状态一致，让 FA FreeEventID 能正常 Wait 到。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_1);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_1);
+            }
+        }
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
