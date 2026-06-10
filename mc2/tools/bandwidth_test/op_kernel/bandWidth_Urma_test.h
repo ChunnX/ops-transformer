@@ -35,6 +35,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "kernel_operator.h"
 #include "adv_api/activation/simplesoftmax.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "bandwidth_test_tiling.h"
