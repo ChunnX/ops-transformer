@@ -1130,8 +1130,13 @@ void GroupedQmmTiling::CalBasicBlock()
 
 bool GroupedQmmTiling::IsBiasInL1() const
 {
-    // 目前仅int8进bias int32需要进L1
-    return inputParams_.hasBias && inputParams_.biasDtype == ge::DT_INT32;
+    // Reserve L1 for bias cases consumed by quant tiling.
+    if (!inputParams_.hasBias) {
+        return false;
+    }
+    const bool isMxFp32Bias =
+        inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE && inputParams_.biasDtype == ge::DT_FLOAT;
+    return inputParams_.biasDtype == ge::DT_INT32 || isMxFp32Bias;
 }
 
 void GroupedQmmTiling::InitCommonL1TilingFields()
