@@ -38,6 +38,19 @@ import torch
 # block_size:可选; Paged Attention模式下使用
 
 TestCases = {
+    'case_test_001': {
+        'layout_q': ['BSND'],
+        'layout_out': ['BSND'],
+        'Dtype': ['bf16'],
+        'mask_mode': [3],
+        'B': [1],
+        'N1': [32],
+        'N2': [2],
+        'S1': [8192],
+        'S2': [8192],
+        'D': [128],
+        'layout_kv': ['BSND'],
+    },
     'TND_MIXED_SEQUSED_01': {
         'B': [4],
         'N1': [1],

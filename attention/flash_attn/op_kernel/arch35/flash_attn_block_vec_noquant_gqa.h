@@ -128,8 +128,9 @@ public:
     // attenMask ping/pong 的 MTE2→V 正向同步（MTE2_V 通道 0/1，与 vec2=2、sink=4 错开）
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_0 = 0U;
     static constexpr uint32_t FA_ATTEN_MASK_MTE2_V_1 = 1U;
-    // attenMask 整块清零(V)先于 mask DMA(MTE2) 的反向同步（V_MTE2 通道 0，未被其他路径占用）
+    // attenMask ping/pong 的 V→MTE2 反向同步（V_MTE2 通道 0/1，与 MTE2_V 0/1 类型不同可复用编号）
     static constexpr uint32_t FA_ATTEN_MASK_V_MTE2_0 = 0U;
+    static constexpr uint32_t FA_ATTEN_MASK_V_MTE2_1 = 1U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -557,12 +558,13 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
+            const uint32_t maskBufIdx = runInfo.loop & (DB - 1);
+            const uint32_t maskVMte2Id =
+                (maskBufIdx == 0U) ? FA_ATTEN_MASK_V_MTE2_0 : FA_ATTEN_MASK_V_MTE2_1;
             // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
-            PipeBarrier<PIPE_ALL>();
-            attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
+            WaitFlag<HardEvent::V_MTE2>(maskVMte2Id);
+            attenMaskUb = this->attenMaskBuf[maskBufIdx];
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-            PipeBarrier<PIPE_MTE2>();
-            PipeBarrier<PIPE_V>();
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -650,15 +652,16 @@ public:
             }
         }
         if constexpr (hasAtten) {
+            const uint32_t maskBufIdx = runInfo.loop & (DB - 1);
+            const uint32_t maskVMte2Id =
+                (maskBufIdx == 0U) ? FA_ATTEN_MASK_V_MTE2_0 : FA_ATTEN_MASK_V_MTE2_1;
             // 替代 attenMaskInQue.FreeTensor：V 读完 mask 后再允许 MTE2 覆写该槽
-            PipeBarrier<PIPE_V>();
-            PipeBarrier<PIPE_ALL>();
+            SetFlag<HardEvent::V_MTE2>(maskVMte2Id);
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
         // 对应原版 stage1OutQue EnQue/DeQue：V 写完后 MTE3 才能读 stage1OutBuf
-        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         LocalTensor<INPUT_T> mm2AL1Tensor;
@@ -1218,6 +1221,14 @@ public:
         }
     }
 
+    __aicore__ inline void InitAttenMaskBufsOnce()
+    {
+        constexpr uint32_t MASK_BUF_ELEMS = 8192U;
+        Duplicate(attenMaskBuf[0], static_cast<uint8_t>(0U), MASK_BUF_ELEMS);
+        Duplicate(attenMaskBuf[1], static_cast<uint8_t>(0U), MASK_BUF_ELEMS);
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void AllocEventID()
     {
         mte3ToVId[0] = FA_MTE3_TO_V_0;
@@ -1230,6 +1241,11 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        if constexpr (hasAtten) {
+            InitAttenMaskBufsOnce();
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
+            SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
+        }
     }
 
     __aicore__ inline void FreeEventID()
@@ -1238,6 +1254,10 @@ public:
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
+        if constexpr (hasAtten) {
+            WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
+            WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
+        }
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
@@ -1274,40 +1294,29 @@ public:
         const uint32_t preMte2ToVId =
             (bufIdx == 0U) ? FA_ATTEN_MASK_MTE2_V_1 : FA_ATTEN_MASK_MTE2_V_0;
 
-        // 静态Tensor迁移：attenMaskBuf 为固定地址裸 UB，运行时不会在 kernel 启动间清零。
-        // mask 的 DMA 仅写入有效 s1 行 × s2dealNum 列，行尾 padding / 无效行不写。
-        // 批跑时这些未写区域残留上一个用例的脏 mask 位，会被 MergeMask / softmax 误当作屏蔽位读入，
-        // 导致整行 attention/LSE 崩坏（单跑因 UB 为全新清零内存而恰好通过）。
-        // 因此在 DMA 覆盖前整块清零，保证批跑与单跑行为一致。
-        ZeroMaskBuf(attenMaskUb, maskInfo.gs1dealNum * s2BaseSize);
-
         if (IsSkipMask && IsSkipMaskForPre) {
-            return; // 已清零，等价于全不屏蔽
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            return;
         }
 
         if (!IsSkipMask) {
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUb, attenMaskGmInt, maskInfo, false, mte2ToVId);
+        } else {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
-        // else: 已整块清零，无需再次 Duplicate
 
         if (!IsSkipMaskForPre) {
             const uint32_t preBufIdx = 1U - bufIdx;
+            const uint32_t preVMte2Id =
+                (preBufIdx == 0U) ? FA_ATTEN_MASK_V_MTE2_0 : FA_ATTEN_MASK_V_MTE2_1;
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskBuf[preBufIdx];
-            ZeroMaskBuf(attenMaskUbPre, maskInfo.gs1dealNum * s2BaseSize);
+            WaitFlag<HardEvent::V_MTE2>(preVMte2Id);
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(
                 attenMaskUbPre, attenMaskGmInt, maskInfo, true, preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
-            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE2>(preVMte2Id);
         }
-    }
-
-    // 整块清零 mask buffer，并插入 V→MTE2 同步，保证清零(V)先于后续 mask DMA(MTE2) 写入同一 UB。
-    __aicore__ inline void ZeroMaskBuf(LocalTensor<uint8_t> &maskUb, uint32_t numElements)
-    {
-        Duplicate(maskUb, static_cast<uint8_t>(0U), numElements);
-        SetFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
-        WaitFlag<HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
