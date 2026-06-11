@@ -378,10 +378,16 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     if ((runInfo.sparseBlkIdx1 + 1) * constInfo.blockSize > runParam.actualS2Size) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.blockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
+    } else {
+        runInfo.s2SparseBlk1RealSize = constInfo.blockSize;
+        runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
     if ((runInfo.sparseBlkIdx2 + 1) * constInfo.blockSize > runParam.actualS2Size) {
         runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.blockSize;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
+    } else {
+        runInfo.s2SparseBlk2RealSize = constInfo.blockSize;
+        runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk2RealSize;
     }
 
     // 判断当前sparse块是否需要计算
