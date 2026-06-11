@@ -553,8 +553,8 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                     static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
                                     sWorkspaceIncreOffset;
-                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
-                                LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
+                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTileTemp, embed};
+                                LayoutS layOutS(rowNum, stackSeqTileTemp, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                                 if constexpr (PAGED_CACHE_FLAG) {
                                     blockMmadQK(
@@ -628,7 +628,7 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                     static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
                                     oWorkspaceIncreOffset;
-                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
+                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTileTemp};
                                 LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
                                 uint64_t pWorkspaceIncreOffset =
@@ -637,7 +637,7 @@ namespace SplitFuse {
                                     static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
                                     static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +
                                     pWorkspaceIncreOffset;
-                                LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
+                                LayoutP layoutPTemp(rowNum, stackSeqTileTemp, stackSeqTilePad);
 
                                 blockMmadPV(
                                     gP[gmOffsetP],
