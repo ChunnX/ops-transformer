@@ -64,42 +64,49 @@ struct FaMetaData {
         :sectionNum(sectionNum),
         headMedata(static_cast<uint32_t*>(metadataPtr)),
         faMetadata(headMedata + HEAD_METADATA_SIZE),
-        fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE) {
+        fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE)
+    {
             headMedata[0] = sectionNum;
     }
 
-    void SetHeadMedata(uint32_t metaIdx, uint32_t val) {
+    void SetHeadMedata(uint32_t metaIdx, uint32_t val) 
+    {
         assert(metaIdx < HEAD_METADATA_SIZE);
         headMedata[metaIdx] = val;
     }
 
-    uint32_t GetHeadMedata(uint32_t metaIdx) {
+    uint32_t GetHeadMedata(uint32_t metaIdx) 
+    {
         assert(metaIdx < HEAD_METADATA_SIZE);
         return headMedata[metaIdx];
     }
 
-    void SetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val) {
+    void SetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
+    {
         assert(sectionIdx < sectionNum);
         assert(aicIdx < AIC_CORE_NUM);
         assert(metaIdx < FA_METADATA_SIZE);
         faMetadata[sectionIdx * AIC_CORE_NUM * FA_METADATA_SIZE + aicIdx * FA_METADATA_SIZE + metaIdx] = val;
     }
 
-    uint32_t GetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx) {
+    uint32_t GetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx)
+    {
         assert(sectionIdx < sectionNum);
         assert(aicIdx < AIC_CORE_NUM);
         assert(metaIdx < FA_METADATA_SIZE);
         return faMetadata[AIC_CORE_NUM * FA_METADATA_SIZE * sectionIdx + FA_METADATA_SIZE * aicIdx + metaIdx];
     }
 
-    void SetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val) {
+    void SetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx, uint32_t val)
+    {
         assert(sectionIdx < sectionNum);
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);
         fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx] = val;
     }
 
-    uint32_t GetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx) {
+    uint32_t GetFdMetadata(uint32_t sectionIdx, uint32_t aivIdx, uint32_t metaIdx)
+    {
         assert(sectionIdx < sectionNum);
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);

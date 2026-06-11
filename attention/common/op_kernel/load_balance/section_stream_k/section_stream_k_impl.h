@@ -105,11 +105,11 @@ private:
         std::vector<uint32_t> s2TailSize {};                    // S2方向，尾块size
         bool isEmpty { true };
 
-        explicit GridInfo(uint32_t batchSize) :
-            mBaseNum(batchSize),
-            s2BaseNum(batchSize),
-            mTailSize(batchSize),
-            s2TailSize(batchSize) {}
+        explicit GridInfo(uint32_t batchSize)
+            : mBaseNum(batchSize),
+              s2BaseNum(batchSize),
+              mTailSize(batchSize),
+              s2TailSize(batchSize) {}
     };
 
     struct CostInfo {
@@ -685,7 +685,7 @@ inline void SectionStreamKImpl::ScheduleFd(uint32_t aivNum, SectionStreamKImplRe
         totalFDLoad += result.s2SplitNum[i] * result.mSize[i];
     }
     // 计算每个核处理的load
-    uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum));         //向上取整，避免核负载为0
+    uint64_t averageLoad = CeilDiv(totalFDLoad, static_cast<uint64_t>(aivNum));         // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0U;
     for (uint32_t i = 0; i < result.fdTaskNum; ++i) {
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
@@ -774,7 +774,6 @@ inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeConte
     while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
         SafeFloorDiv(costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx], m_param.faToleranceRatio, 0L),
         assignContext.coreCache.cost + assignContext.bN2Cost)) {
-
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
         assignContext.curBN2Idx++;
@@ -846,7 +845,6 @@ inline void SectionStreamKImpl::AssignByBlock(AssignContext &assignContext)
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
         SafeFloorDiv(realCost, m_param.faToleranceRatio, 0L),
         assignContext.coreCache.cost + realCost)) {
-
         assignContext.coreCache.cost += realCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;

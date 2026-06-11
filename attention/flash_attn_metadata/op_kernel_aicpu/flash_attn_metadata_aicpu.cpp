@@ -227,14 +227,15 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     } else if (baseInfo.layoutQuery == Layout::TND) {
         qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize, baseInfo.kvSeqSize,
-                                                    baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken,
-                                                    qlayout, mBaseSize_, s2BaseSize_);
+    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
+        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
+        mBaseSize_, s2BaseSize_);
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 48U * 1024U * 1024U;     // 48: 48MB, 1024: Mb2Kb, 1024:Kb2Mb
+    param.l2Byte = 128U * 1024U * 1024U;     // 48: 48MB, 1024: Mb2Kb, 1024:Kb2Mb
     param.fdTolerance = 3;                  // 3: least block
+    param.fdOn = false;
     return true;
 }
 
@@ -294,16 +295,20 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
                 faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
             } else if (sectionId > 0) {
                 auto preFaSplitRes = splitRes.sectionFaResult[sectionId - 1];
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, preFaSplitRes.bN2End[preFaSplitRes.usedCoreNum - 1]);
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, preFaSplitRes.gS1End[preFaSplitRes.usedCoreNum - 1]);
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, preFaSplitRes.s2End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX,
+                    preFaSplitRes.bN2End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX,
+                    preFaSplitRes.gS1End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX,
+                    preFaSplitRes.s2End[preFaSplitRes.usedCoreNum - 1]);
             }
             // FA end
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, faSplitRes.s2End[i]);
             // FA idx
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, faSplitRes.firstFdDataWorkspaceIdx[i]);
+            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
+                faSplitRes.firstFdDataWorkspaceIdx[i]);
         }
 
         // FD Metadata Generate
@@ -312,7 +317,8 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
             uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, fdSplitRes.gS1Idx[curTaskIdx]);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, fdSplitRes.workspaceIdx[curTaskIdx]);
+            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX,
+                fdSplitRes.workspaceIdx[curTaskIdx]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, fdSplitRes.s2SplitNum[curTaskIdx]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_START_INDEX, fdSplitRes.mStart[i]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
