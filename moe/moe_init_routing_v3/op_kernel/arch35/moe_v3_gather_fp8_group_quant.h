@@ -148,9 +148,9 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-class MoeGatherOutFP8GroupQuant {
+class MoeV3GatherFP8GroupQuant {
 public:
-    __aicore__ inline MoeGatherOutFP8GroupQuant(){};
+    __aicore__ inline MoeV3GatherFP8GroupQuant(){};
 
     __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR sortedExpertIdxAddr,
                                 GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
@@ -211,7 +211,7 @@ private:
 };
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
     GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
     GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
@@ -246,7 +246,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void
-MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
+MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
                                                               const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
@@ -288,7 +288,7 @@ MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpe
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitBuffer()
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitBuffer()
 {
     pipe_->InitBuffer(inQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
     pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(U)));
@@ -297,7 +297,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::InitBuffer()
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
 {
     if (blockIdx_ >= needCoreNum_) {
         return;
@@ -313,7 +313,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyInExpandedExpertIdx(int64_t progress)
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyInExpandedExpertIdx(int64_t progress)
 {
     indicesOffset_ = progress * perLoopRows_;
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.AllocTensor<int32_t>();
@@ -324,7 +324,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyInExpand
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyExpandedXAndQuant(int64_t progress)
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyExpandedXAndQuant(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
     for (int64_t index = 0; index < currentLoopRows_; index++) {
@@ -343,7 +343,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyExpanded
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx,
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx,
                                                                            int64_t loopCols)
 {
     LocalTensor<T> inLocal = inQueue_.AllocTensor<T>();
@@ -366,7 +366,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64_t loopCols,
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64_t loopCols,
                                                                             int64_t loopValidScaleCols)
 {
     LocalTensor<T> xLocal = inQueue_.DeQue<T>();
@@ -392,7 +392,7 @@ __aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int6
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutFP8GroupQuant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx,
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx,
                                                                             int64_t loopCols, int64_t loopScaleCols)
 {
     LocalTensor<U> outLocal = outQueue_.DeQue<U>();

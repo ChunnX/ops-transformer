@@ -134,8 +134,8 @@
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER 11140000
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER 11141000
 
-/* 
- *FP8 PerGroup量化 + amax clamp
+/*
+ * FP8 PerGroup量化 + amax clamp
  */
 #define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER 10150000
 #define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER 10151000
@@ -460,7 +460,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                        IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
             TPipe gatherPipe;
-            MoeGatherOutFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherFP8GroupQuantOp;
+            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherFP8GroupQuantOp;
             gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherFP8GroupQuantOp.Process();
             gatherPipe.Destroy();
@@ -538,7 +538,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                        IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
             TPipe gatherPipe;
-            MoeGatherOutFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, true> gatherFP8GroupQuantOp;
+            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, true> gatherFP8GroupQuantOp;
             gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherFP8GroupQuantOp.Process();
             gatherPipe.Destroy();
