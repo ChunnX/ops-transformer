@@ -159,7 +159,14 @@ private:
     int32_t kCacheBlockSize_ = 0;
     int32_t maxBlockNumPerBatch_ = 0;
     uint32_t trunkLen_ = 0;
-
+    int32_t mBaseSize_ = 0;
+    float alpha_ = 1.0f;
+    float kBlockNumRateMedium_ = 0.2f;
+    uint32_t kBlockNumBiasMedium_ = 30U;
+    float kBlockNumRateLarge_ = 0.1f;
+    uint32_t kBlockNumBiasLarge_ = 30U;
+    uint32_t initialBlocks_ = 4U;
+    uint32_t windowSize_ = 4U;
     struct SICommon::ConstInfo constInfo_;
     struct SICommon::LdSplitCoreInfo ldInfo_;
     topk::LITopk<SCORE_T> topkOp_;
@@ -202,7 +209,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
 
     // indice_len
-    pipe->InitBuffer(indiceLenBuf_, mBaseSize_ * sizeof(uint32_t));
+    pipe->InitBuffer(indiceLenBuf_, constInfo_.mBaseSize * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
 
     Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_);
@@ -237,7 +244,7 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     kBlockNumRateMedium_ = constInfo.kBlockNumRateMedium
     kBlockNumBiasMedium_ = constInfo.kBlockNumBiasMedium
     kBlockNumRateLarge_ = constInfo.kBlockNumRateLarge;
-    kBlockNumBiasLarge_ = constInfo.kBlockNumBiasLarg;
+    kBlockNumBiasLarge_ = constInfo.kBlockNumBiasLarge;
     initialBlocks_ = constInfo.initialBlocks;
     windowSize_ = constInfo.windowSize;
     blockId_ = GetBlockIdx();
@@ -318,7 +325,7 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(const SICommon::RunInfo &in
 {
     int32_t neg = -1;
 
-    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
+    GlobalTensor<int32_t> indiceOut = indiceOutGm[info.indiceOutOffset];
     AscendC::InitGlobalMemory(indiceOut, info.actMBaseSize * info.actS2SizeOrig, neg);
 
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -484,7 +491,7 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     float t = (float)(s1Pos - kStart) / (float)(decayLen - 1);
     
     // 计算 dynamicTopkCount
-    uint32_t dynamicTopkCount = (uint32_t)floorf((float)kStart + t * (float)(k_end - kStart));
+    uint32_t dynamicTopkCount = (uint32_t)std::ceil((float)kStart + t * (float)(k_end - kStart));
     
     // 限制范围：下限为 1，上限为 kStart
     dynamicTopkCount = dynamicTopkCount < 1 ? 1 : (dynamicTopkCount > (uint32_t)kStart ? (uint32_t)kStart : dynamicTopkCount);
@@ -522,7 +529,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     AscendC::DataCopyParams indiceLenCopyParams;
 
     // 计算当前S2方向的有效长度（基于第一个S1位置）
-    uint32_t firstS2Len = info.actS2Size - windowSize;
+    uint32_t firstS2Len = info.actS2Size - windowSize_;
     if (constInfo_.attenMaskFlag) {
         // causal 场景：当前AIV核处理的第一个S1位置对应的s2合法长度
         firstS2Len = info.actS2SizeOrig - info.actS1Size + curAivGS1Idx % info.actS1Size + 1 - windowSize_;
@@ -634,8 +641,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 AscendC::DataCopyPad(indiceOutGm[baseOffset + actualInit + topkSelectNum], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             }
-
-
             continue;
         }
         
@@ -687,7 +692,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 // ===== 第一个基本块：独立TopK =====
                 // mrgValueLocal_的topk的位置在首块需要刷0
                 Duplicate(mrgValueLocal_[mInnerOffset], zero, topkSelectNumAlign256);
-            else {
+            } else {
                 // ===== 非第一个基本块：合并上一轮TopK结果的score + 当前基本块score =====
                 // 两个dulicate实现topkSelectNum - topkSelectNumAlign256 非对齐补0
                 if (topkSelectNumAlign256 != (uint32_t)topkSelectNum) {
