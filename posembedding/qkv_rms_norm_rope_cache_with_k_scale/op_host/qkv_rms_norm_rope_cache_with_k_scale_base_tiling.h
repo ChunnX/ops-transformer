@@ -117,9 +117,9 @@ public:
     static constexpr uint64_t MAX_TOKEN_TILE = 16;
     static constexpr uint64_t L0A_FULL_DIM_SEGMENT_ROWS = 128;
     static constexpr uint64_t L0C_MAX_ROWS = 256;
-    static constexpr uint64_t UB_INPUT_ROWS_PER_AIV = 160;
-    static constexpr uint64_t UB_OUTPUT_ROWS_PER_AIV = 128;
-    static constexpr uint64_t FP8_NTD_SEGMENT_ROWS_PER_AIV = 80;
+    static constexpr uint64_t QKV_INPUT_ROWS_PER_AIV = 160;
+    static constexpr uint64_t QK_OUTPUT_ROWS_PER_AIV = 128;
+    static constexpr uint64_t V_OUTPUT_ROWS_PER_AIV = 80;
     static constexpr uint64_t DIM_TILE_FAST = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
@@ -174,8 +174,8 @@ private:
     static ge::graphStatus ValidateStrides(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateMinimumTokenTileFeasible(const ContractInput &input,
                                                             const std::string &opName);
-    static bool TrySelectTokenTile(const ContractTiling &tiling, uint64_t maxFp8NtdSegmentHeads, uint64_t tokenTile,
-                                   const std::string &opName, TokenTileSelection &selection);
+    static bool TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile, const std::string &opName,
+                                   TokenTileSelection &selection);
     static ge::graphStatus SelectTokenTile(const ContractTiling &tiling, const std::string &opName,
                                            TokenTileSelection &selection);
     static void FillContractTiling(const ContractInput &input, uint64_t aicNum,

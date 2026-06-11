@@ -117,10 +117,10 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInputSummary(const std::str
             input.totalTokens, input.batch, tiling.numQHeads, tiling.numKHeads, tiling.numVHeads, tiling.numQkHeads,
             tiling.numQkvHeads, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
     OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
-            "ubOutputRowsPerAiv=%lu fp8NtdSegmentRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
+            "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu qkvInputRowsPerAiv=%lu "
+            "qkOutputRowsPerAiv=%lu vOutputRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
             "aivPerAic=%lu.",
-            MAX_TOKEN_TILE, UB_INPUT_ROWS_PER_AIV, UB_OUTPUT_ROWS_PER_AIV, FP8_NTD_SEGMENT_ROWS_PER_AIV,
+            MAX_TOKEN_TILE, QKV_INPUT_ROWS_PER_AIV, QK_OUTPUT_ROWS_PER_AIV, V_OUTPUT_ROWS_PER_AIV,
             L0A_FULL_DIM_SEGMENT_ROWS, L0C_MAX_ROWS, AIV_PER_AIC);
 }
 
@@ -387,25 +387,24 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFea
 {
     const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
-    const uint64_t maxFp8NtdSegmentHeads = std::max({input.numQHeads, input.numKHeads, input.numVHeads});
     const uint64_t qkAlignedRows = CalcQkAlignedRows(1, input.numQHeads, input.numKHeads);
-    OP_CHECK_IF(numQkHeads > UB_OUTPUT_ROWS_PER_AIV,
+    OP_CHECK_IF(numQkHeads > QK_OUTPUT_ROWS_PER_AIV,
                 OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds UB output rows, "
+                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds Q/K output rows, "
                         "Nq+Nk=%lu limit=%lu.",
-                        numQkHeads, UB_OUTPUT_ROWS_PER_AIV),
+                        numQkHeads, QK_OUTPUT_ROWS_PER_AIV),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numQkvHeads > UB_INPUT_ROWS_PER_AIV,
+    OP_CHECK_IF(numQkvHeads > QKV_INPUT_ROWS_PER_AIV,
                 OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds UB input rows, "
+                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds QKV input rows, "
                         "Nq+Nk+Nv=%lu limit=%lu.",
-                        numQkvHeads, UB_INPUT_ROWS_PER_AIV),
+                        numQkvHeads, QKV_INPUT_ROWS_PER_AIV),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(maxFp8NtdSegmentHeads > FP8_NTD_SEGMENT_ROWS_PER_AIV,
+    OP_CHECK_IF(input.numVHeads > V_OUTPUT_ROWS_PER_AIV,
                 OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds FP8 NTD segment "
-                        "rows, max(Nq,Nk,Nv)=%lu limit=%lu.",
-                        maxFp8NtdSegmentHeads, FP8_NTD_SEGMENT_ROWS_PER_AIV),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: minimum token tile exceeds V output rows, "
+                        "Nv=%lu limit=%lu.",
+                        input.numVHeads, V_OUTPUT_ROWS_PER_AIV),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(qkAlignedRows > L0C_MAX_ROWS,
                 OP_LOGE(opName.c_str(),
@@ -416,8 +415,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFea
     return ge::GRAPH_SUCCESS;
 }
 
-bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTiling &tiling,
-                                                             uint64_t maxFp8NtdSegmentHeads, uint64_t tokenTile,
+bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile,
                                                              const std::string &opName,
                                                              TokenTileSelection &selection)
 {
@@ -425,9 +423,9 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTilin
     const uint64_t rowTile = tokenTile * tiling.numQkHeads;
     const uint64_t rowTileAligned = Ops::Base::CeilAlign(rowTile, 16UL);
     const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, tiling.numQHeads, tiling.numKHeads);
-    const bool fitsUb = tokenTilePerAiv * tiling.numQkHeads <= UB_OUTPUT_ROWS_PER_AIV &&
-                        tokenTilePerAiv * tiling.numQkvHeads <= UB_INPUT_ROWS_PER_AIV &&
-                        tokenTilePerAiv * maxFp8NtdSegmentHeads <= FP8_NTD_SEGMENT_ROWS_PER_AIV;
+    const bool fitsUb = tokenTilePerAiv * tiling.numQkHeads <= QK_OUTPUT_ROWS_PER_AIV &&
+                        tokenTilePerAiv * tiling.numQkvHeads <= QKV_INPUT_ROWS_PER_AIV &&
+                        tokenTilePerAiv * tiling.numVHeads <= V_OUTPUT_ROWS_PER_AIV;
     const bool fitsL0c = rowTile <= L0C_MAX_ROWS && rowTileAligned <= L0C_MAX_ROWS && qkAlignedRows <= L0C_MAX_ROWS;
     const bool accepted = fitsUb && fitsL0c;
     LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
@@ -444,25 +442,24 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(const Contr
                                                                      const std::string &opName,
                                                                      TokenTileSelection &selection)
 {
-    const uint64_t maxFp8NtdSegmentHeads = std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads});
     const uint64_t initialTokenTilePerAiv =
-        std::min({MAX_TOKEN_TILE / 2, UB_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads, UB_INPUT_ROWS_PER_AIV / tiling.numQkvHeads,
-                  FP8_NTD_SEGMENT_ROWS_PER_AIV / maxFp8NtdSegmentHeads});
+        std::min({MAX_TOKEN_TILE / 2, QK_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads,
+                  QKV_INPUT_ROWS_PER_AIV / tiling.numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads});
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
-            "ubOutputLimit=%lu ubInputLimit=%lu fp8NtdSegmentLimit=%lu.",
-            initialTokenTilePerAiv, UB_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads, UB_INPUT_ROWS_PER_AIV / tiling.numQkvHeads,
-            FP8_NTD_SEGMENT_ROWS_PER_AIV / maxFp8NtdSegmentHeads);
+            "qkOutputLimit=%lu qkvInputLimit=%lu vOutputLimit=%lu.",
+            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads,
+            QKV_INPUT_ROWS_PER_AIV / tiling.numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads);
 
     uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
     while (searchTokenTilePerAiv > 0) {
-        if (TrySelectTokenTile(tiling, maxFp8NtdSegmentHeads, 2 * searchTokenTilePerAiv, opName, selection)) {
+        if (TrySelectTokenTile(tiling, 2 * searchTokenTilePerAiv, opName, selection)) {
             break;
         }
         --searchTokenTilePerAiv;
     }
     if (selection.tokenTile == 0) {
-        (void)TrySelectTokenTile(tiling, maxFp8NtdSegmentHeads, 1, opName, selection);
+        (void)TrySelectTokenTile(tiling, 1, opName, selection);
     }
     OP_CHECK_IF(selection.tokenTile == 0,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: no token tile candidate fits."),
