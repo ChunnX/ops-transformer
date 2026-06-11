@@ -432,15 +432,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
         // f. CopyOutHistToWs<false>
         CopyOutHistToWs<false>(numValue_, GetBlockIdx() * numValue_);
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_435
 
         // g. SyncAll
         SyncAll();
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_439
 
         // h. Update
         earlyExit = Update(roundId);
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_443
         if (GetBlockIdx() == 0) {
             BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after Update round=%d remainK=%lu total=%lu\n",
                 roundId, remainK_, totalDefinitelyInTopK_);
@@ -461,7 +461,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 
     // 6. SyncAll before final selection
     SyncAll();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_464
 
     // 7. TileTopK (batched processing)
     TileTopK(batchIdx, headIdx);
@@ -795,7 +795,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(
     DataCopyPad(srcTensor, tileHistGm_[srcOffset0], params, padParams);
     DataCopyPad(srcTensor[MAX_TILE_NUM_IN_UB_BY2], tileHistGm_[srcOffset1], params, padParams);
     MTE2ToVSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_798
     Sub(dstTensor, srcTensor, srcTensor[MAX_TILE_NUM_IN_UB_BY2], dataNum);
     BSA_TOPK_PIPE_ALL();
 }
@@ -839,11 +839,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHist2TileTopKInWs(uint6
         CopyTileTopKWs2Ub(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
         MTE2ToVSync();
         Add(tileTopK, tileTopK, tileHist, dataNum);
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_842
         VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
         MTE3ToMTE2Sync();
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_846
     }
 }
 
@@ -1385,7 +1385,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
         CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
         MTE2ToSSync();
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_1388
 
         // Prefetch first tile
         uint32_t firstTileId = startTileId;
