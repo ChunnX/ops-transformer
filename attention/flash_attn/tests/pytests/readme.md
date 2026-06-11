@@ -205,17 +205,23 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 | `--use_gpu` | flag | — | 使用GPU后端 |
 | `--gpu_device` | int | `0` | GPU设备ID |
 
+### Golden 持久化参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--save_golden` | str | — | 正常对比流程 + 将 inputs/golden 落盘到指定目录（.pt 格式） |
+| `--load_golden` | str | — | 从指定目录加载 golden，只跑设备对比（跳过 CPU golden 计算） |
+| `--case_timeout` | int | `300` | 子进程隔离模式下单个 case 超时时间（秒） |
+
 ### 调试参数
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--meta_only` | flag | — | 只调用metadata算子，打印分核结果 |
-| `--dump_tensors` | flag | — | 保存Q/K/V及输出为txt |
-| `--dump_dir` | str | `./dump_output` | dump保存目录 |
-| `--verbose_diff` | flag | — | 输出全部超阈值元素 |
-| `--visualize` | flag | — | 生成精度热力图PNG |
-| `--viz_dir` | str | `./viz_output` | 热力图保存目录 |
-| `--fail_analysis` | flag | — | 精度失败时分析各维度误差分布 |
+| `--meta_only` | flag | — | 只调用 metadata 算子，打印分核结果 |
+| `--verbose_diff` | flag | — | 精度不达标时输出全部超阈值元素（默认只打前10个） |
+| `--visualize` | flag | — | 精度不达标时生成热力图 PNG |
+| `--viz_dir` | str | `./viz_output` | 热力图/分析报告保存目录 |
+| `--fail_analysis` | flag | — | 精度不达标时输出多维度失败分布分析报告 |
 | `--compare_mode` | flag | — | 多后端对比 |
 | `--graph_mode` | flag | — | 图模式执行 |
 
