@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：执行单路旋转位置编码的 Inplace 计算，直接修改输入张量，不产生新的输出张量。
+- 接口功能：执行单路旋转位置编码的 Inplace 计算，直接修改输入张量xRef，不产生新的输出张量。
 - 计算公式：
 
     （1）interleave模式（rotary_mode等于1）：
@@ -44,7 +44,7 @@
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(
-    const aclTensor *x,
+    const aclTensor *xRef,
     const aclTensor *cos,
     const aclTensor *sin,
     int64_t          rotary_mode,
@@ -89,9 +89,9 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>xRef</td>
       <td>输入</td>
-      <td>待执行旋转位置编码的张量，公式中的x。Inplace模式，x同时作为输出写入结果。</td>
+      <td>待执行旋转位置编码的张量，公式中的x。Inplace模式，xRef同时作为输出写入结果。</td>
       <td>-</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -102,7 +102,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>cos</td>
       <td>输入</td>
       <td>位置编码张量，公式中的cos。</td>
-      <td>与x数据类型一致，或者为FLOAT32。</td>
+      <td>与xRef数据类型一致，或者为FLOAT32。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>sin</td>
       <td>输入</td>
       <td>位置编码张量，公式中的sin。</td>
-      <td>与x数据类型一致，或者为FLOAT32</td>
+      <td>与xRef数据类型一致，或者为FLOAT32</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
@@ -215,19 +215,20 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 - 确定性计算：
   - aclnnInplacePartialRotaryMul默认确定性实现。
 - 不支持非连续。
-- 输入张量x最后一维（D）大小不超过1024。
-- interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
+- 输入张量xRef最后一维（D）大小不超过1024。
+- interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。
 - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
-- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
+- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 - 仅支持interleave模式（rotary_mode = 1）。
-- Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
-- cos/sin的shape必须与x满足广播关系。
+- Inplace执行：输入xRef和输出共享同一个Tensor，计算结果直接写回输入xRef。
+- xRef的shape为BSND。
+- cos/sin的shape必须与xRef满足广播关系，且存在如下约束：
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  输入张量x当前只支持BSND、B1ND、B11D、111D排布。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-  输入张量x当前只支持BS1D、B11D排布。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    cos/sin的shape当前只支持BS1D、B11D排布。
 
 ## 调用示例
 
