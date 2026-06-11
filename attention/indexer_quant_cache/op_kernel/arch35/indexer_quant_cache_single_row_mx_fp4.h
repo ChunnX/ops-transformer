@@ -38,7 +38,7 @@ public:
 
         xGm.SetGlobalBuffer((__gm__ T0*)x);
         slotMappingGm.SetGlobalBuffer((__gm__ int32_t*)slotMapping);
-        indexerCompressCacheGm.SetGlobalBuffer((__gm__ T1*)indexerCompressCache);
+        indexerCompressCacheGm.SetGlobalBuffer((__gm__ int8_t*)indexerCompressCache);  // fp4 cache 按字节寻址
         indexerCompressCacheScaleGm.SetGlobalBuffer((__gm__ T2*)indexerCompressCacheScale);
 
         // scale Que 最先 InitBuffer 以获得 UB 64B 对齐基址(满足 DIST_PACK_B16 的 64B 对齐要求)。
@@ -46,7 +46,7 @@ public:
             indexerCompressCacheScaleQue, 2,
             tilingData->rowFactor * ScaleRowAlignMxFp4(tilingData->scaleCol) * sizeof(T2));
         pipe->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
-        pipe->InitBuffer(indexerCompressCacheQue, 2, tilingData->rowFactor * RoundUp<T1>(cacheCol) * sizeof(T1));
+        pipe->InitBuffer(indexerCompressCacheQue, 2, tilingData->rowFactor * RoundUp<int8_t>(cacheCol) * sizeof(int8_t));
         pipe->InitBuffer(maxExpBuf, RoundUp<uint16_t>(tilingData->scaleCol) * sizeof(uint16_t));
         pipe->InitBuffer(halfScaleBuf, RoundUp<uint16_t>(tilingData->scaleCol) * sizeof(uint16_t));
         pipe->InitBuffer(indexBuf, RoundUp<int32_t>(tilingData->rowFactor) * sizeof(int32_t));
@@ -73,7 +73,7 @@ public:
             xQue.template EnQue(xLocal);
             xLocal = xQue.template DeQue<T0>();
 
-            indexerCompressCacheLocal = indexerCompressCacheQue.template AllocTensor<T1>();
+            indexerCompressCacheLocal = indexerCompressCacheQue.template AllocTensor<int8_t>();
             indexerCompressCacheScaleLocal = indexerCompressCacheScaleQue.AllocTensor<T2>();
             LocalTensor<uint16_t> maxExpLocal = maxExpBuf.Get<uint16_t>();
             LocalTensor<uint16_t> halfScaleLocal = halfScaleBuf.Get<uint16_t>();
@@ -86,7 +86,7 @@ public:
             indexerCompressCacheQue.template EnQue(indexerCompressCacheLocal);
             indexerCompressCacheScaleQue.template EnQue(indexerCompressCacheScaleLocal);
 
-            indexerCompressCacheLocal = indexerCompressCacheQue.template DeQue<T1>();
+            indexerCompressCacheLocal = indexerCompressCacheQue.template DeQue<int8_t>();
             indexerCompressCacheScaleLocal = indexerCompressCacheScaleQue.template DeQue<T2>();
 
             CopyOut(
@@ -109,7 +109,7 @@ private:
     const IndexerQuantCacheTilingData* tilingData;
     GlobalTensor<T0> xGm;
     GlobalTensor<int32_t> slotMappingGm;
-    GlobalTensor<T1> indexerCompressCacheGm;
+    GlobalTensor<int8_t> indexerCompressCacheGm;
     GlobalTensor<T2> indexerCompressCacheScaleGm;
 
     TQue<QuePosition::VECIN, 1> xQue;
@@ -120,7 +120,7 @@ private:
     TBuf<QuePosition::VECCALC> indexBuf;
 
     LocalTensor<T0> xLocal;
-    LocalTensor<T1> indexerCompressCacheLocal;
+    LocalTensor<int8_t> indexerCompressCacheLocal;
     LocalTensor<T2> indexerCompressCacheScaleLocal;
     int64_t cacheCol = 0;
 };

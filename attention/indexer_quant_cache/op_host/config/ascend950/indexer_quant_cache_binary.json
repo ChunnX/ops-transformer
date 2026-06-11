@@ -992,12 +992,12 @@
       ]
     },
     {
-      "bin_filename": "IndexerQuantCache_uint8_float8_e8m0_fp16",
+      "bin_filename": "IndexerQuantCache_float4_e2m1_float8_e8m0_fp16",
       "inputs": [
         {
           "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "uint8",
+          "dtype": "float4_e2m1",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -1039,7 +1039,7 @@
         {
           "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "uint8",
+          "dtype": "float4_e2m1",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -1091,12 +1091,111 @@
       ]
     },
     {
-      "bin_filename": "IndexerQuantCache_uint8_float8_e8m0_bf16",
+      "bin_filename": "IndexerQuantCache_float4_e1m2_float8_e8m0_fp16",
       "inputs": [
         {
           "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "uint8",
+          "dtype": "float4_e1m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "x",
+          "index": 2,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "indexer_compress_cache",
+          "index": 0,
+          "dtype": "float4_e1m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        }
+      ],
+      "attrs": [
+        {
+          "name": "quant_mode",
+          "dtype": "int",
+          "value": 3
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
+        },
+        {
+          "name": "block_size",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "cache_block_stride",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "scale_block_stride",
+          "dtype": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bin_filename": "IndexerQuantCache_float4_e2m1_float8_e8m0_bf16",
+      "inputs": [
+        {
+          "name": "indexer_compress_cache",
+          "index": 0,
+          "dtype": "float4_e2m1",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -1138,7 +1237,106 @@
         {
           "name": "indexer_compress_cache",
           "index": 0,
-          "dtype": "uint8",
+          "dtype": "float4_e2m1",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        }
+      ],
+      "attrs": [
+        {
+          "name": "quant_mode",
+          "dtype": "int",
+          "value": 3
+        },
+        {
+          "name": "round_scale",
+          "dtype": "bool",
+          "value": true
+        },
+        {
+          "name": "scale",
+          "dtype": "float",
+          "value": 1.0
+        },
+        {
+          "name": "block_size",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "cache_block_stride",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "scale_block_stride",
+          "dtype": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bin_filename": "IndexerQuantCache_float4_e1m2_float8_e8m0_bf16",
+      "inputs": [
+        {
+          "name": "indexer_compress_cache",
+          "index": 0,
+          "dtype": "float4_e1m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "indexer_compress_cache_scale",
+          "index": 1,
+          "dtype": "float8_e8m0",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "x",
+          "index": 2,
+          "dtype": "bf16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        },
+        {
+          "name": "slot_mapping",
+          "index": 3,
+          "dtype": "int32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "indexer_compress_cache",
+          "index": 0,
+          "dtype": "float4_e1m2",
           "format": "ND",
           "paramType": "required",
           "shape": [

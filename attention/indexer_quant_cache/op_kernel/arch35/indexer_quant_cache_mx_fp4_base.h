@@ -296,13 +296,18 @@ __aicore__ inline void vfComputeDataMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint16_t
 }
 
 // 对 curRowNum 行、每行 curColNum(=d) 个元素做 MX-FP4 量化。
-// yLocal: 打包后的 fp4 cache(uint8), scaleLocal: e8m0 scale, xLocal: 输入(half/bf16)。
+// yLocal: 打包后的 fp4 cache(int8 字节寻址), scaleLocal: e8m0 scale, xLocal: 输入(half/bf16)。
+// TCache 仅用于按 cache 输出 dtype(float4_e2m1x2_t / float4_e1m2x2_t)在编译期选择 fp4 子格式
+// (E2M1 / E1M2)；cache 存储统一按字节(int8)寻址，避开 float4_*x2_t 的 sizeof()==2 导致的偏移翻倍。
 template <typename TCache, typename TScale, typename TX>
 __aicore__ inline void VFProcessDynamicMxFp4Quant(
-    const LocalTensor<TCache>& yLocal, const LocalTensor<TScale>& scaleLocal, const LocalTensor<TX>& xLocal,
+    const LocalTensor<int8_t>& yLocal, const LocalTensor<TScale>& scaleLocal, const LocalTensor<TX>& xLocal,
     const LocalTensor<uint16_t>& maxExpLocal, const LocalTensor<uint16_t>& halfScaleLocal,
     const uint16_t curRowNum, const uint32_t curColNum)
 {
+    // fp4 子格式：E1M2 时 cache dtype 为 float4_e1m2x2_t，否则 E2M1。f4Emax 随之不同。
+    constexpr bool isE1M2 = AscendC::IsSameType<TCache, float4_e1m2x2_t>::value;
+
     constexpr uint32_t vRegSize = VL_FP32 * static_cast<uint32_t>(sizeof(float));  // 256B
     constexpr uint32_t ubBlockSize = 32U;
     const uint32_t vlForB16 = vRegSize / static_cast<uint32_t>(sizeof(TX));          // b16:128
@@ -311,9 +316,7 @@ __aicore__ inline void VFProcessDynamicMxFp4Quant(
     const uint32_t scaleCol = (curColNum + MX_BLOCK_SIZE_MXFP4 - 1) / MX_BLOCK_SIZE_MXFP4;
     // 各 per-row 输出 buffer 的对齐跨度（maxExp / halfScale 为行内瞬态, 跨行复用同一块scratch）
     const uint32_t xRowAlign = RoundUp<TX>(curColNum);
-    const uint32_t cacheRowAlign = RoundUp<TCache>((curColNum + 1) / 2);   // fp4 打包后字节数
-
-    uint16_t f4Emax = FP4_E2M1_BF16_MAX_EXP;
+    const uint32_t cacheRowAlign = RoundUp<int8_t>((curColNum + 1) / 2);   // fp4 打包后字节数(按字节对齐)
 
     // DIST_PACK_B16 按成对(2个b16低字节->2连续字节)打包，存储 mask 覆盖的 lane 数须为偶数(与 swiglu
     // 的 maskLoop 取值一致)；scaleCol 为奇数时若 mask 只覆盖单 lane 会漏写最后半对，故向上对齐到偶数。
@@ -343,12 +346,23 @@ __aicore__ inline void VFProcessDynamicMxFp4Quant(
         __ubuf__ uint16_t* rowScaleAddr =
             reinterpret_cast<__ubuf__ uint16_t*>(scaleByteAddr + r * scaleRowBytes);
 
-        vfComputeMaxExpMXFP4<TX, fp4x2_e2m1_t>(
-            rowXAddr, maxExpAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
-        vfComputeScaleMXFP4<TX, fp4x2_e2m1_t>(
-            maxExpAddr, rowScaleAddr, halfScaleAddr, scaleCol, scaleColPack, loopNumScale, f4Emax, vlForB16);
-        vfComputeDataMXFP4<TX, fp4x2_e2m1_t>(
-            rowXAddr, halfScaleAddr, rowCacheAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
+        if constexpr (isE1M2) {
+            vfComputeMaxExpMXFP4<TX, fp4x2_e1m2_t>(
+                rowXAddr, maxExpAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
+            vfComputeScaleMXFP4<TX, fp4x2_e1m2_t>(
+                maxExpAddr, rowScaleAddr, halfScaleAddr, scaleCol, scaleColPack, loopNumScale,
+                FP4_E1M2_MAX_EXP, vlForB16);
+            vfComputeDataMXFP4<TX, fp4x2_e1m2_t>(
+                rowXAddr, halfScaleAddr, rowCacheAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
+        } else {
+            vfComputeMaxExpMXFP4<TX, fp4x2_e2m1_t>(
+                rowXAddr, maxExpAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
+            vfComputeScaleMXFP4<TX, fp4x2_e2m1_t>(
+                maxExpAddr, rowScaleAddr, halfScaleAddr, scaleCol, scaleColPack, loopNumScale,
+                FP4_E2M1_BF16_MAX_EXP, vlForB16);
+            vfComputeDataMXFP4<TX, fp4x2_e2m1_t>(
+                rowXAddr, halfScaleAddr, rowCacheAddr, curColNum, loopNumX, vlForB16, numUbBlocksPerVReg);
+        }
     }
 }
 
