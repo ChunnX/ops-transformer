@@ -25,7 +25,14 @@ from npu_ops_transformer.ops import npu_quant_flash_attn_metadata
 from mx_quant_fp4_tool import mx_quantize_fp4_full, mx_dequantize_fp4_full, mxfp4_quantize_pack_last
 from flash_attention_cpu_golden import attention_cpu_golden_varlen, flash_attention_cpu_golden_varlen
 
-np.random.seed(21)  # 固定随机种子
+# np.random.seed(21)  # 固定随机种子
+RAND_SEED=21
+
+np.random.seed(RAND_SEED)           # NumPy 随机种子
+torch.manual_seed(RAND_SEED)        # PyTorch CPU 随机种子
+torch.cuda.manual_seed_all(RAND_SEED)  # PyTorch GPU 随机种子（如果有GPU）
+random.seed(RAND_SEED)              # Python 内置 random 模块种子
+
 np.set_printoptions(suppress=True)
 
 DEVICE_ID = 0
@@ -600,17 +607,20 @@ def cpu_golden_qkv_mxfp4_flash_attn(query, key, value,
     return attn_out.reshape(b, s1, n1, qk_d).permute(1, 0, 2, 3).to(src_date_type), None
 
 def compare(golden_name, golden_data, real_name, real_data, src_dtype):
+    compare_percent = 0
+    compare_result = None
     if golden_data is not None and real_data is not None:
         print(f"--------------------------------------------------------------{golden_name} vs {real_name}-------------------------------------------------------------")
-        check_result(golden_data.to(torch.float32), real_data.cpu().to(torch.float32), src_dtype)
+        compare_percent, compare_result = check_result(golden_data.to(torch.float32), real_data.cpu().to(torch.float32), src_dtype)
+    return compare_percent, compare_result
 
-def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, kv_storage_mode, q_dtype, kv_dtype, out_dtype,
-        rope_dtype, block_size, act_seq_lens_q, act_seq_lens_kv, enable_softmax_lse,
-        enable_mask, sparse_mode, pre_tokens, next_tokens, enable_learnable_sink,
-        inner_precise,
-        q_quant_mode, q_scale_dtype, quant_block_size_qs,
-        k_quant_mode, k_scale_dtype, quant_block_size_ks,
-        v_quant_mode, v_scale_dtype, quant_block_size_vs):
+def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d = None, rope_d = 0, input_layout = 'BSND', kv_storage_mode = 'continue', q_dtype = 'bfloat16', kv_dtype = None, out_dtype = None,
+        rope_dtype = None, block_size = 0, act_seq_lens_q = None, act_seq_lens_kv = None, enable_softmax_lse = False,
+        enable_mask = False, sparse_mode = 0, pre_tokens = 2147483647, next_tokens = 2147483647, enable_learnable_sink = False,
+        inner_precise = 0,
+        q_quant_mode = 3, q_scale_dtype = None, quant_block_size_qs = None,
+        k_quant_mode = 3, k_scale_dtype = None, quant_block_size_ks = None,
+        v_quant_mode = 3, v_scale_dtype = None, quant_block_size_vs = None):
     if v_d is None:
         v_d = qk_d
     if kv_dtype is None:
@@ -631,14 +641,17 @@ def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, kv_storage_
 
     query_bnsd_shape = (b, n2 * g, s1, qk_d)
     # query = rand_range(query_bnsd_shape, data_range=[-10, 10], dtype = torch.float32)
+    # query = torch.ones(query_bnsd_shape, dtype = torch.float32)
     query = randn_x(query_bnsd_shape, 1.0).to(torch.float32)
 
     key_bnsd_shape = (b, n2, s2, qk_d)
     # key = rand_range(key_bnsd_shape, data_range=[-10, 10], dtype = torch.float32)
+    # key = torch.ones(key_bnsd_shape, dtype = torch.float32)
     key = randn_x(key_bnsd_shape, 1.0).to(torch.float32)
 
     value_bnsd_shape = (b, n2, s2, v_d)
     # value = rand_range(value_bnsd_shape, data_range=[-10, 10], dtype = torch.float32)
+    # value = torch.ones(value_bnsd_shape, dtype = torch.float32)
     value = randn_x(value_bnsd_shape, 1.0).to(torch.float32)
 
     query_rope_bnsd_shape = (b, n2 * g, s1, rope_d)
@@ -754,6 +767,14 @@ def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, kv_storage_
             # value, v_descale = mxfp_quant_per_channel(value.to(get_dtype(src_dtype)), kv_dtype)
             key, k_descale = mxfp4_quantize_pack_last(key, quant_axis = -1, mode = "baseline")
             value, v_descale = mxfp4_quantize_pack_last(value, quant_axis = -2, mode = "baseline")
+            seq_len = v_descale.shape[2]
+            print(f"seq_len: {seq_len}")
+            # 判断S2量化维度是否为奇数，奇数就补1行全0
+            if seq_len % 2 != 0:
+                # 填充规则：(最后一维左,右, 第2维上,下) → 下方补1行
+                v_descale = torch.nn.functional.pad(v_descale, (0, 0, 0, 1), mode="constant", value=0)
+                print(f"✅ v_descale第2维为奇数{seq_len}，补0后变为: {v_descale.shape[2]}")
+                print(f"✅ 补0后形状: {v_descale.shape}") # [1, 1, 2, 128]
             v_descale = v_descale.reshape(
                     v_descale.shape[0], v_descale.shape[1], v_descale.shape[2] // 2, 2, v_descale.shape[3]
                 ).transpose(-1, -2).reshape(
@@ -919,9 +940,12 @@ def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, kv_storage_
     # compare('cpu_mxfp4_softmax_lse', cpu_softmax_lse_mxfp4, 'npu_softmax_lse', npu_softmax_lse, src_dtype)
     # print()
 
-    compare('cpu_mxfp4_attn_out_flash', cpu_attn_out_mxfp4_flash, 'npu_attn_out', npu_attn_out, src_dtype)
+    run_percent = 0.0
+    run_result = "Unknown"
+    run_percent, run_result = compare('cpu_mxfp4_attn_out_flash', cpu_attn_out_mxfp4_flash, 'npu_attn_out', npu_attn_out, src_dtype)
     compare('cpu_mxfp4_softmax_flash', cpu_softmax_lse_mxfp4_flash, 'npu_softmax_lse', npu_softmax_lse, src_dtype)
     print()
+    return run_percent, run_result
 
 def parse_shape(s):
     try:
@@ -977,7 +1001,7 @@ if __name__ == "__main__":
     parser.add_argument('--quant_block_size_vs', type=int, default=None, help='')
     args = parser.parse_args()
 
-    run_fia_eager(args.b, args.n2, args.g, args.s1, args.s2, args.qk_d, args.v_d, args.rope_d,
+    qfa_percent, qfa_result = run_fia_eager(args.b, args.n2, args.g, args.s1, args.s2, args.qk_d, args.v_d, args.rope_d,
         args.input_layout, args.kv_storage_mode, args.q_dtype, args.kv_dtype, args.out_dtype,
         args.rope_dtype, args.block_size, args.act_seq_lens_q, args.act_seq_lens_kv, args.enable_softmax_lse,
         args.enable_mask, args.sparse_mode, args.pre_tokens, args.next_tokens,

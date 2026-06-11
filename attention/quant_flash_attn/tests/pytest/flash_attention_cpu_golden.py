@@ -27,11 +27,13 @@ Tiled FlashAttention v2 的 CPU golden, 仅 varlen (packed seq) 布局,
 
 import math
 from typing import Optional
+import os
 
 import torch
 import numpy as np
 
 from mx_quant_fp4_tool import mx_quantize, mx_dequantize
+import torch.nn.functional as F
 
 
 # ============================================================
@@ -353,9 +355,9 @@ def _blockwise_snap_local_quantize_p_eff(
     ### local_group_max
     local_group_max = K_block.T
     local_group_max.numpy().tofile('dump_data/local_group_max.bin')
-    print(f'local_group_max.shape={local_group_max.shape} K_block.dtype={local_group_max.dtype}')
+    # print(f'local_group_max.shape={local_group_max.shape} K_block.dtype={local_group_max.dtype}')
 
-    m_block_snap = K_block * LN2                                # [..., n_blk], on log2 grid
+    m_block_snap = (K_block - 2) * LN2                                # [..., n_blk], on log2 grid
 
     # 阶段 3: P_local = exp(S - m_block_snap), max per block ∈ [1, 2)
     # 保持 [..., n_blk, mx_block_size] 块对齐布局, FP4 round 在块对齐形态完成 (供 dump)
@@ -364,7 +366,7 @@ def _blockwise_snap_local_quantize_p_eff(
     # 阶段 4: FP4 round (MX scale 恒 = 0.25 = 2^-2; dequant 因子折入 corr; bucketize 自动处理顶端饱和)
     levels = _FP4_POS_LEVELS_FP32.to(device=device, dtype=src_dtype)
     midpoints = _FP4_POS_MIDPOINTS_FP32.to(device=device, dtype=src_dtype)
-    P_local_x4_padded = P_local_r * 4.0                         # [..., n_blk, mx_block_size], ∈ [0, 8)
+    P_local_x4_padded = P_local_r                         # [..., n_blk, mx_block_size], ∈ [0, 8)
     P_local_x4_padded_bf16 = P_local_x4_padded.to(torch.bfloat16)
     P_local_x4_padded = P_local_x4_padded_bf16.to(P_local_x4_padded.dtype)
     idx_padded_r = torch.bucketize(P_local_x4_padded.contiguous(), midpoints, right=True)
@@ -373,9 +375,20 @@ def _blockwise_snap_local_quantize_p_eff(
     ### P FP4
     p_packed_x4 = _pack_fp4_e2m1_along_last(idx_padded_r.reshape(*other_shape, n_blk * mx_block_size).T)
     p_packed_x4.numpy().tofile('dump_data/p_packed_x4.bin')
-    p_packed_x4_nz = p_packed_x4.reshape(p_packed_x4.shape[0] // 256, 256 , 2, 32).transpose(2, 1)
-    p_packed_x4_nz.numpy().tofile('dump_data/p_packed_x4_nz.bin')
-    torch.save(p_packed_x4_nz, 'p_packed_x4_nz.pt')
+    # p_packed_x4_nz = p_packed_x4.reshape(p_packed_x4.shape[0] // 256, 256 , 2, 32).transpose(2, 1)
+    # p_packed_x4_nz.numpy().tofile('dump_data/p_packed_x4_nz.bin')
+    # torch.save(p_packed_x4_nz, 'p_packed_x4_nz.pt')
+    
+    # for debug dump start
+    # p_front = p_packed_x4[:, :32]
+    # p_back  = p_packed_x4[:, 32:]
+    # p_front_group = p_front.reshape(p_packed_x4.shape[0]//4, 4, 32)
+    # p_back_group  = p_back.reshape(p_packed_x4.shape[0]//4, 4, 32)
+    # p_packed_x4_nz = torch.stack([p_front_group, p_back_group], dim=0)
+    # print(f"p_packed_x4_nz.shape: {p_packed_x4_nz.shape}")
+    # p_packed_x4_nz.numpy().tofile('dump_data/p_packed_x4_nz.bin')
+    # torch.save(p_packed_x4_nz, 'p_packed_x4_nz.pt')
+    # for debug dump end
 
     # strip pad + 移回原 seqk 位置, 得到 [..., seqk_len] 后的 P_q (供 corr 乘)
     P_q_padded_moved = P_q_padded_r.reshape(*other_shape, n_blk * mx_block_size)
@@ -398,19 +411,36 @@ def _blockwise_snap_local_quantize_p_eff(
     K_new_s = m_new.to(src_dtype)
     ### global_max
     K_new_s.numpy().tofile('dump_data/global_max.bin')
-    print(f'K_new_s.shape={K_new_s.shape} K_new_s.dtype={K_new_s.dtype}')
+    # print(f'K_new_s.shape={K_new_s.shape} K_new_s.dtype={K_new_s.dtype}')
 
     K_diff = K_block - K_new_s.unsqueeze(-1)                    # ≤ 0, s_dtype 整数
     corr = torch.exp2(K_diff - 2.0)                              # 2^(K_diff - 2), 精确
     ### p_scale_e8m0
     p_scale_e8m0 = _to_e8m0_uint8(K_diff.to(torch.int32) - 2).T.contiguous()
     p_scale_e8m0.numpy().tofile('dump_data/p_scale_e8m0.bin')
-    print(f'p_scale_e8m0.shape={p_scale_e8m0.shape} p_scale_e8m0.dtype={p_scale_e8m0.dtype}')
-    p_scale_e8m0_nz = p_scale_e8m0.view(p_scale_e8m0.shape[0], p_scale_e8m0.shape[1] // 16, 16).transpose(1, 0)
-    p_scale_e8m0_nz = p_scale_e8m0_nz.view(p_scale_e8m0.shape[1] // 16, p_scale_e8m0.shape[0] // 2, 2, 16).transpose(3, 2)
-    print(f'p_scale_e8m0_nz.shape={p_scale_e8m0_nz.shape} p_scale_e8m0_nz.dtype={p_scale_e8m0_nz.dtype}')
-    p_scale_e8m0_nz.numpy().tofile('dump_data/p_scale_e8m0_nz.bin')
-    torch.save(p_scale_e8m0_nz, 'p_scale_e8m0_nz.pt')
+    # print(f'p_scale_e8m0.shape={p_scale_e8m0.shape} p_scale_e8m0.dtype={p_scale_e8m0.dtype}')
+    # p_scale_e8m0_nz = p_scale_e8m0.view(p_scale_e8m0.shape[0], p_scale_e8m0.shape[1] // 16, 16).transpose(1, 0)
+    # p_scale_e8m0_nz = p_scale_e8m0_nz.view(p_scale_e8m0.shape[1] // 16, p_scale_e8m0.shape[0] // 2, 2, 16).transpose(3, 2)
+    # # print(f'p_scale_e8m0_nz.shape={p_scale_e8m0_nz.shape} p_scale_e8m0_nz.dtype={p_scale_e8m0_nz.dtype}')
+    # p_scale_e8m0_nz.numpy().tofile('dump_data/p_scale_e8m0_nz.bin')
+    # torch.save(p_scale_e8m0_nz, 'p_scale_e8m0_nz.pt')
+    
+    ## padding pscale
+    rows, cols = p_scale_e8m0.shape
+    assert cols == 128, "S1必须固定为128"
+    # 1. 奇数行自动补0，保证行数为偶数
+    if rows % 2 != 0:
+        p_scale_e8m0 = F.pad(p_scale_e8m0, (0, 0, 0, 1), mode="constant", value=0)
+        m = p_scale_e8m0.shape[0]
+        print(f"✅ S2奇数行补0完成，新形状: {p_scale_e8m0.shape}")
+        print(f"✅ S2奇数行补0完成，新形状p_scale_e8m0: {p_scale_e8m0}")
+    else:
+        m = rows
+        print("✅ S2行数为偶数，无需补0")
+
+    # for debug dump start
+    # process_p_scale(p_scale_e8m0)
+    # for debug dump end
 
     # 阶段 7: corr 广播回 seqk_len, 与 P_q 相乘得 P_eff
     corr_broad_moved = corr.repeat_interleave(mx_block_size, dim=-1)
@@ -420,6 +450,63 @@ def _blockwise_snap_local_quantize_p_eff(
 
     return P_eff, m_new
 
+# pscale nd->nz
+def process_p_scale(p_scale_e8m0, save_path="p_scale_e8m0_nz.pt"):
+    """
+    处理p_scale张量：奇数行补0 + 按1-1/2-1列优先排布 + 保存为pt文件
+    Args:
+        p_scale_e8m0: 输入张量 [m行, 128列]
+        save_path: 保存的pt文件路径
+    Returns:
+        处理后的张量 p_scale_e8m0_nz
+    """    
+    rows, cols = p_scale_e8m0.shape
+    # assert cols == 128, "列数必须固定为128"
+
+    m = rows
+    n = cols
+    BLOCK_SIZE = 8  # 8行一个大单元
+    
+    # 固定内部参数
+    group_rows = 2     # 单元内：2行一组
+    group_cols = 16    # 16列一组
+    num_col_groups = 8 # 128//16=8 固定列组
+
+    processed_blocks = []
+    
+    # 逐 8 行单元处理（自动处理最后一块）g
+    for i in range(0, m, BLOCK_SIZE):
+        # 截取一个单元：可能是 8行，也可能是最后不足8行的实际行数
+        block = p_scale_e8m0[i : i + BLOCK_SIZE, :]
+        block_rows = block.shape[0]
+        
+        # 每个单元内部必须是 2 的整数倍（2行一组），不足补0
+        if block_rows % group_rows != 0:
+            pad_rows = group_rows - (block_rows % group_rows)
+            block = F.pad(block, (0, 0, 0, pad_rows), value=0)
+
+        # 计算当前单元内部有多少个 2行 小组
+        inner_row_groups = block.shape[0] // group_rows
+
+        # ===================== 你原来的排布逻辑 =====================
+        x = block.reshape(inner_row_groups, group_rows, num_col_groups, group_cols)
+        x = x.permute(2, 0, 1, 3)
+        x = x.transpose(-2, -1)
+        block_processed = x.reshape(num_col_groups, inner_row_groups, group_rows * group_cols).contiguous()
+        # ============================================================
+        
+        processed_blocks.append(block_processed)
+    
+    # 拼接所有单元
+    p_scale_e8m0_nz = torch.cat(processed_blocks, dim=1)
+
+    # 保存
+    torch.save(p_scale_e8m0_nz, save_path)
+    print(f"\n✅ 文件已保存至: {save_path}")
+    print(f"✅ p_scale_e8m0输入形状: {p_scale_e8m0.shape}")
+    print(f"✅ p_scale_e8m0_nz处理完成，输出形状: {p_scale_e8m0_nz.shape}")
+    
+    return p_scale_e8m0_nz
 
 # ============================================================
 # Varlen 公共辅助
@@ -603,7 +690,8 @@ def _flash_attn_single_batch_kernel(
                 S_ij = S_ij.to(s_torch_dtype)
 
                 S_ij.numpy().tofile('dump_data/mm1Res.bin')
-                print(f'mm1Res.shape={S_ij.shape} mm1Res.dtype={S_ij.dtype}')
+                # torch.save(S_ij, 'qk_result_padded.pt')
+                # print(f'mm1Res.shape={S_ij.shape} mm1Res.dtype={S_ij.dtype}')
 
                 S_ij = S_ij * softmax_scale
 
@@ -675,14 +763,14 @@ def _flash_attn_single_batch_kernel(
                 # ★ FP32 累加: sum, PV matmul, O 更新
                 mm2ReduceSum = P_fp32.sum(dim=seqk_dim)
                 mm2ReduceSum.numpy().tofile('dump_data/mm2ReduceSum.bin')
-                print(f'mm2ReduceSum.shape={mm2ReduceSum.shape} mm2ReduceSum.dtype={mm2ReduceSum.dtype}')
+                # print(f'mm2ReduceSum.shape={mm2ReduceSum.shape} mm2ReduceSum.dtype={mm2ReduceSum.dtype}')
                 l_i = alpha * l_i + P_fp32.sum(dim=seqk_dim)
                 if s_layout == "ND":
                     O_i = alpha.unsqueeze(-1) * O_i + P_fp32 @ V_j
                 else:
                     PV_i = V_j.t() @ P_fp32
                     PV_i.numpy().tofile('dump_data/mm2Res_1.bin')
-                    print(f'mm2Res.shape={PV_i.shape} mm2Res.dtype={PV_i.dtype}')
+                    # print(f'mm2Res.shape={PV_i.shape} mm2Res.dtype={PV_i.dtype}')
                     O_i = alpha.unsqueeze(-1) * O_i + P_fp32.t() @ V_j
 
                 # m_i 跨 tile 存 FP32 (running state, 来自 helper / global 路径均为 FP32)
@@ -948,6 +1036,8 @@ def flash_attention_cpu_golden_varlen(
             f"GQA: num_heads_q ({num_heads_q}) 必须能被 "
             f"num_heads_kv ({num_heads_kv}) 整除"
         )
+
+    os.makedirs("dump_data", exist_ok=True)
 
     # ---- 可选 MXFP4 qdq (Q/K/V) ----
     if quantize:
