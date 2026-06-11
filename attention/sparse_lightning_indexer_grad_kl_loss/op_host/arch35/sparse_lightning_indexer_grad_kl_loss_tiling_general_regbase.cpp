@@ -791,7 +791,7 @@ int64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::GetS2RealSize(int32_t
             s2RealSize = static_cast<int64_t>(s2Size);
         }
     }
-    s2RealSize = AlignUp(s2RealSize, 512L);
+    s2RealSize = AlignUp(s2RealSize, 128L);
     return std::min(s2RealSize, (int64_t)sliGradkllossBaseParams_->get_kSize());
 }
 
