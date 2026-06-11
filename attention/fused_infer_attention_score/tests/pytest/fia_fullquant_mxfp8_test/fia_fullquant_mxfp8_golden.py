@@ -47,7 +47,7 @@ ENABLE_ROPE = False
 D_rope = 0
 
 ACTUAL_SEQ_Q = [4]
-ACTUAL_SEQ_KV = [512]
+ACTUAL_SEQ_KV = [1024]
 
 ENABLE_PA = False
 BLOCK_SIZE = 512
@@ -65,7 +65,7 @@ P_SCALE = 1.0
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
 # PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
-KV_CACHE_LAYOUT = "PA_NZ"
+KV_CACHE_LAYOUT = "BnNBsD"
 
 IS_CONTIGUOUS = True
 
@@ -523,6 +523,7 @@ def mxfp8_pa_preprocessing(tensor_bnsd, seq_lens, block_size, block_table,
     else:
         raise ValueError(f"Unsupported kv_layout: {kv_layout}")
 
+
 def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
     """
     V scale 偶奇行交错 packing，用于 PA 预处理
@@ -945,9 +946,9 @@ def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
         if not IS_CONTIGUOUS:
             # ---- 构造krope不连续 ----
             fake_krope_tensor = torch.ones_like(k_rope_pa)
-            double_krope = torch.stack([k_rope_pa, fake_krope_tensor], dim=2)
+            double_krope = torch.stack([k_rope_pa, fake_krope_tensor], dim=1)
             double_krope = double_krope.npu()
-            k_rope_npu = double_krope[:, :, 0]  # 覆写为非连续
+            k_rope_npu = double_krope[:, 0]  # 覆写为非连续
             logger.info(f"[NPU] k_rope is_contiguous={k_rope_npu.is_contiguous()}")
     else:
         k_rope_npu = convert_qk_rope_bnsd_to_layout(kr_bf16, actual_seq_kv, npu_input_layout).npu()
@@ -1025,9 +1026,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             deq_v_npu = double_vscale[:, :, 0]
             logger.info(f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous()}")
 
-         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)	 
-         logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)	 
-         logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
+        logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
+        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
+        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
 
         block_table_npu = block_table_torch.npu() if isinstance(block_table_torch, torch.Tensor) else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         accum_seq_q = make_accum_seq(actual_seq_q)
