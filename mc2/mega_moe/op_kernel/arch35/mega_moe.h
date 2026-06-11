@@ -728,8 +728,11 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         uint64_t n = Get<N_VALUE>(state.problemShape);
         uint64_t k = Get<K_VALUE>(state.problemShape);
         expertBeforeCnt_ += m;
+
+        static constexpr uint64_t B_QUANT_DIVISOR = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? FP4_NUM : 1U;
+
         Get<IDX_A_OFFSET>(state.baseOffset) += m * k;
-        Get<IDX_B_OFFSET>(state.baseOffset) += n * k;
+        Get<IDX_B_OFFSET>(state.baseOffset) += (n * k) / B_QUANT_DIVISOR;
         // only splitM
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
@@ -738,7 +741,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF;
+        Get<IDX_B2_OFFSET>(state.baseOffset) += (k * n / SWIGLU_N_HALF) / B_QUANT_DIVISOR;
         Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
