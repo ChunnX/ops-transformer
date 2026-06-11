@@ -63,7 +63,8 @@ __simd_callee__ inline void ComputeGroupAmax(__ubuf__ T *xAddr, RegTensor<float>
     Duplicate(maxReg, 0.0f, maskAll);
 
     if (groupElemNum > vfLen) {
-        maskRight = UpdateMask<float>(static_cast<uint16_t>(groupElemNum - vfLen));
+        uint32_t maskRightNum = groupElemNum - vfLen;
+        maskRight = UpdateMask<float>(maskRightNum);
         LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
         LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
         Abs(absLeftReg, xLeftReg, maskAll);
@@ -72,7 +73,7 @@ __simd_callee__ inline void ComputeGroupAmax(__ubuf__ T *xAddr, RegTensor<float>
         ReduceMax(maxRightReg, absRightReg, maskRight);
         Max(maxReg, maxReg, maxRightReg, maskScalar);
     } else if (groupElemNum > 0) {
-        MaskReg maskLoop = UpdateMask<float>(static_cast<uint16_t>(groupElemNum));
+        MaskReg maskLoop = UpdateMask<float>(groupElemNum);
         LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
         Abs(absLeftReg, xLeftReg, maskLoop);
         ReduceMax(maxReg, absLeftReg, maskLoop);
@@ -147,7 +148,7 @@ __simd_callee__ inline void QuantizeAndStoreGroup(__ubuf__ T *xAddr, __ubuf__ U 
         DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + vfLen, outRightReg, maskRight);
     } else if (groupElemNum > 0) {
         uint32_t loopElemNum = groupElemNum;
-        maskLoop = UpdateMask<float>(loopElemNum);
+        MaskReg maskLoop = UpdateMask<float>(loopElemNum);
         LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
         Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskLoop);
         Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
