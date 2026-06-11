@@ -92,7 +92,7 @@ public:
 private:
     __aicore__ inline void ReorderTokens();
     __aicore__ inline void SendDataToServer(uint32_t dstServerId, GlobalTensor<uint32_t> selfDataStatusGMAiv,
-                                            GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
+                                            GlobalTensor<uint32_t> selfDataStatusGMAiv2);
     __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx, GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
     __aicore__ inline void CreateOuterReduceInfo();
     __aicore__ inline void Win2Ipc(GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId = 0);
@@ -679,14 +679,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     }
 
     uint32_t tokenEndFlagCleanSize = MAX_BS_NUM * FLAG_SIZE;
-    uint32_t writeStatusCleanSize = 2 * serverNum_ * STATE_OFFSET;
+    uint32_t writeStatusCleanSize = serverNum_ * STATE_OFFSET;
     uint32_t maxCleanSize =
         tokenEndFlagCleanSize > writeStatusCleanSize ? tokenEndFlagCleanSize : writeStatusCleanSize;
     LocalTensor<int32_t> cleanTempLt_ = tBuf_.GetWithOffset<int32_t>(maxCleanSize / sizeof(int32_t), TBUF_TEMP_OFFSET);
     Duplicate<int32_t>(cleanTempLt_, 66, maxCleanSize / sizeof(int32_t));
     PipeBarrier<PIPE_ALL>();
     if (aivId_ == serverNum_ -1) {
-        // Clear the received end flags and DFX ack flags in the currently selected windowIn buffer.
+        // Clear the received end flags in the currently selected windowIn buffer.
         GlobalTensor<int32_t> readStatusTensorU32;
         readStatusTensorU32.SetGlobalBuffer((__gm__ int32_t*)(windowInGM_ + dataSpaceSize_));
         DataCopy(readStatusTensorU32, cleanTempLt_, writeStatusCleanSize / sizeof(uint32_t));
@@ -1214,7 +1214,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
 template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId,
-    GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2, uint32_t dumpId)
+    GlobalTensor<uint32_t> selfDataStatusGMAiv, GlobalTensor<uint32_t> selfDataStatusGMAiv2)
 {
     uint32_t dstRankId = rankId_ % SERVER_RANK_SIZE + dstServerId * SERVER_RANK_SIZE;
     uint64_t dstServerMask = (1UL << dstServerId);
@@ -1251,17 +1251,6 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         dataSpaceSize_ + serverId_ * STATE_OFFSET); // 那1M 分了serverNum个512B
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(sendStatusGMTensor_);
-    // Local windowOut scratch for RDMA Read. Keep ack source separate because repeated RDMA Reads may
-    // complete after readFlagValue becomes END_OF_WRITE_FLAG_VALUE and overwrite the read scratch.
-    uint64_t readFlagRdmaAddr = srcFlagRdmaAddr + STATE_OFFSET + dstServerId * FLAG_SIZE;
-    uint64_t ackFlagRdmaAddr = srcFlagRdmaAddr + 2 * STATE_OFFSET + dstServerId * FLAG_SIZE;
-    GlobalTensor<uint64_t> readFlagValueGt;
-    readFlagValueGt.SetGlobalBuffer((__gm__ uint64_t*)((GM_ADDR)readFlagRdmaAddr));
-    readFlagValueGt.SetValue(0, 99);
-    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
-    GlobalTensor<uint64_t> ackFlagValueGt;
-    ackFlagValueGt.SetGlobalBuffer((__gm__ uint64_t*)((GM_ADDR)ackFlagRdmaAddr));
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 2);
     PipeBarrier<PIPE_ALL>();
 
@@ -1311,79 +1300,6 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyExtParams qpDumpParams{1, 4 * sizeof(uint32_t), 0, 0, 0};
     DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
     PipeBarrier<PIPE_ALL>();
-
-    // 维测：16个uint32已用完，轮询readFlagRdmaAddr处读回的值直到RDMA Read完成，写入selfDataStatus 48核后面的扩展区域
-    uint64_t readFlagValue = 99;
-    constexpr int64_t WAIT_RDMA_READ_TIMEOUT_CYCLES = 500000000;
-    constexpr int64_t THREE_SECONS_CYCLE = 150000000;
-    int64_t startCycle = AscendC::GetSystemCycle();
-    while (true) {
-        AIVRDMAPostRead((GM_ADDR)readFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 10);
-        PipeBarrier<PIPE_ALL>();
-        int64_t startCycleThree = AscendC::GetSystemCycle();
-        while (true) {
-            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(readFlagValueGt);
-            readFlagValue = readFlagValueGt.GetValue(0);
-            if ((AscendC::GetSystemCycle() - startCycleThree >= THREE_SECONS_CYCLE) || (readFlagValue == END_OF_WRITE_FLAG_VALUE)) {
-                break;
-            }
-        }
-        
-        if (readFlagValue == END_OF_WRITE_FLAG_VALUE) {
-            break;
-        }
-        AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
-        PipeBarrier<PIPE_ALL>();
-        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_RDMA_READ_TIMEOUT_CYCLES) && dumpId == 0) {
-            dumpLt.SetValue(0, static_cast<uint64_t>(readFlagValue));
-            PipeBarrier<PIPE_ALL>();
-            DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
-            DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
-            PipeBarrier<PIPE_ALL>();
-            cacheWriteThrough((__gm__ uint8_t*)qpHeadAddr, CACHEWRITESIZE);
-            cacheWriteThrough((__gm__ uint8_t*)qpTailAddr, CACHEWRITESIZE);
-            qpHead = *(__gm__ uint32_t*)(qpHeadAddr);
-            qpTail = *(__gm__ uint32_t*)(qpTailAddr);
-            dumpLt.SetValue(0, bufferId_);
-            dumpLt.SetValue(1, qpHead);
-            dumpLt.SetValue(2, qpTail);
-            dumpLt.SetValue(3, qpDepth);
-            PipeBarrier<PIPE_ALL>();
-            DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
-            PipeBarrier<PIPE_ALL>();
-            dumpId += 1;
-            // assert(false && "Dispatch DFX: RDMA Read timeout!");
-        }
-    }
-
-    ackFlagValueGt.SetValue(0, 8888);
-    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(ackFlagValueGt);
-    uint64_t dstAckFlagRdmaAddr = (uint64_t)(GetWindowInAddrByRankId(dstRankId) + halfWinSize_ * bufferId_ +
-        dataSpaceSize_ + (serverNum_ + serverId_) * STATE_OFFSET);
-    selfDataStatusGMAiv.SetValue(0, 17); // 初始化为0，表示数据未准备好
-    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-    AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
-    AIVRDMAPostSend((GM_ADDR)ackFlagRdmaAddr, (GM_ADDR)dstAckFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, -1);
-    PipeBarrier<PIPE_ALL>();
-
-    dumpLt.SetValue(0, readFlagValue);
-    PipeBarrier<PIPE_ALL>();
-    DataCopyExtParams readFlagParams{1, sizeof(uint32_t), 0, 0, 0};
-    DataCopyPad(selfDataStatusGMAivSendDump[3], dumpLt, readFlagParams);
-    PipeBarrier<PIPE_ALL>();
-    cacheWriteThrough((__gm__ uint8_t*)qpHeadAddr, CACHEWRITESIZE);
-    cacheWriteThrough((__gm__ uint8_t*)qpTailAddr, CACHEWRITESIZE);
-    qpHead = *(__gm__ uint32_t*)(qpHeadAddr);
-    qpTail = *(__gm__ uint32_t*)(qpTailAddr);
-    dumpLt.SetValue(0, bufferId_);
-    dumpLt.SetValue(1, qpHead);
-    dumpLt.SetValue(2, qpTail);
-    dumpLt.SetValue(3, qpDepth);
-    PipeBarrier<PIPE_ALL>();
-    DataCopyPad(selfDataStatusGMAiv2[8], dumpLt, qpDumpParams);
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1401,12 +1317,6 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
-    PipeBarrier<PIPE_ALL>();
-    DataCopy(statusTensor, readStatusGMTensor_[(serverNum_ + serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
-        FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint64_t ackFlagValue = static_cast<uint64_t>(statusTensor.GetValue(0));
     PipeBarrier<PIPE_ALL>();
     uint32_t TokenOffset = serverIdx * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
     DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
@@ -1434,8 +1344,6 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     }
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)]);
-    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(readStatusGMTensor_[(serverNum_ + serverIdx) * STATE_OFFSET / sizeof(uint64_t)]);
     
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
@@ -1446,8 +1354,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv2);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
 
-    if (endFlagValue != END_OF_WRITE_FLAG_VALUE || ackFlagValue != 8888) {
-        // Wait until both the normal end flag and the DFX ack flag arrive.
+    if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         PipeBarrier<PIPE_ALL>();
         return WAIT_STATUS;
     } else { // 得到上个token->可以处理 读到结束符 先搬运当前最后一个token，再走进来，越界读，读到不存在的token，返回finish
