@@ -233,9 +233,9 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 128U * 1024U * 1024U;     // 48: 48MB, 1024: Mb2Kb, 1024:Kb2Mb
+    param.l2Byte = 72U * 1024U * 1024U;     // 72: 48MB, 1024: Mb2Kb, 1024:Kb2Mb
     param.fdTolerance = 3;                  // 3: least block
-    param.fdOn = false;
+    param.fdOn = true;
     return true;
 }
 
