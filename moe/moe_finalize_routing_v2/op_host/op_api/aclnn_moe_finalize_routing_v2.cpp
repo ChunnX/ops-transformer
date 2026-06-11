@@ -144,7 +144,8 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, int64_t k, const aclTensor* out,
+    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange,
+    int64_t k, const aclTensor* out,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
