@@ -1206,7 +1206,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
     }
 
     CopyOutCoreTopK(resTensor, totalTileTopKInCore);
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1209
 }
 
 template <typename BSAT>
