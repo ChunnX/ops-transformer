@@ -35,11 +35,12 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 namespace GMMSQWeightQuant {
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                                     \
     template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename yType,           \
-              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
+              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig,                  \
+              bool isSingleMultiSingle>
 
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS                                                                              \
     GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig,        \
-                                      vecConfig>
+                                      vecConfig, isSingleMultiSingle>
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMSQWeightQuantResplitController {
@@ -55,7 +56,7 @@ private:
                                              BasicBlockControlParam &ctrlParam, uint64_t basicBlockCount,
                                              uint64_t basicBlockSize);
     __aicore__ inline uint64_t GetSplitValueFromGroupList(uint64_t groupIdx);
-    __aicore__ inline void UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize);
+    __aicore__ inline void UpdateGmAddr(uint64_t groupIdx, uint64_t mSize, uint64_t kSize, uint64_t nSize);
     __aicore__ inline uint64_t GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam);
 
     template <typename T>
@@ -73,6 +74,8 @@ private:
     __gm__ yType *yGm_;
     __gm__ xScaleType *xScaleGm_;
     __gm__ yScaleType *yScaleGm_;
+    GM_ADDR weightTensorPtr_;
+    GM_ADDR weightScaleTensorPtr_;
     GlobalTensor<int64_t> groupListGm_;
     GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig, vecConfig>
         basicBlock_;
@@ -98,8 +101,10 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADD
     tiling_ = baseTiling;
 
     xGm_ = reinterpret_cast<__gm__ xType *>(x);
-    weightGm_ = GetTensorAddr<wType>(0, weight);
-    weightScaleGm_ = GetTensorAddr<weightScaleType>(0, weightScale);
+    weightTensorPtr_ = weight;
+    weightScaleTensorPtr_ = weightScale;
+    weightGm_ = GetTensorAddr<wType>(0, weightTensorPtr_);
+    weightScaleGm_ = GetTensorAddr<weightScaleType>(0, weightScaleTensorPtr_);
     xScaleGm_ = reinterpret_cast<__gm__ xScaleType *>(xScale);
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     yScaleGm_ = reinterpret_cast<__gm__ yScaleType *>(yScale);
@@ -146,7 +151,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;
         }
-        UpdateGmAddr(ctrlParam.mSize, offsetParam[0].kSize, offsetParam[0].nSize);
+        UpdateGmAddr(groupIdx, ctrlParam.mSize, offsetParam[0].kSize, offsetParam[0].nSize);
     }
 
     basicBlock_.End(offsetParam[GetSwitchedProcessId(ctrlParam)]);
@@ -219,13 +224,22 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(BasicBlockOffsetParam offse
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize)
+__aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t groupIdx, uint64_t mSize,
+                                                                       uint64_t kSize, uint64_t nSize)
 {
     xGm_ += mSize * kSize;
-    // weight 为fp4, 大小除2
-    weightGm_ += (nSize * kSize) >> 1;
     uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
-    weightScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
+    if constexpr (isSingleMultiSingle) {
+        uint64_t nextGroupIdx = groupIdx + 1;
+        if (nextGroupIdx < tiling_->groupNum) {
+            weightGm_ = GetTensorAddr<wType>(nextGroupIdx, weightTensorPtr_);
+            weightScaleGm_ = GetTensorAddr<weightScaleType>(nextGroupIdx, weightScaleTensorPtr_);
+        }
+    } else {
+        // weight 为fp4, 大小除2
+        weightGm_ += (nSize * kSize) >> 1;
+        weightScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
+    }
     xScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
     // 输出为 N / 2
     yGm_ += mSize * (nSize / 2);
