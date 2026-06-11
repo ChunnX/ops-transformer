@@ -131,6 +131,7 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     bool isPrefillQScale = fiaInfo.opParamInfo.dequantScaleQuery.tensor != nullptr &&
                            fiaInfo.opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() !=
                                MXFP8_DECODE_QSCALE_DIM;
+    bool isPa = fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION;
     bool isSparse0NoMask = (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag);
     bool isSparse3WithMask = (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && fiaInfo.attenMaskFlag;
     bool isSparse5PrefillWithMask = (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) && fiaInfo.attenMaskFlag &&
@@ -142,6 +143,34 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
                             "now input sparse mode is %d and there has%smask",
                             fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                     return ge::GRAPH_FAILED);
+
+    if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
+        OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::TND,
+            OP_LOGE(fiaInfo.opName, 
+            "Only support Query layout = TND in MXFP8 fullquant sparse 5 scenario"),
+            return ge::GRAPH_FAILED);
+        
+        OP_CHECK_IF(fiaInfo.qkHeadDim != NUM_128,
+            OP_LOGE(fiaInfo.opName, 
+            "Only support D = 128 in MXFP8 fullquant sparse 5 scenario"),
+            return ge::GRAPH_FAILED);
+        
+        OP_CHECK_IF(!isPa,
+            OP_LOGE(fiaInfo.opName, 
+            "Only support page attention in MXFP8 fullquant sparse 5 scenario"),
+            return ge::GRAPH_FAILED);
+        
+        OP_CHECK_IF(fiaInfo.preToken != 1023 || fiaInfo.nextToken != 0,
+            OP_LOGE(fiaInfo.opName, 
+            "Only support preToken = 1023, nextToken = 0 in MXFP8 fullquant sparse 5 scenario"),
+            return ge::GRAPH_FAILED);
+        
+        OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::NO_ROPE,
+            OP_LOGE(fiaInfo.opName, 
+            "Rope is not supported in MXFP8 fullquant sparse 5 scenario"),
+            return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -340,6 +369,12 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
         maskInfo.attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
         maskInfo.attenMaskQSize = static_cast<int64_t>(sSize);
         maskInfo.attenMaskSize = static_cast<int64_t>(sSize);
+    } else if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
+        if (attenMaskDim != MASK_DIM_SS) {
+ 	        OP_LOGE(fiaInfo.opName, "Attenmask dim num only support 2 when sparse mode = %u, but got %zu",
+ 	                SPARSE_MODE_INIT_SWA, attenMaskDim);
+ 	            return ge::GRAPH_FAILED;
+ 	    }
     } else {
         if (attenMaskDim == MASK_DIM_SS) {
             if ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) &&

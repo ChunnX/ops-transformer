@@ -494,6 +494,11 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
                     return ge::GRAPH_FAILED);
+        if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
+            OP_CHECK_IF(dimNum == 5, OP_LOGE(fiaInfo.opName, 
+                "In MXFP8 fullquant scenario, when sparse mode = 5, PA NZ is not supported."),
+                return ge::GRAPH_FAILED);
+        }
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
                 "PA BnNBsD is not supported.", inputLayout.c_str()),
