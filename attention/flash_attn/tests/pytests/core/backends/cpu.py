@@ -22,7 +22,7 @@ class CPUBackend(Backend):
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        from backends.cpu_impl import tforward
+        from core.backends.cpu_golden import tforward
 
         layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
         layout_kv = params.get("layout_kv", layout_q)
