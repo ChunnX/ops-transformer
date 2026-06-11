@@ -7,7 +7,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID b24535e30a6f7a3909c53c8b09713a9c0d08e54b)
+
+include_guard(GLOBAL)
+
+set(OPTENSOR_TAG_ID gmmtensor)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -54,23 +57,26 @@ else()
     ERROR_QUIET
   )
   if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
-    set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
+    set(OPTENSOR_GIT_URL "git@gitcode.com:zhangzhizhuo/ops-tensor.git")
     message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_GIT_URL}")
   else()
-    set(OPTENSOR_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
+    set(OPTENSOR_GIT_URL "https://gitcode.com/zhangzhizhuo/ops-tensor.git")
     message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_GIT_URL}")
   endif()
-  include(FetchContent)
 
+  if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild")
+    file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild)
+  endif()
+
+  include(FetchContent)
   FetchContent_Declare(
     ops-tensor
     GIT_REPOSITORY ${OPTENSOR_GIT_URL}
     GIT_TAG ${OPTENSOR_TAG_ID}
     GIT_PROGRESS TRUE
     SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
-
   FetchContent_Populate(ops-tensor)
 
   set(OPTENSOR_SOURCE_PATH ${CANN_3RD_LIB_PATH}/ops-tensor)
-
+  message(STATUS "Fetch ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 endif()
