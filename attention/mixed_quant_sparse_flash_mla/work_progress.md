@@ -95,4 +95,20 @@
 
 ### 工作流约定
 - 每次修改完成后立即更新本文件，不再批量更新
-- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：`SCFABlockVec::ProcessFlashDecode` 声明、实现、dummy 签名
+
+## 2026-06-11：FD 超时修复 + V_MTE3 同步 + workspace 对齐
+
+### 修改内容
+1. **FD 超时根因修复**：`ProcessFlashDecode` step 4 中 `WaitFlag<HardEvent::V_MTE2>` 死锁。去掉 Cast 后，DataCopyPad 前没有 V pipe 操作，但遗留的 WaitFlag 仍在等待 V pipe 完成，导致事件永远不触发。修复：去掉 DataCopyPad 前的 `WaitFlag<HardEvent::V_MTE2>`，仅保留 DataCopyPad 后的 `SetFlag/WaitFlag<HardEvent::MTE2_V>` 同步 MTE2→V。
+2. **Vec2 写端 V_MTE3 同步**：去掉 Cast 后补上 `SetFlag/WaitFlag<HardEvent::V_MTE3>(vToMte3Id)`，确保 V pipe（FlashUpdateNew）写完 `vec2ResUb` 后 MTE3 pipe（DataCopyPad）才开始读。
+3. **Vec2 写端 srcStride 修正**：fp32 下 `(dTemplateAlign64 - dSizeV) >> 3`（而非 `>> 4`，后者是 bf16 的步长）。
+4. **Host workspace 对齐**：`tiling.cpp` 中 `VEC_RES_ELEM_SIZE` 从 2(bf16) 改为 4(fp32)，新增 `FD_BLOCK_ELEM=8`，`s2SplitStagingPerCore` 计算与 kernel 端一致。
+
+### 当前状态
+- **超时已消除**，kernel 正常执行完成
+- 精度 0.01%，需继续排查 FD reduce 数值正确性
+
+### 涉及文件
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：FD step 4 同步修复、Vec2 写端 V_MTE3 同步和 srcStride
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_kernel.h`：printf 清理
+- `op_host/mixed_quant_sparse_flash_mla_tiling.cpp`：workspace 大小对齐

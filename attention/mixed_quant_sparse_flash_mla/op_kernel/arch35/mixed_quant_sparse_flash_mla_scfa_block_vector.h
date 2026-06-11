@@ -942,9 +942,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             stagingOut.SetGlobalBuffer((__gm__ float *)(basePtr + workspaceIdx * ATTEN_OUT_BYTES));
             uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
                 static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
             DataCopyExtParams outParams;
             outParams.blockLen = constInfo.dSizeV * sizeof(float);
-            outParams.srcStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
+            outParams.srcStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 3);
             outParams.dstStride = 0;
             outParams.blockCount = runInfo.vec2MRealSize;
             DataCopyPad(stagingOut[stagingMOffset * constInfo.dSizeV], vec2ResUb, outParams);
@@ -989,9 +991,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo,
     mm2ResPos &tempBuf)
 {
-    printf("fdRunInfo.mIdx: %d\n", fdRunInfo.mIdx);
-    printf("fdRunInfo.mStartIdx: %d\n", fdRunInfo.mStartIdx);
-    printf("fdRunInfo.mNum: %d\n", fdRunInfo.mNum);
     int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
     int64_t seqOffset = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -1061,7 +1060,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
 
         // ========== 4. 逐split读回partial output并reduce累加 ==========
         for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
-            WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
             DataCopyExtParams inParams;
             inParams.blockLen = constInfo.dSizeV * sizeof(float);
             inParams.srcStride = 0;
@@ -1075,9 +1073,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
             SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 
-            DumpTensor(lseExpUb, 111, 16);
-            DumpTensor(blockMaxUb, 112, 16);
-            DumpTensor(partialOFp32, 113, 16);
             LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
             FaVectorApi::ReduceFinalRes_VF<T>(chunkAccumO, lseExpUb, partialOFp32,
                 dealRowCount, static_cast<uint64_t>(dTemplateAlign64), splitIdx);
