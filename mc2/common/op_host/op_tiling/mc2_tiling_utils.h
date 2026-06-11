@@ -48,6 +48,7 @@ constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
+constexpr char MC2_BATCH_INVARIANT[] = "ASCEND_MC2_BATCH_INVARIANT";
 /**
 当前通信API未提供枚举，后续会提供
 0：默认值 1：HOST_TS（A2/3支持 A5不支持）2：AICPU_TS（A2/3支持 A5不支持）
@@ -139,6 +140,7 @@ HcclDataType ConvertGeTypeToHcclType(const std::string &opName,
                                      ge::DataType type);
 bool CheckSuppportedFormat(ge::Format format);
 bool IsDeterministic();
+bool IsBatchInvariant();
 bool GetRankSize(const std::string &opName, const char *group,
                  int64_t &rankSize);
 bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize);
