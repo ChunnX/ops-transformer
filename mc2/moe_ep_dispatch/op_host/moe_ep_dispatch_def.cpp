@@ -70,6 +70,7 @@ public:
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("expert_alignment").AttrType(OPTIONAL).Int(1);
         this->Attr("do_cpu_sync").AttrType(OPTIONAL).Bool(true);
+        this->Attr("host_pinned_counter_addr").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
