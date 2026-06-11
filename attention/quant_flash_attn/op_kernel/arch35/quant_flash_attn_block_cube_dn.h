@@ -399,7 +399,7 @@ public:
             for (uint32_t loop = 0; loop < loopCnt; ++loop) {
                 if (loop + 1 == loopCnt) {
                     actS2Size = info.actSingleLoopS2Size - loop * QK_L0_S2_SPLIT_SIZE;
-                    actS2SizeAlign = info.actSingleLoopS2SizeAlign - loop * QK_L0_S2_SPLIT_SIZE;
+                    actS2SizeAlign = info.actSingleLoopS2SizeAlign16 - loop * QK_L0_S2_SPLIT_SIZE;
                 }
 
                 WaitFlag<HardEvent::FIX_M>(QK_L0C_EVENT0 + qkL0cBufId);
@@ -432,10 +432,26 @@ public:
     __aicore__ inline void ComputeMm2(const RunInfo &info)
     {
         WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
+            InitConstValueParams<uint16_t> PL1InitParams (1, static_cast<uint16_t>(info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2SizeAlign), 0, 0x0000);
+            uint32_t l1P_Base_Offset = (info.loop % 20) * L1_P_SIZE;
+            // uint32_t POffset =  info.actSingleLoopS2SizeAlign * info.actMSizeAlign128 / 2 / 2;
+            Fill(pL1Tensor[l1P_Base_Offset + info.actSingleLoopS2SizeAlign * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
+            if (info.actMSizeAlign128 == mBaseSize) {
+                Fill(pL1Tensor[l1P_Base_Offset + 2 * info.actSingleLoopS2SizeAlign * 32 + 32 * 32].template ReinterpretCast<uint16_t>(), PL1InitParams);
+            }
+        }
         CopyVGmToL1(info);
         CopyVScaleGmToL1(info);
         SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
+        if (info.actSingleLoopS2Size != info.actSingleLoopS2SizeAlign64) {
+            InitConstValueParams<uint16_t> kvL1InitParams (1, static_cast<uint16_t>((info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2Size)), 0, 0x0000);
+            uint32_t l1V_Base_Offset = kvBufId * L1_KV_SIZE;
+            uint32_t vOffset = constInfo.dSize / 4 * info.actSingleLoopS2Size;
+            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size * 2 + (info.actSingleLoopS2SizeAlign64-info.actSingleLoopS2Size) * constInfo.dSize  / 4].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        }
         {
             if (info.isC2Sync) {
                 WaitFlag<HardEvent::FIX_M>(PV_L0C_EVENT0 + pvL0cBufId);
@@ -460,6 +476,7 @@ public:
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
+        InitL0BufferForReduceSum();
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)
@@ -608,7 +625,7 @@ private:
         //     .dstGap = 0,
         //     .initValue = 0x7777
         // );
-        InitConstValueParams<uint16_t> vL1InitParams (1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x2222);
+        InitConstValueParams<uint16_t> vL1InitParams (1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         Fill(kvL1Tensor[l1BaseOffset].template ReinterpretCast<uint16_t>(), vL1InitParams);
 
@@ -619,7 +636,7 @@ private:
         //     .dstGap = 0,
         //     .initValue = 0x7f7f
         // );
-        InitConstValueParams<uint16_t> vScaleL1InitParams (1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7f7f);
+        InitConstValueParams<uint16_t> vScaleL1InitParams (1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
         uint32_t vScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         Fill(kvDescaleL1Tensor[vScaleL1Offset].template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
 
@@ -661,7 +678,7 @@ private:
     __aicore__ inline void CopyQGmToL1(const RunInfo &info)
     {
         uint64_t queryL1BaseOffset = qBufId * (L1_Q_SIZE / sizeof(DATA_T));
-        uint32_t dstStride = (info.actMSize + 31) >> 5 << 5;
+        uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
         // dSize是QUANT_T的元素数, 先转换为字节数, 再转成DATA_T的元素数
         FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor {
             .tensor = qL1Tensor[queryL1BaseOffset],
@@ -702,7 +719,7 @@ private:
     __aicore__ inline void CopyVGmToL1(const RunInfo &info)
     {
         uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t dstStride = info.actSingleLoopS2SizeAlign;
+        uint32_t dstStride = info.actSingleLoopS2SizeAlign64;
         FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor {
             .tensor = kvL1Tensor[l1BaseOffset],
             .rowCount = dstStride
@@ -723,7 +740,7 @@ private:
     __aicore__ inline void CopyQScaleGmToL1(const RunInfo &info)
     {
         uint32_t offset = qBufId * (L1_Q_DESCALE_SIZE / sizeof(SCALE_T));
-        uint32_t dstStride = (info.actMSize + 31) >> 5 << 5;
+        uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
         uint32_t dDealSize = constInfo.dSize / MXFP_GROUP_SIZE;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
             .tensor = qDescaleL1Tensor[offset],
@@ -768,7 +785,7 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = ((info.actMSize + 31) >> 5 << 5) / 16;
+        loadData2DParamsA.mStep = ((info.actMSizeAlign128 + 31) >> 5 << 5) / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
         loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
@@ -777,7 +794,7 @@ private:
         LoadData2DMxParams loadData2DMxParamsA;
         loadData2DMxParamsA.xStartPosition = 0;
         loadData2DMxParamsA.yStartPosition = 0;
-        loadData2DMxParamsA.xStep = ((info.actMSize + 31) >> 5 << 5) / 16;       // 128 为 M 轴
+        loadData2DMxParamsA.xStep = ((info.actMSizeAlign128 + 31) >> 5 << 5) / 16;       // 128 为 M 轴
         loadData2DMxParamsA.yStep = loadData2DParamsA.kStep;
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
@@ -821,7 +838,7 @@ private:
     {
         MmadParams mmadParams;
         mmadParams.m = actS2Size;
-        mmadParams.n = info.actMSize;
+        mmadParams.n = info.actMSizeAlign128;
         mmadParams.k = constInfo.dSize;
         mmadParams.cmatrixInitVal = true;
         mmadParams.cmatrixSource = false;
@@ -838,7 +855,7 @@ private:
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (info.actMSize + 7) >> 3 << 3;
+        fixpipeParams.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeParams.mSize = (actS2Size + 1) >> 1 << 1;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
@@ -863,7 +880,7 @@ private:
         uint32_t offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
             .tensor = kvDescaleL1Tensor[offset],
-            .rowCount = info.actSingleLoopS2Size / 64
+            .rowCount = info.actSingleLoopS2SizeAlign64 / 64
         };
 
         GmKvCoord gmCoord {
@@ -871,7 +888,7 @@ private:
             .n2Idx = info.n2Idx,
             .s2Idx = info.s2Idx / 64,
             .dIdx = 0,
-            .s2DealSize = info.actSingleLoopS2Size / 64,
+            .s2DealSize = info.actSingleLoopS2SizeAlign64 / 64,
             .dDealSize = 2 * constInfo.dSize
         };
 
@@ -883,8 +900,8 @@ private:
         LoadData2DParamsV2 loadData2DParamsB;
         loadData2DParamsB.mStartPosition = 0;
         loadData2DParamsB.kStartPosition = 0;
-        loadData2DParamsB.mStep = (info.actSingleLoopS2Size + 15) / 16;
-        loadData2DParamsB.kStep = info.actMSize / GetBlockElemCnt<QUANT_T>();
+        loadData2DParamsB.mStep = (info.actSingleLoopS2SizeAlign64 + 15) / 16;
+        loadData2DParamsB.kStep = info.actMSizeAlign128 / GetBlockElemCnt<QUANT_T>();
 
         loadData2DParamsB.srcStride = loadData2DParamsB.mStep;
         loadData2DParamsB.dstStride = AttentionCommon::Align((uint32_t)constInfo.dSize, (uint32_t)GetBlockElemCnt<QUANT_T>()) / 16;
@@ -894,7 +911,7 @@ private:
         load2DMxParamsB.xStartPosition = 0;
         load2DMxParamsB.yStartPosition = 0;
         load2DMxParamsB.xStep = constInfo.dSize / 16;
-        load2DMxParamsB.yStep = (info.actSingleLoopS2Size + 63) / 64;
+        load2DMxParamsB.yStep = (info.actSingleLoopS2SizeAlign64 + 63) / 64;
         load2DMxParamsB.srcStride = 5; // S2BaseSIze=256，5由s2BaseSize / 64 + 1得到，1为解UB Bank冲突预留的一个Block，一次全拷过来
         load2DMxParamsB.dstStride = load2DMxParamsB.yStep;
 
@@ -910,10 +927,11 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = ((info.actSingleLoopS2Size + 15) / 16 + 3) / 4 * 4;
+        // loadData2DParamsA.mStep = ((info.actSingleLoopS2SizeAlign64 + 15) / 16 + 3) / 4 * 4;
+        loadData2DParamsA.mStep = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         
-        loadData2DParamsA.srcStride = (info.actSingleLoopS2Size + 15) / 16;
+        loadData2DParamsA.srcStride = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.dstStride = (constInfo.dSize + 15) / 16 + 1;
         loadData2DParamsA.ifTranspose = true;
 
@@ -921,7 +939,7 @@ private:
         load2DMxParamsA.xStartPosition = 0;
         load2DMxParamsA.yStartPosition = 0;
         load2DMxParamsA.xStep = (constInfo.dSize + 15) / 16;
-        load2DMxParamsA.yStep = (info.actSingleLoopS2Size + GetBlockElemCnt<QUANT_T>() - 1) / GetBlockElemCnt<QUANT_T>(); // 2Byte分形的行数，64个V在S2方向上的元素一组对应一个2Byte分形
+        load2DMxParamsA.yStep = (info.actSingleLoopS2SizeAlign64 + GetBlockElemCnt<QUANT_T>() - 1) / GetBlockElemCnt<QUANT_T>(); // 2Byte分形的行数，64个V在S2方向上的元素一组对应一个2Byte分形
         load2DMxParamsA.srcStride = load2DMxParamsA.yStep;
         load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
 
@@ -935,8 +953,8 @@ private:
     {
         MmadParams mmadParams;
         mmadParams.m = constInfo.dSize + 16;
-        mmadParams.n = info.actMSize;
-        mmadParams.k = info.actSingleLoopS2Size;
+        mmadParams.n = info.actMSizeAlign128;
+        mmadParams.k = info.actSingleLoopS2SizeAlign64;
         mmadParams.cmatrixInitVal = info.isC2Sync;
         mmadParams.cmatrixSource = false;
         mmadParams.disableGemv = true;
@@ -952,7 +970,7 @@ private:
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (info.actMSize + 7) >> 3 << 3;
+        fixpipeParams.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可
         fixpipeParams.mSize = constInfo.dSize + 1;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
