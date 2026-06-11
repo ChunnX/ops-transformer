@@ -14,7 +14,7 @@
 
 ## 功能说明
 
-- 算子功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（run_mode=0）和状态更新（run_mode=1）两种运行模式。
+- 算子功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill / chunk-prefill）和状态更新（decode / update）两种运行模式，模式由输入形状自动推断。
 
 - 计算公式：
 
@@ -26,7 +26,7 @@
 
   其中，$W$ 为卷积核宽度（支持2、3、4），$w_j$ 为卷积权重，$b$ 为偏置（可选），$\text{Activation}$ 为激活函数（可选，SiLU）。当 `activation_mode=0` 时不使用激活函数，`activation_mode=1` 时使用 SiLU 激活函数。
 
-  算子同时维护卷积状态 `conv_states`，用于在增量推理（run_mode=1）时缓存历史输入，实现高效的状态更新。
+   算子同时维护卷积状态 `conv_states`，用于在增量推理时缓存历史输入，实现高效的状态更新。
 
 
 ## 参数说明
@@ -62,13 +62,6 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>bias</td>
-    <td>输入</td>
-    <td>偏置，公式中的b。可选输入，若不提供则默认为0。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-  </tr>
-  <tr>
     <td>conv_states</td>
     <td>输入&输出</td>
     <td>卷积状态，缓存历史输入用于因果卷积计算。</td>
@@ -76,31 +69,38 @@
     <td>ND</td>
   </tr>
   <tr>
+    <td>bias</td>
+    <td>输入</td>
+    <td>偏置，公式中的b。可选输入，若不提供则默认为0。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
     <td>query_start_loc</td>
     <td>输入</td>
     <td>变长序列的起始位置索引，用于变长输入模式。可选输入。</td>
-    <td>INT64</td>
+    <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>cache_indices</td>
     <td>输入</td>
     <td>序列到状态缓存的映射索引。可选输入。</td>
-    <td>INT64</td>
+    <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>initial_state_mode</td>
     <td>输入</td>
     <td>标记序列是否有初始状态。可选输入。</td>
-    <td>INT64</td>
+    <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>num_accepted_tokens</td>
     <td>输入</td>
     <td>每个序列接受的token数量，用于投机解码。可选输入。</td>
-    <td>INT64</td>
+    <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
@@ -118,8 +118,7 @@
 | 属性名 | 描述 | 数据类型 | 默认值 |
 |:---:|:---:|:---:|:---:|
 | activation_mode | 激活函数模式。0：不使用激活函数，1：使用SiLU激活函数。 | INT64 | 0 |
-| pad_slot_id | 无效缓存槽位的标记ID，用于跳过不需要计算的序列。 | INT64 | -1 |
-| run_mode | 运行模式。0：前向计算模式（fn），1：状态更新模式（update）。 | INT64 | 0 |
+| null_block_id | 无效缓存槽位的标记ID，用于跳过不需要计算的序列。 | INT64 | 0 |
 
 ## 约束说明
 - 输入tensor的shape大小需满足一定约束，具体见[aclnnCausalConv1d](./docs/aclnnCausalConv1d.md)。

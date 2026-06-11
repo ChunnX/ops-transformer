@@ -26,21 +26,21 @@
                     ]
                 },
                 {
-                    "name": "bias",
+                    "name": "conv_states",
                     "index": 2,
                     "dtype": "float16",
                     "format": "ND",
-                    "paramType": "optional",
+                    "paramType": "required",
                     "shape": [
                         -2
                     ]
                 },
                 {
-                    "name": "conv_states",
+                    "name": "bias",
                     "index": 3,
                     "dtype": "float16",
                     "format": "ND",
-                    "paramType": "required",
+                    "paramType": "optional",
                     "shape": [
                         -2
                     ]
@@ -93,20 +93,25 @@
                     "value": 0
                 },
                 {
-                    "name": "pad_slot_id",
-                    "dtype": "int",
-                    "value": -1
-                },
-                {
-                    "name": "run_mode",
+                    "name": "null_block_id",
                     "dtype": "int",
                     "value": 0
                 }
             ],
             "outputs": [
                 {
-                    "name": "y",
+                    "name": "conv_states",
                     "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "y",
+                    "index": 1,
                     "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
@@ -140,21 +145,21 @@
                     ]
                 },
                 {
-                    "name": "bias",
+                    "name": "conv_states",
                     "index": 2,
                     "dtype": "bfloat16",
                     "format": "ND",
-                    "paramType": "optional",
+                    "paramType": "required",
                     "shape": [
                         -2
                     ]
                 },
                 {
-                    "name": "conv_states",
+                    "name": "bias",
                     "index": 3,
                     "dtype": "bfloat16",
                     "format": "ND",
-                    "paramType": "required",
+                    "paramType": "optional",
                     "shape": [
                         -2
                     ]
@@ -207,20 +212,25 @@
                     "value": 0
                 },
                 {
-                    "name": "pad_slot_id",
-                    "dtype": "int",
-                    "value": -1
-                },
-                {
-                    "name": "run_mode",
+                    "name": "null_block_id",
                     "dtype": "int",
                     "value": 0
                 }
             ],
             "outputs": [
                 {
-                    "name": "y",
+                    "name": "conv_states",
                     "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ]
+                },
+                {
+                    "name": "y",
+                    "index": 1,
                     "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",

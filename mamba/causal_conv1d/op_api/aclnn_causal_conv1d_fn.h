@@ -20,16 +20,35 @@ extern "C" {
 
 /**
  * @brief aclnnCausalConv1dFn (prefill / chunk-prefill) 的第一段接口，计算workspace大小。
+ * @param [in] x 输入张量，shape为[B, L, D]（batch模式）或[T, D]（varlen模式），数据类型为FLOAT16或BFLOAT16
+ * @param [in] weight 卷积权重张量，shape为[W, D]，数据类型与x相同
+ * @param [in, out] convStatesRef 卷积状态张量，shape为[num_cache_lines, state_len, D]，数据类型与x相同
+ * @param [in] biasOptional 可选偏置张量，shape为[D]，数据类型与x相同
+ * @param [in] queryStartLocOptional 可选的变长序列起始位置，shape为[batch+1]，数据类型为INT32
+ * @param [in] cacheIndicesOptional 可选的缓存索引，shape为[batch]，数据类型为INT32
+ * @param [in] initialStateModeOptional 可选的初始状态模式，shape为[batch]，数据类型为INT32
+ * @param [in] initialStateIdxOptional 可选的初始状态索引，shape为[batch]，数据类型为INT32
+ * @param [in] numComputedTokensOptional 可选的已计算token数，shape为[batch]，数据类型为INT32
+ * @param [in] blockIdxFirstScheduledTokenOptional 可选的首个调度token块索引，shape为[batch]，数据类型为INT32
+ * @param [in] blockIdxLastScheduledTokenOptional 可选的最后调度token块索引，shape为[batch]，数据类型为INT32
+ * @param [in] activationMode 激活模式，0表示Identity，1表示SiLU
+ * @param [in] nullBlockId 空块ID，用于跳过不需要计算的序列
+ * @param [in] blockSizeToAlign 块大小对齐参数
+ * @param [out] y 输出张量，shape与x相同，数据类型与x相同
+ * @param [out] workspaceSize workspace大小（字节）
+ * @param [out] executor 执行器指针
+ * @return ACLNN_SUCCESS 成功
+ * @return ACLNN_ERR_PARAM_NULLPTR 参数为空指针
+ * @return ACLNN_ERR_INNER_TILING_ERROR 内部tiling错误
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dFnGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, aclTensor *convStatesRef,
+    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
     const aclTensor *queryStartLocOptional, const aclTensor *cacheIndicesOptional,
     const aclTensor *initialStateModeOptional, const aclTensor *initialStateIdxOptional,
     const aclTensor *numComputedTokensOptional, const aclTensor *blockIdxFirstScheduledTokenOptional,
-    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t padSlotId,
-    int64_t nullBlockId, int64_t blockSizeToAlign, aclTensor *y, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t nullBlockId,
+    int64_t blockSizeToAlign, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* @brief aclnnCausalConv1dFn 的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnCausalConv1dFn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

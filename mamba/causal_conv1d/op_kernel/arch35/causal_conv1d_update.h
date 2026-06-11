@@ -35,12 +35,12 @@ template <typename T, uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBias
 class CausalConv1dUpdate : public CausalConv1d<T, inputModeKey, widthKey, hasBiasKey, activationKey> {
 public:
     // ---- Init: 绑定 GM buffer + 分配 UB buffer --------------------------
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates, GM_ADDR queryStartLoc,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR, GM_ADDR numAcceptedTokens, GM_ADDR convStatesOut,
                                 GM_ADDR y, GM_ADDR workspace, const CausalConv1dTilingData *tilingData)
     {
         (void)workspace;
-        this->InitGlobalBuffers(x, weight, bias, convStates, queryStartLoc, cacheIndices, y, convStatesOut, tilingData);
+        this->InitGlobalBuffers(x, weight, convStates, bias, queryStartLoc, cacheIndices, y, convStatesOut, tilingData);
         this->numAcceptedTokensGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(numAcceptedTokens));
         this->InitBuffers(); // 分配 inBuf / outBuf / calcBuf，并初始化 dimBufferSize_
     }
@@ -230,6 +230,7 @@ protected:
         // slot0 = (width-1) % (width+1) = width-1，即最后一个 slot
         const int32_t slot0 = CurrSlot(0, kernelWidth);
         const uint32_t srcGapBatch = static_cast<uint32_t>(seqLen * dim - baseDim) * sizeof(T);
+
         DataCopyPad(ring[slot0 * this->dimBufferSize_], this->xGm_[start * dim + dimStart],
                     {static_cast<uint16_t>(coBatch), blockBytes, srcGapBatch, 0, 0}, {false, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -297,6 +298,7 @@ protected:
 
             const int64_t outGmBase = static_cast<int64_t>(start + t) * dim + dimStart;
             const uint32_t dstGapY = static_cast<uint32_t>(seqLen * dim - baseDim) * sizeof(T);
+
             DataCopyPad(this->yGm_[outGmBase], outT[outSlot * this->dimBufferSize_],
                         {static_cast<uint16_t>(coBatch), blockBytes, 0, dstGapY, 0});
             if (t + 2 < len) {
@@ -322,13 +324,13 @@ protected:
 };
 
 template <typename T, uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBiasKey, uint32_t activationKey>
-__aicore__ inline void RunCausalConv1dUpdate(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates,
+__aicore__ inline void RunCausalConv1dUpdate(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias,
                                              GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR initialStateMode,
                                              GM_ADDR numAcceptedTokens, GM_ADDR convStatesOut, GM_ADDR y,
                                              GM_ADDR workspace, const CausalConv1dTilingData *tilingData)
 {
     CausalConv1dUpdate<T, inputModeKey, widthKey, hasBiasKey, activationKey> op;
-    op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
+    op.Init(x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
             convStatesOut, y, workspace, tilingData);
     op.Process();
 }

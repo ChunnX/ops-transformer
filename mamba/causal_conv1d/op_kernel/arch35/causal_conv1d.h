@@ -46,7 +46,7 @@ class CausalConv1d {
 public:
     __aicore__ inline CausalConv1d() = default;
 
-    __aicore__ inline void InitGlobalBuffers(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates,
+    __aicore__ inline void InitGlobalBuffers(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias,
                                              GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR y,
                                              GM_ADDR convStatesOut, const CausalConv1dTilingData *tilingData)
     {
@@ -337,22 +337,17 @@ protected:
 
         LocalTensor<T> ring = this->inTensor_;
         const int32_t ringSize = width + 1;
-        const int32_t firstAliveSlot = len % ringSize;
-        const int32_t lastAliveSlot = (len + width - 2) % ringSize;
+
+        // Write the last wCount tokens from the ring, going backwards from the newest.
+        const int32_t aliveCount = width; // InitRing always fills width tokens into the ring
+        uint16_t wCount = static_cast<uint16_t>(aliveCount < stateLen ? aliveCount : stateLen);
+        const int32_t endSlot = CausalConv1dUtil::CurrSlot(len - 1, width);
+        const int32_t startSlot = CausalConv1dUtil::CurrSlot(len - wCount, width);
+
         const int64_t stateBaseOffset =
             static_cast<int64_t>(cacheIdx) * stateLen * dim + static_cast<int64_t>(destStart) * dim + dimStart;
         const uint32_t blockBytes = static_cast<uint32_t>(baseDim) * sizeof(T);
         const uint32_t dstGap = static_cast<uint32_t>(dim - baseDim) * sizeof(T);
-
-        // When len < width, InitRing loaded width tokens (history + current),
-        // all still alive. Start from slot 0 and write up to stateLen tokens.
-        bool fullRing = (len < width);
-        int32_t startSlot = fullRing ? 0 : firstAliveSlot;
-        int32_t endSlot = fullRing ? (width - 1) : lastAliveSlot;
-        uint16_t wCount = static_cast<uint16_t>(fullRing ? width : (width - 1));
-        if (wCount > stateLen) {
-            wCount = static_cast<uint16_t>(stateLen);
-        }
 
         DataCopyExtParams copyParams;
         copyParams.blockLen = blockBytes;
@@ -400,7 +395,7 @@ protected:
 
     // 查询 batchId 对应的物理 cache slot，用于多请求复用 conv_states 的场景。
     // cacheIndices 是 1D tensor，shape (batch,)，每个元素告知对应 batch 读哪个 slot。
-    // 当 cacheIndices[batchId] == padSlotId 时返回 false，表示该 batch 为填充位应跳过。
+    // 当 cacheIndices[batchId] == nullBlockId 时返回 false，表示该 batch 为填充位应跳过。
     __aicore__ inline bool ResolveBatchCacheIndex(int32_t batchId, bool hasCacheIndices, int32_t &cacheIdx) const
     {
         cacheIdx = batchId;
@@ -409,7 +404,7 @@ protected:
         }
 
         const int32_t cacheIdxVal = this->cacheIndicesGm_.GetValue(batchId);
-        if (cacheIdxVal == this->tilingData_->padSlotId) {
+        if (cacheIdxVal == this->tilingData_->nullBlockId) {
             return false;
         }
         cacheIdx = cacheIdxVal;

@@ -28,13 +28,16 @@ class CausalConv1dFnOpBuilder(OpBuilder):
             "npu_causal_conv1d_fn("
             "Tensor x, Tensor weight, Tensor? bias, "
             "Tensor conv_states, "
-            "Tensor? query_start_loc, Tensor? cache_indices, "
-            "Tensor? has_initial_state, Tensor? initial_state_idx, "
-            "Tensor? num_computed_tokens, "
+            "Tensor query_start_loc, "
+            "Tensor? cache_indices, "
+            "Tensor? has_initial_state, "
+            "str? activation, "
+            "int pad_slot_id, int null_block_id, "
             "Tensor? block_idx_first_scheduled_token, "
             "Tensor? block_idx_last_scheduled_token, "
-            "int activation_mode, int pad_slot_id, "
-            "int null_block_id, int block_size_to_align"
+            "Tensor? initial_state_idx, "
+            "Tensor? num_computed_tokens, "
+            "int block_size_to_align"
             ") -> Tensor"
         )
 
@@ -45,14 +48,13 @@ class CausalConv1dFnOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_causal_conv1d_fn_meta(
-            x, weight, bias, conv_states,
-            query_start_loc=None, cache_indices=None,
-            has_initial_state=None, initial_state_idx=None,
-            num_computed_tokens=None,
+            x, weight, bias, conv_states, query_start_loc,
+            cache_indices=None, has_initial_state=None,
+            activation="silu", pad_slot_id=-1, null_block_id=-1,
             block_idx_first_scheduled_token=None,
             block_idx_last_scheduled_token=None,
-            activation_mode=1, pad_slot_id=-1,
-            null_block_id=-1, block_size_to_align=0,
+            initial_state_idx=None, num_computed_tokens=None,
+            block_size_to_align=0,
         ):
             y = torch.empty_like(x)
             return y
@@ -65,14 +67,13 @@ _op_module = _causal_conv1d_fn_op_builder.load()
 
 @impl(AS_LIBRARY, _causal_conv1d_fn_op_builder.name, "PrivateUse1")
 def npu_causal_conv1d_fn(
-    x, weight, bias, conv_states,
-    query_start_loc=None, cache_indices=None,
-    has_initial_state=None, initial_state_idx=None,
-    num_computed_tokens=None,
+    x, weight, bias, conv_states, query_start_loc,
+    cache_indices=None, has_initial_state=None,
+    activation="silu", pad_slot_id=-1, null_block_id=-1,
     block_idx_first_scheduled_token=None,
     block_idx_last_scheduled_token=None,
-    activation=None, pad_slot_id=-1,
-    null_block_id=-1, block_size_to_align=0,
+    initial_state_idx=None, num_computed_tokens=None,
+    block_size_to_align=0,
 ):
     """
     Prefill / chunk-prefill mode.
@@ -82,22 +83,22 @@ def npu_causal_conv1d_fn(
         weight: convolution weight [kW, D]
         bias: optional bias [D]
         conv_states: convolution hidden states [B, kW-1, D] (in/out)
-        query_start_loc: optional query start locations for varlen
+        query_start_loc: query start locations for varlen
         cache_indices: optional cache line index per batch
         has_initial_state: optional flag per sequence
-        initial_state_idx: optional index of sequences with initial state  (NEW, not yet wired)
-        num_computed_tokens: optional computed token count              (NEW, not yet wired)
-        block_idx_first_scheduled_token: optional                       (NEW, not yet wired)
-        block_idx_last_scheduled_token: optional                        (NEW, not yet wired)
         activation: "silu" or None
         pad_slot_id: padding slot id
-        null_block_id: null block id                                    (NEW, not yet wired)
-        block_size_to_align: block alignment hint                       (NEW, not yet wired)
+        null_block_id: null block id
+        block_idx_first_scheduled_token: optional
+        block_idx_last_scheduled_token: optional
+        initial_state_idx: optional index of sequences with initial state
+        num_computed_tokens: optional computed token count
+        block_size_to_align: block alignment hint
 
     Returns:
         y: output tensor
     """
-    activation_mode = 1 if activation == "silu" else 0
+    activation_mode = 1 if activation in ["silu", "swish"] else 0
     return _op_module.npu_causal_conv1d_fn(
         x, weight, bias, conv_states,
         query_start_loc, cache_indices,
