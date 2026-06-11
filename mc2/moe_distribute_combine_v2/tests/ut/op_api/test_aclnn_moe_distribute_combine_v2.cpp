@@ -31,7 +31,7 @@ using namespace std;
 namespace MoeDistributeCombineV2 {
 namespace {
 constexpr int64_t EP_WORLD_SIZE = 288;
-constexpr int64_t TP_WORLD_SIZE = 2;
+constexpr int64_t TP_WORLD_SIZE = 1;
 constexpr int64_t EP_RANK_ID = 0;
 constexpr int64_t TP_RANK_ID = 0;
 constexpr int64_t EXPERT_SHARD_TYPE = 0;
@@ -114,7 +114,7 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
   TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
   TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
   TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-  TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+  TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
   TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
   TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
   TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -123,7 +123,7 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
   TensorDesc sharedExpertX = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
 
   int64_t epWorldSize = 288;
-  int64_t tpWorldSize = 2;
+  int64_t tpWorldSize = 1;
   int64_t epRankId = 0;
   int64_t tpRankId = 0;
   int64_t expertShardType = 0;

@@ -64,7 +64,7 @@ class MoeDistributeCombineA5 {
 public:
     __aicore__ inline MoeDistributeCombineA5(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
-                                GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX,
+                                GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX,
                                 GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void Process();
@@ -209,7 +209,7 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5Type
 
 template <TemplateMoeDistributeCombineA5TypeClass>
 __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5TypeFunc>::Init(GM_ADDR expandX,
-    GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
+    GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
     GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedExpertX, GM_ADDR XOut, GM_ADDR workspaceGM,
     TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {
