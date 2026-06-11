@@ -163,6 +163,16 @@ bool IsDeterministic() {
   return true;
 }
 
+bool IsBatchInvariant()
+{
+    if (getenv(MC2_BATCH_INVARIANT) == nullptr) {
+        return false;
+    }
+    std::string envStr(getenv(MC2_BATCH_INVARIANT));
+    std::transform(envStr.begin(), envStr.end(), envStr.begin(), ::toupper);
+    return (envStr == "TRUE") || (envStr == "1");
+}
+
 uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
                        const gert::TilingContext *context) {
   auto platformInfo = context->GetPlatformInfo();
