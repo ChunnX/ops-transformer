@@ -33,12 +33,11 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2_metadata.default)
-    def convert_npu_quant_lightning_indexer_v2_metadata(
-        num_heads_q: int, num_heads_kv: int, head_dim: int, topk: int, quant_mode: int, *,
-        cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None,
-        seqused_q: Optional[Tensor] = None, seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None,
-        batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
-        layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
-        cmp_ratio: Optional[int] = None, meta_outputs: TensorSpec = None):
-        raise RuntimeError("GE converter doesn't support op: 'npu_quant_lightning_indexer_v2_metadata'")
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.lightning_indexer_metadata.default)
+    def convert_lightning_indexer_metadata(
+        num_heads_q: int, num_heads_kv: int, head_dim: int, topk: int, *, cu_seqlens_q: Optional[Tensor] = None,
+        cu_seqlens_k: Optional[Tensor] = None, seqused_q: Optional[Tensor] = None, seqused_k: Optional[Tensor] = None,
+        cmp_residual_k: Optional[Tensor] = None, batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None,
+        max_seqlen_k: Optional[int] = None, layout_q: Optional[str] = None, layout_k: Optional[str] = None,
+        mask_mode: Optional[int] = None, cmp_ratio: Optional[int] = None, meta_outputs: TensorSpec = None):
+        raise RuntimeError("GE converter doesn't support op: 'lightning_indexer_metadata'")
