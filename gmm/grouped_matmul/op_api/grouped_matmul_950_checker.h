@@ -64,6 +64,13 @@ private:
     aclnnStatus CheckInputAndOutputDtypeForV3Version() const;
     bool CheckTensorListSizeForEachInput() const;
     bool IsSpecialMXCase(const T *tensorList) const;
+    bool IsWeightNzSingleMultiSingleScenario() const;
+    size_t GetQuantLoopSize() const;
+    size_t GetXTensorIndex(size_t index) const;
+    size_t GetWeightTensorIndex(size_t index) const;
+    size_t GetYTensorIndex(size_t index) const;
+    size_t GetScaleTensorIndex(size_t index) const;
+    size_t GetPerTokenScaleTensorIndex(size_t index) const;
     aclnnStatus CheckMxFp8TypeKCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxTypeMCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxBiasInputShape(const TensorDimInfo &dimInfo, size_t index) const;
