@@ -22,9 +22,8 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "stem_indexer_common.h"
-// 临时屏蔽真实 vector/cube 实现，仅用于当前阶段编译验证。
-// #include "stem_indexer_service_vector.h"
-// #include "stem_indexer_service_cube.h"
+#include "stem_indexer_service_vector.h"
+#include "stem_indexer_service_cube.h"
 #include "../stem_indexer_metadata.h"
 
 namespace QLIKernel {
@@ -718,7 +717,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         queryCoreOffset = (qBatchOffset + qHeadOffset + qBlockOffset) *
                           constInfo.headDim;
         // sparse_indices: B,N2,G,S1,S2
-        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
+        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * tempLoopInfo.actS2SizeOrig;
         // sparse_seq_len: B,N2,G,S1
         indiceLenCoreOffset = qBatchOffset + qHeadOffset;
     }
@@ -813,53 +812,26 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+            // 短路分支：s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize 时直接输出连续索引
             if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
-                if ASCEND_IS_AIV {
-                    if (splitCoreInfo.s2Start != 0U) {
-                        splitCoreInfo.s2Start = 0;
-                        continue;
-                    }
-                    SICommon::RunInfo directRunInfo;
-                    directRunInfo.loop = gloop;
-                    directRunInfo.bN2Idx = tempLoopInfo.bN2Idx;
-                    directRunInfo.bIdx = tempLoopInfo.bIdx;
-                    directRunInfo.n2Idx = tempLoopInfo.n2Idx;
-                    directRunInfo.gS1Idx = tempLoopInfo.gS1Idx;
-                    directRunInfo.s2Idx = 0U;
-                    directRunInfo.s2Start = 0U;
-                    directRunInfo.s2LoopEnd = 0U;
-                    directRunInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
-                    directRunInfo.actS1Size = tempLoopInfo.actS1Size;
-                    directRunInfo.actS2Size = tempLoopInfo.actS2Size;
-                    directRunInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
-                    directRunInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2ValidSize;
-                    directRunInfo.actualSingleProcessSInnerSizeAlign = SICommon::Align(
-                        tempLoopInfo.s2ValidSize, SICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
-                    directRunInfo.isFirstS2InnerLoop = true;
-                    directRunInfo.isLastS2InnerLoop = true;
-                    directRunInfo.isAllLoopEnd = (directRunInfo.bN2Idx == splitCoreInfo.bN2End) &&
-                                                 (directRunInfo.gS1Idx == splitCoreInfo.gS1End);
-                    directRunInfo.isValid = true;
-                    directRunInfo.isNeedLD = false;
-
-                    uint64_t actualSeqQPrefixSum;
-                    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-                        uint32_t actualSeqLengthsGmQIdx =
-                            (constInfo.batchSupperFlag) ? directRunInfo.bIdx : directRunInfo.bIdx - 1;
-                        actualSeqQPrefixSum =
-                            (directRunInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
-                    } else {
-                        actualSeqQPrefixSum =
-                            (directRunInfo.bIdx <= 0) ? 0 : directRunInfo.bIdx * constInfo.qSeqSize;
-                    }
-                    uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
-                    uint64_t qHeadOffset = directRunInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    directRunInfo.indiceOutOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
-                    directRunInfo.indiceLenOffset = qBatchOffset + qHeadOffset;
-                    directRunInfo.numPromptTokens = GetPromptTokenLen(directRunInfo.bIdx);
-
-                    vectorService.ProcessDirectOutput(directRunInfo);
-                }
+                // 填充 runInfo（ProcessDirectOutput 需要，CalcRunInfo 未执行）
+                runInfo.gS1Idx = tempLoopInfo.gS1Idx;
+                runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
+                runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+                runInfo.actS1Size = tempLoopInfo.actS1Size;
+                runInfo.bIdx = tempLoopInfo.bIdx;
+                runInfo.n2Idx = tempLoopInfo.n2Idx;
+                
+                // B,N2,G,S1,S2 布局
+                uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
+                // sparse_indices: B,N2,G,S1,S2
+                uint64_t qHeadOffset = directRunInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+                // sparse_seq_len: B,N2,G,S1
+                runInfo.indiceOutOffset = (qBatchOffset + qHeadOffset) * tempLoopInfo.actS2SizeOrig;
+                runInfo.indiceLenCoreOffset = qBatchOffset + qHeadOffset;
+                
+                // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
+                vectorService.ProcessDirectOutput(runInfo);
             } else {
                 runInfo.s2Start = splitCoreInfo.s2Start;
                 runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
@@ -893,6 +865,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
+        if (runInfo.isFirstS2InnerLoop) {
+            vectorService.initS2LenToNeg(runInfo);
+        }
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
