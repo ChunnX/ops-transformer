@@ -96,7 +96,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
 
         uint32_t remain = groupElemNum;
         for (uint16_t i = 0; i < loopNum; i++) {
-            maskLoop = UpdateMask<float>(remain);
+            uint32_t loopElemNum = (remain > vfLen) ? vfLen : remain;
+            maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xReg, xAddr, maskLoop, i * vfLen);
             Abs(absReg, xReg, maskLoop);
             Max(maxReg, maxReg, absReg, maskLoop);
@@ -124,7 +125,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
 
         remain = groupElemNum;
         for (uint16_t i = 0; i < loopNum; i++) {
-            maskLoop = UpdateMask<float>(remain);
+            uint32_t loopElemNum = (remain > vfLen) ? vfLen : remain;
+            maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xReg, xAddr, maskLoop, i * vfLen);
             Div<float, &divMode>(quantReg, xReg, divisorReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outReg, quantReg, maskLoop);

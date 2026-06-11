@@ -72,7 +72,7 @@ enum QuantMode : int8_t {
     MXQUANT_FP4_E2M1 = 9,
     FP8_PERBLOCK_E5M2 = 11,
     FP8_PERBLOCK_E4M3FN = 12,
-    INT4_DYNAMIC_QUANT = 13
+    INT4_DYNAMIC_QUANT = 13,
     FP8_GROUP_AMAX_E5M2 = 14,
     FP8_GROUP_AMAX_E4M3FN = 15
 };
@@ -91,7 +91,7 @@ const std::set<int64_t> validQuantModes = {
     QuantMode::MXQUANT_FP4_E2M1,
     QuantMode::FP8_PERBLOCK_E5M2,
     QuantMode::FP8_PERBLOCK_E4M3FN,
-    QuantMode::INT4_DYNAMIC_QUANT
+    QuantMode::INT4_DYNAMIC_QUANT,
     QuantMode::FP8_GROUP_AMAX_E5M2,
     QuantMode::FP8_GROUP_AMAX_E4M3FN
 };
