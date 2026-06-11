@@ -217,7 +217,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.batchSize = tilingData->bSize;
     constInfo.qHeadNum = tilingData->qHeadNum;
     constInfo.kvHeadNum = tilingData->kvHeadNum;
-    constInfo.kHeadNum = tilingData->kvHeadNum;
     constInfo.gSize = tilingData->gSize;
     constInfo.maxQb = tilingData->maxQb;
     constInfo.maxKb = tilingData->maxKb;
@@ -680,6 +679,9 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         ldInfo.saveWorkSpaceIdx++;
     }
 
+    runInfo.s2Start = splitCoreInfo.s2Start;
+    runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
+
     if (!runInfo.isValid) {
         return;  // 需要验证， v1 时候需要runInfo
     }
@@ -814,31 +816,14 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             // 短路分支：s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize 时直接输出连续索引
             if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
-                // 填充 runInfo（ProcessDirectOutput 需要，CalcRunInfo 未执行）
-                runInfo.gS1Idx = tempLoopInfo.gS1Idx;
-                runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
-                runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
-                runInfo.actS1Size = tempLoopInfo.actS1Size;
-                runInfo.bIdx = tempLoopInfo.bIdx;
-                runInfo.n2Idx = tempLoopInfo.n2Idx;
-                
-                // B,N2,G,S1,S2 布局
-                uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
-                // sparse_indices: B,N2,G,S1,S2
-                uint64_t qHeadOffset = directRunInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                // sparse_seq_len: B,N2,G,S1
-                runInfo.indiceOutOffset = (qBatchOffset + qHeadOffset) * tempLoopInfo.actS2SizeOrig;
-                runInfo.indiceLenCoreOffset = qBatchOffset + qHeadOffset;
-                
-                // 直接输出 [0, 1, ..., validS2Len-1]，跳过 TopK
-                vectorService.ProcessDirectOutput(runInfo);
-            } else {
-                runInfo.s2Start = splitCoreInfo.s2Start;
-                runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
-                for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
-                    ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
-                    ++gloop;
-                }
+                vectorService.ProcessDirectOutput(bN2LoopIdx, gS1LoopIdx);
+                splitCoreInfo.s2Start = 0;
+                continue;
+            }
+            
+            for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
+                ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
+                ++gloop;
             }
             splitCoreInfo.s2Start = 0;
         }
