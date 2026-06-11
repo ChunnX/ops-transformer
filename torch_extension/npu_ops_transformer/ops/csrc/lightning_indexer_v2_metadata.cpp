@@ -17,13 +17,7 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using npu_utils = at_npu::native::NpuUtils;
 constexpr int64_t OUTPUT_SIZE = 1024;
-
-const c10::optional<at::Tensor> li_v2_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
-{
-    return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
-};
 
 at::Tensor npu_lightning_indexer_v2_metadata(
     int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk,
@@ -47,11 +41,11 @@ at::Tensor npu_lightning_indexer_v2_metadata(
     }
 
     at::Tensor output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(output_device));
-    auto cu_seqlens_q_val = li_v2_get_valid_tensor(cu_seqlens_q, output_device);
-    auto cu_seqlens_k_val = li_v2_get_valid_tensor(cu_seqlens_k, output_device);
-    auto seqused_q_val = li_v2_get_valid_tensor(seqused_q, output_device);
-    auto seqused_k_val = li_v2_get_valid_tensor(seqused_k, output_device);
-    auto cmp_residual_k_val = li_v2_get_valid_tensor(cmp_residual_k, output_device);
+    auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
+    auto cu_seqlens_k_val = get_valid_tensor(cu_seqlens_k, output_device);
+    auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
+    auto seqused_k_val = get_valid_tensor(seqused_k, output_device);
+    auto cmp_residual_k_val = get_valid_tensor(cmp_residual_k, output_device);
 
     // convert str
     std::string layout_q_str = std::string(layout_q);
