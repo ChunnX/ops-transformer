@@ -870,7 +870,7 @@ int main() {
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   
-  double scaleValue = 0.088388;
+  double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
   int64_t preTokens = 2147483647;
@@ -945,6 +945,8 @@ int main() {
   aclrtFree(dvDeviceAddr);
   aclrtFree(dqRopeDeviceAddr);
   aclrtFree(dkRopeDeviceAddr);
+  aclrtFree(actSeqQLenDeviceAddr);
+  aclrtFree(actSeqKvLenDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
