@@ -276,25 +276,35 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     const gert::Shape &wShape = wShapePtr->GetOriginShape();
     auto xShapeLen = xShape.GetDimNum();
     auto wShapeLen = wShape.GetDimNum();
+    params.isSingleMultiSingle = context.GetDynamicInputShape(WEIGHT_INDEX, 1) != nullptr;
     OP_CHECK_IF(xShape.GetShapeSize() == 0,
         OP_LOGE(&context, "Not yet support empty tensor for x"), return false);
     OP_CHECK_IF(xShapeLen != DIM_NUM_X,
         OP_LOGE(&context, "input dimension of x should be %zu, but got %zu", DIM_NUM_X, xShapeLen),
         return false);
-    OP_CHECK_IF(wShapeLen != DIM_NUM_WEIGHT_ND,
-        OP_LOGE(&context, "input dimension of weight should be %zu, but got %zu", DIM_NUM_WEIGHT_ND, wShapeLen),
+    uint64_t expectedWeightDim = params.isSingleMultiSingle ? DIM_NUM_WEIGHT_ND - 1 : DIM_NUM_WEIGHT_ND;
+    OP_CHECK_IF(wShapeLen != expectedWeightDim,
+        OP_LOGE(&context, "input dimension of weight should be %lu, but got %zu", expectedWeightDim, wShapeLen),
         return false);
 
     // - 1 为内轴
     auto xInner = xShape.GetDim(DIM_NUM_X - 1);
-    auto wInner = wShape.GetDim(DIM_NUM_WEIGHT_ND - 1);
+    auto wInner = wShape.GetDim(wShapeLen - 1);
     OP_CHECK_IF(xInner != wInner,
         OP_LOGE(&context, "Inputs dimension is not match, x kSize=%ld, weight kSize=%ld", xInner, wInner),
         return false);
     params.mSize = xShape.GetDim(DIM_0);
     params.kSize = xInner;
-    params.nSize = wShape.GetDim(DIM_1);
-    params.groupNum = wShape.GetDim(DIM_0);
+    params.nSize = params.isSingleMultiSingle ? wShape.GetDim(DIM_0) : wShape.GetDim(DIM_1);
+    params.groupNum = params.isSingleMultiSingle ? 0 : wShape.GetDim(DIM_0);
+    if (params.isSingleMultiSingle) {
+        for (uint32_t i = 0; i < MAX_GROUP_NUM; ++i) {
+            if (context.GetDynamicInputShape(WEIGHT_INDEX, i) == nullptr) {
+                break;
+            }
+            ++params.groupNum;
+        }
+    }
     return true;
 }
 
@@ -412,10 +422,52 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
         OP_LOGE(params.opName, "xScaleShape should not be null"), return false);
     OP_CHECK_IF(groupListShapePtr == nullptr,
         OP_LOGE(params.opName, "groupListShape should not be null"), return false);
+    OP_CHECK_IF(weightShapePtr == nullptr || weightScaleShapePtr == nullptr,
+        OP_LOGE(params.opName, "weightShape or weightScaleShape should not be null"), return false);
 
     auto& xScaleShape = xScaleShapePtr->GetOriginShape();
     auto& groupListShape = groupListShapePtr->GetOriginShape();
-    auto& weightScaleShape = weightScaleShapePtr->GetOriginShape();
+
+    int64_t scaleKSize = GroupedMatmul::CeilDiv<int64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
+    const std::vector<int64_t> expectedXScaleShape = {
+        static_cast<int64_t>(params.mSize),
+        scaleKSize,
+        MX_INNER_DIM
+    };
+    if (!CheckInputShape(&context, "xScale", xScaleShape, expectedXScaleShape)) {
+        return false;
+    }
+    if (!CheckInputShape(&context, "groupList", groupListShape, {params.groupNum})) {
+        return false;
+    }
+
+    if (params.isSingleMultiSingle) {
+        const std::vector<int64_t> expectedWeightShape = {
+            GroupedMatmul::CeilDiv<int64_t>(params.kSize, C0_SIZE),
+            GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
+            CUBE_BLOCK,
+            C0_SIZE
+        };
+        const std::vector<int64_t> expectedWeightScaleShape = {
+            params.nSize,
+            scaleKSize,
+            MX_INNER_DIM
+        };
+        for (int64_t i = 0; i < params.groupNum; ++i) {
+            auto* curWeightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, i);
+            auto* curWeightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, i);
+            OP_CHECK_IF(curWeightShapePtr == nullptr || curWeightScaleShapePtr == nullptr,
+                OP_LOGE(params.opName, "weight or weightScale shape[%ld] should not be null", i), return false);
+            if (!CheckInputShape(&context, "weight", curWeightShapePtr->GetStorageShape(), expectedWeightShape)) {
+                return false;
+            }
+            if (!CheckInputShape(&context, "weightScale", curWeightScaleShapePtr->GetOriginShape(),
+                                 expectedWeightScaleShape)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     if (params.wFormat == ge::FORMAT_FRACTAL_NZ || params.wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
         const gert::Shape &wStorageShape = weightShapePtr->GetStorageShape();
@@ -431,18 +483,7 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
         }
     }
 
-    int64_t scaleKSize = GroupedMatmul::CeilDiv<int64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
-    const std::vector<int64_t> expectedXScaleShape = {
-        static_cast<int64_t>(params.mSize),
-        scaleKSize,
-        MX_INNER_DIM
-    };
-    if (!CheckInputShape(&context, "xScale", xScaleShape, expectedXScaleShape)) {
-        return false;
-    }
-    if (!CheckInputShape(&context, "groupList", groupListShape, {params.groupNum})) {
-        return false;
-    }
+    auto& weightScaleShape = weightScaleShapePtr->GetOriginShape();
     const std::vector<int64_t> expectedWeightScaleShape = {
         params.groupNum,
         params.nSize,
@@ -545,7 +586,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::DoLibApiTiling()
 
 uint64_t GroupedMatmulSwigluQuantV2WeightQuantTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(inputParams_.wTrans), 0L);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(inputParams_.wTrans), 0L,
+                              static_cast<uint64_t>(inputParams_.isSingleMultiSingle));
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetWorkspaceSize()
