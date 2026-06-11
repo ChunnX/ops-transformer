@@ -20,7 +20,7 @@ import os
 import sys
 import argparse
 from hif8_utils import hif8_to_fp32_numpy, fp32_to_hif8_numpy
-from hif8_lut import hif8_to_fp32_lut, get_valid_hif8_codes
+from hif8_lut import hif8_to_fp32_lut, sample_hif8_value_uniform
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -695,9 +695,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
         rope_cos_shape = rope_sin_shape
 
-    x = torch.tensor(np.random.choice(get_valid_hif8_codes(x_datarange[0], x_datarange[1]), size=x_shape).astype(np.uint8))
-    wkv = torch.tensor(np.random.choice(get_valid_hif8_codes(wkv_datarange[0], wkv_datarange[1]), size=(coff * head_dim, hidden_size)).astype(np.uint8))
-    wgate = torch.tensor(np.random.choice(get_valid_hif8_codes(wgate_datarange[0], wgate_datarange[1]), size=(coff * head_dim, hidden_size)).astype(np.uint8))
+    x = torch.tensor(sample_hif8_value_uniform(x_datarange[0], x_datarange[1], x_shape).astype(np.uint8))
+    wkv = torch.tensor(sample_hif8_value_uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
+    wgate = torch.tensor(sample_hif8_value_uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
 
     x_descale = torch.tensor(np.random.uniform(x_descale_datarange[0], x_descale_datarange[1], (1,))).to(torch.float32)
     wkv_descale = torch.tensor(np.random.uniform(wkv_descale_datarange[0], wkv_descale_datarange[1], (coff * head_dim,))).to(torch.float32)

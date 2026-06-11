@@ -38,7 +38,6 @@ def hif8_to_fp32_lut(codes):
 # ═══════════════════════════════════════════════════════════════════
 # Valid code computation — for direct uint8 generation (skip encode)
 # ═══════════════════════════════════════════════════════════════════
-
 _VALID_CACHE = {}
 
 
@@ -58,3 +57,27 @@ def get_valid_hif8_codes(min_val, max_val):
 
     _VALID_CACHE[key] = valid
     return valid.copy()
+
+_VU_CACHE = {}
+
+def sample_hif8_value_uniform(min_val, max_val, shape):
+    key = (float(min_val), float(max_val))
+    if key not in _VU_CACHE:
+        codes = get_valid_hif8_codes(min_val, max_val)
+        vals = hif8_to_fp32_numpy(codes)
+        sorted_idx = np.argsort(vals)
+        sorted_vals = vals[sorted_idx].astype(np.float64)
+        sorted_codes = codes[sorted_idx]
+        mids = (sorted_vals[:-1] + sorted_vals[1:]) * 0.5
+        lo = np.empty(len(sorted_vals), dtype=np.float64)
+        hi = np.empty(len(sorted_vals), dtype=np.float64)
+        lo[0] = min_val
+        lo[1:] = mids
+        hi[:-1] = mids
+        hi[-1] = max_val
+        widths = np.maximum(hi - lo, 0.0)
+        total = widths.sum()
+        probs = widths / total if total > 0 else np.ones_like(widths) / len(widths)
+        _VU_CACHE[key] = (sorted_codes, probs)
+    codes, probs = _VU_CACHE[key]
+    return np.random.choice(codes, size=shape, p=probs)
