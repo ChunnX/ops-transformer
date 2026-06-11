@@ -547,8 +547,8 @@ public:
         }
 
         if (localSkip >= s2RealSize) {
- 	        InitKeyL1HeadRegion(dstTensor, AttentionCommon::Align(s2RealSize, 32U), s2RealSize, constInfo.dSize);
- 	    } else if (localSkip > 0U) {
+            InitKeyL1HeadRegion(dstTensor, AttentionCommon::Align(s2RealSize, 32U), s2RealSize, constInfo.dSize);
+        } else if (localSkip > 0U) {
             uint32_t validSize = s2RealSize - localSkip;
             uint32_t fullPadK = (s2RealSize + 31) >> 5 << 5;
             InitKeyL1HeadRegion(dstTensor, localSkip, s2RealSize, constInfo.dSize); // 清零
@@ -1107,8 +1107,8 @@ public:
                 }
             }
             if (vLocalSkip >= realK) {
- 	            InitValueL1HeadRegion(mm2BTensor, AttentionCommon::Align(realK, 64U), realK, constInfo.dSizeV);
- 	        } else if (vLocalSkip > 0U) {
+                InitValueL1HeadRegion(mm2BTensor, AttentionCommon::Align(realK, 64U), realK, constInfo.dSizeV);
+            } else if (vLocalSkip > 0U) {
                 uint32_t vValidSize = realK - vLocalSkip;
                 uint32_t fullPadK = (realK + 63) >> 6 << 6;
                 InitValueL1HeadRegion(mm2BTensor, vLocalSkip, realK, constInfo.dSizeV);
