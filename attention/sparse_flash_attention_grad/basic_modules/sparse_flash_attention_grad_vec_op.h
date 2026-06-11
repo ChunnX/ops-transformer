@@ -171,7 +171,7 @@ protected:
     int32_t maxSelCnt;
     int64_t dimRope;
     // workspace
-    uint32_t mm12WorkspaceLen;
+    uint64_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;

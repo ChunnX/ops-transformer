@@ -299,14 +299,14 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoBlockTiling()
     /*
      * 分核策略
      */
-    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
-    int32_t aicNum = aicoreParams_.aicNum;
-    int32_t usedCoreNum = nNums < aicNum ? nNums : aicNum;
+    int64_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
+    int64_t aicNum = static_cast<int64_t>(aicoreParams_.aicNum);
+    int64_t usedCoreNum = nNums < aicNum ? nNums : aicNum;
     int64_t formerCoreProcessNNums = CeilCommon(nNums, aicNum);
     int64_t remainCoreNum = formerCoreProcessNNums * aicNum - nNums;
 
-    tilingData.opInfo.set_usedCoreNum(usedCoreNum);
-    tilingData.opInfo.set_formerCoreNum(aicNum - remainCoreNum);
+    tilingData.opInfo.set_usedCoreNum(static_cast<uint32_t>(usedCoreNum));
+    tilingData.opInfo.set_formerCoreNum(static_cast<uint32_t>(aicNum - remainCoreNum));
     tilingData.opInfo.set_formerCoreProcessNNum(formerCoreProcessNNums);
     tilingData.opInfo.set_remainCoreProcessNNum(static_cast<uint32_t>(formerCoreProcessNNums - 1));
     tilingData.opInfo.set_castUsedCoreNum(aicoreParams_.numBlocks);
