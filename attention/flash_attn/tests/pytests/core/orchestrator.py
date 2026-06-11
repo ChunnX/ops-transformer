@@ -20,29 +20,29 @@ def run_case(params: dict,
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
 
-    # 1. 生成数据（按目标 layout，NPU 直接消费）
-    inputs = spec.generate(params, device=primary.device, layout=layout,
+    # 1. 统一在 CPU 生成数据（目标 layout：PA/TND 等格式不变）
+    inputs = spec.generate(params, device=torch.device("cpu"), layout=layout,
                            layout_kv=params.get("layout_kv", layout))
     if str(params.get("layout_kv", "")).startswith("PA_"):
-        inputs["block_table"] = params["block_table"].to(primary.device)
+        inputs["block_table"] = params["block_table"]
     elif "block_table" in params and params["block_table"] is not None:
-        inputs["block_table"] = params["block_table"].to(primary.device)
+        inputs["block_table"] = params["block_table"]
 
-    # 2. primary 先算
-    print(f"  [primary] {primary.name} 计算...")
-    primary_out = primary.compute(inputs, params)
-
-    # 3. CPU golden 后算
+    # 2. CPU golden 先算（数据已在 CPU，零拷贝）
     print(f"  [golden] CPU 参考计算...")
-    cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
-    golden_out = golden.compute(cpu_inputs, params)
+    golden_out = golden.compute(inputs, params)
+
+    # 3. primary 后算（数据拷贝到 device）
+    print(f"  [primary] {primary.name} 计算...")
+    dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
+    primary_out = primary.compute(dev_inputs, params)
 
     # 4. 精度对比 —— CPU golden 始终 BNSD，统一转 target layout
     cpu_raw = golden_out["out"]
     dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
 
     cpu_out = trans_bnsd_to_layout(cpu_raw, out_layout, **params) if out_layout != "BNSD" else cpu_raw
-    dev_out = dev_raw  # NPU/GPU 已经按 layout_out 返回，不需要再转
+    dev_out = dev_raw
 
     print(f"  [compare] CPU vs {primary.name}")
     attn_result = check_result(f"CPU_vs_{primary.name}",
@@ -75,7 +75,7 @@ def run_case(params: dict,
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
-    del inputs, cpu_inputs, primary_out, golden_out
+    del inputs, dev_inputs, primary_out, golden_out
     del cpu_raw, dev_raw, cpu_out, dev_out
     gc.collect()
     if torch.npu.is_available():
