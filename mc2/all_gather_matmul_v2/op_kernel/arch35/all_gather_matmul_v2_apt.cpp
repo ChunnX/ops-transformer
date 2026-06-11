@@ -20,9 +20,10 @@
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "all_gather_matmul_fp16_bf16.h"
 #endif
-#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
-     ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
-         ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
+#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
+     ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
 #include "all_gather_quant_bmm.h"
 #include "all_gather_quant_bmm_perblock.h"
 #endif
@@ -100,6 +101,8 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                                                              Mc2CoreType::ON_CUBE, HCCL_COMM_MODE,
                                                              false, TRANS_B);
     }
+#elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1))
+    AscendC::printf("[tzydebug]mxfp4");
 #elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && INPUT_IS_BF16FP16 &&
                   OUTPUTDTYPE == OUTPUT_TYPE_IS_FP16_BF16) { // full mesh+ no nd2nz +biasNoNeedCast
