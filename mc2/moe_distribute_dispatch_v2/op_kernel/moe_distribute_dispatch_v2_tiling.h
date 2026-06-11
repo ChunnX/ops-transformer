@@ -42,7 +42,6 @@ struct MoeDistributeDispatchV2Info {
     bool reserved2;
     uint64_t totalUbSize;                // epWorldSize
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
     int32_t zeroComputeExpertNum;       // sum of zero, copy and const expert nums
     uint32_t maxSizeForUbBuffer;
@@ -55,7 +54,6 @@ struct MoeDistributeDispatchV2Info {
 struct MoeDistributeDispatchV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    Mc2CcTiling mc2CcTiling2;
     MoeDistributeDispatchV2Info moeDistributeDispatchV2Info;
 };
 
