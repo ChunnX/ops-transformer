@@ -272,8 +272,11 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     v_dim = v_tensor.shape[-1]
     out = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32).contiguous()
     o_sum = torch.zeros(q_tensor.shape[:-1], dtype=torch.float32)[..., None].contiguous()
-    o_max = torch.ones(q_tensor.shape[:-1], dtype=torch.float32)[..., None] * torch.finfo(torch.float32).min
-    o_max = o_max.contiguous()
+        # 修改1: 使用 NPU 对应的最小值初始化 (0xFF7FFFFF 对应 -FLT_MAX)
+    minValue = torch.tensor(-3.402823466e+38, dtype=torch.float32)
+    o_max = torch.full(q_tensor.shape[:-1], minValue.item(), dtype=torch.float32)[..., None].contiguous()
+    # o_max = torch.ones(q_tensor.shape[:-1], dtype=torch.float32)[..., None] * torch.finfo(torch.float32).min
+    # o_max = o_max.contiguous()
 
     q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int32).contiguous()
     k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int32).contiguous()
@@ -335,12 +338,21 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
             m_block, _ = torch.max(sij, dim=-1, keepdims=True)
             m_block = m_block - ln_p_scale
             mi_new = torch.maximum(m_block, mi).contiguous()
-            pij = torch.exp(sij - mi_new).contiguous()
+            all_masked_block = (m_block == float('-inf'))
+            pij = torch.where(all_masked_block, 
+                              torch.zeros_like(sij), 
+                              torch.exp(sij - mi_new)).contiguous()
+            # pij = torch.exp(sij - mi_new).contiguous()
             s_block = torch.sum(pij, dim=-1, keepdims=True).contiguous()
             pij_drop = pij.to(FP8_DTYPE).to(torch.float32).contiguous()
             pij_v = torch.matmul(pij_drop, vj).contiguous()
             pij_v = pij_v * deq_v
-            si_new = torch.exp(mi - mi_new) * si + s_block
+            # 防止 exp(mi - mi_new) 产生 NaN
+            scale = torch.where(mi_new == float('-inf'),
+                                torch.ones_like(mi_new),
+                                torch.exp(mi - mi_new))
+            # si_new = torch.exp(mi - mi_new) * si + s_block
+            si_new = scale * si + s_block
             si_new = si_new.contiguous()
             o_blocks[i] = ((si * torch.exp(mi - mi_new) * oi + pij_v) / (si_new + EPSILON)).contiguous()
             s_blocks[i] = si_new
@@ -351,6 +363,12 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     out_max = torch.cat(m_blocks, dim=2).contiguous()
     lse = out_max + torch.log(out_sum + EPSILON).contiguous()
 
+    # 当 out_max 等于 minValue (0xFF7FFFFF) 时，说明该位置被全 mask，输出 inf
+    all_masked = (out_max <= minValue.item())  # 使用 <= 更稳健
+    lse = torch.where(all_masked, 
+                      torch.full_like(out_max, float('inf')),
+                      out_max + torch.log(out_sum + EPSILON)).contiguous()
+    result = torch.where(all_masked, torch.zeros_like(result), result)
     return result, lse
 
 # ==============================================================================

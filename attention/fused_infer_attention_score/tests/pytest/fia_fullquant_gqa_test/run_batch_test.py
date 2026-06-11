@@ -33,6 +33,7 @@ def _set_case(module, case):
     module.ACTUAL_SEQ_Q = [int(item) for item in case["actual_seq_q"]]
     module.ACTUAL_SEQ_KV = [int(item) for item in case["actual_seq_kv"]]
     module.ENABLE_PA = bool(case.get("enable_pa", module.ENABLE_PA))
+    module.ENABLE_LSE = bool(case.get("enable_lse", module.ENABLE_LSE))
     module.BLOCK_SIZE = int(case.get("block_size", module.BLOCK_SIZE))
     module.SPARSE_MODE = int(case.get("sparse_mode", module.SPARSE_MODE))
     module.INPUT_LAYOUT = case.get("input_layout", "NTD_TND")
@@ -69,11 +70,15 @@ def run_case(module, case):
             module.ACTUAL_SEQ_KV
         )
         compare_layout = "TND" if module.ENABLE_PA else module.INPUT_LAYOUT
-        cpu_cmp = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
-        compare_result = result_compare_method.check_result(cpu_cmp, npu_out[0])
-        status = compare_result[0] if isinstance(compare_result, tuple) else compare_result
-        if status != "Pass":
-            return {"name": case["name"], "status": "FAILED", "error_message": f"compare_result={status}"}
+        cpu_cmp0 = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
+        res0 = result_compare_method.check_result(cpu_cmp0, npu_out[0])
+        status0 = res0[0] if isinstance(res0, tuple) else res0
+        cpu_cmp1 = module.convert_q_bnsd_to_layout(cpu_out[1], module.ACTUAL_SEQ_Q, compare_layout)
+        res1 = result_compare_method.check_result(cpu_cmp1, npu_out[1])
+        status1 = res1[0] if isinstance(res1, tuple) else res1
+        if status0 != "Pass" or status1 != "Pass":
+            err_msg = f"out0={status0}, LSE(out1)={status1}"
+            return {"name": case["name"], "status": "FAILED", "error_message": err_msg}
         return {"name": case["name"], "status": "PASSED", "error_message": ""}
     except Exception as exc:
         return {"name": case["name"], "status": "FAILED", "error_message": f"{type(exc).__name__}: {exc}"}
