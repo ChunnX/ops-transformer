@@ -341,7 +341,7 @@ int main()
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
       layoutQ, layoutKv,
-      1, 0, 0,
+      1,
       false,
       attnOut, softmaxLse,
       &workspaceSize, &executor);

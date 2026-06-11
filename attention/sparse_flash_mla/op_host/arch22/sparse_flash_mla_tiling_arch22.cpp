@@ -120,6 +120,31 @@ static std::string SMLADataTypeToSerialString(ge::DataType type)
 }
 
 // --------------------------SMLAInfoParser类成员函数定义-------------------------------------
+static uint64_t GetDefaultStride0(const gert::Shape &shape)
+{
+    uint64_t stride = 1;
+    for (size_t dim = 1; dim < shape.GetDimNum(); ++dim) {
+        stride *= static_cast<uint64_t>(shape.GetDim(dim));
+    }
+    return stride;
+}
+
+static uint64_t GetPaKvStride0(gert::TilingContext *context, const SMLATilingOptionalParaInfo &kvInfo,
+    uint32_t inputIndex, SMLALayout kvLayout)
+{
+    if (kvLayout != SMLALayout::PA_BBND || kvInfo.tensor == nullptr) {
+        return 0;
+    }
+
+    const gert::Shape &shape = kvInfo.tensor->GetStorageShape();
+    const uint64_t defaultStride0 = GetDefaultStride0(shape);
+    const auto *stride = context->GetInputStride(inputIndex);
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        return defaultStride0;
+    }
+    return static_cast<uint64_t>(stride->GetStride(0));
+}
+
 ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor q is nullptr"),
@@ -255,8 +280,6 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
-    opParamInfo_.oriKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_KV_STRIDE_INDEX);
-    opParamInfo_.cmpKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_KV_STRIDE_INDEX);
     opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -848,8 +871,8 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.cmpRatio = (*opParamInfo_.cmpRatio == 0) ? 1 : *opParamInfo_.cmpRatio;
     smlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     smlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
-    smlaInfo.oriKvStride0 = *opParamInfo_.oriKvStride0;
-    smlaInfo.cmpKvStride0 = *opParamInfo_.cmpKvStride0;
+    smlaInfo.oriKvStride0 = GetPaKvStride0(context_, opParamInfo_.oriKv, ORI_KV_INDEX, kvLayout_);
+    smlaInfo.cmpKvStride0 = GetPaKvStride0(context_, opParamInfo_.cmpKv, CMP_KV_INDEX, kvLayout_);
     smlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
@@ -1238,16 +1261,6 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaOriKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus SMLATilingCheck::CheckSingleParaCmpKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinLeft() const
 {
     return ge::GRAPH_SUCCESS;
@@ -1274,8 +1287,6 @@ ge::graphStatus SMLATilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriMaskMode() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpMaskMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaOriKvStride0() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpKvStride0() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriWinLeft() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriWinRight()) {
         return ge::GRAPH_FAILED;

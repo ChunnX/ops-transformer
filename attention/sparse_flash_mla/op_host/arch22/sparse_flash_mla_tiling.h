@@ -59,8 +59,6 @@ using optiling::ATTR_ORI_WIN_RIGHT_INDEX;
 using optiling::ATTR_LAYOUT_Q_INDEX;
 using optiling::ATTR_LAYOUT_KV_INDEX;
 using optiling::ATTR_TOPK_VALUE_MODE_INDEX;
-using optiling::ATTR_ORI_KV_STRIDE_INDEX;
-using optiling::ATTR_CMP_KV_STRIDE_INDEX;
 using optiling::ATTR_RETURN_SOFTMAX_LSE_INDEX;
 using optiling::DIM_IDX_ONE;
 using optiling::DIM_IDX_TWO;
@@ -126,8 +124,6 @@ private:
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaOriMaskMode() const;
     ge::graphStatus CheckSingleParaCmpMaskMode() const;
-    ge::graphStatus CheckSingleParaOriKvStride0() const; // A2/A3
-    ge::graphStatus CheckSingleParaCmpKvStride0() const; // A2/A3
     ge::graphStatus CheckSingleParaOriWinLeft() const;
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;

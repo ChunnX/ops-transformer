@@ -100,9 +100,7 @@ constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 8;   // A2/A3
-constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 9;     // A2/A3
-constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 10;    // A2/A3
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -214,8 +212,6 @@ struct SMLAParaInfo {
     const uint32_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    const uint32_t *oriKvStride0 = nullptr; // A2/A3
-    const uint32_t *cmpKvStride0 = nullptr; // A2/A3
     const uint32_t *oriWinLeft = nullptr;
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
@@ -348,8 +344,6 @@ private:
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaOriMaskMode() const;
     ge::graphStatus CheckSingleParaCmpMaskMode() const;
-    ge::graphStatus CheckSingleParaOriKvStride0() const; // A2/A3
-    ge::graphStatus CheckSingleParaCmpKvStride0() const; // A2/A3
     ge::graphStatus CheckSingleParaOriWinLeft() const;
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;
