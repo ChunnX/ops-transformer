@@ -179,12 +179,12 @@ protected:
     uint32_t tensorACoreOffset;
     uint32_t tensorBCoreOffset;
     uint32_t attentionOutOffset;
-    uint32_t offsetSS;
-    uint32_t offsetSH;
+    uint64_t offsetSS;
+    uint64_t offsetSH;
     uint32_t offsetSTypeNum;
     uint32_t offsetNSTypeNum;
-    uint32_t offsetNSS;
-    uint32_t offsetNSH;
+    uint64_t offsetNSS;
+    uint64_t offsetNSH;
     uint32_t maskDataType;
     uint32_t attenMaskBatch;
     uint32_t maskCopyInCol;
@@ -468,12 +468,14 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFATypeNZ<PFALayoutN
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::initOffset() {
-    offsetSS = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.seqSize;
-    offsetSH = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.headSize;
-    offsetSTypeNum = tilingData->promptAttentionBaseParams.seqSize * typeByteNum;
-    offsetNSTypeNum = tilingData->promptAttentionBaseParams.headNumSize * offsetSTypeNum;
-    offsetNSS = tilingData->promptAttentionBaseParams.headNumSize * offsetSS;
-    offsetNSH = tilingData->promptAttentionBaseParams.headNumSize * offsetSH;
+    offsetSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.seqSize;
+    offsetSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.headSize;
+    offsetSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) * typeByteNum;
+    offsetNSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSTypeNum;
+    offsetNSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSS;
+    offsetNSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSH;
 }
 
 template<typename PFAT>
