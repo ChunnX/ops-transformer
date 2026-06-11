@@ -790,9 +790,9 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
-// GroupMatmul2A8W4 — A8W4 prologue (W4→W8) + GMM2 + Combine
+// GroupMatmul2CombineA8W4 — A8W4 prologue (W4→W8) + GMM2 + Combine
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
-__aicore__ inline void GroupMatmul2A8W4(
+__aicore__ inline void GroupMatmul2CombineA8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
     uint16_t& pingpongIdx, int32_t rankId)
