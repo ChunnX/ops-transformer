@@ -391,7 +391,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     }
 
     // 判断当前sparse块是否需要计算
-    uint32_t delta = -runParam.nextTokensPerBatch;
+    int64_t delta = runParam.nextTokensPerBatch;
     uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
     uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
     uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
