@@ -13,6 +13,7 @@ extern "C" {
  *
 * @param [in] context             communication context int32 tensor
  * @param [in] dstBufferSlotIdx           [num_tokens, top_k] int32 from Dispatch
+ * @param [in] recvSrcMetadataInternal    internal metadata tensor
  * @param [in] numRecvTokensPerRankHostPinned   [ep_world_size] int32 host-pinned from Dispatch
  * @param [in] numRecvTokensPerExpertHostPinned  [num_local_experts] int64 host-pinned from Dispatch
  * @param [in] epWorldSize                EP world size
@@ -34,6 +35,7 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     const aclTensor* context,
     const aclTensor* dstBufferSlotIdx,
+    const aclTensor* recvSrcMetadataInternal,
     const aclTensor* numRecvTokensPerRankHostPinned,
     const aclTensor* numRecvTokensPerExpertHostPinned,
     int64_t epWorldSize,
