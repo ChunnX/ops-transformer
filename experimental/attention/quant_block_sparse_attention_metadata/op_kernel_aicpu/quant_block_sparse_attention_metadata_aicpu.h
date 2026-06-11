@@ -24,12 +24,42 @@
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
 #include "quant_block_sparse_attention_metadata.h"
-#include "../../../../attention/common/op_kernel/load_balance/block_balance/block_balance.h"
 #include "../../common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
 
 static const int64_t NUM_128 = 128L;
+
+struct CoreCache {
+    uint64_t blockLimit { 0U };
+    uint64_t block { 0U };
+};
+
+struct AssignContext {
+    uint32_t curCoreIdx { 0U };
+    uint32_t curBIdx { 0U };
+    uint32_t curBN1Idx { 0U };
+    uint32_t curS1Idx { 0U };
+    uint32_t curS2Idx { 0U };
+    uint64_t unassignedBlock { 0U };
+    CoreCache coreCache {};
+    bool isFinished { false };
+};
+
+struct SplitResult {
+    uint32_t usedCoreNum { 0U };
+    uint64_t maxBlock { 0U };
+    std::vector<uint32_t> bN1End {};
+    std::vector<uint32_t> s1End {};
+    std::vector<uint32_t> s2End {};
+    std::vector<uint32_t> firstFdDataWorkspaceIdx {};
+
+    explicit SplitResult(uint32_t aicNum)
+        : bN1End(aicNum),
+          s1End(aicNum),
+          s2End(aicNum),
+          firstFdDataWorkspaceIdx(aicNum) {}
+};
 
 class QuantBlockSparseAttentionMetadataCpuKernel : public CpuKernel {
 public:
@@ -42,8 +72,12 @@ private:
     bool ParamsCheck();
     bool CheckTensorData();
     bool ParamsInit();
-    bool BalanceSchedule(load_balance::BlockBalanceResult &splitRes);
-    bool GenMetaData(const load_balance::BlockBalanceResult &splitRes);
+    bool ScheduleSection(SplitResult &splitRes);
+    bool GenMetadata(const SplitResult &splitRes);
+    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
+    uint64_t CalcBlockNum() const;
+    bool AdvanceToValidRow(AssignContext &assignContext) const;
+    void ScheduleFa(uint64_t blockNum, SplitResult &result);
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -75,11 +109,9 @@ private:
     int32_t aivCoreNum_ = 72;
 
     // SplitParams
-    uint32_t groupSize_ = 0;
     uint32_t Qbmax_ = 0;
     uint32_t mBaseSize_ = NUM_128;
     uint32_t s2BaseSize_ = NUM_128;
-    load_balance::BlockBalanceParam param;
 
 private:
     enum class ParamId : uint32_t {
