@@ -371,7 +371,8 @@ class SparseLightningIndexerKLLossGradRef:
             s_softmax = s_softmax.masked_fill(invalid_topk_mask.unsqueeze(1), 0.0)
             s_softmax = s_softmax.masked_fill(invalid_row.unsqueeze(-1), 0.0)
 
-            ds_reduce = s_softmax - p
+            p_reduce = p.sum(dim=-1, keepdim=True)
+            ds_reduce = s_softmax * p_reduce - p
             ds_sq = ds_reduce.squeeze(1)
 
             dw = torch.einsum("tjs,ts->tj", relu_s, ds_sq)
