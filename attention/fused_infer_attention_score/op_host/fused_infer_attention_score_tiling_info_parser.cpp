@@ -975,7 +975,7 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
         {"BNSD_NBSD", {FiaLayout::BNSD, FiaLayout::NBSD}}, {"TND_NTD", {FiaLayout::TND, FiaLayout::NTD}},
         {"NTD_TND", {FiaLayout::NTD, FiaLayout::TND}},     {"BNSD_BSND", {FiaLayout::BNSD, FiaLayout::BSND}},
         {"BSND_BNSD", {FiaLayout::BSND, FiaLayout::BNSD}}, {"BSH_BNSD", {FiaLayout::BSH, FiaLayout::BNSD}},
-        {"NTD", {FiaLayout::NTD, FiaLayout::TND}}};
+        {"NTD", {FiaLayout::NTD, FiaLayout::NTD}}};
 
     std::string layout(opParamInfo_.layOut);
     auto it = layoutMap.find(layout);

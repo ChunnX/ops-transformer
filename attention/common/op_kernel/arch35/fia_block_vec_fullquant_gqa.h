@@ -545,19 +545,19 @@ public:
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
 
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.realN2Size * constInfo.realGSize +
                                  runInfo.realN2Idx * constInfo.realGSize;
             DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, constInfo);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                        constInfo, s1Size);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
