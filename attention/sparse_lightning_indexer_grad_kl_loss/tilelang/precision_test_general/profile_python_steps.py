@@ -181,7 +181,39 @@ def main():
         )
     results["4. tilelang_kernel"] = bench_fn(step_kernel)
 
-    # 5. dKeyIndex computation
+    # 5. dKeyIndex computation (split bmm and scatter)
+    def step_dkeyindex_bmm():
+        relu_grad_fp32 = relu_grad_out.float()
+        query_index_fp32 = query_index.float()
+        relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
+        torch.bmm(
+            relu_grad_t.reshape(B * S1, K, Nidx1),
+            query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
+        ).reshape(B, S1, K, DQueryIndex)
+    results["5a. dKeyIndex_bmm"] = bench_fn(step_dkeyindex_bmm)
+
+    relu_grad_fp32 = relu_grad_out.float()
+    query_index_fp32 = query_index.float()
+    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
+    scatter_add = torch.bmm(
+        relu_grad_t.reshape(B * S1, K, Nidx1),
+        query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
+    ).reshape(B, S1, K, DQueryIndex)
+
+    def step_dkeyindex_scatter():
+        d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=query.device)
+        sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
+        valid_mask = sparse_indices[:, :, 0, :] >= 0
+        for b in range(B):
+            flat_idx = sparse_idx[b].reshape(-1)
+            flat_valid = valid_mask[b].reshape(-1)
+            flat_vals = scatter_add[b].reshape(-1, DQueryIndex)
+            idx_v = flat_idx[flat_valid]
+            vals_v = flat_vals[flat_valid]
+            if idx_v.numel() > 0:
+                d_key_index[b, :, 0, :].scatter_add_(0, idx_v.unsqueeze(-1).expand_as(vals_v), vals_v)
+    results["5b. dKeyIndex_scatter"] = bench_fn(step_dkeyindex_scatter)
+
     def step_dkeyindex():
         _compute_d_key_index(
             relu_grad_out, query_index, sparse_indices,
