@@ -726,7 +726,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     算子编译命令如下，moe_distribute_dispatch_v2和moe_distribute_combine_v2算子都需要编译，这两个算子需要成对执行：
     ```bash
-    bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
+    bash build.sh --pkg --soc=ascend950 --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
     ```
 
     示例算子执行命令如下：

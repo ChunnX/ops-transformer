@@ -671,7 +671,6 @@ static void SetHcclTiling(const gert::TilingContext *context, MoeDistributeCombi
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
-    mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
     mc2CcTilingConfig.GetTiling(tilingData.mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tilingData.mc2CcTiling1);
 
@@ -699,98 +698,6 @@ inline ge::graphStatus CheckCommAttrs(const char *nodeName, const MoeDistributeC
     return ge::GRAPH_SUCCESS;
 }
 
-inline void SetPlatformInfo(gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData)
-{
-    const char *nodeName = context->GetNodeName();
-    uint32_t numBlocks = 1U;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint64_t ubSize = 0UL;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(numBlocks);
-    tilingData.moeDistributeCombineV2Info.aivNum = aivNum;
-    tilingData.moeDistributeCombineV2Info.totalUbSize = ubSize;
-    OP_LOGD(nodeName, "numBlocks = %u, aivNum = %lu, ubsize = %lu", numBlocks, aivNum, ubSize);
-}
-
-static void SetTilingKey(gert::TilingContext *context)
-{
-    const char *nodeName = context->GetNodeName();
-    bool tp = false;
-    uint32_t quantMode = TILINGKEY_NO_QUANT;
-    uint32_t layeredMode = TILINGKEY_TPL_CCU;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A5);
-    context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
-}
-
-ge::graphStatus MoeDistributeCombineTilingImpl(gert::TilingContext *context, const uint32_t opVersion)
-{
-    OpVersionManager::SetVersion(opVersion);
-    // Tiling implementation
-    OP_TILING_CHECK(context == nullptr, OP_LOGE(OP_NAME, "Fail to get tiling context."), return ge::GRAPH_FAILED);
-    const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE(nodeName, "Fail to get nodeName."), return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "Start MoeDistributeCombineA5 tiling.");
-    MoeDistributeCombineV2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineV2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tilingData"), return ge::GRAPH_FAILED);
-    uint32_t localMoeExpertNum = 1;
-    std::string groupEp = "";
-    std::string groupTp = "";
-    // Attrs
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, groupEp, groupTp) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
-    // X active mask
-    const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
-    bool isTokenMask = (xActiveMaskStorageShape != nullptr);
-    tilingData->moeDistributeCombineV2Info.isTokenMask = isTokenMask;
-    if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
-        OP_TILING_CHECK(MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
-    } else {
-        OP_TILING_CHECK(MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombineA5(context, nodeName,
-                        isTokenMask) != ge::GRAPH_SUCCESS,
-                        OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
-    }
-    // Check and Set Attrs
-    OP_TILING_CHECK(!CheckAndSetAttrs(context, *tilingData, localMoeExpertNum),
-                    OP_LOGE(nodeName, "attr check and set failed."), return ge::GRAPH_FAILED);
-    // Shape
-    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, localMoeExpertNum),
-                    OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
-    // Comm
-    OP_TILING_CHECK(CheckCommAttrs(nodeName, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "CheckCommAttrs failed."), return ge::GRAPH_FAILED);
-    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
-    tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
-    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
-    SetHcclTiling(context, *tilingData, groupEp, groupTp);
-    // Tiling Key support only 1 scenario in current version
-    SetTilingKey(context);
-    // Platform
-    SetPlatformInfo(context, *tilingData);
-    PrintTilingDataInfo(nodeName, *tilingData);
-    OP_LOGD(nodeName, "Finish MoeDistributeCombine tiling.");
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeDistributeCombineTilingA5::DoOpTiling()
-{
-    return MoeDistributeCombineTilingImpl(context_, OP_VERSION_1);
-}
-
-uint64_t MoeDistributeCombineTilingA5::GetTilingKey() const
-{
-    // TilingKey calculation is done in DoOptiling
-    const uint64_t tilingKey = context_->GetTilingKey();
-    const char *nodeName = context_->GetNodeName();
-    OP_LOGD(nodeName, "MoeDistributeCombineTilingA5 get tiling key %lu", tilingKey);
-    return tilingKey;
-}
-
 uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode,
     bool isLayered)
 {
@@ -800,21 +707,14 @@ uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(const uint32_t tpWorld
     if (tpWorldSize == MAX_TP_WORLD_SIZE) {
         tp = true;
     }
-    if (commQuantMode >= INT8_COMM_QUANT) {
-        quantMode = commQuantMode;
+    if (commQuantMode == INT8_COMM_QUANT) {
+        quantMode = TILINGKEY_INT8_QUANT;
+    }
+    if (isLayered) {
+        hierarchy = TILINGKEY_TPL_HIERARCHY;
     }
     uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A5);
     return tilingKey;
-}
-
-bool MoeDistributeCombineTilingA5::IsCapable()
-{
-    if (npuArch_ == NpuArch::DAV_3510) {
-        const char *nodeName = context_->GetNodeName();
-        OP_LOGD(nodeName, "Do MoeDistributeCombineTilingA5 tiling.");
-        return true;
-    }
-    return false;
 }
 
 ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFuncImpl(
@@ -825,15 +725,10 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFu
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
     // 检查 commAlg 参数合法性校验
     bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
-    OP_TILING_CHECK(!(isNullOrEmpty || isCcu),
+    OP_TILING_CHECK(!(isNullOrEmpty),
         OP_LOGE(nodeName, "Invalid parameter: 'commAlg'='%s'."
             "'commAlg' is not supported on this SoC version. Nullptr (or empty char*) is acceptable.", commAlgPtr),
         return ge::GRAPH_FAILED);
-    if (isCcu) {
-        // CCU 调用 A5 tiling 实现
-        return MoeDistributeCombineTilingImpl(context, OP_VERSION_2);
-    }
     // 默认空指针和空字符走 MTE 方式，MTE 调用 A3 tiling 实现
     return MoeDistributeCombineA3TilingFuncImpl(context, config);
 }

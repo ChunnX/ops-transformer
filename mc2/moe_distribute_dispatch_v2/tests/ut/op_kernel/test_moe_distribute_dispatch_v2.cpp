@@ -107,7 +107,7 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test1000)
     AscendC::GmFree((void*)expertScales);
 }
 
-//MoeDistributeDispatchA2 test do dispatch unquant kernel
+// moe_distribute_dispatch_v2 test do dispatch unquant kernel
 TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001000)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
@@ -120,13 +120,13 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001000)
 
     MoeDistributeDispatchV2TilingData *tilingData = reinterpret_cast<MoeDistributeDispatchV2TilingData*>(tiling);
     tilingData->moeDistributeDispatchV2Info.epWorldSize = 8;
-    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;
     tilingData->moeDistributeDispatchV2Info.epRankId = 0;
-    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;   //针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;
     tilingData->moeDistributeDispatchV2Info.expertShardType = 0;
-    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;
     tilingData->moeDistributeDispatchV2Info.moeExpertNum = 8;
-    tilingData->moeDistributeDispatchV2Info.quantMode = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.quantMode = 0;
     tilingData->moeDistributeDispatchV2Info.globalBs = 64;
     tilingData->moeDistributeDispatchV2Info.bs = 8;
     tilingData->moeDistributeDispatchV2Info.k = 7;
@@ -184,7 +184,7 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001000)
     AscendC::GmFree((void*)expertScales);
 }
 
-//MoeDistributeDispatchA2 test do dispatch int8 quant kernel
+// moe_distribute_dispatch_v2 test do dispatch int8 quant kernel
 TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001002)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
@@ -197,11 +197,11 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001002)
 
     MoeDistributeDispatchV2TilingData *tilingData = reinterpret_cast<MoeDistributeDispatchV2TilingData*>(tiling);
     tilingData->moeDistributeDispatchV2Info.epWorldSize = 8;
-    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;
     tilingData->moeDistributeDispatchV2Info.epRankId = 0;
-    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;   //针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;
     tilingData->moeDistributeDispatchV2Info.expertShardType = 0;
-    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;
     tilingData->moeDistributeDispatchV2Info.moeExpertNum = 8;
     tilingData->moeDistributeDispatchV2Info.quantMode = 2;
     tilingData->moeDistributeDispatchV2Info.globalBs = 64;
@@ -261,7 +261,7 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001002)
     AscendC::GmFree((void*)expertScales);
 }
 
-//MoeDistributeDispatchA2 test do dispatch int8 quant kernel with smooth scale
+// moe_distribute_dispatch_v2 test do dispatch int8 quant kernel with smooth scale
 TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001012)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
@@ -274,11 +274,11 @@ TEST_F(MoeDistributeDispatchV2Test, MoeDistributeDispatchV2Test2000001012)
 
     MoeDistributeDispatchV2TilingData *tilingData = reinterpret_cast<MoeDistributeDispatchV2TilingData*>(tiling);
     tilingData->moeDistributeDispatchV2Info.epWorldSize = 8;
-    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpWorldSize = 0;
     tilingData->moeDistributeDispatchV2Info.epRankId = 0;
-    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;   //针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.tpRankId = 0;
     tilingData->moeDistributeDispatchV2Info.expertShardType = 0;
-    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;//针对A2传递默认值 0
+    tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum = 0;
     tilingData->moeDistributeDispatchV2Info.moeExpertNum = 8;
     tilingData->moeDistributeDispatchV2Info.quantMode = 1;//
     tilingData->moeDistributeDispatchV2Info.globalBs = 64;

@@ -74,7 +74,7 @@ inline bool MoeDistributeDispatchTilingHelper::CheckDynamicScalesDim(const gert:
         OP_TILING_CHECK(dynamicScalesStorageShape == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesShape"), return false);
     if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))) {
-        // quantMode 2: 1dim, the same in A2/A3/A5
+        // quantMode 2: 1dim, the same in A3/A5
         OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_ONE_DIM_NUM,
             OP_LOGE(nodeName, "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu.",
             DYNAMIC_SCALE_ONE_DIM_NUM, quantMode, dynamicScalesStorageShape->GetStorageShape().GetDimNum()), return false);
@@ -101,7 +101,7 @@ inline bool MoeDistributeDispatchTilingHelper::CheckOutputTensorDim(gert::Tiling
     OP_LOGD(nodeName, "expandX dim0 = %ld", expandXStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expandX dim1 = %ld", expandXStorageShape->GetStorageShape().GetDim(1));
 
-    // Skip checking dynamicScales when quantMode is 0 or 1, the same in A2/A3/A5
+    // Skip checking dynamicScales when quantMode is 0 or 1, the same in A3/A5
     if ((quantMode != static_cast<uint32_t>(QuantModeA5::NON_QUANT)) 
         && (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))) {
         OP_TILING_CHECK(!CheckDynamicScalesDim(context, nodeName, quantMode),
@@ -411,7 +411,7 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         return false;
     }
 
-    // quantMode 2, compatible with A2/A3
+    // quantMode 2, compatible with A3
     if (quantMode >= static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
         OP_TILING_CHECK(dynamicScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesDesc"), return false);

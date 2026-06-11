@@ -115,7 +115,7 @@ TEST_F(MoeDistributeCombineV2Test, MoeDistributeCombineV2Test1000)
     AscendC::GmFree((void*)winAddr);
 }
 
-//A2 TEST
+// moe_distribute_combine_v2 TEST
 TEST_F(MoeDistributeCombineV2Test, MoeDistributeCombineV2Test2000)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
@@ -168,7 +168,7 @@ TEST_F(MoeDistributeCombineV2Test, MoeDistributeCombineV2Test2000)
         GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
         GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, 
         GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine_v2<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A2>(expandX, expertIds, 
+            moe_distribute_combine_v2<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, 
                 assistInfoForCombine, epSendCount, scales, tpSendCount, xActiveMask, activationScale,
                 weightScale, groupList, expandScales, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
                 constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM, tilingGM);

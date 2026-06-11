@@ -21,18 +21,6 @@
 
 namespace optiling {
 
-ge::graphStatus MoeDistributeCombineTilingImpl(gert::TilingContext* context, const uint32_t opVersion);
-
-class MoeDistributeCombineTilingA5 : public MoeTilingBase {
-public:
-    explicit MoeDistributeCombineTilingA5(gert::TilingContext *context) : MoeTilingBase(context) {};
-
-protected:
-    ge::graphStatus DoOpTiling() override;
-    uint64_t GetTilingKey() const override;
-    bool IsCapable() override;
-};
-
 class MoeDistributeCombineV2TilingFuncA5 : public MoeDistributeCombineV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeCombineTilingFuncImpl(gert::TilingContext* context,

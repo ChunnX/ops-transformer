@@ -33,7 +33,6 @@ using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
 namespace {
-    constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
     constexpr uint32_t X_INDEX = 0U;
     constexpr uint32_t EXPERT_IDS_INDEX = 1U;
     constexpr uint32_t SCALES_INDEX = 2U;
@@ -133,7 +132,7 @@ static bool CheckDynamicScalesDim(const gert::TilingContext *context,
         OP_TILING_CHECK(dynamicScalesStorageShape == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesShape"), return false);
     if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))) {
-        // quantMode 2: 1dim, the same in A2/A3/A5
+        // quantMode 2: 1dim, the same in A3/A5
         OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_ONE_DIM_NUM,
             OP_LOGE(nodeName, "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu.",
             DYNAMIC_SCALE_ONE_DIM_NUM, quantMode, dynamicScalesStorageShape->GetStorageShape().GetDimNum()), return false);
@@ -157,7 +156,7 @@ static bool CheckScaleTensorDim(const gert::TilingContext *context, const char *
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
         OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scalesShape"), return false);
         if (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) {
-            // the cond is compatible with A2/A3 because static quant is only supported on A5
+            // the cond is compatible with A3 because static quant is only supported on A5
             OP_TILING_CHECK(scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                 OP_LOGE(nodeName, "scales dims must be 2 when quantMode=%u, but current dim num is %lu.",
                 quantMode, scalesStorageShape->GetStorageShape().GetDimNum()), return false);
@@ -1171,9 +1170,9 @@ static ge::graphStatus CheckRecvCountTensorShape(const gert::TilingContext *cont
     }
     
     if (isLayered) {
-        // 如果是分层方案，则需要校验全新的shape，额外的globalBs * 2 * k * epWorldSize / 8 用来存储token的cnt信息与offset信息，为了兼容A2&A5 这里取/8。
+        // 如果是分层方案，则需要校验全新的shape，额外的globalBs * 2 * k * epWorldSize / 16 用来存储token的cnt信息与offset信息，兼容A5这里取/16。
         epRecvCount = epWorldSize * localMoeExpertNum +
-            globalBs * LAYERED_METAINFO_LIST_NUM * expertIdsDim1 * epWorldSize / RANK_NUM_PER_NODE_A2;
+            globalBs * LAYERED_METAINFO_LIST_NUM * expertIdsDim1 * epWorldSize / RANK_NUM_PER_NODE;
         OP_TILING_CHECK(epRecvCountDim0 < epRecvCount, OP_LOGE(nodeName,
         "dimension 0 of epRecvCount should be greater than or equal to ",
         "epWorldSize * localMoeExpertNum + globalBs * 2 * k * epWorldSize / 8, ",

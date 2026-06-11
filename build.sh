@@ -1485,12 +1485,6 @@ if [ -n "${ascend_compute_unit}" ];then
 fi
 
 if [ -n "${ascend_op_name}" ];then
-    if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v3"* ]]; then
-        ascend_op_name="${ascend_op_name};moe_distribute_combine_v3"
-    fi
-    if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
-        ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
-    fi
     if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
  	    ascend_op_name="${ascend_op_name};distribute_barrier_extend"
     fi

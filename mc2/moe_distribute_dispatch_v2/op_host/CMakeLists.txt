@@ -28,11 +28,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MoeDistributeDispatchV2
             OPTIONS --cce-auto-sync=off
         )
-    elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
-        add_ops_compile_options(
-            OP_NAME MoeDistributeDispatchV2
-            OPTIONS --cce-auto-sync=off
-        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_dispatch_v2 ACLNNTYPE aclnn_inner)

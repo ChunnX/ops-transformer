@@ -161,7 +161,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape_SharedExpertLowRankId)
 #include "rt_soc_spec_mocker.h"
 
 // ============================================
-// A2 平台补充测试
+// 补充测试
 // ============================================
 
 // 无共享专家：走 MoE 分支（epRankId >= sharedExpertRankNum）
@@ -670,7 +670,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_SharedExperts_ElasticInf
     SetRtSocSpecNpuArch("");
 }
 
-// A5 平台 InferShape 非 A2 + expertScales + tp≠2 → 覆盖 v2 特有 epRecvCount 分支
+// A5 平台 InferShape expertScales + tp≠2 → 覆盖 v2 特有 epRecvCount 分支
 // 覆盖 lines 290-291
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_ExpertScales_NonA2EpRecvCount)
 {

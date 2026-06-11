@@ -46,7 +46,6 @@ using namespace AscendC;
 using namespace ge;
 
 namespace {
-    constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
     constexpr uint32_t OP_VERSION_2 = 2;
     constexpr uint32_t EXPAND_X_INDEX = 0;
     constexpr uint32_t EXPERT_IDS_INDEX = 1;
@@ -1034,8 +1033,8 @@ static bool CheckSendCountTensorShape(const gert::TilingContext *context, MoeDis
 
     if (hasElasticInfo) {localEpSendCountSize = std::max(epWorldSize, epWorldSize * moeExpertPerRankNum);}
     if (isLayered) {
-        // 如果是分层方案，则需要校验全新的shape，额外的globalBs * 2 * k * epWorldSize / 8 用来存储token的cnt信息与offset信息，为了兼容A2&A5 这里取/8。
-        localEpSendCountSize = epWorldSize * localMoeExpertNum + globalBs * 2 * expertIdsDim1 * epWorldSize / RANK_NUM_PER_NODE_A2;
+        // 如果是分层方案，则需要校验全新的shape，额外的globalBs * 2 * k * epWorldSize / 16 用来存储token的cnt信息与offset信息，兼容A5这里取/16。
+        localEpSendCountSize = epWorldSize * localMoeExpertNum + globalBs * 2 * expertIdsDim1 * epWorldSize / RANK_NUM_PER_NODE;
     }
     OP_TILING_CHECK(epSendCountDim0 < localEpSendCountSize * tpWorldSize, OP_LOGE(nodeName, "epSendCount's dim0 not "
         "greater than or equal to localEpSendCountSize * tpWorldSize, epSendCount's dim0 is %ld, localEpSendCountSize "
@@ -1296,7 +1295,7 @@ uint64_t MoeDistributeCombineV2TilingFuncBase::CalTilingKey(const uint32_t tpWor
     if (isLayered) {
         hierarchy = TILINGKEY_TPL_HIERARCHY;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A3);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A5);
     return tilingKey;
 }
 

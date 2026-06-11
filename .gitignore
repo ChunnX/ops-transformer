@@ -47,4 +47,5 @@ third_party/
 
 # pre-commit log
 log/
-oat_reports/
+oat_reports/950.log
+950.log

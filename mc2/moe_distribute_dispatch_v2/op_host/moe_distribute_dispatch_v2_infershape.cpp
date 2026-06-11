@@ -67,20 +67,7 @@ static constexpr size_t DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX = 11;
 static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 17;
 
 static constexpr uint32_t VERSION_SIZE = 32;
-const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
-
-static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
-{
-    char versionValVersion[VERSION_SIZE];
-    // rtGetSocSpec获取成功返回值是0，获取失败返回非0
-    if (rtGetSocSpec("version", "Short_SoC_version", versionValVersion, VERSION_SIZE) != RT_ERROR_NONE) {
-        OPS_LOG_E(nodeName, "Cannot get Short_SoC_version info in infershape!");
-        return false;
-    }
-    OPS_LOG_D(nodeName, "(IsTargetSocVersionInfershape)Get Short_SoC_version %s", versionValVersion);
-    return (targetPlatform.count(versionValVersion) > 0);
-}
 
 static bool IsTargetNpuArchInfershape(const char *nodeName, const std::set<std::string> &targetPlatform) 
 { 
@@ -237,7 +224,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         localExpertNum = localMoeExpertNum;
         a = globalBsReal * std::min(localExpertNum, k);
     }
-    if (!IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2) && elasticInfoShape != nullptr) {
+    if (elasticInfoShape != nullptr) {
         localExpertNum = std::max(static_cast<int64_t>(1), localMoeExpertNum);
         if ((isSharedDefault) || (isNoShared)) {
             a = globalBsReal * std::min(localExpertNum, k);
@@ -279,20 +266,12 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         Ops::Base::ToString(*expertTokenNumsShape).c_str());
 
     epRecvCountShape->SetDimNum(DIM_ONE);
-    if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
-        if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * 2 * k * ((*epWorldSize) / RANK_NUM_PER_NODE)); // 2：globalbs * 2kn memory size, to support different bs in ranks
-        } else {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
-        }
+    if (*tpWorldSize == DIM_TWO)  {
+        epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
+    } else if (expertScalesShape != nullptr) {
+        epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
-        } else if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
-        } else {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
-        }
+        epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
     }
     OP_LOGD(context->GetNodeName(), "epRecvCountShape shape is :%s after infershape.",
         Ops::Base::ToString(*epRecvCountShape).c_str());
