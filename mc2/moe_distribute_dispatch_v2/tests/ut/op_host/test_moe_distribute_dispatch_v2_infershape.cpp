@@ -45,8 +45,8 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape0)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
@@ -64,7 +64,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape0)
         {"rankNum", 8}
     };
 
-    std::vector<std::vector<int64_t>> expertOutputShape = {{576, 7168}};
+    std::vector<std::vector<int64_t>> expertOutputShape = {{288, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
@@ -80,8 +80,8 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0)
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
-            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
@@ -136,8 +136,8 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape_SharedExpertLowRankId)
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
          {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
-         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -151,7 +151,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape_SharedExpertLowRankId)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    std::vector<std::vector<int64_t>> expertOutputShape = {{512, 7168}};
+    std::vector<std::vector<int64_t>> expertOutputShape = {{256, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
@@ -276,7 +276,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_NegativeGlobalBs)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    std::vector<std::vector<int64_t>> expectedOutputShape = {{-2, 7168}};
+    std::vector<std::vector<int64_t>> expectedOutputShape = {{-1, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectedOutputShape);
 }
 
@@ -418,7 +418,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_RtGetSocSpecFail_WithElasti
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    std::vector<std::vector<int64_t>> expectedOutputShape = {{4096, 7168}};
+    std::vector<std::vector<int64_t>> expectedOutputShape = {{2048, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectedOutputShape);
 
     SetRtSocSpecFail(false);

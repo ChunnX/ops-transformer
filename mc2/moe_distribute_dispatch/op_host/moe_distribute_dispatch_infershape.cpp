@@ -97,7 +97,7 @@ static ge::graphStatus InferExpertIdsShape(gert::InferShapeContext *context, int
 }
 
 static ge::graphStatus InferExpandXAndScalesShape(gert::InferShapeContext *context, int64_t k, int64_t h, 
-    int64_t& localExpertNum, int64_t globalBsReal, int64_t epWorldSize, int64_t tpWorldSize)
+    int64_t& localExpertNum, int64_t globalBsReal, int64_t epWorldSize)
 {
     gert::Shape *expandXShape = context->GetOutputShape(DISPATCH_OUTPUT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandXShape);
@@ -127,7 +127,7 @@ static ge::graphStatus InferExpandXAndScalesShape(gert::InferShapeContext *conte
         ? (*epRankId < *sharedExpertRankNum) : (*epRankId >= (epWorldSize - *sharedExpertRankNum));
     localExpertNum = isSharedExpert ? 1 : localMoeExpertNum;
     int64_t a =  isSharedExpert ? (globalBsReal / *sharedExpertRankNum) : (globalBsReal * std::min(localExpertNum, k));
-    auto realA = (tpWorldSize == 0) ? a : a * tpWorldSize;
+    auto realA = a;
     expandXShape->SetDimNum(DIM_TWO);
     expandXShape->SetDim(0U, realA);
     expandXShape->SetDim(1U, h);
@@ -171,7 +171,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *
     OP_CHECK_IF(InferExpertIdsShape(context, k, h, globalBsReal, *epWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "InferExpertIdsShape failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(InferExpandXAndScalesShape(
-        context, k, h, localExpertNum, globalBsReal, *epWorldSize, *tpWorldSize) != ge::GRAPH_SUCCESS,
+        context, k, h, localExpertNum, globalBsReal, *epWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "InferExpandXAndScalesShape failed."), return ge::GRAPH_FAILED);
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, localExpertNum);
@@ -183,11 +183,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *
         int64_t shapeDim = *epWorldSize * localExpertNum + globalBsReal * 2 * k * (*epWorldSize) / RANK_NUM_PER_NODE;
         epRecvCountShape->SetDim(0U, shapeDim);
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
-        } else {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
-        }
+        epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
     }
     OP_LOGD(context->GetNodeName(), "epRecvCountShape shape is :%s after infershape.",
         Ops::Base::ToString(*epRecvCountShape).c_str());
