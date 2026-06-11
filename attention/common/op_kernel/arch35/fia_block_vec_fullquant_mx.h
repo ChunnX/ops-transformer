@@ -771,11 +771,11 @@ public:
                 gmDealRowCount = runInfo.actVecMSize;
             } else {
                 uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
-                if (constInfo.subBlockIdx == 0){
+                if (constInfo.subBlockIdx == 0) {
                     gmDealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
                 } else {
-                    int32_t remainRows = runInfo.actMSize - 16 * groupsOf32;
-                    gmDealRowCount = 0 > remainRows ? 0 : remainRows;
+                    int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
+                    gmDealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
                 }
             }
             if (gmDealRowCount == 0) {
