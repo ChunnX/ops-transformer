@@ -23,10 +23,10 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, aclTensor *convStatesRef,
+    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
     const aclTensor *queryStartLocOptional, const aclTensor *cacheIndicesOptional,
     const aclTensor *initialStateModeOptional, const aclTensor *numAcceptedTokensOptional, int64_t activationMode,
-    int64_t padSlotId, int64_t runMode, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t nullBlockId, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* @brief aclnnCausalConv1d的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
@@ -41,14 +41,13 @@ ACLNN_API aclnnStatus aclnnCausalConv1d(void *workspace, uint64_t workspaceSize,
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dV2GetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, aclTensor *convStatesRef,
+    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
     const aclTensor *queryStartLocOptional, const aclTensor *cacheIndicesOptional,
     const aclTensor *convStateIndicesOptional, const aclTensor *initialStateModeOptional,
     const aclTensor *initialStateIdxOptional, const aclTensor *numAcceptedTokensOptional,
     const aclTensor *numComputedTokensOptional, const aclTensor *blockIdxFirstScheduledTokenOptional,
-    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t padSlotId,
-    int64_t nullBlockId, int64_t runMode, int64_t blockSizeToAlign, int64_t maxQueryLen, aclTensor *y,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t nullBlockId,
+    int64_t blockSizeToAlign, int64_t maxQueryLen, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* @brief aclnnCausalConv1dV2 的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnCausalConv1dV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

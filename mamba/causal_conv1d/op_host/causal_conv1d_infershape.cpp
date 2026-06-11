@@ -19,7 +19,7 @@ using namespace ge;
 
 namespace ops {
 static constexpr int64_t IDX_0 = 0;
-static constexpr int64_t IDX_CONV_STATES = 3;
+static constexpr int64_t IDX_CONV_STATES = 2;
 
 static ge::graphStatus InferShapeCausalConv1d(gert::InferShapeContext *context)
 {

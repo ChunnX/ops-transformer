@@ -15,9 +15,9 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-bool CausalConv1d(const aclTensor *x, const aclTensor *weight, const aclTensor *bias, aclTensor *convStates,
+bool CausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *bias,
                   const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
-                  const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t padSlotId, int64_t runMode,
-                  aclTensor *y, aclOpExecutor *executor);
+                  const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t nullBlockId, aclTensor *y,
+                  aclOpExecutor *executor);
 } // namespace l0op
 #endif // OP_API_INC_LEVEL0_CAUSAL_CONV1D_L0OP_H_

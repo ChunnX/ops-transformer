@@ -24,18 +24,18 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(CausalConv1d);
 
-bool CausalConv1d(const aclTensor *x, const aclTensor *weight, const aclTensor *bias, aclTensor *convStates,
+bool CausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *bias,
                   const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
-                  const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t padSlotId, int64_t runMode,
-                  aclTensor *y, aclOpExecutor *executor)
+                  const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t nullBlockId, aclTensor *y,
+                  aclOpExecutor *executor)
 {
-    L0_DFX(CausalConv1d, x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
-           activationMode, padSlotId, runMode, y, convStates);
+    L0_DFX(CausalConv1d, x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
+           activationMode, nullBlockId, y, convStates);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         CausalConv1d,
-        OP_INPUT(x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens),
-        OP_OUTPUT(convStates, y), OP_ATTR(activationMode, padSlotId, runMode));
+        OP_INPUT(x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens),
+        OP_OUTPUT(convStates, y), OP_ATTR(activationMode, nullBlockId));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;

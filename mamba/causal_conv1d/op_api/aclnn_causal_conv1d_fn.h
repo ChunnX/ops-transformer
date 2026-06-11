@@ -23,13 +23,12 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dFnGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, aclTensor *convStatesRef,
+    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
     const aclTensor *queryStartLocOptional, const aclTensor *cacheIndicesOptional,
     const aclTensor *initialStateModeOptional, const aclTensor *initialStateIdxOptional,
     const aclTensor *numComputedTokensOptional, const aclTensor *blockIdxFirstScheduledTokenOptional,
-    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t padSlotId,
-    int64_t nullBlockId, int64_t blockSizeToAlign, aclTensor *y, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t nullBlockId,
+    int64_t blockSizeToAlign, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* @brief aclnnCausalConv1dFn 的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnCausalConv1dFn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

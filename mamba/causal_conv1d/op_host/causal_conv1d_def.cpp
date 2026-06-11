@@ -77,8 +77,7 @@ public:
             .AutoContiguous();
 
         this->Attr("activation_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("pad_slot_id").AttrType(OPTIONAL).Int(-1);
-        this->Attr("run_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("null_block_id").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig config_950;
         config_950.DynamicCompileStaticFlag(true)

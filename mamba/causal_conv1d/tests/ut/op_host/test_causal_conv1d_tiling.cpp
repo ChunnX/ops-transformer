@@ -26,12 +26,12 @@ using namespace std;
 // Common helpers
 // ============================================================
 
-static std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t activationMode = 0, int64_t padSlotId = -1,
+static std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t activationMode = 0, int64_t nullBlockId = 0,
                                                               int64_t runMode = 0)
 {
     return {
         {"activation_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activationMode)},
-        {"pad_slot_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(padSlotId)},
+        {"null_block_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(nullBlockId)},
         {"run_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(runMode)},
     };
 }

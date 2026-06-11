@@ -23,7 +23,7 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dUpdateGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, const aclTensor *biasOptional, aclTensor *convStatesRef,
+    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
     const aclTensor *convStateIndicesOptional, const aclTensor *queryStartLocOptional,
     const aclTensor *initialStateIdxOptional, const aclTensor *numAcceptedTokensOptional,
     const aclTensor *blockIdxLastScheduledTokenOptional, int64_t activationMode, int64_t nullBlockId,
