@@ -22,13 +22,13 @@ S = 16    # STEM_STRIDE
 D = 128   # DIM_QK
 
 
-def run_test(name, q, qscale, kscale, q_seq_lens, cu_seqlens_q):
+def run_test(name, q_fp8, qscale, q_seq_lens, cu_seqlens_q):
     """Run a single test case, return (name, passed, max_diff)"""
     op_fn = getattr(torch.ops.npu, OP_NAME)
-    qflat = op_fn(q.npu(), qscale.npu(), kscale, q_seq_lens, cu_seqlens_q)
+    qflat = op_fn(q_fp8.npu(), qscale.npu(), q_seq_lens, cu_seqlens_q)
 
     golden = stem_oam_prep_varlen_q_golden(
-        q.cpu(), qscale.cpu(), kscale, q_seq_lens.cpu(), cu_seqlens_q.cpu(), B=B, S=S)
+        q_fp8.cpu(), qscale.cpu(), q_seq_lens.cpu(), cu_seqlens_q.cpu(), B=B, S=S)
     golden_npu = golden.npu()
 
     max_diff = torch.max(torch.abs(qflat.float() - golden_npu.float())).item()
@@ -46,31 +46,31 @@ def main():
 
     results = []
 
-    # P1: Single block, BF16, all scales=1.0
+    # P1: Single block, FP8, all scales=1.0
     q_len = 128
-    q = torch.randn(q_len, 1, D, dtype=torch.bfloat16)
+    q_fp32 = torch.randn(q_len, 1, D) * 0.1
+    q_fp8 = q_fp32.to(torch.float8_e4m3fn)
     qscale = torch.ones(1, 1, q_len, dtype=torch.float32)
-    kscale = 1.0
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
-    results.append(run_test("P1 single_block", q, qscale, kscale, q_seq_lens, cu_seqlens_q))
+    results.append(run_test("P1 single_block", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
 
     # P2: Single block, random scales
-    q = torch.randn(q_len, 1, D, dtype=torch.bfloat16)
+    q_fp32 = torch.randn(q_len, 1, D) * 0.1
+    q_fp8 = q_fp32.to(torch.float8_e4m3fn)
     qscale = torch.randn(1, 1, q_len, dtype=torch.float32).abs() + 0.5
-    kscale = 1.5
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
-    results.append(run_test("P2 random_scales", q, qscale, kscale, q_seq_lens, cu_seqlens_q))
+    results.append(run_test("P2 random_scales", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
 
     # P3: Two blocks, 2 heads
     q_len = 256  # 2 blocks
-    q = torch.randn(q_len, 2, D, dtype=torch.bfloat16)
+    q_fp32 = torch.randn(q_len, 2, D) * 0.1
+    q_fp8 = q_fp32.to(torch.float8_e4m3fn)
     qscale = torch.ones(1, 2, q_len, dtype=torch.float32)
-    kscale = 1.0
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
-    results.append(run_test("P3 two_blocks_2heads", q, qscale, kscale, q_seq_lens, cu_seqlens_q))
+    results.append(run_test("P3 two_blocks_2heads", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
 
     # Summary
     total = len(results)
