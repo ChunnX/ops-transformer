@@ -52,8 +52,8 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 
     OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
                     supportedKvLayouts.end(),
-                OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ, but got %s",
-                        LayoutToSerialString(faInfo.kvLayout).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                    "The value of layout_kv(layout of K/V) can only be BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
@@ -208,10 +208,12 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
 
     const std::vector<int64_t> supportedHeadDims = {64, 128, 256};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.qkHeadDim, supportedHeadDims),
-                OP_LOGE(faInfo.opName, "The axis D of query and key only support 64/128/256, the current is %ld.", faInfo.qkHeadDim),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "axis D of query and key", std::to_string(faInfo.qkHeadDim).c_str(),
+                    "The value of axis D of query and key can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
-                OP_LOGE(faInfo.opName, "The axis D of value only support 64/128/256, the current is %ld.", faInfo.vHeadDim),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value", std::to_string(faInfo.vHeadDim).c_str(),
+                    "The value of The axis D of value can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
