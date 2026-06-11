@@ -62,7 +62,7 @@ def run_test_dispatch_forward_upper_bound(rank):
 
     torch.npu.synchronize()
 
-    upper_a = world_size * num_max_tokens_per_rank
+    upper_a = world_size * num_max_tokens_per_rank * min(top_k, num_experts // world_size)
     assert recv_x.shape == (upper_a, hidden), f"recv_x shape={recv_x.shape}, expected ({upper_a}, {hidden})"
     assert recv_topk_idx.shape == (upper_a, top_k)
     assert recv_topk_weights.shape == (upper_a,)
