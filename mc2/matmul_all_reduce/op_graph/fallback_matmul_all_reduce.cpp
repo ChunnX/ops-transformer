@@ -18,6 +18,8 @@
 
 namespace fallback {
 inline const char* kInnerDebug = "MmAllReduceFallback";
+constexpr const char* COMM_MODE_CCU_CHARPTR = "ccu";
+constexpr const char* COMM_MODE_AICPU_CHARPTR = "ai_cpu";
 
 struct MatmulParas {
     /* const aclTensor *会导致Release重载方法匹配不上，造成内存泄漏 */
@@ -124,7 +126,7 @@ struct CommParas {
 
 inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
     para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
@@ -205,12 +207,9 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(ops::MC2OutputIdx::K_Y));
     OPS_CHECK(y == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "y"), return ge::GRAPH_FAILED);
 
-    bool isCommMode = false;
-    if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
-    }
+    bool isCommModeCCU = comm_para.comm_mode != nullptr && strcmp(comm_para.comm_mode, COMM_MODE_CCU_CHARPTR) == 0;
+    bool isCommModeAICPU = comm_para.comm_mode != nullptr && strcmp(comm_para.comm_mode, COMM_MODE_AICPU_CHARPTR) == 0;
+    bool isCommMode = isCommModeCCU || isCommModeAICPU;
 
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:
