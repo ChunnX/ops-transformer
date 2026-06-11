@@ -462,6 +462,13 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
         return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
+    // Batch-invariance switch — opt-in via either env var:
+    //   ASCEND_MC2_BATCH_INVARIANT=1 (BI-specific, op-level), OR
+    //   HCCL_DETERMINISTIC=true (deterministic comm framework convention).
+    // batchInvariant=1 unifies the cube path (skip LOCAL, isGather=false) at the cost of
+    // LOCAL/HCCL overlap; batchInvariant=0 preserves the master perf path byte-for-byte.
+    bool batchInvariant = mc2tiling::IsBatchInvariant() || mc2tiling::IsDeterministic();
+    MutableRCSTilingDataA5().batchInvariant = batchInvariant ? 1U : 0U;
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
@@ -906,7 +913,6 @@ ge::graphStatus AllGatherQuantBmmHelper::GetShapeAttrsInfo()
 
 ge::graphStatus AllGatherQuantBmmHelper::PostTiling()
 {
-    // 此处需要后续考虑补充相关tiling打印，当前该函数已不存在。
     tilingProcesser_.myWorkSpaceSize_ = std::max(tilingProcesser_.myWorkSpaceSize_, workspaceSize_);
     OP_LOGI(tilingProcesser_.opName_, " set mm workspace size %lu to mc2", tilingProcesser_.myWorkSpaceSize_);
     return ge::GRAPH_SUCCESS;
