@@ -93,11 +93,9 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - `max_recv_token_num`：每个Rank最大可接收Token数，默认值为0表示自动计算，数据数据类型支持`int64`。
     - `num_max_tokens_per_rank`：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小，数据数据类型支持`int64`。
     - `dispatch_quant_mode`：dispatch通信时量化模式，目前仅支持4（MX模式），数据数据类型支持`int64`。
-    - `dispatch_quant_out_type`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
+    - `dispatch_quant_out_dtype`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
     - `combine_quant_mode`：暂不支持该参数，使用默认值即可。
     - `comm_alg`：暂不支持该参数，使用默认值即可。
-- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
--   **scales** (`Tensor`)：可选参数，表示每个专家的权重。暂不支持该参数，使用默认值即可。
 -   **l1\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul1`右矩阵反量化参数，当前支持4维张量，shape为(expertPerRank, N, CeilDiv(H, 64), 2)，其中CeilDiv(H, 64) = (H + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
 -   **l2\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul2`右矩阵反量化参数，当前支持4维张量，shape为(expertPerRank, H, CeilDiv(N/2, 64), 2)，其中CeilDiv(N/2, 64) = (N/2 + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
 -   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。暂不支持该参数，使用默认值即可。
@@ -158,7 +156,6 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - **num_topk**(`int`)：必选参数，表示每个token发送的专家数。预留参数，暂不支持。
 - **hidden**(`int`)：必选参数，表示每个token大小。预留参数，暂不支持。
 - **intermediate_hidden**(`int`)：必选参数，表示中间层投影维度。预留参数，暂不支持。
-- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 - **max_recv_token_num**(`int`)：可选参数，每个Rank最大可接收Token数，默认值为0表示自动计算。
 - **dispatch_quant_mode**(`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
 - **dispatch_quant_out_type**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
