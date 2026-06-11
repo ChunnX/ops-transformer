@@ -151,16 +151,7 @@ public:
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     T negativeFloatScalar;
     int64_t vec2SubBlockOffset = 0;
-    using QSeqParserType = typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
-        ActualSeqLensParser<Q_MODE, int32_t, true>,
-        ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    QSeqParserType *qActSeqLensParser = nullptr;
-    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser)
-    {
-        this->qActSeqLensParser = &qParser;
-    }
-
-    // CV buffers
+// CV buffers
     BufferManager<BufferType::GM> gmBufferManager;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
@@ -175,7 +166,6 @@ public:
 
     ConstInfoXVec constInfoXVec;
 
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
     VecFdBlockType vecFdBlock;
 
@@ -313,7 +303,7 @@ public:
     {
         int64_t tSize = constInfoXVec.bSize * constInfoXVec.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            tSize = qActSeqLensParser->GetTSize();
+            tSize = qCuSeqLensParser.GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfoXVec.n2Size * constInfoXVec.gSize * constInfoXVec.dSizeV;
         int64_t singleCoreSize =
@@ -339,7 +329,7 @@ public:
     {
         int64_t tSize = constInfoXVec.bSize * constInfoXVec.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            tSize = qActSeqLensParser->GetTSize();
+            tSize = qCuSeqLensParser.GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfoXVec.n2Size * constInfoXVec.gSize;
         int64_t singleCoreSize =
@@ -453,20 +443,20 @@ public:
         softmaxLseQueue.DeQue<float>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            uint32_t prefixBS1 = qActSeqLensParser->GetTBase(runInfo.bIdx);
+            uint32_t prefixBS1 = qCuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfoXVec.gSize * constInfoXVec.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoXVec>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                            constInfoXVec);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfoXVec.n2Size * constInfoXVec.gSize * constInfoXVec.s1Size +
                                  runInfo.n2Idx * constInfoXVec.gSize * constInfoXVec.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens = qSeqUsedParser.GetActualSeqLength(runInfo.bIdx);
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoXVec>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfoXVec);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfoXVec.n2Size * constInfoXVec.gSize * constInfoXVec.s1Size +
                                  runInfo.n2Idx * constInfoXVec.gSize * constInfoXVec.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens = qSeqUsedParser.GetActualSeqLength(runInfo.bIdx);
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoXVec>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfoXVec, qActSeqLens);
         }
@@ -916,7 +906,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfoXVec.bSize, constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.s1Size,
-                                              constInfoXVec.dSizeV, *qActSeqLensParser);
+                                              constInfoXVec.dSizeV, qSeqUsedParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -924,7 +914,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfoXVec.bSize, constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.s1Size,
-                                              constInfoXVec.dSizeV, *qActSeqLensParser);
+                                              constInfoXVec.dSizeV, qSeqUsedParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
@@ -932,7 +922,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.dSizeV,
-                                              *qActSeqLensParser);
+                                              qCuSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -1241,16 +1231,16 @@ public:
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             OffsetCalculator<GmFormat::BSNGD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfoXVec.bSize, constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.s1Size,
-                                  constInfoXVec.dSizeV, *qActSeqLensParser);
+                                  constInfoXVec.dSizeV, qSeqUsedParser);
             DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfoXVec.bSize, constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.s1Size,
-                                  constInfoXVec.dSizeV, *qActSeqLensParser);
+                                  constInfoXVec.dSizeV, qSeqUsedParser);
             DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.dSizeV, *qActSeqLensParser);
+            offsetCalculator.Init(constInfoXVec.n2Size, constInfoXVec.gSize, constInfoXVec.dSizeV, qCuSeqLensParser);
             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
@@ -1265,9 +1255,8 @@ private:
                                        const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
 {
     this->pipe = tPipe;
-    this->tilingData = tiling;
 
-    InitConstInfo();
+    InitConstInfo(tiling);
 
     keyPtr = key;
 
@@ -1318,13 +1307,7 @@ public:
         InitCommon(key, cuSeqLensQ, cuSeqLensKv, seqUsedQ, seqUsedKv, ws, fiaMetaData, tiling, tPipe);
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar = *((T *)&tmp1);
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            InitVecInput(attenMask, learnableSink, softmaxLse, attentionOut, ws);
-            SetCuSeqLensParser(qCuSeqLensParser);
-        } else {
-            InitVecInput(attenMask, learnableSink, softmaxLse, attentionOut, ws);
-            SetCuSeqLensParser(qSeqUsedParser);
-        }
+        InitVecInput(attenMask, learnableSink, softmaxLse, attentionOut, ws);
         ClearOutput();
         if (isFd) {
             vecFdBlock.InitParams();
@@ -1393,38 +1376,38 @@ public:
         }
     }
 
-__aicore__ inline void InitConstInfo()
+__aicore__ inline void InitConstInfo(const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
         constInfoXVec.aivIdx = GetBlockIdx();
         constInfoXVec.aicIdx = GetBlockIdx() / GetSubBlockNum();
         constInfoXVec.subBlockIdx = GetSubBlockIdx();
-        constInfoXVec.bSize = this->tilingData->flashAttnBaseParams.bSize;
-        constInfoXVec.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
-        constInfoXVec.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
-        constInfoXVec.gSize = this->tilingData->flashAttnBaseParams.gSize;
-        constInfoXVec.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
-        constInfoXVec.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfoXVec.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
-        constInfoXVec.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
-        constInfoXVec.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
-        constInfoXVec.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
-        constInfoXVec.seqUsedKvSize = this->tilingData->flashAttnBaseParams.seqUsedKvSize;
-        constInfoXVec.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
-        constInfoXVec.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
-        constInfoXVec.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfoXVec.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
+        constInfoXVec.bSize = tiling->flashAttnBaseParams.bSize;
+        constInfoXVec.t1Size = tiling->flashAttnBaseParams.t1Size;
+        constInfoXVec.n2Size = tiling->flashAttnBaseParams.n2Size;
+        constInfoXVec.gSize = tiling->flashAttnBaseParams.gSize;
+        constInfoXVec.s1Size = tiling->flashAttnBaseParams.s1Size;
+        constInfoXVec.s2Size = tiling->flashAttnBaseParams.s2Size;
+        constInfoXVec.dSizeV = tiling->flashAttnBaseParams.dSizeV;
+        constInfoXVec.cuSeqLensQSize = tiling->flashAttnBaseParams.cuSeqLensQSize;
+        constInfoXVec.cuSeqLensKVSize = tiling->flashAttnBaseParams.cuSeqLensKVSize;
+        constInfoXVec.seqUsedQSize = tiling->flashAttnBaseParams.seqUsedQSize;
+        constInfoXVec.seqUsedKvSize = tiling->flashAttnBaseParams.seqUsedKvSize;
+        constInfoXVec.scaleValue = static_cast<float>(tiling->flashAttnBaseParams.scaleValue);
+        constInfoXVec.isKvContinuous = tiling->flashAttnBaseParams.isKvContinuous != 0;
+        constInfoXVec.coreNum = tiling->flashAttnBaseParams.coreNum;
+        constInfoXVec.needInitOutput = tiling->flashAttnBaseParams.needInitOutput;
 
-        constInfoXVec.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
-        constInfoXVec.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
-        constInfoXVec.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
-        constInfoXVec.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
-        constInfoXVec.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
-        constInfoXVec.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
+        constInfoXVec.sparseMode = tiling->flashAttnAttenMaskParams.sparseMode;
+        constInfoXVec.preTokens = tiling->flashAttnAttenMaskParams.winLefts;
+        constInfoXVec.nextTokens = tiling->flashAttnAttenMaskParams.winRights;
+        constInfoXVec.attenMaskBatch = tiling->flashAttnAttenMaskParams.attenMaskBatch;
+        constInfoXVec.attenMaskS1Size = tiling->flashAttnAttenMaskParams.attenMaskS1Size;
+        constInfoXVec.attenMaskS2Size = tiling->flashAttnAttenMaskParams.attenMaskS2Size;
 
-        constInfoXVec.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
-        constInfoXVec.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
+        constInfoXVec.accumOutSize = tiling->flashAttnWorkspaceParams.accumOutSize;
+        constInfoXVec.logSumExpSize = tiling->flashAttnWorkspaceParams.logSumExpSize;
 
-        constInfoXVec.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
+        constInfoXVec.isSoftmaxLseEnable = tiling->flashAttnBaseParams.isSoftMaxLseEnable;
 
         constInfoXVec.dBasicBlock = Align64Func((uint16_t)constInfoXVec.dSizeV);
     }

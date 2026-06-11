@@ -187,9 +187,6 @@ public:
     FaGmTensorKV keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
 
-    QSeqParserType *qSeqParserPtr = nullptr;
-    KvSeqParserType *kvSeqParserPtr = nullptr;
-
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
@@ -264,8 +261,6 @@ public:
         InitQBuffer(constInfoXCube.bSize, constInfoXCube.n2Size, constInfoXCube.gSize, constInfoXCube.s1Size, constInfoXCube.dSize, queryGm,
                     query);
 
-        keyPtr = key;
-        valuePtr = value;
         if (constInfoXCube.isKvContinuous) {
             InitKVBuffer(constInfoXCube.bSize, constInfoXCube.s2Size, constInfoXCube.n2Size, constInfoXCube.blockSize, constInfoXCube.dSize,
                          keyGm, key);
@@ -279,9 +274,17 @@ public:
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (Q_NEEDS_WZH) {
-            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr);
+            if constexpr (IS_TND_LAYOUT) {
+                qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qCuSeqLensParser);
+            } else {
+                qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqUsedParser);
+            }
         } else {
-            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr);
+            if constexpr (IS_TND_LAYOUT) {
+                qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qCuSeqLensParser);
+            } else {
+                qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqUsedParser);
+            }
         }
     }
 
@@ -301,9 +304,17 @@ public:
                                              constInfoXCube.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
+            if constexpr (IS_TND_LAYOUT) {
+                kvGmTensor.offsetCalculator.Init(kvCuSeqLensParser);
+            } else {
+                kvGmTensor.offsetCalculator.Init(kvSeqUsedParser);
+            }
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
+            if constexpr (IS_TND_LAYOUT) {
+                kvGmTensor.offsetCalculator.Init(n2Size, headDim, kvCuSeqLensParser);
+            } else {
+                kvGmTensor.offsetCalculator.Init(n2Size, headDim, kvSeqUsedParser);
+            }
         }
     }
 
@@ -875,14 +886,9 @@ static constexpr LayOutTypeEnum LAYOUT_Q = LAYOUT;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    GlobalTensor<int32_t> cuSeqLensGmQ;
-    GlobalTensor<int32_t> cuSeqLensGmKv;
-    GlobalTensor<int32_t> seqUsedGmQ;
-    GlobalTensor<int32_t> seqUsedGmKv;
-    GlobalTensor<uint32_t> faMetaDataGm;
+GlobalTensor<uint32_t> faMetaDataGm;
     __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+__gm__ uint8_t *valuePtr = nullptr;
     TPipe *pipe;
     
     uint32_t createdTaskCount = 0U;
@@ -923,43 +929,40 @@ __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
                                     __gm__ uint8_t *blockTable)
     {
         this->pipe = tPipe;
-        this->tilingData = tiling;
 
-        InitConstInfo();
+        InitConstInfo(tiling);
 
         keyPtr = key;
         valuePtr = value;
 
+        GlobalTensor<int32_t> localCuSeqLensGmQ;
+        GlobalTensor<int32_t> localSeqUsedGmQ;
+        GlobalTensor<int32_t> localCuSeqLensGmKv;
+        GlobalTensor<int32_t> localSeqUsedGmKv;
+
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfoXCube.cuSeqLensQSize + 1);
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
+            localCuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfoXCube.cuSeqLensQSize + 1);
+            localSeqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
         } else {
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
+            localSeqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
         }
         if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfoXCube.cuSeqLensKVSize + 1);
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
+            localCuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfoXCube.cuSeqLensKVSize + 1);
+            localSeqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
         } else {
-            seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
+            localSeqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
         }
+
+        InitQCuSeqLensParser(localCuSeqLensGmQ, localSeqUsedGmQ);
+        InitKvCuSeqLensParser(localCuSeqLensGmKv, localSeqUsedGmKv);
+
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                       FA_AIC_CORE_NUM * 16U * sectionNum_);
 
-        InitQCuSeqLensParser();
-        InitKvCuSeqLensParser();
-
-        if constexpr (IS_TND_LAYOUT) {
-            this->qSeqParserPtr = &qCuSeqLensParser;
-            this->kvSeqParserPtr = &kvCuSeqLensParser;
-        } else {
-            this->qSeqParserPtr = &qSeqUsedParser;
-            this->kvSeqParserPtr = &kvSeqUsedParser;
-        }
-
         InitMMResBuf(workspace);
-        InitCubeInput(query, keyPtr, valuePtr, blockTable);
+        InitCubeInput(query, key, value, blockTable);
     }
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
@@ -988,7 +991,7 @@ __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
             workspace = workspace + constInfoXCube.coreNum * 3 * mm2ResultSize * sizeof(T);
         }
     }
-    __aicore__ inline void InitQCuSeqLensParser()
+__aicore__ inline void InitQCuSeqLensParser(GlobalTensor<int32_t> &cuSeqLensGmQ, GlobalTensor<int32_t> &seqUsedGmQ)
     {
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfoXCube.cuSeqLensQSize, constInfoXCube.seqUsedQSize);
@@ -996,7 +999,7 @@ __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
             qSeqUsedParser.Init(seqUsedGmQ, constInfoXCube.seqUsedQSize, constInfoXCube.s1Size);
         }
     }
-    __aicore__ inline void InitKvCuSeqLensParser()
+__aicore__ inline void InitKvCuSeqLensParser(GlobalTensor<int32_t> &cuSeqLensGmKv, GlobalTensor<int32_t> &seqUsedGmKv)
     {
         if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfoXCube.cuSeqLensKVSize, constInfoXCube.seqUsedKvSize);
@@ -1004,30 +1007,29 @@ __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm
             kvSeqUsedParser.Init(seqUsedGmKv, constInfoXCube.seqUsedKvSize, constInfoXCube.s2Size);
         }
     }
-__aicore__ inline void InitConstInfo()
+__aicore__ inline void InitConstInfo(const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
         constInfoXCube.aicIdx = GetBlockIdx();
-        constInfoXCube.bSize = this->tilingData->flashAttnBaseParams.bSize;
-        constInfoXCube.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
-        constInfoXCube.gSize = this->tilingData->flashAttnBaseParams.gSize;
-        constInfoXCube.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
-        constInfoXCube.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfoXCube.dSize = this->tilingData->flashAttnBaseParams.dSize;
-        constInfoXCube.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
-        constInfoXCube.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
-        constInfoXCube.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
-        constInfoXCube.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
-        constInfoXCube.seqUsedKvSize = this->tilingData->flashAttnBaseParams.seqUsedKvSize;
-        constInfoXCube.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
-        constInfoXCube.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
+        constInfoXCube.bSize = tiling->flashAttnBaseParams.bSize;
+        constInfoXCube.n2Size = tiling->flashAttnBaseParams.n2Size;
+        constInfoXCube.gSize = tiling->flashAttnBaseParams.gSize;
+        constInfoXCube.s1Size = tiling->flashAttnBaseParams.s1Size;
+        constInfoXCube.s2Size = tiling->flashAttnBaseParams.s2Size;
+        constInfoXCube.dSize = tiling->flashAttnBaseParams.dSize;
+        constInfoXCube.dSizeV = tiling->flashAttnBaseParams.dSizeV;
+        constInfoXCube.cuSeqLensQSize = tiling->flashAttnBaseParams.cuSeqLensQSize;
+        constInfoXCube.cuSeqLensKVSize = tiling->flashAttnBaseParams.cuSeqLensKVSize;
+        constInfoXCube.seqUsedQSize = tiling->flashAttnBaseParams.seqUsedQSize;
+        constInfoXCube.seqUsedKvSize = tiling->flashAttnBaseParams.seqUsedKvSize;
+        constInfoXCube.isKvContinuous = tiling->flashAttnBaseParams.isKvContinuous != 0;
+        constInfoXCube.coreNum = tiling->flashAttnBaseParams.coreNum;
         
-        constInfoXCube.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
-        constInfoXCube.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
-        constInfoXCube.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
-        // pageAttention
+        constInfoXCube.sparseMode = tiling->flashAttnAttenMaskParams.sparseMode;
+        constInfoXCube.preTokens = tiling->flashAttnAttenMaskParams.winLefts;
+        constInfoXCube.nextTokens = tiling->flashAttnAttenMaskParams.winRights;
         if constexpr (PAGE_ATTENTION) {
-            constInfoXCube.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-            constInfoXCube.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
+            constInfoXCube.maxBlockNumPerBatch = tiling->flashAttnPageAttentionParams.maxBlockNumPerBatch;
+            constInfoXCube.blockSize = tiling->flashAttnPageAttentionParams.blockSize;
         }
         constInfoXCube.dBasicBlock = Align64Func((uint16_t)constInfoXCube.dSizeV);
     }
