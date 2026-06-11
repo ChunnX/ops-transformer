@@ -45,8 +45,16 @@ def _set_case(module, case):
 def run_case(module, case):
     _set_case(module, case)
     try:
+        print("=" * 60)
+        print(f"  {'PA' if module.ENABLE_PA else ''}  INPUT_LAYOUT={module.INPUT_LAYOUT}  OUTPUT_LAYOUT={'TND' if module.ENABLE_PA else module.INPUT_LAYOUT}")
+        print(f"  B={module.B}  N_q={module.N_q}  N_kv={module.N_kv}  D={module.D}  SPARSE_MODE={module.SPARSE_MODE}")
+        print(f"  ACTUAL_SEQ_Q={module.ACTUAL_SEQ_Q}")
+        print(f"  ACTUAL_SEQ_KV={module.ACTUAL_SEQ_KV}")
+        print("=" * 60)
+
         data = module.generate_data()
         q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale = data
+        print("[INFO] CPU Running...")
         cpu_out = module.cpu_fp8_fullquant_gqa_golden(
             q_fp8,
             k_fp8,
@@ -58,6 +66,10 @@ def run_case(module, case):
             module.ACTUAL_SEQ_Q,
             module.ACTUAL_SEQ_KV
         )
+        print(f"[INFO] cpu_out[0] shape: {cpu_out[0].shape}, dtype: {cpu_out[0].dtype}")
+        if module.ENABLE_LSE:
+            print(f"[INFO] cpu_out[1] shape: {cpu_out[1].shape}, dtype: {cpu_out[1].dtype}")
+        print("[INFO] NPU Running...")
         npu_out = module.npu_fp8_full_quant(
             q_fp8,
             k_fp8,
@@ -69,15 +81,33 @@ def run_case(module, case):
             module.ACTUAL_SEQ_Q,
             module.ACTUAL_SEQ_KV
         )
+        print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
+        if module.ENABLE_LSE:
+            print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
+
         compare_layout = "TND" if module.ENABLE_PA else module.INPUT_LAYOUT
         cpu_cmp0 = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
+        print(f"[INFO] cpu_out[0] after convert to {compare_layout}: {cpu_cmp0.shape}")
+
+        print("=" * 80)
+        print("  [AttenOut Precision Check]")
+        print("=" * 80)
         res0 = result_compare_method.check_result(cpu_cmp0, npu_out[0])
         status0 = res0[0] if isinstance(res0, tuple) else res0
-        cpu_cmp1 = module.convert_q_bnsd_to_layout(cpu_out[1], module.ACTUAL_SEQ_Q, compare_layout)
-        res1 = result_compare_method.check_result(cpu_cmp1, npu_out[1])
-        status1 = res1[0] if isinstance(res1, tuple) else res1
-        if status0 != "Pass" or status1 != "Pass":
-            err_msg = f"out0={status0}, LSE(out1)={status1}"
+
+        if module.ENABLE_LSE:
+            cpu_cmp1 = module.convert_q_bnsd_to_layout(cpu_out[1], module.ACTUAL_SEQ_Q, compare_layout)
+            print("=" * 80)
+            print("  [LSE Precision Check]")
+            print("=" * 80)
+            res1 = result_compare_method.check_result(cpu_cmp1, npu_out[1])
+            status1 = res1[0] if isinstance(res1, tuple) else res1
+        else:
+            status1 = "N/A"
+            print("  [LSE] ENABLE_LSE=False, skip LSE precision check.")
+
+        if status0 != "Pass" or (status1 != "Pass" and status1 != "N/A"):
+            err_msg = f"AttenOut={status0}, LSE={status1}"
             return {"name": case["name"], "status": "FAILED", "error_message": err_msg}
         return {"name": case["name"], "status": "PASSED", "error_message": ""}
     except Exception as exc:
@@ -97,9 +127,13 @@ def main():
         raise ValueError("No cases selected")
 
     results = []
-    for case in selected:
-        print(f"\n[CASE] {case['name']}")
-        results.append(run_case(module, case))
+    total = len(selected)
+    for idx, case in enumerate(selected, 1):
+        print(f"\n[CASE] [{idx}/{total}] {case['name']}")
+        result = run_case(module, case)
+        results.append(result)
+        if result["status"] == "FAILED":
+            print(f"  [FAILED] {result['error_message']}")
 
     passed = sum(item["status"] == "PASSED" for item in results)
     print("\n[SUMMARY]")
