@@ -19,18 +19,18 @@
 namespace {
 
 template <typename T, uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBiasKey, uint32_t activationKey>
-__aicore__ inline void RunCausalConv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates,
+__aicore__ inline void RunCausalConv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias,
                                        GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR initialStateMode,
                                        GM_ADDR numAcceptedTokens, GM_ADDR convStatesOut, GM_ADDR y, GM_ADDR workspace,
                                        const CausalConv1dTilingData *tilingData)
 {
     if constexpr (CausalConv1d::IsFnInputModeKey(inputModeKey)) {
         CausalConv1d::RunCausalConv1dFn<T, inputModeKey, widthKey, hasBiasKey, activationKey>(
-            x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
+            x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
             convStatesOut, y, workspace, tilingData);
     } else {
         CausalConv1d::RunCausalConv1dUpdate<T, inputModeKey, widthKey, hasBiasKey, activationKey>(
-            x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
+            x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
             convStatesOut, y, workspace, tilingData);
     }
 }
@@ -38,7 +38,7 @@ __aicore__ inline void RunCausalConv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, 
 } // namespace
 
 template <uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBiasKey, uint32_t activationKey>
-__global__ __aicore__ void causal_conv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates,
+__global__ __aicore__ void causal_conv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias,
                                          GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR initialStateMode,
                                          GM_ADDR numAcceptedTokens, GM_ADDR convStatesOut, GM_ADDR y, GM_ADDR workspace,
                                          GM_ADDR tiling)
@@ -52,6 +52,6 @@ __global__ __aicore__ void causal_conv1d(GM_ADDR x, GM_ADDR weight, GM_ADDR bias
     }
 
     RunCausalConv1d<DTYPE_X, inputModeKey, widthKey, hasBiasKey, activationKey>(
-        x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens, convStatesOut, y,
+        x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens, convStatesOut, y,
         userWorkspace, &tilingData);
 }
