@@ -251,8 +251,8 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     
     single_rank_data_bytes = test_bs * data_size_bytes * ((num_world_size - 1) / num_world_size)
     total_data_bytes = single_rank_data_bytes * num_world_size
-    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1e9 / num_world_size
-    max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1e9 / num_world_size
+    mean_bandwidth_gbps = (total_data_bytes / mean_time_s) / 1024 / 1024 / 1024 / num_world_size
+    max_bandwidth_gbps = (total_data_bytes / min_time_s) / 1024 / 1024 / 1024 / num_world_size
     single_rank_data_kb = single_rank_data_bytes / 1024
     
     logger.info("=" * 60)
@@ -549,11 +549,11 @@ def run_bandwidth_test_npu(
         'x': x_npu,
         'dstrank_id': dstrank_id_npu,
         'group': hcomm_info,
-        'test_world_size': test_world_size,
-        'test_max_bs': test_max_bs,
-        'test_mode': test_mode,
-        'test_comm_alg': comm_alg,
-        'test_aiv_num': aiv_num,
+        'world_size': test_world_size,
+        'max_bs': test_max_bs,
+        'mode': test_mode,
+        'comm_alg': comm_alg,
+        'aiv_num': aiv_num,
     }
 
     torch.npu.synchronize()
@@ -669,8 +669,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         dstrank_id_npu = dstrank_id.to(torch.int32).npu()
         
         bandwidth_test_kwargs = {
-            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'test_world_size': test_world_size,
-            'test_max_bs': test_max_bs, 'test_mode': mode, 'test_comm_alg': comm_alg, 'test_aiv_num': aiv_num,
+            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
+            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num,
         }
 
         torch.npu.synchronize()
