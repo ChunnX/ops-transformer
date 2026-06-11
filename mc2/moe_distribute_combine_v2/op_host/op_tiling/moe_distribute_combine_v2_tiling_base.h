@@ -28,7 +28,7 @@ public:
     ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context);
     virtual ge::graphStatus MoeDistributeCombineTilingFuncImpl(gert::TilingContext* context,
                                                                 const CombineV2Config& config) = 0;
-    virtual uint64_t CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode, bool isLayered);
+    virtual uint64_t CalTilingKey(uint32_t commQuantMode, bool isLayered);
 };
 }
 #endif
