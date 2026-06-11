@@ -13,19 +13,19 @@
 
 namespace ops {
 namespace {
-constexpr size_t kQkvIndex = 0;
-constexpr size_t kKCacheIndex = 5;
-constexpr size_t kVCacheIndex = 6;
-constexpr size_t kKScaleCacheIndex = 7;
-constexpr size_t kHeadNumsAttrIndex = 0;
+constexpr size_t QKV_INDEX = 0;
+constexpr size_t K_CACHE_INDEX = 5;
+constexpr size_t V_CACHE_INDEX = 6;
+constexpr size_t K_SCALE_CACHE_INDEX = 7;
+constexpr size_t HEAD_NUMS_ATTR_INDEX = 0;
 
-constexpr size_t kQOutIndex = 0;
-constexpr size_t kQScaleIndex = 1;
-constexpr size_t kKCacheOutIndex = 2;
-constexpr size_t kVCacheOutIndex = 3;
-constexpr size_t kKScaleCacheOutIndex = 4;
+constexpr size_t Q_OUT_INDEX = 0;
+constexpr size_t Q_SCALE_INDEX = 1;
+constexpr size_t K_CACHE_OUT_INDEX = 2;
+constexpr size_t V_CACHE_OUT_INDEX = 3;
+constexpr size_t K_SCALE_CACHE_OUT_INDEX = 4;
 
-constexpr int64_t kUnknownDim = -1;
+constexpr int64_t UNKNOWN_DIM = -1;
 } // namespace
 
 ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
@@ -33,35 +33,43 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const auto headNums = attrs->GetListInt(kHeadNumsAttrIndex);
+    const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
     if (headNums->GetSize() != 3) {
         return ge::GRAPH_FAILED;
     }
+    const auto *headNumsData = headNums->GetData();
+    OP_CHECK_NULL_WITH_CONTEXT(context, headNumsData);
+    for (size_t i = 0; i < 3; ++i) {
+        if (headNumsData[i] <= 0) {
+            OP_LOGE(context->GetNodeName(), "head_nums[%zu] must be greater than 0.", i);
+            return ge::GRAPH_FAILED;
+        }
+    }
 
-    const gert::Shape *qkvShape = context->GetInputShape(kQkvIndex);
+    const gert::Shape *qkvShape = context->GetInputShape(QKV_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qkvShape);
-    const gert::Shape *kCacheShape = context->GetInputShape(kKCacheIndex);
+    const gert::Shape *kCacheShape = context->GetInputShape(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
-    const gert::Shape *vCacheShape = context->GetInputShape(kVCacheIndex);
+    const gert::Shape *vCacheShape = context->GetInputShape(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
-    const gert::Shape *kScaleCacheShape = context->GetInputShape(kKScaleCacheIndex);
+    const gert::Shape *kScaleCacheShape = context->GetInputShape(K_SCALE_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheShape);
 
-    gert::Shape *qOutShape = context->GetOutputShape(kQOutIndex);
+    gert::Shape *qOutShape = context->GetOutputShape(Q_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutShape);
-    gert::Shape *qScaleShape = context->GetOutputShape(kQScaleIndex);
+    gert::Shape *qScaleShape = context->GetOutputShape(Q_SCALE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qScaleShape);
-    gert::Shape *kCacheOutShape = context->GetOutputShape(kKCacheOutIndex);
+    gert::Shape *kCacheOutShape = context->GetOutputShape(K_CACHE_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheOutShape);
-    gert::Shape *vCacheOutShape = context->GetOutputShape(kVCacheOutIndex);
+    gert::Shape *vCacheOutShape = context->GetOutputShape(V_CACHE_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheOutShape);
-    gert::Shape *kScaleCacheOutShape = context->GetOutputShape(kKScaleCacheOutIndex);
+    gert::Shape *kScaleCacheOutShape = context->GetOutputShape(K_SCALE_CACHE_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheOutShape);
 
-    const int64_t totalTokens = qkvShape->GetDimNum() >= 2 ? qkvShape->GetDim(1) : kUnknownDim;
-    const int64_t qHeads = headNums->GetData()[0];
-    const int64_t headDim = qkvShape->GetDimNum() >= 3 ? qkvShape->GetDim(2) : kUnknownDim;
+    const int64_t totalTokens = qkvShape->GetDimNum() >= 2 ? qkvShape->GetDim(1) : UNKNOWN_DIM;
+    const int64_t qHeads = headNumsData[0];
+    const int64_t headDim = qkvShape->GetDimNum() >= 3 ? qkvShape->GetDim(2) : UNKNOWN_DIM;
 
     qOutShape->SetDimNum(3);
     qOutShape->SetDim(0, qHeads);
@@ -81,11 +89,11 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
 ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    context->SetOutputDataType(kQOutIndex, ge::DT_FLOAT8_E4M3FN);
-    context->SetOutputDataType(kQScaleIndex, ge::DT_FLOAT);
-    context->SetOutputDataType(kKCacheOutIndex, context->GetInputDataType(kKCacheIndex));
-    context->SetOutputDataType(kVCacheOutIndex, context->GetInputDataType(kVCacheIndex));
-    context->SetOutputDataType(kKScaleCacheOutIndex, context->GetInputDataType(kKScaleCacheIndex));
+    context->SetOutputDataType(Q_OUT_INDEX, ge::DT_FLOAT8_E4M3FN);
+    context->SetOutputDataType(Q_SCALE_INDEX, ge::DT_FLOAT);
+    context->SetOutputDataType(K_CACHE_OUT_INDEX, context->GetInputDataType(K_CACHE_INDEX));
+    context->SetOutputDataType(V_CACHE_OUT_INDEX, context->GetInputDataType(V_CACHE_INDEX));
+    context->SetOutputDataType(K_SCALE_CACHE_OUT_INDEX, context->GetInputDataType(K_SCALE_CACHE_INDEX));
     return ge::GRAPH_SUCCESS;
 }
 

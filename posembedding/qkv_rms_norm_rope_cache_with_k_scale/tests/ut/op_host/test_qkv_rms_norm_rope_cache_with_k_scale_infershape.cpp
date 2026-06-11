@@ -71,4 +71,16 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidHeadNumsAttr)
 
     std::vector<std::vector<int64_t>> expected;
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
+
+    headNums = {0, 2, 2};
+    gert::InfershapeContextPara zeroHeadPara("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+    ExecuteTestCase(zeroHeadPara, ge::GRAPH_FAILED, expected);
+
+    headNums = {16, -1, 2};
+    gert::InfershapeContextPara negativeHeadPara("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+    ExecuteTestCase(negativeHeadPara, ge::GRAPH_FAILED, expected);
 }

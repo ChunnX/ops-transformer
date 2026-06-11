@@ -30,18 +30,18 @@ namespace {
 using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleTiling;
 using ContractInput = optiling::QkvRmsNormRopeCacheWithKScale::ContractInput;
 using ContractTiling = optiling::QkvRmsNormRopeCacheWithKScale::ContractTiling;
-using TensorShapeInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorShapeInfo;
+using TensorContractInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorContractInfo;
 using TensorStrideInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorStrideInfo;
 using TileParam = optiling::QkvRmsNormRopeCacheWithKScale::TileParam;
 using AivSlice = optiling::QkvRmsNormRopeCacheWithKScale::AivSlice;
 
-constexpr uint32_t kDoubleBufferNum = 2U;
-constexpr uint64_t kTestBatch = 1U;
-constexpr uint64_t kTestBlockNum = 8U;
-constexpr uint64_t kTestBlockSize = 128U;
-constexpr uint64_t kTestMaxSeqLen = 256U;
-constexpr uint64_t kTestOpWorkspaceSize = 4096U;
-constexpr uint64_t kReservedWorkspaceSize = 16UL * 1024UL * 1024UL;
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+constexpr uint64_t TEST_BATCH = 1U;
+constexpr uint64_t TEST_BLOCK_NUM = 8U;
+constexpr uint64_t TEST_BLOCK_SIZE = 128U;
+constexpr uint64_t TEST_MAX_SEQ_LEN = 256U;
+constexpr uint64_t TEST_OP_WORKSPACE_SIZE = 4096U;
+constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
 ge::graphStatus ValidateContractInput(
     const ContractInput &input, const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
@@ -77,25 +77,19 @@ AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLo
     return QkvTiling::MakeAivSlice(tile, qkHeadTile, aivLocalId);
 }
 
-TensorShapeInfo Shape(std::initializer_list<uint64_t> dims, bool present = true)
+gert::Shape Shape(std::initializer_list<uint64_t> dims)
 {
-    TensorShapeInfo shape;
-    shape.present = present;
-    shape.rank = static_cast<uint32_t>(dims.size());
-    auto it = dims.begin();
-    if (it != dims.end()) {
-        shape.dim0 = *it++;
-    }
-    if (it != dims.end()) {
-        shape.dim1 = *it++;
-    }
-    if (it != dims.end()) {
-        shape.dim2 = *it++;
-    }
-    if (it != dims.end()) {
-        shape.dim3 = *it++;
+    gert::Shape shape;
+    for (const auto dim : dims) {
+        shape.AppendDim(static_cast<int64_t>(dim));
     }
     return shape;
+}
+
+void SetShape(TensorContractInfo &tensor, std::initializer_list<uint64_t> dims)
+{
+    tensor.shape = Shape(dims);
+    tensor.shapePresent = true;
 }
 
 TensorStrideInfo Stride(std::initializer_list<uint64_t> strides, bool present = true)
@@ -122,23 +116,23 @@ TensorStrideInfo Stride(std::initializer_list<uint64_t> strides, bool present = 
 void RefreshShapes(ContractInput &input)
 {
     const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
-    input.qkv.shape = Shape({qkvN, input.totalTokens, input.headDim});
-    input.qGamma.shape = Shape({input.headDim});
-    input.kGamma.shape = Shape({input.headDim});
-    input.cosSin.shape = Shape({input.maxSeqLen, input.headDim});
-    input.slotMapping.shape = Shape({input.totalTokens});
-    input.kCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, input.headDim});
+    SetShape(input.qkv, {qkvN, input.totalTokens, input.headDim});
+    SetShape(input.qGamma, {input.headDim});
+    SetShape(input.kGamma, {input.headDim});
+    SetShape(input.cosSin, {input.maxSeqLen, input.headDim});
+    SetShape(input.slotMapping, {input.totalTokens});
+    SetShape(input.kCache, {input.blockNum, input.numKHeads, input.blockSize, input.headDim});
     input.kCache.stride = Stride({input.numKHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
         input.headDim, 1});
-    input.vCache.shape = Shape({input.blockNum, input.numVHeads, input.blockSize, input.headDim});
+    SetShape(input.vCache, {input.blockNum, input.numVHeads, input.blockSize, input.headDim});
     input.vCache.stride = Stride({input.numVHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
         input.headDim, 1});
-    input.kScaleCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, 1});
+    SetShape(input.kScaleCache, {input.blockNum, input.numKHeads, input.blockSize, 1});
     input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
-    input.cuSeqLen.shape = Shape({static_cast<uint64_t>(input.batch) + 1});
-    input.qRotation.shape = Shape({input.headDim, input.headDim});
-    input.kRotation.shape = Shape({input.headDim, input.headDim});
-    input.vScale.shape = Shape({input.numVHeads});
+    SetShape(input.cuSeqLen, {static_cast<uint64_t>(input.batch) + 1});
+    SetShape(input.qRotation, {input.headDim, input.headDim});
+    SetShape(input.kRotation, {input.headDim, input.headDim});
+    SetShape(input.vScale, {input.numVHeads});
 }
 
 ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, uint64_t numKHeads = 2,
@@ -196,7 +190,7 @@ CoreTokenRange MakeCoreTokenRangeForTest(uint64_t totalTokens, uint64_t cubeInde
 
 uint32_t MakeOutputBufferIdForTest(uint64_t outBufferUseId)
 {
-    return static_cast<uint32_t>(outBufferUseId & (kDoubleBufferNum - 1U));
+    return static_cast<uint32_t>(outBufferUseId & (DOUBLE_BUFFER_NUM - 1U));
 }
 
 struct OutputUsePair {
@@ -262,10 +256,10 @@ TileSyncCounts CountFixedTileSyncProtocol(const TileParam &tile, uint64_t qkHead
         return counts;
     }
 
-    counts.aicAReadyWaits = QkvTiling::kAivPerAic;
-    counts.aicCReadySets = QkvTiling::kAivPerAic;
-    counts.aicCConsumedWaits = QkvTiling::kAivPerAic;
-    for (uint64_t aivLocalId = 0; aivLocalId < QkvTiling::kAivPerAic; ++aivLocalId) {
+    counts.aicAReadyWaits = QkvTiling::AIV_PER_AIC;
+    counts.aicCReadySets = QkvTiling::AIV_PER_AIC;
+    counts.aicCConsumedWaits = QkvTiling::AIV_PER_AIC;
+    for (uint64_t aivLocalId = 0; aivLocalId < QkvTiling::AIV_PER_AIC; ++aivLocalId) {
         const auto slice = MakeAivSlice(tile, qkHeadTile, aivLocalId);
         ++counts.aivAReadySets;
         ++counts.aivCReadyWaits;
@@ -326,14 +320,14 @@ std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputs(const 
         MakeTensorDesc({ToI64(qkvN), ToI64(item.totalTokens), ToI64(item.headDim)}, ge::DT_BF16),
         MakeTensorDesc({ToI64(item.headDim)}, ge::DT_FLOAT),
         MakeTensorDesc({ToI64(item.headDim)}, ge::DT_FLOAT),
-        MakeTensorDesc({ToI64(kTestMaxSeqLen), ToI64(item.headDim)}, ge::DT_FLOAT),
+        MakeTensorDesc({ToI64(TEST_MAX_SEQ_LEN), ToI64(item.headDim)}, ge::DT_FLOAT),
         MakeTensorDesc({ToI64(item.totalTokens)}, ge::DT_INT32),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numKHeads), ToI64(kTestBlockSize), ToI64(item.headDim)},
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
                        ge::DT_FLOAT8_E4M3FN),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numVHeads), ToI64(kTestBlockSize), ToI64(item.headDim)},
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numVHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
                        ge::DT_FLOAT8_E4M3FN),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numKHeads), ToI64(kTestBlockSize), 1}, ge::DT_FLOAT),
-        MakeTensorDesc({ToI64(kTestBatch + 1)}, ge::DT_INT32),
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), 1}, ge::DT_FLOAT),
+        MakeTensorDesc({ToI64(TEST_BATCH + 1)}, ge::DT_INT32),
         MakeTensorDesc({ToI64(item.headDim), ToI64(item.headDim)}, ge::DT_BF16),
         MakeTensorDesc({ToI64(item.headDim), ToI64(item.headDim)}, ge::DT_BF16),
         MakeTensorDesc({ToI64(item.numVHeads)}, ge::DT_FLOAT),
@@ -345,11 +339,11 @@ std::vector<gert::TilingContextPara::TensorDescription> BuildTilingOutputs(const
     return {
         MakeTensorDesc({ToI64(item.numQHeads), ToI64(item.totalTokens), ToI64(item.headDim)}, ge::DT_FLOAT8_E4M3FN),
         MakeTensorDesc({ToI64(item.numQHeads), ToI64(item.totalTokens)}, ge::DT_FLOAT),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numKHeads), ToI64(kTestBlockSize), ToI64(item.headDim)},
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
                        ge::DT_FLOAT8_E4M3FN),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numVHeads), ToI64(kTestBlockSize), ToI64(item.headDim)},
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numVHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
                        ge::DT_FLOAT8_E4M3FN),
-        MakeTensorDesc({ToI64(kTestBlockNum), ToI64(item.numKHeads), ToI64(kTestBlockSize), 1}, ge::DT_FLOAT),
+        MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), 1}, ge::DT_FLOAT),
     };
 }
 
@@ -366,15 +360,23 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(const ConcurrentTi
     };
 }
 
+std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(std::initializer_list<int64_t> headNums)
+{
+    return {
+        {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>(headNums))},
+        {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+    };
+}
+
 optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo BuildCompileInfo(const ConcurrentTilingCase &item)
 {
     optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo compileInfo;
     compileInfo.aicNum = static_cast<uint32_t>(item.aicNum);
-    compileInfo.aivNum = static_cast<uint32_t>(item.aicNum * QkvTiling::kAivPerAic);
+    compileInfo.aivNum = static_cast<uint32_t>(item.aicNum * QkvTiling::AIV_PER_AIC);
     compileInfo.ubSize = 262144U;
     compileInfo.l1Size = 524288U;
     compileInfo.l0cSize = 131072U;
-    compileInfo.opWorkspaceSize = kTestOpWorkspaceSize;
+    compileInfo.opWorkspaceSize = TEST_OP_WORKSPACE_SIZE;
     return compileInfo;
 }
 
@@ -402,11 +404,11 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success,
 
     const auto *tilingData =
         reinterpret_cast<const optiling::QkvRmsNormRopeCacheWithKScaleTilingData *>(tilingInfo.tilingData.get());
-    const int64_t expectedWorkspace = static_cast<int64_t>(kReservedWorkspaceSize + kTestOpWorkspaceSize);
+    const int64_t expectedWorkspace = static_cast<int64_t>(RESERVED_WORKSPACE_SIZE + TEST_OP_WORKSPACE_SIZE);
     return tilingInfo.blockNum == item.coreGroupNum && tilingInfo.workspaceSizes[0] == expectedWorkspace &&
            tilingData->totalTokens == item.totalTokens && tilingData->numQHeads == item.numQHeads &&
            tilingData->numKHeads == item.numKHeads && tilingData->numVHeads == item.numVHeads &&
-           tilingData->headDim == item.headDim && tilingData->blockSize == kTestBlockSize &&
+           tilingData->headDim == item.headDim && tilingData->blockSize == TEST_BLOCK_SIZE &&
            tilingData->tokenTile == item.tokenTile && tilingData->coreTokenTile == item.coreTokenTile &&
            tilingData->coreGroupNum == item.coreGroupNum;
 }
@@ -416,10 +418,10 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success,
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesNtdQkvShape)
 {
     auto input = BuildInput(512, 64, 8, 8);
-    EXPECT_EQ(input.qkv.shape.rank, 3U);
-    EXPECT_EQ(input.qkv.shape.dim0, input.numQHeads + input.numKHeads + input.numVHeads);
-    EXPECT_EQ(input.qkv.shape.dim1, input.totalTokens);
-    EXPECT_EQ(input.qkv.shape.dim2, input.headDim);
+    EXPECT_EQ(input.qkv.shape.GetDimNum(), 3);
+    EXPECT_EQ(static_cast<uint64_t>(input.qkv.shape.GetDim(0)), input.numQHeads + input.numKHeads + input.numVHeads);
+    EXPECT_EQ(static_cast<uint64_t>(input.qkv.shape.GetDim(1)), input.totalTokens);
+    EXPECT_EQ(static_cast<uint64_t>(input.qkv.shape.GetDim(2)), input.headDim);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
@@ -474,10 +476,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
     EXPECT_EQ(tiling.rowTileAligned, 192U);
     const uint64_t qkAlignedRows = AlignUp(tiling.tokenTile * input.numQHeads, 16) +
         AlignUp(tiling.tokenTile * input.numKHeads, 16);
-    EXPECT_GT(qkAlignedRows, QkvTiling::kL0aFullDimSegmentRows);
-    EXPECT_LE(qkAlignedRows, QkvTiling::kL0cMaxRows);
-    EXPECT_GT(AlignUp(tiling.tokenTile * input.numQHeads, 16), QkvTiling::kL0aFullDimSegmentRows);
-    EXPECT_LE(AlignUp(tiling.tokenTile * input.numKHeads, 16), QkvTiling::kL0aFullDimSegmentRows);
+    EXPECT_GT(qkAlignedRows, QkvTiling::L0A_FULL_DIM_SEGMENT_ROWS);
+    EXPECT_LE(qkAlignedRows, QkvTiling::L0C_MAX_ROWS);
+    EXPECT_GT(AlignUp(tiling.tokenTile * input.numQHeads, 16), QkvTiling::L0A_FULL_DIM_SEGMENT_ROWS);
+    EXPECT_LE(AlignUp(tiling.tokenTile * input.numKHeads, 16), QkvTiling::L0A_FULL_DIM_SEGMENT_ROWS);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
@@ -493,8 +495,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 128, 8, 8);
-    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(BuildContractTiling(input, tiling), ge::GRAPH_FAILED);
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput(128, 64, 2, 2);
     EXPECT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
@@ -502,6 +503,53 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.rowTile, 132U);
     EXPECT_EQ(tiling.rowTileAligned, 144U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMinimumTokenTileResourceBoundary)
+{
+    auto input = BuildInput(128, 81, 1, 1);
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput(128, 80, 49, 49);
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput(128, 79, 41, 41);
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonPositiveHeadNumsAttr)
+{
+    const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 10, 4, 32};
+    auto compileInfo = BuildCompileInfo(item);
+    TilingInfo tilingInfo;
+    const gert::TilingContextPara zeroHeadPara(
+        "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item),
+        BuildTilingAttrs({0, 2, 2}), &compileInfo, "Ascend950", 64, 262144, 4096);
+    EXPECT_FALSE(ExecuteTiling(zeroHeadPara, tilingInfo));
+
+    const gert::TilingContextPara negativeHeadPara(
+        "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item),
+        BuildTilingAttrs({16, -1, 2}), &compileInfo, "Ascend950", 64, 262144, 4096);
+    EXPECT_FALSE(ExecuteTiling(negativeHeadPara, tilingInfo));
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonTwoToOneAivAicRatioInPlatformInfo)
+{
+    const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 10, 4, 32};
+    auto compileInfo = BuildCompileInfo(item);
+    compileInfo.aivNum = compileInfo.aicNum * QkvTiling::AIV_PER_AIC - 1;
+    TilingInfo tilingInfo;
+    const gert::TilingContextPara fewerAivPara(
+        "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item), BuildTilingAttrs(item),
+        &compileInfo, "Ascend950", 64, 262144, 4096);
+    EXPECT_FALSE(ExecuteTiling(fewerAivPara, tilingInfo));
+
+    compileInfo = BuildCompileInfo(item);
+    compileInfo.aivNum = compileInfo.aicNum * QkvTiling::AIV_PER_AIC + 1;
+    const gert::TilingContextPara moreAivPara(
+        "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item), BuildTilingAttrs(item),
+        &compileInfo, "Ascend950", 64, 262144, 4096);
+    EXPECT_FALSE(ExecuteTiling(moreAivPara, tilingInfo));
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
@@ -527,11 +575,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdStagingCapacityIsEnforced)
     EXPECT_EQ(tiling.tokenTile, 2U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
-        QkvTiling::kFp8NtdStagingRowsPerAiv);
+        QkvTiling::FP8_NTD_STAGING_ROWS_PER_AIV);
 
     input = BuildInput(128, 81, 1, 1);
-    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(BuildContractTiling(input, tiling), ge::GRAPH_FAILED);
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBounded)
@@ -550,14 +597,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBou
     const uint64_t qCopyBlockLen = tiling.tokenTilePerAiv * input.headDim;
     EXPECT_EQ(qRowsPerAiv, 80U);
     EXPECT_LE(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
-        QkvTiling::kFp8NtdStagingRowsPerAiv);
+        QkvTiling::FP8_NTD_STAGING_ROWS_PER_AIV);
     EXPECT_EQ(qCopyBlockLen, 640U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
 {
-    constexpr uint32_t kThreadCount = 8U;
-    constexpr uint32_t kIterations = 64U;
+    constexpr uint32_t THREAD_COUNT = 8U;
+    constexpr uint32_t ITERATIONS = 64U;
     const std::array<ConcurrentTilingCase, 5U> cases = {{
         {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 10, 4, 32},
         {512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 2, 16, 32},
@@ -566,15 +613,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
         {128, 16, 2, 2, 64, 32, ge::GRAPH_FAILED, 0, 0, 0},
     }};
     std::atomic<bool> start{false};
-    std::array<ConcurrentTilingResult, kThreadCount> results;
-    std::array<std::thread, kThreadCount> threads;
+    std::array<ConcurrentTilingResult, THREAD_COUNT> results;
+    std::array<std::thread, THREAD_COUNT> threads;
 
-    for (uint32_t threadIdx = 0U; threadIdx < kThreadCount; ++threadIdx) {
+    for (uint32_t threadIdx = 0U; threadIdx < THREAD_COUNT; ++threadIdx) {
         threads[threadIdx] = std::thread([threadIdx, &cases, &results, &start]() {
             while (!start.load(std::memory_order_acquire)) {
                 std::this_thread::yield();
             }
-            for (uint32_t iter = 0U; iter < kIterations; ++iter) {
+            for (uint32_t iter = 0U; iter < ITERATIONS; ++iter) {
                 const size_t caseIdx = (static_cast<size_t>(threadIdx) + iter) % cases.size();
                 const auto &item = cases[caseIdx];
                 TilingInfo tilingInfo;
@@ -604,7 +651,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
         thread.join();
     }
 
-    for (uint32_t threadIdx = 0U; threadIdx < kThreadCount; ++threadIdx) {
+    for (uint32_t threadIdx = 0U; threadIdx < THREAD_COUNT; ++threadIdx) {
         EXPECT_TRUE(results[threadIdx].ok)
             << "threadIdx=" << threadIdx << " failedCase=" << results[threadIdx].failedCase
             << " failedIteration=" << results[threadIdx].failedIteration
@@ -619,15 +666,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInputs)
 {
     auto input = BuildInput();
-    input.qRotation.shape.present = false;
+    input.qRotation.shapePresent = false;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kRotation.shape.present = false;
+    input.kRotation.shapePresent = false;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.vScale.shape.present = false;
+    input.vScale.shapePresent = false;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
@@ -635,39 +682,39 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
 {
     auto input = BuildInput();
     const uint64_t invalidQkvN = input.numQHeads + input.numKHeads + input.numVHeads + 1;
-    input.qkv.shape = Shape({invalidQkvN, input.totalTokens, input.headDim});
+    SetShape(input.qkv, {invalidQkvN, input.totalTokens, input.headDim});
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kCache.shape.dim1 += 1;
+    input.kCache.shape[1] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.vCache.shape.dim1 += 1;
+    input.vCache.shape[1] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kCache.shape.dim2 += 1;
+    input.kCache.shape[2] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.vCache.shape.dim0 += 1;
+    input.vCache.shape[0] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kScaleCache.shape.dim2 += 1;
+    input.kScaleCache.shape[2] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kScaleCache.shape.dim3 = 2;
+    input.kScaleCache.shape[3] = 2;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.qRotation.shape.dim1 += 1;
+    input.qRotation.shape[1] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kRotation.shape.dim0 += 1;
+    input.kRotation.shape[0] += 1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
@@ -870,12 +917,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCorePr
         EXPECT_EQ(counts.coveredTokens, tile.tokenSize);
         EXPECT_EQ(counts.coveredRows, tile.rowSize);
         EXPECT_EQ(counts.emptyAivSlices, tokenSize == 1U ? 1U : 0U);
-        EXPECT_EQ(counts.aivAReadySets, QkvTiling::kAivPerAic);
-        EXPECT_EQ(counts.aicAReadyWaits, QkvTiling::kAivPerAic);
-        EXPECT_EQ(counts.aicCReadySets, QkvTiling::kAivPerAic);
-        EXPECT_EQ(counts.aivCReadyWaits, QkvTiling::kAivPerAic);
-        EXPECT_EQ(counts.aivCConsumedSets, QkvTiling::kAivPerAic);
-        EXPECT_EQ(counts.aicCConsumedWaits, QkvTiling::kAivPerAic);
+        EXPECT_EQ(counts.aivAReadySets, QkvTiling::AIV_PER_AIC);
+        EXPECT_EQ(counts.aicAReadyWaits, QkvTiling::AIV_PER_AIC);
+        EXPECT_EQ(counts.aicCReadySets, QkvTiling::AIV_PER_AIC);
+        EXPECT_EQ(counts.aivCReadyWaits, QkvTiling::AIV_PER_AIC);
+        EXPECT_EQ(counts.aivCConsumedSets, QkvTiling::AIV_PER_AIC);
+        EXPECT_EQ(counts.aicCConsumedWaits, QkvTiling::AIV_PER_AIC);
     }
 }
 
