@@ -74,9 +74,9 @@ aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* topkIdx, const aclTensor* topkWeights,
     const aclTensor* cachedHandleDstBufferSlotIdx, int64_t epWorldSize, int64_t epRankId,
     int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, int64_t expertAlignment,
-    bool doCpuSync, aclTensor* numRecvTokensPerRankHostPinned, aclTensor* numRecvTokensPerExpertHostPinned,
-    aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    bool doCpuSync, int64_t hostPinnedCounterAddr, aclTensor* numRecvTokensPerRankHostPinned,
+    aclTensor* numRecvTokensPerExpertHostPinned, aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMoeEpDispatch WorkspaceSize start");
 
@@ -92,8 +92,8 @@ aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeEpDispatchGetWorkspaceSize(
         context, x, topkIdx, topkWeights, cachedHandleDstBufferSlotIdx,epWorldSize, epRankId,
         numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync,
-        numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned, dstBufferSlotIdx,
-        recvSrcMetadataInternal, workspaceSize, executor);
+        hostPinnedCounterAddr, numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
+        dstBufferSlotIdx, recvSrcMetadataInternal, workspaceSize, executor);
     
     return getWorkspaceSizesRes;
 }

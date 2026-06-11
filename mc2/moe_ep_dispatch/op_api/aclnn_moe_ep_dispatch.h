@@ -33,6 +33,7 @@ extern "C" {
  * @param [in] cclBufferSize       HCCL buffer size
  * @param [in] expertAlignment     alignment for expert token count
  * @param [in] doCpuSync           true: write host-pinned counter for precise alloc
+ * @param [in] hostPinnedCounterAddr device address of host-pinned counter (0 if doCpuSync=false)
  * @param [out] numRecvTokensPerRankHostPinned   [ep_world_size] int32 host-pinned + dev-mapped
  * @param [out] numRecvTokensPerExpertHostPinned [num_local_experts] int64 host-pinned + dev-mapped
  * @param [out] dstBufferSlotIdx   [num_tokens, top_k] int32 device
@@ -54,6 +55,7 @@ ACLNN_API aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
     int64_t cclBufferSize,
     int64_t expertAlignment,
     bool doCpuSync,
+    int64_t hostPinnedCounterAddr,
     aclTensor* numRecvTokensPerRankHostPinned,
     aclTensor* numRecvTokensPerExpertHostPinned,
     aclTensor* dstBufferSlotIdx,

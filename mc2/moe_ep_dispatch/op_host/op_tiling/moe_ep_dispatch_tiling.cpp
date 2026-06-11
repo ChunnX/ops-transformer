@@ -48,6 +48,7 @@ constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 constexpr uint32_t ATTR_DO_CPU_SYNC_INDEX = 6;
+constexpr uint32_t ATTR_HOST_PINNED_COUNTER_ADDR_INDEX = 7;
 
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t MAX_EP_WORLD_SIZE = 768;
@@ -182,6 +183,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
     auto expertAlignmentPtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_ALIGNMENT_INDEX);
     auto doCpuSyncPtr = attrs->GetAttrPointer<bool>(ATTR_DO_CPU_SYNC_INDEX);
+    auto hpCounterAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_HOST_PINNED_COUNTER_ADDR_INDEX);
 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
@@ -191,6 +193,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(doCpuSyncPtr == nullptr, OP_LOGE(nodeName, "doCpuSyncPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hpCounterAddrPtr == nullptr, OP_LOGE(nodeName, "hpCounterAddrPtr is null."), return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
@@ -219,6 +222,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     bool doCpuSync = *doCpuSyncPtr;
     info.doCpuSync = (doCpuSync && !cached) ? 1 : 0;
     info.isCached = cached ? 1 : 0;
+    info.hostPinnedCounterAddr = static_cast<uint64_t>(*hpCounterAddrPtr);
 
     info.cfg.perSlotBytes = static_cast<uint32_t>(
         ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
