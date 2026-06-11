@@ -14,7 +14,6 @@
  */
 
 #include "sparse_flash_mla_tiling.h"
-#include "arch22/sparse_flash_mla_tiling.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
@@ -178,6 +177,9 @@ ge::graphStatus SMLAInfoParser::CheckRequiredParaExistence() const
 
 ge::graphStatus SMLAInfoParser::CheckUnrequiredParaExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
+                OP_LOGE(opName_, "Currently, ori_sparse_indices must be a nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -269,6 +271,8 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
+    opParamInfo_.oriKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_KV_STRIDE_INDEX);
+    opParamInfo_.cmpKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_KV_STRIDE_INDEX);
     opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -321,6 +325,12 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
         } else {
             OP_LOGE(opName_, "When cmpSparseIndices is not nullptr, cmpKv cannot be nullptr.");
             return ge::GRAPH_FAILED;
+        }
+        if (perfMode_ == SMLATemplateMode::CFA_TEMPLATE_MODE || perfMode_ == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
+            if (kvLayout_ == SMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr) {
+                OP_LOGE(opName_, "the layout_kv is %s, seqlens_cmp_kv must be provided.", SMLALayoutToSerialString(kvLayout_).c_str());
+                return ge::GRAPH_FAILED;
+            }
         }
     } else {
         OP_LOGE(opName_, "oriKv is nullptr");
@@ -518,6 +528,17 @@ ge::graphStatus SMLAInfoParser::GetQTSize()
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     qTSize_ = (qLayout_ == SMLALayout::TND) ? GetAxisNum(qShape_, SMLAAxis::T, qLayout_) : 0;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SMLAInfoParser::GetKVTSize()
+{
+    // 获取KV的T基准值
+    // 1、非TND时, 以KV的batch_size维度为基准;
+    // 2、TND时, actual_seq_lens_ori_kv和actual_seq_lens_cmp_kv必须传入, 以actual_seq_lens_ori_kv数组的长度为B轴大小(当前接口只传入oriseq，先以oriseq算出cmpseq)
+    orikvTSize_ = (kvLayout_ == SMLALayout::TND) ? GetAxisNum(oriKvShape_, SMLAAxis::T, kvLayout_) : 0;
+    // 入参接口信息可以从GetOptionalInputParaInfo()函数中获取
+    // cmpkvTSize_ = (kvLayout_ == SMLALayout::TND) ? GetAxisNum(cmpKvShape_, SMLAAxis::T, kvLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1489,6 +1510,8 @@ void SparseFlashMlaTiling::CalcUbBmm(SMLATilingInfo *tilingInfo)
 void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
 {
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
+    mBaseSize_ = tilingInfo->perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE ? \
+        tilingInfo->gSize : (256 / tilingInfo->gSize) * tilingInfo->gSize;
     headDimAlign_ = Align(tilingInfo->qHeadDim, BYTE_BLOCK);
     CalcUbBmm(tilingInfo);
 
@@ -1568,16 +1591,19 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_softmaxScale(tilingInfo->softmaxScale);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(tilingInfo->outLayout));
     tilingData_.baseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
+    tilingData_.baseParams.set_oriKvStride0(tilingInfo->oriKvStride0);
     tilingData_.baseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
     tilingData_.baseParams.set_oriWinRight(tilingInfo->oriWinRight);
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
     tilingData_.baseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
+    tilingData_.cmpParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
     tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
+    tilingData_.cmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride0);
 
     usedCoreNum_ = aicNum;
     tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
@@ -1615,33 +1641,17 @@ ge::graphStatus TilingForSparseFlashMla(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("SparseFlashMla", "Tiling platformInfo is null"),
                 return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    auto socVersion = ascendcPlatform.GetSocVersion();
-    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGD(context->GetNodeName(), "Using regbase tiling for ASCEND950");
-        SMLATilingInfo smlaInfo;
-        SMLAInfoParser smlaInfoParser(context);
-        if (smlaInfoParser.Parse(smlaInfo) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        SMLATilingCheck smlaTilingChecker(smlaInfo);
-        if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        SparseFlashMlaTiling tiling(context);
-        return tiling.DoOpTiling(&smlaInfo);
-    }
 
-    arch22::SMLATilingInfo smlaInfo;
-    arch22::SMLAInfoParser smlaInfoParser(context);
+    SMLATilingInfo smlaInfo;
+    SMLAInfoParser smlaInfoParser(context);
     if (smlaInfoParser.Parse(smlaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    arch22::SMLATilingCheck smlaTilingChecker(smlaInfo);
+    SMLATilingCheck smlaTilingChecker(smlaInfo);
     if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    arch22::SparseFlashMlaTilingArch22 tiling(context);
+    SparseFlashMlaTiling tiling(context);
     return tiling.DoOpTiling(&smlaInfo);
 }
 // --------------------------Tiling函数及TilingPrepare函数注册--------
