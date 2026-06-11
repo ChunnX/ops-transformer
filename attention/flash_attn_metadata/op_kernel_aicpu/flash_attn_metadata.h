@@ -69,13 +69,13 @@ struct FaMetaData {
             headMedata[0] = sectionNum;
     }
 
-    void SetHeadMedata(uint32_t metaIdx, uint32_t val) 
+    void SetHeadMedata(uint32_t metaIdx, uint32_t val)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
         headMedata[metaIdx] = val;
     }
 
-    uint32_t GetHeadMedata(uint32_t metaIdx) 
+    uint32_t GetHeadMedata(uint32_t metaIdx)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
         return headMedata[metaIdx];
