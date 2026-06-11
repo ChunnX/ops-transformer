@@ -503,17 +503,9 @@ def cpu_compressor(
                 sc_data = sc_kv_state * sc_score_state
                 # reduce sum
                 sc_cmp_kv = np.sum(sc_data, axis=0, keepdims=True)
-                # RmsNorm
-                sc_cmp_kv = rms_norm(sc_cmp_kv, norm_weight, norm_eps)
-                # inplace rotary_emb
-                if bs_combine_flag == False:
-                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[b_idx, batch_out_sc_id, :], rope_cos[b_idx, batch_out_sc_id, :], rotary_mode)
-                    cmp_kv[b_idx, batch_out_sc_id, :] = sc_cmp_kv
-                    cmp_kv_mask[b_idx, batch_out_sc_id, :] = 1
-                else:
-                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[out_sum_sc_cnt, :], rope_cos[out_sum_sc_cnt, :], rotary_mode)
-                    cmp_kv[out_sum_sc_cnt, :] = sc_cmp_kv
-                    cmp_kv_mask[out_sum_sc_cnt, :] = 1
+
+                cmp_kv[b_idx, batch_out_sc_id, :] = sc_cmp_kv
+                cmp_kv_mask[b_idx, batch_out_sc_id, :] = 1
                 batch_out_sc_id = batch_out_sc_id + 1
                 out_sum_sc_cnt = out_sum_sc_cnt + 1
 
