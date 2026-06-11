@@ -307,6 +307,11 @@ public:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffsetLastSum;
             alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
         }
+        uint64_t totalSendCnt = 0UL;
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            totalSendCnt += alltoAllvSendCnt[i];
+        }
+        DumpTensor(sendGlobalBuffer_[alltoAllvSendOffset[0]], 50U, 16U);
         alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
@@ -420,6 +425,7 @@ public:
 
         uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
+        DumpTensor(outputPermuteSrcBuffer_[outputPermuteSrcBaseOffset_], 100U, 16U);
 
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
@@ -527,6 +533,7 @@ public:
                 turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
             }
         }
+        DumpTensor(outputPermuteDstBuffer_[outputPermuteDstBaseOffset_], 200U, 16U);
         AscendC::printf("[LBH] PermuteOutput turn=%u done turnTotalData=%lu newSrcBase=%lu newDstBase=%lu\n",
             turnIdx, turnTotalData, outputPermuteSrcBaseOffset_ + turnTotalData, outputPermuteDstBaseOffset_ + turnTotalData);
         outputPermuteSrcBaseOffset_ += turnTotalData;
