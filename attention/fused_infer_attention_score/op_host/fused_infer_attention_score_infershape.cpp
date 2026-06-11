@@ -194,7 +194,8 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
         }
     } else { // 非PA场景
         if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
-            std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " + std::to_string(queryShape->GetDimNum());
+            std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " +
+                std::to_string(queryShape->GetDimNum());
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FusedInferAttentionScore", "value and query", dimMsg.c_str(),
                 "When Page Attention not enabled, the shape dim of value should be the same as query");
             return ge::GRAPH_FAILED;

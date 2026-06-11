@@ -936,7 +936,8 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
         outLayout_ = it->second.second;
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "input_layout", layout.c_str(),
-            "Input layout must be within the range {BSH, BSND, BNSD, TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BNSD_BSND, BSND_BNSD, BSH_BNSD, NTD}");
+            "Input layout must be within the range {BSH, BSND, BNSD, TND, BSH_NBSD, BSND_NBSD, "
+            "BNSD_NBSD, TND_NTD, NTD_TND, BNSD_BSND, BSND_BNSD, BSH_BNSD, NTD}");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1000,7 +1001,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskStride_ = 1;
         } else {
             std::string maskDimStr = std::to_string(maskDimNum) + "D";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr.c_str(), "The shape dim of atten_mask must be 1 when the layout is TND or NTD");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr.c_str(),
+                "The shape dim of atten_mask must be 1 when the layout is TND or NTD");
         }
     } else {
         if (maskDimNum == 3U) {
@@ -1009,7 +1011,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
             std::string maskDimStr3 = std::to_string(maskDimNum) + "D";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr3.c_str(), "The shape dim of atten_mask must be 3 when the layout is not TND or NTD");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr3.c_str(),
+                "The shape dim of atten_mask must be 3 when the layout is not TND or NTD");
         }
     }
     return ge::GRAPH_SUCCESS;

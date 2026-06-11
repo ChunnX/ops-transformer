@@ -122,7 +122,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
-                    std::string reasonMsg = "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
+                    std::string reasonMsg =
+                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -139,7 +140,8 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
                     return ge::GRAPH_FAILED;
                 }
             } else {
-                if (fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() != gert::Shape({numHeads, fiaInfo.vHeadDim})) {
+                if (fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() !=
+                    gert::Shape({numHeads, fiaInfo.vHeadDim})) {
                     std::string quantScale2ShapeStr =
                         ToString(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
                     std::string reasonMsg = "In post quant per-channel scenario, when layout is " + layoutString + ", "
@@ -161,7 +163,6 @@ ge::graphStatus PostQuantChecker::CheckFeatureOutputEqual(const FiaTilingInfo &f
     if (fiaInfo.isOutQuantEnable) {
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         if (outputType != fiaInfo.inputKvType) {
-            // TODO: Fix same as dtype a and b after translated
             std::string reasonMsg = "When quantScale2 is not empty, "
                 "the datatype of attenOut must be the same as the datatype of key and value";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
