@@ -29,6 +29,7 @@ static constexpr size_t INDEX_OUT = 0;
 static constexpr size_t SHAPE_SIZE = 2;
 static constexpr size_t INPUT_NUM = 7;
 static constexpr size_t ATTR_DROP_PAD_MODE = 0;
+static constexpr size_t ATTR_K = 4;
 static constexpr int64_t VALUE_MODE_0 = 0;
 static constexpr int64_t VALUE_MODE_1 = 1;
 static constexpr int64_t VALUE_MODE_2 = 2;
@@ -150,6 +151,16 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
     const gert::Shape* expandedSrcToDstRowInputShape = context->GetInputShape(INDEX_IN_EXPANDED_ROW_IDX);
     const gert::Shape* scalesInputShape = context->GetOptionalInputShape(INDEX_IN_SCALES);
     int64_t valueDim0 = expandedSrcToDstRowInputShape->GetDim(0);
+
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
+    OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
+    const int64_t k = *kPtr;
+    if (k > 0) {
+        valueDim0 = valueDim0 / k;
+    }
+
     if (scalesInputShape != nullptr) {
         valueDim0 = scalesInputShape->GetDim(0);
     }
@@ -167,6 +178,23 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     const int64_t* dropPadModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dropPadModePtr);
     const int64_t dropPadMode = *dropPadModePtr;
+
+    auto zeroExpertRangePtr = attrs->GetListInt(1);
+    auto copyExpertRangePtr = attrs->GetListInt(2);
+    auto constantExpertRangePtr = attrs->GetListInt(3);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(4);
+    if (nullptr == zeroExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "zeroExpertRangePtr");
+    }
+    if (nullptr == copyExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
+    }
+    if (nullptr == constantExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
+    }
+    if (nullptr == kPtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "kPtr");
+    }
 
     auto outShape = context->GetOutputShape(INDEX_OUT);
     OP_CHECK_IF(
@@ -337,5 +365,9 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
 
 IMPL_OP_INFERSHAPE(MoeFinalizeRoutingV2)
     .InferShape(Infershape4MoeFinalizeRoutingV2)
-    .InferDataType(InferDataTypeMoeFinalizeRoutingV2);
+    .InferDataType(InferDataTypeMoeFinalizeRoutingV2)
+    .PrivateAttr("zero_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("copy_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("constant_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("k", static_cast<int64_t>(1));
 } // namespace ops

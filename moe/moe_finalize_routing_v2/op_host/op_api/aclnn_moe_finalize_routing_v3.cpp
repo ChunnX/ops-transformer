@@ -30,13 +30,13 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* alpha1Optional,
     const aclTensor* alpha2Optional, const aclTensor* vOptional, int64_t dropPadMode,
     const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange,
-    const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
+    int64_t k, const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV3,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
                scalesOptional, expertIdxOptional, xOptional, alpha1Optional,
                alpha2Optional, vOptional, dropPadMode, zeroExpertRange,
-               copyExpertRange, constantExpertRange),
+               copyExpertRange, k, constantExpertRange),
         DFX_OUT(out));
 
     // 参数检查
@@ -111,7 +111,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous, expertIdxContiguous,
                                            xContiguous, a1Contiguous, a2Contiguous, vContiguous,
-                                           dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
+                                           dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange, k,
                                            out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

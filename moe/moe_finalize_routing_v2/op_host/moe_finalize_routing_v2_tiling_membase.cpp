@@ -41,6 +41,7 @@ static const size_t INDEX_IN_BIAS_V2 = 4;
 static const size_t INDEX_IN_SCALES_V2 = 5;
 static const size_t INDEX_IN_EXPERT_FOR_SOURCE_ROW_V2 = 6;
 static const size_t INDEX_OUT = 0;
+static const size_t INDEX_ATTR_K = 4;
 static const size_t INPUT_NUM_V2 = 7;
 static const size_t SHAPE_SIZE_V2 = 2;
 static const size_t SHAPE_SIZE_V3 = 3;
@@ -181,6 +182,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
     auto attrsPtr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     dropPadMode_ = *(attrsPtr->GetAttrPointer<int64_t>(0));
+    k_ = *(attrsPtr->GetAttrPointer<int64_t>(INDEX_ATTR_K));
+    OP_LOGI(context_->GetNodeName(), "keys debug..., k:%ld", k_);
 
     params.expandedXShape = expandedXShapePtr;
     params.x1Shape = x1Shape;
@@ -201,7 +204,7 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
             std::to_string(expandedRowIdxShape.GetDimNum()).c_str(), "1D"),
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
-    k_ = 1;
+
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
