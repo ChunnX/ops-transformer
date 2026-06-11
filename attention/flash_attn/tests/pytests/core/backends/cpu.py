@@ -48,9 +48,18 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     if layout.startswith("PA_"):
         bnsd = _pa_to_bnsd(t, layout, params)
         if params.get("layout_q", "") == "TND":
-            # TND+PA: BNSD(B,N,S,D) → TND(1,N,B*S,D)
+            # TND+PA: PA→BNSD后按 seqused_kv 紧密拼接，与纯 TND+TND 一致
+            # result[0, n, cum_kv[b]+s, :] = bnsd[b, n, s, :]  (s < seqused_kv[b])
             B, N2, S2, D = bnsd.shape
-            return bnsd.reshape(1, N2, B * S2, D).clone().float()
+            seq_kv = params["seqused_kv"]
+            total_kv = sum(seq_kv[:B])
+            result = torch.zeros(1, N2, total_kv, D, dtype=torch.float32)
+            offset = 0
+            for b in range(B):
+                slen = seq_kv[b] if b < len(seq_kv) else seq_kv[0]
+                result[0, :, offset:offset + slen, :] = bnsd[b, :, :slen, :]
+                offset += slen
+            return result
         return bnsd.float()
     return t.clone().float()
 
