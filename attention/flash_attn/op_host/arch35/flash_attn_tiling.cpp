@@ -145,7 +145,8 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     } else if (faInfo_->qkHeadDim == 256) {
         tilingKeyInfo_.config = 4;
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)", std::to_string(faInfo_->qkHeadDim).c_str(),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+            std::to_string(faInfo_->qkHeadDim).c_str(),
             "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
     }
 }
