@@ -2,4 +2,4 @@
 
 GroupedMatmulActivationQuant fuses grouped matmul, activation, and MX quantization.
 
-See [aclnnGroupedMatmulActivationQuant](docs/aclnnGroupedMatmulActivationQuant.md).
+See [aclnnGroupedMatmulActivationQuantWeightNz](docs/aclnnGroupedMatmulActivationQuantWeightNz.md).
