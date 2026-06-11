@@ -32,7 +32,7 @@ static const int64_t NUM_128 = 128L;
 
 struct SplitInfo {
     std::vector<std::vector<uint32_t>> sparseSeqLen {};
-    std::vector<uint64_t> bN2BlockOfEachBatch {};
+    std::vector<uint64_t> blockOfEachBatch {};
     uint64_t totalBlock { 0U };
     bool isAllZero { true };
 };
@@ -46,7 +46,7 @@ struct AssignContext {
     uint32_t curCoreIdx { 0U };
     uint32_t curBIdx { 0U };
     uint32_t curBN2Idx { 0U };
-    uint32_t curS1GIdx { 0U };
+    uint32_t curS1Idx { 0U };
     uint32_t curS2Idx { 0U };
     uint64_t unassignedBlock { 0U };
     uint64_t bN2Block { 0U };
@@ -58,13 +58,13 @@ struct SplitResult {
     uint32_t usedCoreNum { 0U };
     uint64_t maxBlock { 0U };
     std::vector<uint32_t> bN2End {};
-    std::vector<uint32_t> gS1End {};
+    std::vector<uint32_t> s1End {};
     std::vector<uint32_t> s2End {};
     std::vector<uint32_t> firstFdDataWorkspaceIdx {};
 
     explicit SplitResult(uint32_t aicNum)
         : bN2End(aicNum),
-          gS1End(aicNum),
+          s1End(aicNum),
           s2End(aicNum),
           firstFdDataWorkspaceIdx(aicNum) {}
 };
