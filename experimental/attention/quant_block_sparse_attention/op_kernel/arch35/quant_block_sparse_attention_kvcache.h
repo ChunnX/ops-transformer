@@ -27,7 +27,7 @@ using namespace matmul;
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int64_t* actualSeqQlenAddr)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
     if constexpr (layout == BSALayout::TND) {
@@ -43,7 +43,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int64_t* actualSeqKvlenAddr)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqKvlenAddr)
 {
     int64_t actualS2Size = 0;
     if constexpr (layout == BSALayout::TND) {
@@ -59,8 +59,8 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
     const AttenMaskInfo &attenMaskInfo,
-    GlobalTensor<INPUT_T>& keyGm, __gm__ int64_t *actualSeqQlenAddr,
-    __gm__ int64_t *actualSeqKvlenAddr)
+    GlobalTensor<INPUT_T>& keyGm, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqKvlenAddr)
 {
     // 计算实际序列长度
     runParam.actualS1Size = CalculateActualS1Size<TEMPLATE_INTF_ARGS>(
@@ -132,7 +132,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t bIdx, __gm__ int64_t *actualSeqQlenAddr)
+    int32_t bIdx, __gm__ int32_t *actualSeqQlenAddr)
 {
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
@@ -170,7 +170,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, __gm__ int64_t *actualSeqQlenAddr)
+    uint32_t sOuterLoopIdx, __gm__ int32_t *actualSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);

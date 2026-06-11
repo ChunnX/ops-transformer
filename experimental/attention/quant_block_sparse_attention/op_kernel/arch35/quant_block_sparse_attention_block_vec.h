@@ -199,7 +199,7 @@ private:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void GetActualSeqLenKV(ConstInfo &constInfo, GlobalTensor<INPUT_T> &keyGm, 
-        __gm__ int64_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
+        __gm__ int32_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfo &runInfo, ConstInfo &constInfo);
 };
@@ -891,7 +891,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetActualSeqLenKV(ConstInfo &constInfo, 
-    GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqLen)
+    GlobalTensor<INPUT_T> &keyGm, __gm__ int32_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqLen)
 {
     int64_t s2InCurrentBatch = constInfo.s2Size;
     if (constInfo.isKvContinuous == 0) {
