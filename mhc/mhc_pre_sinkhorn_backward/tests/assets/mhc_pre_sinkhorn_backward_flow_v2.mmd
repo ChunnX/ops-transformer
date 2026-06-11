@@ -1,0 +1,547 @@
+# MhcPreSinkhornBackward 详细流程图（视觉区分版）
+
+## 视觉区分说明
+
+| 元素类型 | 符号 | 颜色 | 含义 |
+|---------|------|------|------|
+| **原始输入连线** | `====>` | 深蓝色粗线 | 从算子原始输入到计算节点 |
+| **跨责任人依赖** | `-.->` | 紫色虚线 | 从其他责任人输出到当前责任人输入 |
+| **原始输入节点** | 节点 | 蓝色背景 | 算子的11个输入Tensor |
+| **依赖输入节点** | 节点 | 橙色背景 | 来自其他责任人的变量 |
+| **中间输出节点** | 节点 | 绿色背景 | 供后续责任人使用 |
+| **最终输出节点** | 节点 | 红色背景 | 最终输出的4个Tensor |
+
+---
+
+## 1. 整体计算流程图（视觉区分版）
+
+```mermaid
+graph TB
+    %% ========== 原始输入层（蓝色）==========
+    subgraph Input_Layer [原始输入 11个Tensor]
+        I1[grad_hin<br/>B,S,D]
+        I2[grad_h_post<br/>B,S,N]
+        I3[grad_h_res<br/>B,S,N,N]
+        I4[x<br/>B,S,N,D]
+        I5[phi<br/>N²+2N,N·D]
+        I6[alpha<br/>3]
+        I7[bias<br/>N²+2N]
+        I8[h_pre<br/>B,S,N]
+        I9[hc_before_norm<br/>B,S,N²+2N]
+        I10[inv_rms<br/>B,S,1]
+        I11[sum_out/norm_out<br/>Sinkhorn数据]
+    end
+
+    %% ========== llh负责区域（黄色）==========
+    subgraph llh [llh负责]
+        L1[输入聚合梯度<br/>grad_x_from_hin<br/>grad_h_pre]
+        L2[正向中间变量<br/>norm_out_forward<br/>拆分三路<br/>z_pre/z_post/z_res]
+        L3[pre/post激活梯度<br/>grad_z_pre<br/>grad_z_post]
+        L4[pre/post alpha梯度<br/>grad_alpha_pre<br/>grad_alpha_post]
+        L5[pre/post bias梯度<br/>grad_bias_part1<br/>grad_bias_part2]
+        
+        L1 --> L2
+        L2 --> L3
+        L3 --> L4
+        L4 --> L5
+        
+        %% llh输出层（绿色）
+        subgraph llh_output [llh输出]
+            LO1[grad_x_from_hin<br/>→ lhp]
+            LO2[z_res<br/>→ hbj]
+            LO3[norm_out_forward_part3<br/>→ hbj]
+            LO4[grad_z_pre/post<br/>→ lhp]
+            LO5[grad_alpha_pre/post<br/>→ zyf]
+            LO6[grad_bias_part1/2<br/>→ zyf]
+        end
+        
+        L1 --> LO1
+        L2 --> LO2
+        L2 --> LO3
+        L3 --> LO4
+        L4 --> LO5
+        L5 --> LO6
+    end
+
+    %% ========== hbj负责区域（粉色）==========
+    subgraph hbj [hbj负责]
+        %% hbj依赖输入层（橙色）
+        subgraph hbj_dep_input [hbj依赖输入]
+            HD1[z_res<br/>← llh]
+            HD2[norm_out_forward_part3<br/>← llh]
+        end
+        
+        H1[Sinkhorn+Exp激活梯度<br/>sk_grad<br/>grad_z_res]
+        H2[res alpha梯度<br/>grad_alpha_res]
+        H3[res bias梯度<br/>grad_bias_part3]
+        
+        H1 --> H2
+        H2 --> H3
+        
+        %% hbj输出层（绿色）
+        subgraph hbj_output [hbj输出]
+            HO1[grad_z_res<br/>→ lhp]
+            HO2[grad_alpha_res<br/>→ zyf]
+            HO3[grad_bias_part3<br/>→ lhp/zyf]
+        end
+        
+        H1 --> HO1
+        H2 --> HO2
+        H3 --> HO3
+    end
+
+    %% ========== lhp负责区域（绿色）==========
+    subgraph lhp [lhp负责]
+        %% lhp依赖输入层（橙色）
+        subgraph lhp_dep_input [lhp依赖输入]
+            LD1[grad_z_pre/post<br/>← llh]
+            LD2[grad_x_from_hin<br/>← llh]
+            LD3[grad_z_res<br/>← hbj]
+            LD4[grad_bias_part1/2/3<br/>← llh+hbj]
+        end
+        
+        LP1[线性变换梯度<br/>grad_norm_out_pre<br/>grad_norm_out_post<br/>grad_norm_out_res]
+        LP2[三路梯度组装<br/>grad_norm_out]
+        LP3[RMSNorm乘法梯度<br/>grad_hc_before_norm<br/>grad_inv_rms]
+        LP4[bias梯度组装<br/>grad_bias]
+        LP5[RMSNorm倒数梯度<br/>grad_x_from_rms]
+        LP6[矩阵乘法梯度+汇总<br/>grad_phi<br/>grad_x]
+        
+        LP1 --> LP2
+        LP2 --> LP3
+        LP3 --> LP4
+        LP3 --> LP5
+        LP5 --> LP6
+        
+        %% lhp输出层（红色）
+        subgraph lhp_output [lhp输出]
+            LPO1[grad_phi<br/>→ 最终输出]
+            LPO2[grad_x<br/>→ 最终输出]
+            LPO3[grad_bias<br/>→ 最终输出]
+        end
+        
+        LP6 --> LPO1
+        LP6 --> LPO2
+        LP4 --> LPO3
+    end
+
+    %% ========== zyf负责区域（蓝色）==========
+    subgraph zyf [zyf负责]
+        %% zyf依赖输入层（橙色）
+        subgraph zyf_dep_input [zyf依赖输入]
+            ZD1[grad_alpha_pre/post<br/>← llh]
+            ZD2[grad_alpha_res<br/>← hbj]
+            ZD3[grad_bias_part1/2/3<br/>← llh+hbj]
+        end
+        
+        Z1[grad_alpha/bias组装<br/>grad_alpha<br/>grad_bias]
+        
+        %% zyf输出层（红色）
+        subgraph zyf_output [zyf输出]
+            ZO1[grad_alpha<br/>→ 最终输出]
+            ZO2[grad_bias<br/>→ 最终输出]
+        end
+        
+        Z1 --> ZO1
+        Z1 --> ZO2
+    end
+
+    %% ========== 原始输入连线（深蓝色粗线）==========
+    I1 ==> L1
+    I4 ==> L1
+    I8 ==> L1
+    I9 ==> L2
+    I10 ==> L2
+    I6 ==> L2
+    I7 ==> L2
+    I2 ==> L3
+    I3 ==> H1
+    I11 ==> H1
+    I6 ==> LP1
+    I9 ==> LP3
+    I10 ==> LP3
+    I4 ==> LP5
+    I5 ==> LP6
+
+    %% ========== 跨责任人依赖连线（紫色虚线）==========
+    LO2 -.->|跨责任人| HD1
+    LO3 -.->|跨责任人| HD2
+    LO4 -.->|跨责任人| LD1
+    LO1 -.->|跨责任人| LD2
+    HO1 -.->|跨责任人| LD3
+    LO6 -.->|跨责任人| LD4
+    HO3 -.->|跨责任人| LD4
+    LO5 -.->|跨责任人| ZD1
+    HO2 -.->|跨责任人| ZD2
+    LO6 -.->|跨责任人| ZD3
+    HO3 -.->|跨责任人| ZD3
+
+    %% ========== 最终输出连线（红色粗线）==========
+    subgraph Final_Output [最终输出 4个Tensor]
+        O1[grad_x<br/>B,S,N,D<br/>★]
+        O2[grad_phi<br/>N²+2N,N·D<br/>★]
+        O3[grad_alpha<br/>3<br/>★]
+        O4[grad_bias<br/>N²+2N<br/>★]
+    end
+    
+    LPO1 ==> O2
+    LPO2 ==> O1
+    LPO3 ==> O4
+    ZO1 ==> O3
+    ZO2 ==> O4
+
+    %% ========== 样式定义 ==========
+    classDef input fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    classDef dep_input fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    classDef llh fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+    classDef hbj fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#000
+    classDef lhp fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef zyf fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,color:#000
+    classDef mid_output fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    classDef final_output fill:#d32f2f,stroke:#b71c1c,stroke-width:3px,color:#fff
+
+    class I1,I2,I3,I4,I5,I6,I7,I8,I9,I10,I11 input
+    class HD1,HD2,LD1,LD2,LD3,LD4,ZD1,ZD2,ZD3 dep_input
+    class L1,L2,L3,L4,L5 llh
+    class H1,H2,H3 hbj
+    class LP1,LP2,LP3,LP4,LP5,LP6 lhp
+    class Z1 zyf
+    class LO1,LO2,LO3,LO4,LO5,LO6,HO1,HO2,HO3 mid_output
+    class O1,O2,O3,O4,LPO1,LPO2,LPO3,ZO1,ZO2 final_output
+```
+
+---
+
+## 2. 责任主体详细流程图（带依赖区分）
+
+### 2.1 llh负责：pre/post支路
+
+```mermaid
+graph TB
+    %% ========== 原始输入层（蓝色）==========
+    subgraph Original_Input [原始输入]
+        O1[grad_hin<br/>B,S,D]
+        O2[grad_h_post<br/>B,S,N]
+        O3[x<br/>B,S,N,D]
+        O4[h_pre<br/>B,S,N]
+        O5[hc_before_norm<br/>B,S,N²+2N]
+        O6[inv_rms<br/>B,S,1]
+        O7[alpha<br/>3]
+        O8[bias<br/>N²+2N]
+    end
+
+    %% ========== 计算流程层（黄色）==========
+    subgraph Computation [计算流程]
+        C1[输入聚合梯度<br/>grad_x_from_hin = grad_hin·h_pre<br/>输出: B,S,N,D<br/>grad_h_pre = grad_hin·x.sum<br/>输出: B,S,N]
+        
+        C2[正向中间变量<br/>norm_out_forward = hc·inv_rms<br/>输出: B,S,N²+2N<br/>拆分: part1,part2,part3<br/>线性: z_pre,z_post,z_res]
+        
+        C3[pre/post激活梯度<br/>grad_z_pre = SigmoidGrad<br/>输出: B,S,N<br/>grad_z_post = 2·SigmoidGrad<br/>输出: B,S,N]
+        
+        C4[pre/post alpha梯度<br/>grad_alpha_pre = part1·grad_z.sum<br/>输出: scalar<br/>grad_alpha_post = part2·grad_z.sum<br/>输出: scalar]
+        
+        C5[pre/post bias梯度<br/>grad_bias_part1 = grad_z.sum<br/>输出: N<br/>grad_bias_part2 = grad_z.sum<br/>输出: N]
+    end
+
+    %% ========== 输出层（绿色=中间输出）==========
+    subgraph Output_Layer [输出 供后续责任人]
+        Out1[grad_x_from_hin<br/>→ lhp<br/>B,S,N,D]
+        Out2[z_res<br/>→ hbj<br/>B,S,N,N]
+        Out3[norm_out_forward_part3<br/>→ hbj<br/>B,S,N²]
+        Out4[grad_z_pre/post<br/>→ lhp<br/>B,S,N]
+        Out5[grad_alpha_pre/post<br/>→ zyf<br/>scalar]
+        Out6[grad_bias_part1/2<br/>→ zyf<br/>N]
+    end
+
+    %% ========== 原始输入连线（粗线）==========
+    O1 ==> C1
+    O3 ==> C1
+    O4 ==> C1
+    O5 ==> C2
+    O6 ==> C2
+    O7 ==> C2
+    O8 ==> C2
+    O2 ==> C3
+
+    %% ========== 内部计算连线（细线）==========
+    C1 --> C2
+    C2 --> C3
+    C3 --> C4
+    C4 --> C5
+
+    %% ========== 输出连线（粗线）==========
+    C1 ==> Out1
+    C2 ==> Out2
+    C2 ==> Out3
+    C3 ==> Out4
+    C4 ==> Out5
+    C5 ==> Out6
+
+    %% ========== 样式 ==========
+    classDef original fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    classDef compute fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+    classDef output fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+
+    class O1,O2,O3,O4,O5,O6,O7,O8 original
+    class C1,C2,C3,C4,C5 compute
+    class Out1,Out2,Out3,Out4,Out5,Out6 output
+```
+
+### 2.2 hbj负责：res支路
+
+```mermaid
+graph TB
+    %% ========== 原始输入层（蓝色）==========
+    subgraph Original_Input [原始输入]
+        O1[grad_h_res<br/>B,S,N,N]
+        O2[sum_out/norm_out<br/>Sinkhorn数据]
+    end
+
+    %% ========== 依赖输入层（橙色）==========
+    subgraph Dependency_Input [依赖输入 来自llh]
+        D1[z_res<br/>← llh输出<br/>B,S,N,N]
+        D2[norm_out_forward_part3<br/>← llh输出<br/>B,S,N²]
+    end
+
+    %% ========== 计算流程层（粉色）==========
+    subgraph Computation [计算流程]
+        C1[Sinkhorn+Exp激活梯度<br/>sk_grad = SinkhornGrad<br/>输出: B,S,N,N<br/>grad_z_res = ExpGrad.flatten<br/>输出: B,S,N²]
+        
+        C2[res alpha梯度<br/>grad_alpha_res = part3·grad_z.sum<br/>输出: scalar]
+        
+        C3[res bias梯度<br/>grad_bias_part3 = grad_z.sum<br/>输出: N²]
+    end
+
+    %% ========== 输出层（绿色=中间输出）==========
+    subgraph Output_Layer [输出 供后续责任人]
+        Out1[grad_z_res<br/>→ lhp<br/>B,S,N²]
+        Out2[grad_alpha_res<br/>→ zyf<br/>scalar]
+        Out3[grad_bias_part3<br/>→ lhp/zyf<br/>N²]
+    end
+
+    %% ========== 原始输入连线（粗线）==========
+    O1 ==> C1
+    O2 ==> C1
+
+    %% ========== 依赖输入连线（虚线）==========
+    D1 -.->|依赖| C1
+    D2 -.->|依赖| C2
+
+    %% ========== 内部计算连线（细线）==========
+    C1 --> C2
+    C2 --> C3
+
+    %% ========== 输出连线（粗线）==========
+    C1 ==> Out1
+    C2 ==> Out2
+    C3 ==> Out3
+
+    %% ========== 样式 ==========
+    classDef original fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    classDef dependency fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    classDef compute fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#000
+    classDef output fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+
+    class O1,O2 original
+    class D1,D2 dependency
+    class C1,C2,C3 compute
+    class Out1,Out2,Out3 output
+```
+
+### 2.3 lhp负责：线性变换+RMSNorm+矩阵乘法
+
+```mermaid
+graph TB
+    %% ========== 原始输入层（蓝色）==========
+    subgraph Original_Input [原始输入]
+        O1[alpha<br/>3]
+        O2[hc_before_norm<br/>B,S,N²+2N]
+        O3[inv_rms<br/>B,S,1]
+        O4[x<br/>B,S,N,D]
+        O5[phi<br/>N²+2N,N·D]
+    end
+
+    %% ========== 依赖输入层（橙色）==========
+    subgraph Dependency_Input [依赖输入]
+        D1[grad_z_pre/post<br/>← llh<br/>B,S,N]
+        D2[grad_x_from_hin<br/>← llh<br/>B,S,N,D]
+        D3[grad_z_res<br/>← hbj<br/>B,S,N²]
+        D4[grad_bias_part1/2<br/>← llh<br/>N]
+        D5[grad_bias_part3<br/>← hbj<br/>N²]
+    end
+
+    %% ========== 计算流程层（绿色）==========
+    subgraph Computation [计算流程]
+        C1[线性变换梯度<br/>grad_norm_out_pre/post/res<br/>输出: B,S,N/N²]
+        
+        C2[三路梯度组装<br/>grad_norm_out = cat<br/>输出: B,S,N²+2N]
+        
+        C3[RMSNorm乘法梯度<br/>grad_hc = grad_norm·inv_rms<br/>输出: B,S,N²+2N<br/>grad_inv_rms = hc·grad_norm.sum<br/>输出: B,S,1]
+        
+        C4[bias梯度组装<br/>grad_bias = cat<br/>输出: N²+2N]
+        
+        C5[RMSNorm倒数梯度<br/>grad_x_from_rms<br/>输出: B,S,N·D]
+        
+        C6[矩阵乘法梯度+汇总<br/>grad_phi = grad_hc.T·x<br/>输出: N²+2N,N·D<br/>grad_x = sum<br/>输出: B,S,N,D]
+    end
+
+    %% ========== 输出层（红色=最终输出）==========
+    subgraph Output_Layer [输出 最终输出]
+        Out1[grad_phi<br/>★<br/>N²+2N,N·D]
+        Out2[grad_x<br/>★<br/>B,S,N,D]
+        Out3[grad_bias<br/>★<br/>N²+2N]
+    end
+
+    %% ========== 原始输入连线（粗线）==========
+    O1 ==> C1
+    O2 ==> C3
+    O3 ==> C3
+    O4 ==> C5
+    O5 ==> C6
+
+    %% ========== 依赖输入连线（虚线）==========
+    D1 -.->|依赖| C1
+    D2 -.->|依赖| C6
+    D3 -.->|依赖| C1
+    D4 -.->|依赖| C4
+    D5 -.->|依赖| C4
+
+    %% ========== 内部计算连线（细线）==========
+    C1 --> C2
+    C2 --> C3
+    C3 --> C4
+    C3 --> C5
+    C5 --> C6
+
+    %% ========== 输出连线（粗线）==========
+    C6 ==> Out1
+    C6 ==> Out2
+    C4 ==> Out3
+
+    %% ========== 样式 ==========
+    classDef original fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    classDef dependency fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    classDef compute fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef final fill:#d32f2f,stroke:#b71c1c,stroke-width:3px,color:#fff
+
+    class O1,O2,O3,O4,O5 original
+    class D1,D2,D3,D4,D5 dependency
+    class C1,C2,C3,C4,C5,C6 compute
+    class Out1,Out2,Out3 final
+```
+
+### 2.4 zyf负责：grad_alpha/bias组装
+
+```mermaid
+graph TB
+    %% ========== 依赖输入层（橙色）==========
+    subgraph Dependency_Input [依赖输入]
+        D1[grad_alpha_pre<br/>← llh<br/>scalar]
+        D2[grad_alpha_post<br/>← llh<br/>scalar]
+        D3[grad_alpha_res<br/>← hbj<br/>scalar]
+        D4[grad_bias_part1<br/>← llh<br/>N]
+        D5[grad_bias_part2<br/>← llh<br/>N]
+        D6[grad_bias_part3<br/>← hbj<br/>N²]
+    end
+
+    %% ========== 计算流程层（蓝色）==========
+    subgraph Computation [计算流程]
+        C1[grad_alpha/bias组装<br/>grad_alpha = tensor<br/>输出: 3<br/>grad_bias = cat<br/>输出: N²+2N]
+    end
+
+    %% ========== 输出层（红色=最终输出）==========
+    subgraph Output_Layer [输出 最终输出]
+        Out1[grad_alpha<br/>★<br/>3]
+        Out2[grad_bias<br/>★<br/>N²+2N]
+    end
+
+    %% ========== 依赖输入连线（虚线）==========
+    D1 -.->|依赖| C1
+    D2 -.->|依赖| C1
+    D3 -.->|依赖| C1
+    D4 -.->|依赖| C1
+    D5 -.->|依赖| C1
+    D6 -.->|依赖| C1
+
+    %% ========== 输出连线（粗线）==========
+    C1 ==> Out1
+    C1 ==> Out2
+
+    %% ========== 样式 ==========
+    classDef dependency fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    classDef compute fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,color:#000
+    classDef final fill:#d32f2f,stroke:#b71c1c,stroke-width:3px,color:#fff
+
+    class D1,D2,D3,D4,D5,D6 dependency
+    class C1 compute
+    class Out1,Out2 final
+```
+
+---
+
+## 3. 责任边界依赖关系图（视觉区分）
+
+```mermaid
+graph LR
+    %% ========== 责任人节点 ==========
+    llh[llh负责<br/>pre/post支路]
+    hbj[hbj负责<br/>res支路]
+    lhp[lhp负责<br/>线性变换+RMS+矩阵乘法]
+    zyf[zyf负责<br/>grad_alpha/bias组装]
+    
+    %% ========== 跨责任人依赖连线（紫色虚线）==========
+    llh -.->|z_res<br/>norm_out_forward_part3<br/>紫色虚线| hbj
+    llh -.->|grad_z_pre/post<br/>grad_x_from_hin<br/>紫色虚线| lhp
+    llh -.->|grad_alpha_pre/post<br/>grad_bias_part1/2<br/>紫色虚线| zyf
+    
+    hbj -.->|grad_z_res<br/>grad_bias_part3<br/>紫色虚线| lhp
+    hbj -.->|grad_alpha_res<br/>grad_bias_part3<br/>紫色虚线| zyf
+    
+    %% ========== 最终输出连线（红色粗线）==========
+    lhp ==>|grad_x<br/>grad_phi<br/>grad_bias<br/>红色粗线| Output
+    zyf ==>|grad_alpha<br/>grad_bias<br/>红色粗线| Output
+    
+    %% ========== 最终输出节点（红色）==========
+    Output[最终输出<br/>★ grad_x ★ grad_phi<br/>★ grad_alpha ★ grad_bias]
+
+    %% ========== 样式 ==========
+    classDef person fill:#fff,stroke:#333,stroke-width:2px
+    classDef output fill:#d32f2f,stroke:#b71c1c,stroke-width:3px,color:#fff
+
+    class llh,hbj,lhp,zyf person
+    class Output output
+```
+
+---
+
+## 视觉区分总结
+
+### 连线类型
+| 连线符号 | 视觉效果 | 含义 | 使用场景 |
+|---------|---------|------|---------|
+| `====>` | 粗实线 | 原始输入流 | 从算子原始输入到计算节点 |
+| `-.->` | 虚线 | 跨责任人依赖 | 从其他责任人输出到当前责任人输入 |
+| `-->` | 细实线 | 内部计算流 | 同一责任人内部的计算流程 |
+
+### 节点类型
+| 节点颜色 | 含义 | 使用场景 |
+|---------|------|---------|
+| **蓝色** `#1e88e5` | 原始输入 | 算子的11个输入Tensor |
+| **橙色** `#ff9800` | 依赖输入 | 来自其他责任人的变量 |
+| **黄色** `#fff9c4` | llh计算 | llh负责的计算节点 |
+| **粉色** `#fce4ec` | hbj计算 | hbj负责的计算节点 |
+| **绿色** `#e8f5e9` | lhp计算 | lhp负责的计算节点 |
+| **蓝色** `#b3e5fc` | zyf计算 | zyf负责的计算节点 |
+| **绿色** `#43a047` | 中间输出 | 供后续责任人使用 |
+| **红色** `#d32f2f` | 最终输出 | 最终输出的4个Tensor（★标记） |
+
+### 标记说明
+- **★**：标记最终输出节点
+- **← llh/hbj**：标注依赖来源
+- **→ lhp/zyf**：标注输出去向
+
+---
+
+**生成时间**: 2025-06-10  
+**文件**: golden_v2.py  
+**视觉区分**: 原始输入、依赖输入、中间输出、最终输出、跨责任人依赖

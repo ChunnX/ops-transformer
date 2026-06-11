@@ -12,6 +12,9 @@
  * \brief mhc_pre_sinkhorn_backward
  */
 
+#ifndef MHC_PRE_SINKHORN_BACKWARD_SIMD_VF_H
+#define MHC_PRE_SINKHORN_BACKWARD_SIMD_VF_H
+
 #include "kernel_operator.h"
 
 using namespace AscendC;
@@ -219,3 +222,5 @@ __aicore__ inline void ComputeGradXVf(LocalTensor<U> gradXLocal, LocalTensor<U> 
         }
     }
 }
+
+#endif
