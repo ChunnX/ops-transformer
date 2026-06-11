@@ -35,7 +35,29 @@ struct SIType {
     static constexpr SI_LAYOUT layout = SI_LAYOUT::BNSD;
     static constexpr SI_LAYOUT keyLayout = SI_LAYOUT::BNSD;
 };
-
+// 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
+struct TempLoopInfo {
+    uint32_t bN2Idx = 0;
+    uint32_t bIdx = 0U;
+    uint32_t n2Idx = 0U;
+    uint32_t gS1Idx = 0U;
+    uint32_t gS1LoopEnd = 0U;   // gS1方向循环的结束Idx
+    uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
+    uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
+    uint32_t actS2Size = 0ULL;
+    uint32_t actS2SizeOrig = 0ULL;//压缩前s2
+    uint32_t actQTokenLen = 0ULL;
+    uint32_t actKVTokenLen = 0ULL;
+    uint32_t promptTokenLen = 0ULL;
+    uint32_t s2ValidSize = 0ULL;
+    bool curActSeqLenIsZero = false;
+    bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
+    uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
+    uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
+    uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
+    bool isDecode = false;
+    bool isNeedLD = false;     // 该基本块是否需要LD
+};
 struct RunInfo {
     uint32_t loop;
     uint32_t bN2Idx;

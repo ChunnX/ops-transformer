@@ -51,10 +51,10 @@ public:
     {}
     __aicore__ inline void AllocEventID() {}
     __aicore__ inline void FreeEventID() {}
-    __aicore__ inline void ProcessDirectOutput(const SICommon::RunInfo &) {}
+    __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &, uint32_t) {}
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &) {}
     __aicore__ inline void ProcessTopK(const SICommon::RunInfo &, bool, bool) {}
-    __aicore__ inline void initS2LenToNeg(const SICommon::RunInfo &) {}
+    __aicore__ inline void initS2LenToNeg(uint32_t, uint64_t) {}
 };
 
 template <typename SIT>
@@ -74,29 +74,7 @@ public:
     __aicore__ inline void ComputeMm1(const SICommon::RunInfo &) {}
 };
 
-// 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
-struct TempLoopInfo {
-    uint32_t bN2Idx = 0;
-    uint32_t bIdx = 0U;
-    uint32_t n2Idx = 0U;
-    uint32_t gS1Idx = 0U;
-    uint32_t gS1LoopEnd = 0U;   // gS1方向循环的结束Idx
-    uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
-    uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
-    uint32_t actS2Size = 0ULL;
-    uint32_t actS2SizeOrig = 0ULL;//压缩前s2
-    uint32_t actQTokenLen = 0ULL;
-    uint32_t actKVTokenLen = 0ULL;
-    uint32_t promptTokenLen = 0ULL;
-    uint32_t s2ValidSize = 0ULL;
-    bool curActSeqLenIsZero = false;
-    bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
-    uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
-    uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
-    uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
-    bool isDecode = false;
-    bool isNeedLD = false;     // 该基本块是否需要LD
-};
+
 
 template <typename SIT>
 class SIPreload {
@@ -166,7 +144,7 @@ protected:
     uint32_t usedCoreNum = 0U;
 
     SICommon::ConstInfo constInfo{};
-    TempLoopInfo tempLoopInfo{};
+    SICommon::TempLoopInfo tempLoopInfo{};
     SICommon::SplitCoreInfo splitCoreInfo{};
     SICommon::LdSplitCoreInfo ldInfo{};
 
@@ -798,9 +776,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
-            // 短路分支：s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize 时直接输出连续索引
-            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
-                vectorService.ProcessDirectOutput(bN2LoopIdx, gS1LoopIdx);
+            // 短路分支：s2ValidSize <= constInfo.initialBlocks时直接输出连续索引
+            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks) {
+                vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
                 splitCoreInfo.s2Start = 0;
                 continue;
             }
@@ -835,7 +813,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     } else {
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo);
+            vectorService.initS2LenToNeg(runInfo.actMBaseSize, runInfo.indiceOutOffset);
         }
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
