@@ -95,7 +95,14 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     GM_ADDR statusDataSpaceGm = (GM_ADDR)selfDataStatusGMAiv.GetPhyAddr() - aivId * 64;
     selfDataStatusGMAiv2.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + aivId * 64 + 48 * 64));
     uint32_t doorBellCnt = selfDataStatusGMAiv2.GetValue(12) + 1;
+    auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
+    cacheWriteThrough((__gm__ uint8_t*)curHardwareTailAddr, CACHEWRITESIZE);
+    uint32_t curTail = *(__gm__ uint32_t*)(curHardwareTailAddr);
+    selfDataStatusGMAiv2.SetValue(9, curTail);
     selfDataStatusGMAiv2.SetValue(12, doorBellCnt);
+    selfDataStatusGMAiv2.SetValue(13, static_cast<uint32_t>((uint64_t)curHardwareHead));
+    selfDataStatusGMAiv2.SetValue(14, static_cast<uint32_t>((uint64_t)curHardwareHead >> 32));
+    selfDataStatusGMAiv2.SetValue(15, static_cast<uint32_t>(curHead));
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv2);
 }
