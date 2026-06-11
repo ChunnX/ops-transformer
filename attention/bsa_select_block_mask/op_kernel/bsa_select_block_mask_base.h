@@ -17,6 +17,10 @@ using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
+#ifndef BSA_TILING_VERIFY_PRINT
+#define BSA_TILING_VERIFY_PRINT 0
+#endif
+
 template <typename BSAT> class BSASelectBlockMaskBase {
 public:
     using T = float;
@@ -120,7 +124,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.maskOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
 
     if ASCEND_IS_AIV {
-        if (GetBlockIdx() == 0) {
+        if (BSA_TILING_VERIFY_PRINT && GetBlockIdx() == 0) {
             uint32_t errCount = 0;
             auto &baseInfo = tilingData->baseParams;
             auto &outInfo = tilingData->outputParams;
