@@ -59,7 +59,7 @@ def CausalConv1d(
     num_accepted_tokens=None,        # [batch] int32
     *,
     activation_mode=0,   # attr
-    pad_slot_id=-1,      # attr
+    null_block_id=0,      # attr
     run_mode=0,          # attr
     **extra,
 ):
@@ -76,7 +76,7 @@ def CausalConv1d(
         initial_state_mode: initial state mode (OPTIONAL) - [batch] int32
         num_accepted_tokens: number of accepted tokens (OPTIONAL) - [batch] int32
         activation_mode: activation mode, 0=Identity, 1=SiLU - Attr
-        pad_slot_id: pad slot id - Attr
+        null_block_id: null block id - Attr
         run_mode: run mode, 0=forward, 1=update - Attr
         **extra: extended parameters
     """
@@ -118,7 +118,7 @@ def CausalConv1d(
     # Step 3: compute per sequence
     for i in range(B):
         ci = int(cache_idx[i])
-        if ci == pad_slot_id:
+        if ci == null_block_id:
             seq_len = x_t.shape[1] if is_3d else xs[i].shape[0]
             ys.append(torch.zeros(seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
             continue
