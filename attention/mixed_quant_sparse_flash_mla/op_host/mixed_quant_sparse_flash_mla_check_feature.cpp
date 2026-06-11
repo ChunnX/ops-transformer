@@ -53,11 +53,6 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
 
-    std::vector<uint32_t> gSizeSupportList = {2, 4, 8, 16, 32, 64, 128};
-    OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-        OP_LOGE(opName_, "group num only support 2、4、8、16、32、64 and 128, but got %u", gSize_),
-        return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(dSize_ != 512, // 512:当前不泛化
         OP_LOGE(opName_, "Head dim of input q only support 512, but got %u", dSize_),
         return ge::GRAPH_FAILED);
