@@ -73,8 +73,8 @@ private:
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void QuantProcessInRank();
-    __aicore__ inline void Gmm1Dispatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
-    __aicore__ inline void Gmm2Dispatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
         uint32_t expertIdx);
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
@@ -955,10 +955,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 }
 
 // ===============================================================
-// Gmm1Dispatch：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// GroupMatmulWithSwigluQuant：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Gmm1Dispatch(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
 {
     if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
@@ -976,10 +976,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Gmm1Dispatch(
 }
 
 // ===============================================================
-// Gmm2Dispatch：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// GroupMatmulWithCombine：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Gmm2Dispatch(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
@@ -1037,7 +1037,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
             }
         }
-        Gmm1Dispatch(gmmAddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmmAddrInfo, gmm1State);
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
@@ -1055,7 +1055,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
-        Gmm2Dispatch(gmmAddrInfo, gmm2State, expertIdx);
+        GroupMatmulWithCombine(gmmAddrInfo, gmm2State, expertIdx);
     }
     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     PipeBarrier<PIPE_ALL>();
