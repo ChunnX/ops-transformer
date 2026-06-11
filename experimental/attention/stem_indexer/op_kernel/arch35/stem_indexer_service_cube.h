@@ -22,14 +22,13 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "stem_indexer_common.h"
 
-namespace QLIKernel {
-using namespace QLICommon;
+namespace SIKernel {
+using namespace SICommon;
 template <typename SIT>
 class SIMatmul {
 public:
     using Q_T = typename SIT::queryType;
     using K_T = typename SIT::keyType;
-    using QK_T = typename SIT::queryKeyType;
 
     __aicore__ inline SIMatmul(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -38,7 +37,7 @@ public:
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const QLICommon::RunInfo &runInfo);
+    __aicore__ inline void ComputeMm1(const SICommon::RunInfo &runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint64_t KEY_BUF_NUM = 3;
@@ -72,14 +71,14 @@ public:
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                uint64_t s2L0RealSize, const QLICommon::RunInfo &runInfo);
-    __aicore__ inline void ComuteL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, const QLICommon::RunInfo &runInfo);
+                                uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void ComuteL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-                                        const QLICommon::RunInfo &runInfo);
+                                        const SICommon::RunInfo &runInfo);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
-                                          uint64_t s1gL0RealSize, const QLICommon::RunInfo &runInfo);
-    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset, const QLICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, const QLICommon::RunInfo &runInfo);
+                                          uint64_t s1gL0RealSize, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -148,9 +147,9 @@ SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, cons
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const QLICommon::RunInfo &runInfo) {
-    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET);
+__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
+    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
+    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET);
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -206,13 +205,13 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const QLICommon::RunInfo &runIn
     }
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
     l0cBufIdx_++;
-    CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
-    CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET); 
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET); 
 }
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, 
-                                                    const QLICommon::RunInfo &runInfo)
+                                                    const SICommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -231,7 +230,7 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
 // batch, n2, g, s1, d
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, uint64_t kGmOffset,
-                                                 const QLICommon::RunInfo &runInfo)
+                                                 const SICommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -249,7 +248,7 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
-                                                     uint64_t s1gL0RealSize, const QLICommon::RunInfo &runInfo)
+                                                     uint64_t s1gL0RealSize, const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
@@ -266,7 +265,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-                                                   const QLICommon::RunInfo &runInfo)
+                                                   const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
@@ -283,7 +282,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                                const QLICommon::RunInfo &runInfo)
+                                                const SICommon::RunInfo &runInfo)
 {
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
@@ -301,7 +300,7 @@ __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2O
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                           uint64_t s2L0RealSize, const QLICommon::RunInfo &runInfo)
+                                           uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cBufIdx_ % L0_BUF_NUM);
@@ -361,5 +360,5 @@ __aicore__ inline void SIMatmul<SIT>::FreeEventID()
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
 }
-} // namespace QLIKernel
+} // namespace SIKernel
 #endif
