@@ -250,6 +250,11 @@ public:
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
+        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
+        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
+        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
+        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
+
         // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
             fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
