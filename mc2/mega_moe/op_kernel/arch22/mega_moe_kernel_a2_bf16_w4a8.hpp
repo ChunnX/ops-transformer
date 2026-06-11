@@ -1339,6 +1339,7 @@ private:
         }
     }
 
+    CATLASS_DEVICE
     void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
         blockEpilogue.InitFlag();
