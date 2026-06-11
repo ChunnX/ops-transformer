@@ -1,4 +1,4 @@
-# aclnnLightingIndexerV2Metadata
+# aclnnQuantLightningIndexerV2Metadata
 
 ## 产品支持情况
 
@@ -13,18 +13,18 @@
 
 ## 功能说明
 
-- 接口功能：该接口为AI CPU算子接口，是aclnnLightningIndexerV2算子的前置算子接口。根据aclnnLightningIndexerV2算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnLightningIndexerV2算子接口的输入，减少aclnnLightningIndexerV2算子接口的执行耗时。
+- 接口功能：该接口为AI CPU算子接口，是aclnnQuantLightningIndexerV2算子的前置算子接口。根据aclnnQuantLightningIndexerV2算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnQuantLightningIndexerV2算子接口的输入，减少aclnnQuantLightningIndexerV2算子接口的执行耗时。
 
-  **该算子不建议单独使用，建议与aclnnLightningIndexerV2算子配合使用，形成完整的工作流。**
-    1. 接受aclnnLightningIndexerV2算子接口输入数据shape信息，包含batchSize、qSeqlen、kSeqlen、mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnLightningIndexerV2算子的整体计算耗时，并提高硬件利用率。
-    2. 分配结果输出后，后续作为输入供aclnnLightningIndexerV2算子使用。
+  **该算子不建议单独使用，建议与aclnnQuantLightningIndexerV2算子配合使用，形成完整的工作流。**
+    1. 接受aclnnQuantLightningIndexerV2算子接口输入数据shape信息，包含batchSize、qSeqlen、kSeqlen、mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnQuantLightningIndexerV2算子的整体计算耗时，并提高硬件利用率。
+    2. 分配结果输出后，后续作为输入供aclnnQuantLightningIndexerV2算子使用。
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightingIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightingIndexerV2Metadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnQuantLightningIndexerV2Metadata"执行计算
 
 ``` cpp
-aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
+aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const aclTensor   *cuSeqlensQOptional,
     const aclTensor   *cuSeqlensKOptional,
     const aclTensor   *sequsedQOptional,
@@ -34,6 +34,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     int64_t            numHeadsK,
     int64_t            headDim,
     int64_t            topk,
+    int64_t            quantMode,
     int64_t            batchSize,
     int64_t            maxSeqlenQ,
     int64_t            maxSeqlenK,
@@ -41,20 +42,20 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     char              *layoutKOptional,
     int64_t            maskMode,
     int64_t            cmpRatio,
-    const aclTensor   *metaData,
+    const aclTensor   *metadata,
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
 
 ``` cpp
-aclnnStatus aclnnLightningIndexerV2Metadata(
+aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     void              *workspace,
     uint64_t           workspaceSize,
     aclOpExecutor     *executor,
     aclrtStream        stream)
 ```
 
-## aclnnLightingIndexerV2MetadataGetWorkspaceSize
+## aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
@@ -152,7 +153,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>headDim</td>
       <td>输入</td>
-      <td>表示token数。</td>
+      <td>注意力头的维度。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -164,6 +165,16 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
       <td>支持非负数</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>quantMode</td>
+      <td>输入</td>
+      <td>表示量化模式</td>
+      <td>1: qk: fp8(e4m3) per-token-head; scale: fp32</br>2: qk: int8 per-token-head; scale: fp16 w: fp16</br>3: qk: mxfp8</br>4: qk: hif8 per-tensor; scale: fp32</br>5: qk: mxfp4</br> 6: qk: hif4</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -183,7 +194,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -193,7 +204,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenK</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -240,7 +251,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>metaData</td>
+      <td>metadata</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>-</td>
@@ -276,7 +287,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## aclnnLightingIndexerV2Metadata
+## aclnnQuantLightningIndexerV2Metadata
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -300,7 +311,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
         <tr>
             <td>workspaceSize</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
             <td>executor</td>
@@ -320,7 +331,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnLightingIndexerV2Metadata默认确定性实现
+  - aclnnQuantLightningIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息
@@ -354,7 +365,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 #include <functional>
 #include <utility>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_lightning_indexer_v2_metadata.h"
+#include "aclnnop/aclnn_quant_lightning_indexer_v2_metadata.h"
 
 #define CHECK_LOG_RET(cond, ret_val, fmt, ...)      \
     do {                                            \
@@ -364,34 +375,35 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
         }                                           \
     } while (0)
 
-// 参考lightning_indexer_v2_metadata.h
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t LI_V2_METADATA_SIZE = 8;
-constexpr uint32_t LD_V2_METADATA_SIZE = 8;
+// 参考 quant_lightning_indexer_v2_metadata.h
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
+constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
+constexpr uint32_t QLD_V2_METADATA_SIZE = 8;
 
-// LI Metadata Index Definitions
-constexpr uint32_t LI_V2_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t LI_V2_BN2_START_INDEX = 1;
-constexpr uint32_t LI_V2_M_START_INDEX = 2;
-constexpr uint32_t LI_V2_S2_START_INDEX = 3;
-constexpr uint32_t LI_V2_BN2_END_INDEX = 4;
-constexpr uint32_t LI_V2_M_END_INDEX = 5;
-constexpr uint32_t LI_V2_S2_END_INDEX = 6;
-constexpr uint32_t LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX = 7;
+// QLI Metadata Index Definitions
+constexpr uint32_t QLI_V2_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t QLI_V2_BN2_START_INDEX = 1;
+constexpr uint32_t QLI_V2_M_START_INDEX = 2;
+constexpr uint32_t QLI_V2_S2_START_INDEX = 3;
+constexpr uint32_t QLI_V2_BN2_END_INDEX = 4;
+constexpr uint32_t QLI_V2_M_END_INDEX = 5;
+constexpr uint32_t QLI_V2_S2_END_INDEX = 6;
+constexpr uint32_t QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX = 7;
 
-// LD Metadata Index Definitions
-constexpr uint32_t LD_V2_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t LD_V2_BN2_IDX_INDEX = 1;
-constexpr uint32_t LD_V2_M_IDX_INDEX = 2;
-constexpr uint32_t LD_V2_WORKSPACE_IDX_INDEX = 3;
-constexpr uint32_t LD_V2_WORKSPACE_NUM_INDEX = 4;
-constexpr uint32_t LD_V2_M_START_INDEX = 5;
-constexpr uint32_t LD_V2_M_NUM_INDEX = 6;
+// QLD Metadata Index Definitions
+constexpr uint32_t QLD_V2_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t QLD_V2_BN2_IDX_INDEX = 1;
+constexpr uint32_t QLD_V2_M_IDX_INDEX = 2;
+constexpr uint32_t QLD_V2_WORKSPACE_IDX_INDEX = 3;
+constexpr uint32_t QLD_V2_WORKSPACE_NUM_INDEX = 4;
+constexpr uint32_t QLD_V2_M_START_INDEX = 5;
+constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 
-struct LiV2MetaData {
-    uint32_t faData[AIC_CORE_NUM][LI_V2_METADATA_SIZE];
-    uint32_t fdData[AIV_CORE_NUM][LD_V2_METADATA_SIZE];
+struct QliV2Metadata {
+    uint32_t faData[AIC_CORE_MAX_NUM][QLI_V2_METADATA_SIZE];
+    uint32_t fdData[AIV_CORE_MAX_NUM][QLD_V2_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -435,6 +447,7 @@ struct ArgContext {
     int64_t numHeadsK { 0 };
     int64_t headDim { 0 };
     int64_t topk { 0 };
+    int64_t quantMode { 2 };
     // optional input
     Tensor cuSeqlensQOptional {};
     Tensor cuSeqlensKOptional {};
@@ -449,7 +462,7 @@ struct ArgContext {
     int64_t maskMode { 0 };
     int64_t cmpRatio { 0 };
     // output
-    Tensor metaData {};
+    Tensor metadata {};
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) 
@@ -518,7 +531,7 @@ void DestroyTensor(Tensor &tensor)
 
 void DestroyArgs(ArgContext &context)
 {
-    DestroyTensor(context.metaData);
+    DestroyTensor(context.metadata);
     DestroyTensor(context.cuSeqlensQOptional);
     DestroyTensor(context.cuSeqlensKOptional);
     DestroyTensor(context.sequsedQOptional);
@@ -545,7 +558,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsK = 1;
     context.headDim = 128;
     context.topk = 0;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
+    context.quantMode = 2; // 2: per-token-head / 3: group-scaling
+    ret = CreateTensor(aclDataType::ACL_INT32, { QLI_V2_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
     context.maskMode = 0;                   // 0: no mask, 3: causal
@@ -559,6 +573,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
         context.batchSize = batchSize;
         context.maxSeqlenK = 1024;
         context.maxSeqlenQ = 1024;
+        argsGuard.Dismiss();
         return ACL_SUCCESS;
     }
 
@@ -605,14 +620,15 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    ret = aclnnLightningIndexerV2MetadataGetWorkspaceSize(
+    ret = aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
         context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
         context.sequsedKOptional.data, context.cmpResidualKOptional.data,
-        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk,
+        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.quantMode,
         context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
         context.layoutKOptional, context.maskMode, context.cmpRatio,
-        context.metaData.data, &workspaceSize, &executor);
-    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
+        context.metadata.data, &workspaceSize, &executor);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
+        "aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
     if (workspaceSize > static_cast<uint64_t>(0)) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -626,38 +642,38 @@ int main() {
     });
     
     // 调用aclnnLightningIndexerV2Metadata第二段接口
-    ret = aclnnLightningIndexerV2Metadata(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
+    ret = aclnnQuantLightningIndexerV2Metadata(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnQuantLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
 
     // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
 
     // 5. 打印输出
-    LiV2MetaData result {};
-    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    QliV2Metadata result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
         printf("AIC Core%u\n", i);
-        printf("    Core Enable : %u\n", result.faData[i][LI_V2_CORE_ENABLE_INDEX]);
-        printf("    Start BN2   : %u\n", result.faData[i][LI_V2_BN2_START_INDEX]);
-        printf("    Start M     : %u\n", result.faData[i][LI_V2_M_START_INDEX]);
-        printf("    Start S2    : %u\n", result.faData[i][LI_V2_S2_START_INDEX]);
-        printf("    End BN2     : %u\n", result.faData[i][LI_V2_BN2_END_INDEX]);
-        printf("    End M       : %u\n", result.faData[i][LI_V2_M_END_INDEX]);
-        printf("    End S2      : %u\n", result.faData[i][LI_V2_S2_END_INDEX]);
-        printf("    First Worksapce Index : %u\n", result.faData[i][LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX]);
+        printf("    Core Enable : %u\n", result.faData[i][QLI_V2_CORE_ENABLE_INDEX]);
+        printf("    Start BN2   : %u\n", result.faData[i][QLI_V2_BN2_START_INDEX]);
+        printf("    Start M     : %u\n", result.faData[i][QLI_V2_M_START_INDEX]);
+        printf("    Start S2    : %u\n", result.faData[i][QLI_V2_S2_START_INDEX]);
+        printf("    End BN2     : %u\n", result.faData[i][QLI_V2_BN2_END_INDEX]);
+        printf("    End M       : %u\n", result.faData[i][QLI_V2_M_END_INDEX]);
+        printf("    End S2      : %u\n", result.faData[i][QLI_V2_S2_END_INDEX]);
+        printf("    First Worksapce Index : %u\n", result.faData[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX]);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
         printf("AIV Core%u\n", i);
-        printf("    Core Enable             : %u\n", result.fdData[i][LD_V2_CORE_ENABLE_INDEX]);
-        printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][LD_V2_BN2_IDX_INDEX]);
-        printf("    FD Task M Idx           : %u\n", result.fdData[i][LD_V2_M_IDX_INDEX]);
-        printf("    FD Task S2 Idx          : %u\n", result.fdData[i][LD_V2_WORKSPACE_IDX_INDEX]);
-        printf("    FD Task Workspace Num   : %u\n", result.fdData[i][LD_V2_WORKSPACE_NUM_INDEX]);
-        printf("    FD Subtask M Start      : %u\n", result.fdData[i][LD_V2_M_START_INDEX]);
-        printf("    FD Subtask M Num        : %u\n", result.fdData[i][LD_V2_M_NUM_INDEX]);
+        printf("    Core Enable             : %u\n", result.fdData[i][QLD_V2_CORE_ENABLE_INDEX]);
+        printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][QLD_V2_BN2_IDX_INDEX]);
+        printf("    FD Task M Idx           : %u\n", result.fdData[i][QLD_V2_M_IDX_INDEX]);
+        printf("    FD Task S2 Idx          : %u\n", result.fdData[i][QLD_V2_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Num   : %u\n", result.fdData[i][QLD_V2_WORKSPACE_NUM_INDEX]);
+        printf("    FD Subtask M Start      : %u\n", result.fdData[i][QLD_V2_M_START_INDEX]);
+        printf("    FD Subtask M Num        : %u\n", result.fdData[i][QLD_V2_M_NUM_INDEX]);
     }
 
     return 0;
