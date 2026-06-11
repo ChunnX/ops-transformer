@@ -31,7 +31,6 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
     const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
     std::string layout_kv_str, const uint64_t &rope_head_dim, bool return_softmax_lse)
 {
-    printf("construct_sparse_flash_mla_atten_out_tensor 开始\n");
     TORCH_CHECK(layout_q_str == "BSND" || layout_q_str == "TND",
                 "The layout of query only support BSND and TND, but got ", layout_q_str);
     for (auto i = 0; i < q.sizes().size(); i++) {
@@ -51,12 +50,6 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
     }
     at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(q.dtype()));
     at::Tensor softmax_lse;
- 
-    if (!atten_out.defined()) {
-        printf("[aclnnSparseFlashMla] atten_out 制作失败\n");
-    } else {
-        printf("[aclnnSparseFlashMla] atten_out 制作完成\n");
-    }
  
     if (return_softmax_lse) {
         if (layout_q_str == "BSND") {
@@ -80,11 +73,6 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
         softmax_lse_size = {};
     }
     softmax_lse = npu_preparation::apply_tensor_without_format(softmax_lse_size, q.options().dtype(torch::kFloat32));
-    if (!softmax_lse.defined()) {
-        printf("[aclnnSparseFlashMla] softmax_lse 制作失败\n");
-    } else {
-        printf("[aclnnSparseFlashMla] softmax_lse 制作完成\n");
-    }
  
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
@@ -122,17 +110,6 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
     at::Tensor atten_out = std::get<0>(sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(sparse_flash_mla_atten_out);
  
-    if (!atten_out.defined()) {
-        printf("[aclnnSparseFlashMla] atten_out is nullptr!!!\n");
-    } else {
-        printf("[aclnnSparseFlashMla] atten_out 非空\n");
-    }
-    if (!softmax_lse.defined()) {
-        printf("[aclnnSparseFlashMla] softmax_lse is nullptr!!!\n");
-    } else {
-        printf("[aclnnSparseFlashMla] softmax_lse 非空\n");
-    }
- 
     ACLNN_CMD(aclnnSparseFlashMla, q,
               ori_kv, cmp_kv,
               ori_sparse_indices, cmp_sparse_indices,
@@ -149,7 +126,6 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
               layout_q_ptr, layout_kv_ptr,
               topk_value_mode, return_softmax_lse,
               atten_out, softmax_lse);
-    printf("ACLNN_CMD end =========== \n");
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
  
