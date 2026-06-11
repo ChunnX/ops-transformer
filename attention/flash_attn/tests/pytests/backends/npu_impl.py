@@ -81,8 +81,8 @@ def flash_attn_metadata_only(**kwargs):
         if v is None:
             return None
         if torch.is_tensor(v):
-            return v.to(dtype=torch.int32, device=device).contiguous()
-        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+            return v.to(dtype=torch.int32, device="cpu").contiguous().to(device)
+        return torch.tensor(v, dtype=torch.int32, device="cpu").contiguous().to(device)
 
     max_seqlen_q  = sq  if sq  is not None else 0
     max_seqlen_kv = skv if skv is not None else 0
@@ -190,8 +190,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         if v is None:
             return None
         if torch.is_tensor(v):
-            return v.to(dtype=torch.int32, device=device).contiguous()
-        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+            return v.to(dtype=torch.int32, device="cpu").contiguous().to(device)
+        return torch.tensor(v, dtype=torch.int32, device="cpu").contiguous().to(device)
 
     cu_q_meta       = _to_u32_tensor(cu_q)
     cu_kv_meta      = _to_u32_tensor(cu_kv)
@@ -415,8 +415,8 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         if v is None:
             return None
         if torch.is_tensor(v):
-            return v.to(dtype=torch.int32, device=device).contiguous()
-        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+            return v.to(dtype=torch.int32, device="cpu").contiguous().to(device)
+        return torch.tensor(v, dtype=torch.int32, device="cpu").contiguous().to(device)
 
     cu_q_meta       = _to_u32_tensor(cu_q)
     cu_kv_meta      = _to_u32_tensor(cu_kv)
