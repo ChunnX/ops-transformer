@@ -384,11 +384,11 @@ void FiaTilingFullQuantGqaArch35::CreateSplitInput(split_core_v2::BaseInfo &base
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
-                     (fiaInfo_->qLayout == FiaLayout::TND);
+                     (fiaInfo_->qLayout == FiaLayout::TND) || (fiaInfo_->qLayout == FiaLayout::NTD);
     baseInfo.sparseMode = fiaInfo_->sparseMode;
     baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 
-    if (fiaInfo_->qLayout == FiaLayout::TND) {
+    if (fiaInfo_->qLayout == FiaLayout::TND || fiaInfo_->qLayout == FiaLayout::NTD) {
         baseInfo.isAccumSeqS1 = true;
         baseInfo.isAccumSeqS2 = !fiaInfo_->pageAttentionFlag;
     } else {
