@@ -664,7 +664,13 @@ Epilogue 在 AIV 侧完成当前 tile 的后处理，流程按阶段概括如下
 
 #### 4.2.10 GeluTanh 计算
 
-当前实现使用 sigmoid 形式的 GeluTanh 近似：
+`activation_type="gelu_tanh"` 对应的数学语义为：
+
+$$
+\text{GELU}_{\text{tanh}}(x) \approx 0.5x \left( 1 + \tanh\left( \sqrt{\frac{2}{\pi}} \left( x + 0.044715 x^3 \right) \right) \right)
+$$
+
+当前实现使用 sigmoid 形式的 GeluTanh 近似，定义为：
 
 `GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`
 

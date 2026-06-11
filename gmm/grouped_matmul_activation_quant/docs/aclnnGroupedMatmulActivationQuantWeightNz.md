@@ -27,8 +27,15 @@
 
         * **⋅** 表示矩阵乘法。
         * **⊙** 表示逐元素乘法。
-        * $GeluTanh(x)=0.5 \cdot x \cdot (1 + tanh(\sqrt{2 / \pi} \cdot (x + 0.044715 \cdot x^3)))$。
-        * 当前kernel底层实现使用gelu_sigmoid函数对gelu_tanh进行近似计算。
+        * gelu_tanh激活函数的数学语义为：
+
+          $$
+          \text{GELU}_{\text{tanh}}(x) \approx 0.5x \left( 1 + \tanh\left( \sqrt{\frac{2}{\pi}} \left( x + 0.044715 x^3 \right) \right) \right)
+          $$
+
+        * 当前kernel底层实现使用gelu_sigmoid函数对gelu_tanh进行近似计算，定义为：
+
+          `GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`
         * $E$ 表示专家数，$M$ 表示总token数，$K$ 表示输入特征维度，$N$ 表示输出特征维度。
         * $blocksize$ 表示MX量化时共享指数的分组大小，当前仅支持64。
 
@@ -71,7 +78,7 @@
 
           $S_i = GeluTanh(C_i)$
 
-          注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh。
+          注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`。
 
         - 4. 对激活结果进行MX量化：
 
