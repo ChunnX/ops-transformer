@@ -26,9 +26,3 @@ add_ops_compile_options(
 )
 
 add_modules_sources(OPTYPE sparse_flash_mla ACLNNTYPE aclnn)
-
-if(NOT BUILD_OPS_RTY_KERNEL)
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ./arch22/sparse_flash_mla_tiling_arch22.cpp
-    )
-endif()
