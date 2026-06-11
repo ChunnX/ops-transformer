@@ -34,7 +34,11 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/common/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../common/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/
+                    -I${OPTENSOR_INCLUDE_ROOT}
+                    -I${TENSOR_API_INCLUDE_ROOT}
+                    -I${TENSOR_API_IMPL_INCLUDE_ROOT}
                     -I${TENSOR_API}
+                    -I${BLAZE}
         )
     endif()
 endif()

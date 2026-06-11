@@ -17,7 +17,7 @@
 // #include "kernel_utils/common_utils.h"
 // #include "block/quant_matmul_mx_block_mmad_swat.h"
 #include "basic_api/kernel_basic_intf.h"
-#include "kernel/quant_matmul_reduce_scatter_impl.h"
+#include "quant_matmul_reduce_scatter_impl.h"
 #include "quant_matmul_reduce_scatter_tiling_data.h"
 
 using namespace AscendC;

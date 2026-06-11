@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -18,20 +18,24 @@
 
 #pragma once
 
-#include "../utils/constant.h"
 #include "adv_api/hccl/hccl.h"
 #include "inc/kernel/moe_distribute_base.h"
-
 #include "include/tensor_api/tensor.h"
-#include "block/block_mmad.h"
-#include "block/block_scheduler_policy.h"
-#include "quant_matmul_mx_kernel_swat.h"
-#include "../../../quant_matmul_reduce_scatter_tiling_data.h"
-
+#include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/utils/layout_utils.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
+#include "blaze/gemm/block/block_mmad.h"
+#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "blaze/epilogue/block/block_epilogue_empty.h"
+#include "blaze/gemm/kernel/kernel_universal.h"
+#include "quant_matmul_mx_kernel_swat_qmmrs.h" // 定制kernel 层
+#include "quant_matmul_reduce_scatter_tiling_data.h"
 
 namespace quantMatmulReduceScatterImpl {
 
 using namespace AscendC;
+using namespace Blaze::Gemm;
 
 constexpr static uint64_t WIN_DATA_INNER_OFFSET = 30UL * 1024UL * 1024UL;
 constexpr static uint64_t SINGLE_ZERONE_DATA_ZONE_SIZE = 100UL * 1024UL * 1024UL;
@@ -40,8 +44,9 @@ constexpr static int64_t AIV_UB_TILE_M = 32;
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;
 constexpr uint32_t STATE_ALIGN_BYTES = 32U;
 constexpr uint32_t BUFFER_NUM = 1U;
-constexpr int32_t BATCH_SIZE = 1U;
-constexpr int32_t SCALE_C0 = 2;
+constexpr int64_t BATCH_SIZE = 1U;
+constexpr int32_t L1_BUF_NUM = 2;
+constexpr uint16_t CROSS_CORE_FLAG_ID_NINE = 9U;
 
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc()
@@ -50,10 +55,6 @@ __aicore__ inline void SyncFunc()
     AscendC::SetFlag<event>(eventID);
     AscendC::WaitFlag<event>(eventID);
 }
-
-// #define template                                                                                                       \
-// <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz> template <class ProblemShape, class BlockMmad, class BlockScheduler>
-// #define X1Type , X2Type, ScaleType, isX2Nz ProblemShape, BlockMmad, BlockScheduler
 
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 class quantMatmulReduceScatterImpl {
@@ -64,80 +65,35 @@ public:
     using TypeA = X1Type;
     using TypeB = X2Type;
     using TypeC = bfloat16_t;
-    // int32_t SCALE_C0 = 2;
-    // int32_t C0_SIZE = AscendC::AuxGetC0Size<TypeA>();
+    using BiasType = float;
 
-    using LayoutA = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
-    using LayoutB =
-        std::conditional_t<!isX2Nz, typename AscendC::Te::FrameLayoutFormat<AscendC::Te::DNExtLayoutPtn>,
-                           typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn,
-                                                                   AscendC::Std::Int<AscendC::AuxGetC0Size<TypeA>()>>>;
-    using LayoutC = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
-    using LayoutScaleA =
-        typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<SCALE_C0>>;
-    using LayoutScaleB = std::conditional_t<
-        !isX2Nz, typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
-        typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
-
-    using BlockScheduler = QuantMatmulMxSwatScheduler<NO_FULL_LOAD_MODE>;
-    using DispatchPolicy = QuantMatmulMxMultiBlockWithSwat<NO_FULL_LOAD_MODE, 2UL>;
-    using ProblemShape = MatmulShape;
-    using TypeATuple = AscendC::Std::tuple<TypeA, ScaleType>;
-    using TypeBTuple = AscendC::Std::tuple<TypeB, ScaleType>;
-    using LayoutATuple = AscendC::Std::tuple<LayoutA, LayoutScaleA>;
-    using LayoutBTuple = AscendC::Std::tuple<LayoutB, LayoutScaleB>;
-    using BlockMmad =
-        Block::BlockMmad<DispatchPolicy, TypeATuple, LayoutATuple, TypeBTuple, LayoutBTuple, TypeC, LayoutC>;
-    using KernelImpl = Kernel::QuantMatmulMxKernelSwat<ProblemShape, BlockMmad, BlockScheduler>;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = std::conditional_t<!isX2Nz, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
+    using LayoutScaleB = std::conditional_t<!isX2Nz, AscendC::Te::ScaleBDNLayoutPtn, AscendC::Te::ScaleBNDLayoutPtn>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
+                                                    BiasType, LayoutC>;
+    using BlockScheduler =
+        Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>, 0,
+                                                             LayoutA, LayoutB, TypeA>;
+    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using KernelImpl = Blaze::Gemm::Kernel::GemmUniversal<
+        ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler,
+        AscendC::Std::enable_if_t<AscendC::Std::is_same_v<Blaze::Gemm::KernelMmadWithScaleMx,
+                                                          typename BlockMmad::DispatchPolicy::ScheduleType>>>;
     using Params = typename KernelImpl::Params;
-
-    // static constexpr bool weightNz = BlockMmad::weightNz;
-    // static constexpr bool transA = BlockMmad::transA;
-    // static constexpr bool transB = BlockMmad::transB;
-    // using AType = typename BlockMmad::AType;
-    // using BType = typename BlockMmad::BType;
-    // using ScaleAType = typename BlockMmad::ScaleAType;
-    // using ScaleBType = typename BlockMmad::ScaleBType;
-    // using CType = typename BlockMmad::CType;
-
-    // The kernel layer does not own a scheduling policy itself; it selects the
-    // concrete scheduler from the block pipeline traits.
-    using BlockSchedulerOp =
-        typename Block::BlockSchedulerSelector<ProblemShape, BlockScheduler, BlockMmad::transA, BlockMmad::transB,
-                                               typename BlockMmad::AType>::SchedulerOp;
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
+    using BlockSchedulerParams = typename BlockScheduler::Params;
 
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
-    using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
-    using BlockSchedulerParams = typename BlockSchedulerOp::Params;
+    using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
 
-    using MakeLayoutA = typename BlockMmad::LayoutA;
-    using MakeLayoutB = typename BlockMmad::LayoutB;
-    using MakeLayoutScaleA = typename BlockMmad::LayoutScaleA;
-    using MakeLayoutScaleB = typename BlockMmad::LayoutScaleB;
-
-    // 这两个params的参数不再做成struct，直接改成private在当前方法中使用
-    // struct CommParams {
-    //     int64_t tpSizeM;
-    //     int32_t tpWorldSize;
-    // };
-
-    // struct OutputParams {
-    //     GM_ADDR yOut = nullptr;
-    // };
-
-    // struct Params {
-    //     ProblemShape problemShape;
-    //     typename BlockMmad::Params mmadParams;
-    //     typename BlockMmad::L1Params l1Params;
-    //     BlockSchedulerOp::Params schParams;
-    //     typename BlockMmad::QBMMTiling qbmmParams;
-    //     CommParams commParams;
-    //     OutputParams outputParams;
-    // };
+    static constexpr bool weightNz = BlockMmad::weightNz;
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR x1Scale, GM_ADDR x2Scale, GM_ADDR y,
                                 GM_ADDR workspaceGm, GM_ADDR tilingGM);
@@ -158,14 +114,6 @@ private:
                                        uint32_t &startId, uint32_t &endId, uint32_t &sendNum);
 
 private:
-    // BlockMmad mmadOp_;
-    // __gm__ X1Type *aGmAddr_{nullptr};
-    // __gm__ X2Type *bGmAddr_{nullptr};
-    // __gm__ bfloat16_t *cGmAddr_{nullptr};
-    // __gm__ ScaleType *scaleAGmAddr_{nullptr};
-    // __gm__ ScaleType *scaleBGmAddr_{nullptr};
-    // __gm__ bfloat16_t *yGmAddr_{nullptr};
-
     __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
     __gm__ QuantMatmulReduceScatterTilingData *tilingData;
 
@@ -187,7 +135,6 @@ private:
     GM_ADDR yGM_;
 
     Params params_;
-    // BlockSchedulerOp bs_;
 
     AscendC::TQueBind<AscendC::TPosition::VECIN, AscendC::TPosition::VECOUT, BUFFER_NUM> inQueue_;
     AscendC::TQue<AscendC::TPosition::VECIN, 1> tokenQueue_;
@@ -205,25 +152,31 @@ private:
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::InitMatmulParams()
 {
-    ProblemShape problemShape{tilingData->qbmmTilingdata.m, tilingData->qbmmTilingdata.n, tilingData->qbmmTilingdata.k,
-                              BATCH_SIZE};
-    typename BlockMmad::Params mmadParams{x1GM_, x2GM_, cGM_, x1ScaleGM_, x2ScaleGM_};
-    typename KernelImpl::L1Params l1Params{static_cast<uint64_t>(tilingData->qbmmTilingdata.stepK) *
-                                      tilingData->qbmmTilingdata.baseK,
-                                  tilingData->qbmmTilingdata.scaleKL1};
-    typename KernelImpl::BlockSchedulerParams schedulerParams{tilingData->qbmmTilingdata.baseM,
-                                                     tilingData->qbmmTilingdata.baseN,
-                                                     tilingData->qbmmTilingdata.mTailTile,
-                                                     tilingData->qbmmTilingdata.nTailTile,
-                                                     tilingData->qbmmTilingdata.mBaseTailSplitCnt,
-                                                     tilingData->qbmmTilingdata.nBaseTailSplitCnt,
-                                                     tilingData->qbmmTilingdata.mTailMain,
-                                                     tilingData->qbmmTilingdata.nTailMain};
-    typename KernelImpl::QBMMTiling qbmmParams{tilingData->qbmmTilingdata.baseM, tilingData->qbmmTilingdata.baseN,
-                                      tilingData->qbmmTilingdata.baseK, tilingData->qbmmTilingdata.dbL0c};
-    // CommParams commParams{problemShape.m / tilingData->quantMatmulReduceScatterTilingInfo.rankSize,
-    //                       static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
-    // OutputParams outputParams{y};
+    ProblemShape problemShape{static_cast<uint64_t>(tilingData->qbmmTilingdata.m),
+                              static_cast<uint64_t>(tilingData->qbmmTilingdata.n),
+                              static_cast<uint64_t>(tilingData->qbmmTilingdata.k), BATCH_SIZE};
+    typename BlockMmad::Params mmadParams{x1GM_, x2GM_, cGM_, nullptr, x1ScaleGM_, x2ScaleGM_};
+    typename BlockMmad::L1Params l1Params{static_cast<uint64_t>(tilingData->qbmmTilingdata.stepK) *
+                                              tilingData->qbmmTilingdata.baseK,
+                                          tilingData->qbmmTilingdata.scaleKL1, L1_BUF_NUM};
+    typename BlockScheduler::Params schedulerParams{tilingData->qbmmTilingdata.baseM,
+                                                    tilingData->qbmmTilingdata.baseN,
+                                                    tilingData->qbmmTilingdata.mTailTile,
+                                                    tilingData->qbmmTilingdata.nTailTile,
+                                                    tilingData->qbmmTilingdata.mBaseTailSplitCnt,
+                                                    tilingData->qbmmTilingdata.nBaseTailSplitCnt,
+                                                    tilingData->qbmmTilingdata.mTailMain,
+                                                    tilingData->qbmmTilingdata.nTailMain};
+    typename KernelImpl::QBMMTiling qbmmParams{
+        1, 1, 1, 1,
+        1, 1, 1, 1,
+        1, 1, 1, 1,
+        0,
+        tilingData->qbmmTilingdata.baseM,
+        tilingData->qbmmTilingdata.baseN,
+        tilingData->qbmmTilingdata.baseK,
+        0,
+        tilingData->qbmmTilingdata.dbL0c};
     params_ = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams};
 }
 
@@ -231,26 +184,16 @@ template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::InitReduceScatterBuffer()
 {
     tpipe_->Reset();
-    tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, params_.problemShape.n * sizeof(float));
-    tpipe_->InitBuffer(sumFp32Buf_, params_.problemShape.n * sizeof(float));
-    tpipe_->InitBuffer(tokenFp32Buf_, params_.problemShape.n * sizeof(float));
-    tpipe_->InitBuffer(tokenBuf_, params_.problemShape.n * sizeof(bfloat16_t));
+    tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, AscendC::Te::Get<MNK_N>(params_.problemShape) * sizeof(float));
+    tpipe_->InitBuffer(sumFp32Buf_, AscendC::Te::Get<MNK_N>(params_.problemShape) * sizeof(float));
+    tpipe_->InitBuffer(tokenFp32Buf_, AscendC::Te::Get<MNK_N>(params_.problemShape) * sizeof(float));
+    tpipe_->InitBuffer(tokenBuf_, AscendC::Te::Get<MNK_N>(params_.problemShape) * sizeof(bfloat16_t));
 }
 
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR x1Scale, GM_ADDR x2Scale, GM_ADDR y, GM_ADDR workspaceGm, GM_ADDR tilingGM)
 {
-    // params_ = params;
-
-    // aGmAddr_ = reinterpret_cast<__gm__ AType *>(params.mmadParams.aGmAddr);
-    // bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
-    // cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
-    // scaleAGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t *>(params.mmadParams.scaleAGmAddr);
-    // scaleBGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t *>(params.mmadParams.scaleBGmAddr);
-    // yGmAddr_ = reinterpret_cast<__gm__ bfloat16_t *>(params.outputParams.yOut);
-
-
     x1GM_ = x1;
     x2GM_ = x2;
     x1ScaleGM_ = x1Scale;
@@ -266,23 +209,15 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
     tpSizeM_ = m_ / tilingData->quantMatmulReduceScatterTilingInfo.rankSize;
     tpWorldSize_ = static_cast<int32_t>(tilingData->quantMatmulReduceScatterTilingInfo.rankSize);
 
-    // bs_ = BlockSchedulerOp(params.problemShape, params.schParams);
-
-    // if ASCEND_IS_AIC {
-    //     TupleShape problemShape_ = {params.problemShape.m, params.problemShape.n, params.problemShape.k};
-    //     BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
-    //     bool enableL0cPingPong = (params.qbmmParams.dbL0C > 1);
-    //     mmadOp_.Init(problemShape_, l0TileShape, params.l1Params, enableL0cPingPong);
-    //     return;
-    // }
+    InitMatmulParams();
 
     if ASCEND_IS_AIV {
         TPipe pipe;
         tpipe_ = &pipe;
         if (tpipe_ != nullptr) {
             uint32_t paddedRowBytes =
-                ::CeilDiv(static_cast<uint64_t>(tilingData->qbmmTilingdata.baseN) * sizeof(bfloat16_t),
-                          UB_ALIGN_BYTES) *
+                Blaze::Gemm::CeilDiv(static_cast<uint64_t>((tilingData->qbmmTilingdata.baseN) * sizeof(bfloat16_t)),
+                                     UB_ALIGN_BYTES) *
                 UB_ALIGN_BYTES;
             tpipe_->InitBuffer(inQueue_, BUFFER_NUM, AIV_UB_TILE_M * paddedRowBytes);
             tpipe_->InitBuffer(writeStateBuf_, STATE_ALIGN_BYTES);
@@ -293,11 +228,8 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
         rankId_ = Mc2Kernel::GetRankId(winContext_);
         coreVid_ = AscendC::GetBlockIdx();
 
-        yOutGM_.SetGlobalBuffer((__gm__ bfloat16_t*)yGM_);
+        yOutGM_.SetGlobalBuffer((__gm__ bfloat16_t *)yGM_);
     }
-
-    // matmul init in tensor api mode
-    InitMatmulParams();
 }
 
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
@@ -314,61 +246,6 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::MatmulProcess()
 {
-    // using TypeA = X1Type;
-    // using TypeB = X2Type;
-    // using TypeC = bfloat16_t;
-    // constexpr int32_t SCALE_C0 = 2;
-    // constexpr int32_t C0_SIZE = AscendC::AuxGetC0Size<TypeA>();
-    // using LayoutA = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
-    // using LayoutB = isX2Nz ?
-    //                     typename AscendC::Te::FrameLayoutFormat<AscendC::Te::DNExtLayoutPtn> :
-    //                     typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn,
-    //                     AscendC::Std::Int<C0_SIZE>>;
-    // using LayoutC = typename AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn>;
-    // using LayoutScaleA =
-    //     typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<SCALE_C0>>;
-    // using LayoutScaleB =
-    //     isX2Nz ? typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<SCALE_C0>>
-    //     :
-    //              typename AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn,
-    //              AscendC::Std::Int<SCALE_C0>>;
-
-    // using BlockScheduler = QuantMatmulMxSwatScheduler<NO_FULL_LOAD_MODE>;
-    // using DispatchPolicy = QuantMatmulMxMultiBlockWithSwat<NO_FULL_LOAD_MODE, 2UL>;
-    // using ProblemShape = MatmulShape;
-    // using TypeATuple = AscendC::Std::tuple<TypeA, ScaleType>;
-    // using TypeBTuple = AscendC::Std::tuple<TypeB, ScaleType>;
-    // using LayoutATuple = AscendC::Std::tuple<LayoutA, LayoutScaleA>;
-    // using LayoutBTuple = AscendC::Std::tuple<LayoutB, LayoutScaleB>;
-    // using BlockMmad =
-    //     Block::BlockMmad<DispatchPolicy, TypeATuple, LayoutATuple, TypeBTuple, LayoutBTuple, TypeC, LayoutC>;
-    // using KernelImpl = Kernel::QuantMatmulMxKernelSwat<ProblemShape, BlockMmad, BlockScheduler>;
-    // using Params = typename KernelImpl::Params;
-
-    // using CommParams = typename KernelImpl::CommParams;
-    // using OutputParams = typename KernelImpl::OutputParams;
-
-    // ProblemShape problemShape{tilingData->qbmmTilingdata.m, tilingData->qbmmTilingdata.n,
-    // tilingData->qbmmTilingdata.k,
-    //                           BATCH_SIZE};
-    // BlockMmad::Params mmadParams{x1GM_, x2GM_, cGM_, x1ScaleGM_, x2ScaleGM_};
-    // KernelImpl::L1Params l1Params{static_cast<uint64_t>(tilingData->qbmmTilingdata.stepK) *
-    //                                   tilingData->qbmmTilingdata.baseK,
-    //                               tilingData->qbmmTilingdata.scaleKL1};
-    // KernelImpl::BlockSchedulerParams schedulerParams{tilingData->qbmmTilingdata.baseM,
-    //                                                  tilingData->qbmmTilingdata.baseN,
-    //                                                  tilingData->qbmmTilingdata.mTailTile,
-    //                                                  tilingData->qbmmTilingdata.nTailTile,
-    //                                                  tilingData->qbmmTilingdata.mBaseTailSplitCnt,
-    //                                                  tilingData->qbmmTilingdata.nBaseTailSplitCnt,
-    //                                                  tilingData->qbmmTilingdata.mTailMain,
-    //                                                  tilingData->qbmmTilingdata.nTailMain};
-    // KernelImpl::QBMMTiling qbmmParams{tilingData->qbmmTilingdata.baseM, tilingData->qbmmTilingdata.baseN,
-    //                                   tilingData->qbmmTilingdata.baseK, tilingData->qbmmTilingdata.dbL0c};
-    // // CommParams commParams{problemShape.m / tilingData->quantMatmulReduceScatterTilingInfo.rankSize,
-    // //                       static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
-    // // OutputParams outputParams{y};
-    // Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams};
     KernelImpl kernel;
     kernel(params_);
 }
@@ -376,17 +253,19 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
 template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
 __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::ReduceScatterProcess()
 {
-    BlockSchedulerOp bs(params_.problemShape, params_.schParams);
+    BlockScheduler bs(params_.problemShape, params_.schParams);
 
     BlockCoord blockIdx;
-    while (bs.template GetTileIdx<BlockMmad::weightNz>(blockIdx)) {
-        int64_t mPos = AscendC::Te::Get<MNK_M>(blockIdx);
-        int64_t nPos = AscendC::Te::Get<MNK_N>(blockIdx);
-        BlockShape singleShape = bs.template GetBlockShape<BlockMmad::weightNz>(blockIdx);
-        if (AscendC::Te::Get<MNK_M>(singleShape) <= 0 || AscendC::Te::Get<MNK_N>(singleShape) <= 0) {
+    while (bs.GetTileIdx(blockIdx)) {
+        int64_t mPos = 0;
+        int64_t nPos = 0;
+        bs.GetTileCoord(blockIdx, mPos, nPos);
+        BlockShape singleShape =
+            bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
+        if (AscendC::Te::Get<IDX_M_TILEIDX>(singleShape) <= 0 || AscendC::Te::Get<IDX_N_TILEIDX>(singleShape) <= 0) {
             break;
         }
-        CrossCoreWaitFlag(9);
+        CrossCoreWaitFlag(CROSS_CORE_FLAG_ID_NINE);
         CommProcess(mPos, nPos, singleShape);
     }
 
@@ -394,12 +273,6 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
     WriteStatusToWin();
     ReadStatus();
     SyncAll<true>();
-
-    // tpipe_->Reset();
-    // tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, params_.problemShape.n * sizeof(float));
-    // tpipe_->InitBuffer(sumFp32Buf_, params_.problemShape.n * sizeof(float));
-    // tpipe_->InitBuffer(tokenFp32Buf_, params_.problemShape.n * sizeof(float));
-    // tpipe_->InitBuffer(tokenBuf_, params_.problemShape.n * sizeof(bfloat16_t));
 
     InitReduceScatterBuffer();
 
@@ -442,22 +315,22 @@ __aicore__ inline void
 quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::CommProcess(int64_t mPos, int64_t nPos,
                                                                              const BlockShape &singleShape)
 {
-    int64_t singleM = AscendC::Te::Get<MNK_M>(singleShape);
-    int64_t singleN = AscendC::Te::Get<MNK_N>(singleShape);
+    int64_t singleM = AscendC::Te::Get<IDX_M_TILEIDX>(singleShape);
+    int64_t singleN = AscendC::Te::Get<IDX_N_TILEIDX>(singleShape);
     if (singleM <= 0 || singleN <= 0) {
         return;
     }
 
     int64_t tpSizeM = tpSizeM_;
     int64_t aivIdx = coreVid_ % 2;
-    int64_t subTileCnt = ::CeilDiv(singleM, AIV_UB_TILE_M);
+    int64_t subTileCnt = Blaze::Gemm::CeilDiv(singleM, AIV_UB_TILE_M);
 
     __gm__ TypeC *workspaceAddr = reinterpret_cast<__gm__ TypeC *>(params_.mmadParams.cGmAddr);
     AscendC::GlobalTensor<bfloat16_t> workspaceGm;
     workspaceGm.SetGlobalBuffer(workspaceAddr);
 
     uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t));
-    uint32_t rowPaddedBytes = ::CeilDiv(blkLenBytes, UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
+    uint32_t rowPaddedBytes = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(blkLenBytes), UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
     uint32_t rowInVECINElems = rowPaddedBytes / sizeof(bfloat16_t);
 
     for (int64_t st = aivIdx; st < subTileCnt; st += 2) {
