@@ -291,7 +291,7 @@ private:
             const uint64_t blockId = slot / tilingData_->blockSize;
             const uint64_t blockOffset = slot % tilingData_->blockSize;
             tile.cacheBaseOffset[tokenIdx] =
-                blockId * tilingData_->kCacheStrideBlock + blockOffset * tilingData_->kCacheStrideToken;
+                blockId * tilingData_->kvCacheStrideBlock + blockOffset * tilingData_->kvCacheStrideToken;
             tile.scaleCacheBaseOffset[tokenIdx] =
                 blockId * tilingData_->kScaleCacheStrideBlock + blockOffset * tilingData_->kScaleCacheStrideToken;
         }
@@ -446,14 +446,14 @@ private:
         copyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
         copyParams.srcStride = static_cast<decltype(copyParams.srcStride)>((slice.tokenSize - 1U) *
             tilingData_->headDim * sizeof(fp8_e4m3fn_t) / QKV_RRC_BLOCK_BYTES);
-        copyParams.dstStride = static_cast<decltype(copyParams.dstStride)>((tilingData_->vCacheStrideHead -
+        copyParams.dstStride = static_cast<decltype(copyParams.dstStride)>((tilingData_->kvCacheStrideHead -
             tilingData_->headDim) * sizeof(fp8_e4m3fn_t));
         copyParams.rsv = 0U;
 
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[activeDataBufferId_ * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
         for (uint64_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
             const uint64_t ubOffset = tokenIdx * tilingData_->headDim;
-            const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * tilingData_->vCacheStrideHead;
+            const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * tilingData_->kvCacheStrideHead;
             DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
         }
     }
@@ -567,7 +567,7 @@ private:
         kCopyParams.blockLen = static_cast<uint32_t>(tilingData_->headDim * sizeof(fp8_e4m3fn_t));
         kCopyParams.srcStride = static_cast<decltype(kCopyParams.srcStride)>((slice.tokenSize - 1U) *
             tilingData_->headDim * sizeof(fp8_e4m3fn_t) / QKV_RRC_BLOCK_BYTES);
-        kCopyParams.dstStride = static_cast<decltype(kCopyParams.dstStride)>((tilingData_->kCacheStrideHead -
+        kCopyParams.dstStride = static_cast<decltype(kCopyParams.dstStride)>((tilingData_->kvCacheStrideHead -
             tilingData_->headDim) * sizeof(fp8_e4m3fn_t));
         kCopyParams.rsv = 0U;
 

@@ -30,12 +30,9 @@ struct QkvRmsNormRopeCacheWithKScaleTilingData {
     uint64_t blockSize = 0;
     uint64_t coreTokenTile = 0;
     uint64_t coreGroupNum = 0;
-    uint64_t kCacheStrideBlock = 0;
-    uint64_t kCacheStrideHead = 0;
-    uint64_t kCacheStrideToken = 0;
-    uint64_t vCacheStrideBlock = 0;
-    uint64_t vCacheStrideHead = 0;
-    uint64_t vCacheStrideToken = 0;
+    uint64_t kvCacheStrideBlock = 0;
+    uint64_t kvCacheStrideHead = 0;
+    uint64_t kvCacheStrideToken = 0;
     uint64_t kScaleCacheStrideBlock = 0;
     uint64_t kScaleCacheStrideHead = 0;
     uint64_t kScaleCacheStrideToken = 0;

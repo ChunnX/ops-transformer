@@ -65,8 +65,6 @@ struct ContractTiling {
     uint64_t numQHeads = 0;
     uint64_t numKHeads = 0;
     uint64_t numVHeads = 0;
-    uint64_t numQkHeads = 0;
-    uint64_t numQkvHeads = 0;
     uint64_t coreTokenTile = 0;
     uint64_t coreGroupNum = 0;
     uint64_t tokenTile = 0;
@@ -74,12 +72,9 @@ struct ContractTiling {
     uint64_t rowTile = 0;
     uint64_t rowTileAligned = 0;
     uint64_t dimTile = 0;
-    uint64_t kCacheStrideBlock = 0;
-    uint64_t kCacheStrideHead = 0;
-    uint64_t kCacheStrideToken = 0;
-    uint64_t vCacheStrideBlock = 0;
-    uint64_t vCacheStrideHead = 0;
-    uint64_t vCacheStrideToken = 0;
+    uint64_t kvCacheStrideBlock = 0;
+    uint64_t kvCacheStrideHead = 0;
+    uint64_t kvCacheStrideToken = 0;
     uint64_t kScaleCacheStrideBlock = 0;
     uint64_t kScaleCacheStrideHead = 0;
     uint64_t kScaleCacheStrideToken = 0;
@@ -158,8 +153,7 @@ private:
     static bool IsScaleStrideValid(const TensorStrideInfo &stride);
     static bool CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs, const TensorStrideInfo &rhs);
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
-    static void LogContractInputSummary(const std::string &opName, const ContractInput &input, uint64_t aicNum,
-                                        const ContractTiling &tiling);
+    static void LogContractInputSummary(const std::string &opName, const ContractInput &input, uint64_t aicNum);
     static void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, uint64_t tokenTile,
                                       uint64_t rowTile, uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb,
                                       bool fitsL0c, bool accepted);

@@ -109,13 +109,15 @@ uint64_t QkvRmsNormRopeCacheWithKScaleTiling::CalcQkAlignedRows(uint64_t tokenTi
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInputSummary(const std::string &opName, const ContractInput &input,
-                                                                  uint64_t aicNum, const ContractTiling &tiling)
+                                                                  uint64_t aicNum)
 {
+    const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale contract input: T=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
             "headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
-            input.totalTokens, input.batch, tiling.numQHeads, tiling.numKHeads, tiling.numVHeads, tiling.numQkHeads,
-            tiling.numQkvHeads, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
+            input.totalTokens, input.batch, input.numQHeads, input.numKHeads, input.numVHeads, numQkHeads,
+            numQkvHeads, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu qkvInputRowsPerAiv=%lu "
             "qkOutputRowsPerAiv=%lu vOutputRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
@@ -141,8 +143,6 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractHeadNums(const ContractInp
     tiling.numQHeads = input.numQHeads;
     tiling.numKHeads = input.numKHeads;
     tiling.numVHeads = input.numVHeads;
-    tiling.numQkHeads = tiling.numQHeads + tiling.numKHeads;
-    tiling.numQkvHeads = tiling.numQkHeads + tiling.numVHeads;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateHeadNums(const ContractInput &input,
@@ -420,11 +420,13 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTilin
                                                              TokenTileSelection &selection)
 {
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
-    const uint64_t rowTile = tokenTile * tiling.numQkHeads;
+    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
+    const uint64_t rowTile = tokenTile * numQkHeads;
     const uint64_t rowTileAligned = Ops::Base::CeilAlign(rowTile, 16UL);
     const uint64_t qkAlignedRows = CalcQkAlignedRows(tokenTile, tiling.numQHeads, tiling.numKHeads);
-    const bool fitsUb = tokenTilePerAiv * tiling.numQkHeads <= QK_OUTPUT_ROWS_PER_AIV &&
-                        tokenTilePerAiv * tiling.numQkvHeads <= QKV_INPUT_ROWS_PER_AIV &&
+    const bool fitsUb = tokenTilePerAiv * numQkHeads <= QK_OUTPUT_ROWS_PER_AIV &&
+                        tokenTilePerAiv * numQkvHeads <= QKV_INPUT_ROWS_PER_AIV &&
                         tokenTilePerAiv * tiling.numVHeads <= V_OUTPUT_ROWS_PER_AIV;
     const bool fitsL0c = rowTile <= L0C_MAX_ROWS && rowTileAligned <= L0C_MAX_ROWS && qkAlignedRows <= L0C_MAX_ROWS;
     const bool accepted = fitsUb && fitsL0c;
@@ -442,14 +444,16 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(const Contr
                                                                      const std::string &opName,
                                                                      TokenTileSelection &selection)
 {
+    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
     const uint64_t initialTokenTilePerAiv =
-        std::min({MAX_TOKEN_TILE / 2, QK_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads,
-                  QKV_INPUT_ROWS_PER_AIV / tiling.numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads});
+        std::min({MAX_TOKEN_TILE / 2, QK_OUTPUT_ROWS_PER_AIV / numQkHeads,
+                  QKV_INPUT_ROWS_PER_AIV / numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads});
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
             "qkOutputLimit=%lu qkvInputLimit=%lu vOutputLimit=%lu.",
-            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / tiling.numQkHeads,
-            QKV_INPUT_ROWS_PER_AIV / tiling.numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads);
+            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / numQkHeads,
+            QKV_INPUT_ROWS_PER_AIV / numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads);
 
     uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
     while (searchTokenTilePerAiv > 0) {
@@ -471,19 +475,17 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(const ContractInput
                                                              const TokenTileSelection &selection,
                                                              ContractTiling &tiling)
 {
+    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
     tiling.coreTokenTile = Ops::Base::CeilDiv(input.totalTokens, aicNum);
     tiling.coreGroupNum = Ops::Base::CeilDiv(input.totalTokens, tiling.coreTokenTile);
     tiling.tokenTilePerAiv = selection.tokenTilePerAiv;
     tiling.tokenTile = selection.tokenTile;
     tiling.dimTile = DIM_TILE_FAST;
-    tiling.rowTile = tiling.tokenTile * tiling.numQkHeads;
+    tiling.rowTile = tiling.tokenTile * numQkHeads;
     tiling.rowTileAligned = Ops::Base::CeilAlign(tiling.rowTile, 16UL);
-    tiling.kCacheStrideBlock = input.kCache.stride.stride0;
-    tiling.kCacheStrideHead = input.kCache.stride.stride1;
-    tiling.kCacheStrideToken = input.kCache.stride.stride2;
-    tiling.vCacheStrideBlock = input.vCache.stride.stride0;
-    tiling.vCacheStrideHead = input.vCache.stride.stride1;
-    tiling.vCacheStrideToken = input.vCache.stride.stride2;
+    tiling.kvCacheStrideBlock = input.kCache.stride.stride0;
+    tiling.kvCacheStrideHead = input.kCache.stride.stride1;
+    tiling.kvCacheStrideToken = input.kCache.stride.stride2;
     tiling.kScaleCacheStrideBlock = input.kScaleCache.stride.stride0;
     tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride1;
     tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride2;
@@ -492,19 +494,21 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(const ContractInput
 void QkvRmsNormRopeCacheWithKScaleTiling::LogContractTilingResult(const std::string &opName,
                                                                   const ContractTiling &tiling)
 {
+    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
             "tokenTile=%lu tokenTilePerAiv=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
             "rowTile=%lu rowTileAligned=%lu "
             "dimTile=%lu.",
             tiling.coreTokenTile, tiling.coreGroupNum, tiling.tokenTile, tiling.tokenTilePerAiv, tiling.numQHeads,
-            tiling.numKHeads, tiling.numVHeads, tiling.numQkHeads, tiling.numQkvHeads, tiling.rowTile,
+            tiling.numKHeads, tiling.numVHeads, numQkHeads, numQkvHeads, tiling.rowTile,
             tiling.rowTileAligned, tiling.dimTile);
     OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale contract stride result: kCache={%lu,%lu,%lu} "
-            "vCache={%lu,%lu,%lu} kScaleCache={%lu,%lu,%lu}.",
-            tiling.kCacheStrideBlock, tiling.kCacheStrideHead, tiling.kCacheStrideToken, tiling.vCacheStrideBlock,
-            tiling.vCacheStrideHead, tiling.vCacheStrideToken, tiling.kScaleCacheStrideBlock,
+            "QkvRmsNormRopeCacheWithKScale contract stride result: kvCache={%lu,%lu,%lu} "
+            "kScaleCache={%lu,%lu,%lu}.",
+            tiling.kvCacheStrideBlock, tiling.kvCacheStrideHead, tiling.kvCacheStrideToken,
+            tiling.kScaleCacheStrideBlock,
             tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
 }
 
@@ -547,7 +551,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(const C
 {
     tiling = {};
     FillContractHeadNums(input, tiling);
-    LogContractInputSummary(opName, input, aicNum, tiling);
+    LogContractInputSummary(opName, input, aicNum);
     TokenTileSelection selection;
     OP_CHECK_IF(SelectTokenTile(tiling, opName, selection) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale token tile selection failed."),
@@ -803,16 +807,15 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogTilingData(const std::string &opNam
             tilingData.headDim, tilingData.blockSize, tilingData.coreTokenTile, tilingData.coreGroupNum,
             tilingData.tokenTile, tilingData.epsilon);
     OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale final strides: kCache={%lu,%lu,%lu} vCache={%lu,%lu,%lu} "
-            "kScaleCache={%lu,%lu,%lu}.",
-            tilingData.kCacheStrideBlock, tilingData.kCacheStrideHead, tilingData.kCacheStrideToken,
-            tilingData.vCacheStrideBlock, tilingData.vCacheStrideHead, tilingData.vCacheStrideToken,
+            "QkvRmsNormRopeCacheWithKScale final strides: kvCache={%lu,%lu,%lu} kScaleCache={%lu,%lu,%lu}.",
+            tilingData.kvCacheStrideBlock, tilingData.kvCacheStrideHead, tilingData.kvCacheStrideToken,
             tilingData.kScaleCacheStrideBlock, tilingData.kScaleCacheStrideHead, tilingData.kScaleCacheStrideToken);
     OP_LOGD(
         opName.c_str(),
         "QkvRmsNormRopeCacheWithKScale final launch: tilingKey=%lu blockDim=%lu tilingDataSize=%zu workspaceSize=%zu "
         "Nqk=%lu Nv=%lu rowTile=%lu rowTileAligned=%lu tokenTilePerAiv=%lu dimTile=%lu.",
-        tilingKey, blockDim, dataSize, workspaceSize, contractTiling.numQkHeads, contractTiling.numVHeads,
+        tilingKey, blockDim, dataSize, workspaceSize, contractTiling.numQHeads + contractTiling.numKHeads,
+        contractTiling.numVHeads,
         contractTiling.rowTile, contractTiling.rowTileAligned, contractTiling.tokenTilePerAiv, contractTiling.dimTile);
 }
 
@@ -926,12 +929,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillTilingData(const ContractInput &in
     tilingData.blockSize = input.blockSize;
     tilingData.coreTokenTile = contractTiling.coreTokenTile;
     tilingData.coreGroupNum = contractTiling.coreGroupNum;
-    tilingData.kCacheStrideBlock = contractTiling.kCacheStrideBlock;
-    tilingData.kCacheStrideHead = contractTiling.kCacheStrideHead;
-    tilingData.kCacheStrideToken = contractTiling.kCacheStrideToken;
-    tilingData.vCacheStrideBlock = contractTiling.vCacheStrideBlock;
-    tilingData.vCacheStrideHead = contractTiling.vCacheStrideHead;
-    tilingData.vCacheStrideToken = contractTiling.vCacheStrideToken;
+    tilingData.kvCacheStrideBlock = contractTiling.kvCacheStrideBlock;
+    tilingData.kvCacheStrideHead = contractTiling.kvCacheStrideHead;
+    tilingData.kvCacheStrideToken = contractTiling.kvCacheStrideToken;
     tilingData.kScaleCacheStrideBlock = contractTiling.kScaleCacheStrideBlock;
     tilingData.kScaleCacheStrideHead = contractTiling.kScaleCacheStrideHead;
     tilingData.kScaleCacheStrideToken = contractTiling.kScaleCacheStrideToken;
