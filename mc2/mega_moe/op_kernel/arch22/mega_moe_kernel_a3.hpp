@@ -55,6 +55,9 @@
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+#include "mega_moe_adump_adapter_a3.h"
+#endif
 
 namespace Catlass::Gemm::Kernel {
 
@@ -285,6 +288,31 @@ private:
         shmem.initShmem(tmpContext);
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        MegaMoeAdumpSharedField sharedField;
+        sharedField.cclBufferSize = 0;
+        sharedField.worldSize = static_cast<uint32_t>(params.EP);
+        sharedField.rankId = static_cast<uint32_t>(RuntimeRank(params));
+        sharedField.aivNum = AscendC::GetBlockNum();
+        sharedField.m = params.problemShape.m();
+        sharedField.k = params.problemShape.k();
+        sharedField.n = params.problemShape.n();
+        sharedField.isTransposeW1 = 0;
+        sharedField.isTransposeW2 = 0;
+        sharedField.hasBias1 = (params.ptrBias1 != nullptr) ? 1 : 0;
+        sharedField.hasBias2 = (params.ptrBias2 != nullptr) ? 1 : 0;
+        sharedField.expertNumPerRank = static_cast<uint32_t>(params.expertPerRank);
+        sharedField.topK = static_cast<uint32_t>(params.topK);
+        sharedField.maxRecvTokenNum = params.maxOutputSize;
+        sharedField.dispatchQuantMode = 0;
+        sharedField.dispatchQuantOutDtype = 0;
+        sharedField.combineQuantMode = 0;
+        sharedField.commAlgCode = 0;
+        sharedField.numMaxTokensPerRank = 0;
+        sharedField.activationCode = 0;
+        sharedField.activationClamp = params.swigluLimit;
+        adumpAdapter_.Init(shmem(), sharedField);
+#endif
 
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrcumsumMM));
 
@@ -1144,8 +1172,27 @@ private:
             shmem() + localTokenPerExpertOffset; // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_APPLY_XACTIVATE_MASK);
+        MegaMoeAdumpStageApplyXActiveMaskInfo axmInfo = {
+            static_cast<uint32_t>(params.problemShape.m() * params.topK), 0, 0,
+            (params.ptrXActiveMask != nullptr) ? 1u : 0u};
+        adumpAdapter_.UpdateStageInfo(axmInfo);
+#endif
         ApplyXActiveMask(params);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
 
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_INIT_ROUTING);
+        MegaMoeAdumpStageInitRoutingInfo irInfo = {
+            (std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>) ? 1u : 0u,
+            static_cast<uint32_t>(params.problemShape.m()),
+            static_cast<uint32_t>(params.topK),
+            static_cast<uint32_t>(params.expertPerRank * params.EP)};
+        adumpAdapter_.UpdateStageInfo(irInfo);
+#endif
         constexpr bool kRoutingIsQuant = std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
@@ -1164,10 +1211,27 @@ private:
                                                 &params.moeInitRoutingV2TilingData, params.initRoutingQuantTilingKey);
         }
 
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
+
         AscendC::SyncAll<true>();
 
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_CROSS_RANK_SYNC_ALLGATHER_PUSH);
+        MegaMoeAdumpStageAllGatherPushInfo agPushInfo = {0, 0};
+        adumpAdapter_.UpdateStageInfo(agPushInfo);
+#endif
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
 
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_GET_CUMSUM);
+        MegaMoeAdumpStageGetCumsumInfo csInfo = {(coreIdx == 0) ? 1u : 0u};
+        adumpAdapter_.UpdateStageInfo(csInfo);
+#endif
         if (coreIdx == 0) {
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
@@ -1177,16 +1241,26 @@ private:
             prevSum = preSumBeforeRank(coreIdx * params.expertPerRank);
         }
         AscendC::SyncAll<true>();
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
 
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
-        ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
         if (coreIdx == 0) {
             CopyGMToGM(ExpertTokenNums, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank,
                        UB_MOVE_NUM);
         }
         uint16_t syncgmm1Idx = 0;
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_NOTIFY_AIC_GMM1);
+        MegaMoeAdumpStageNotifyAicGmm1Info notifyInfo = {syncgmm1Idx};
+        adumpAdapter_.UpdateStageInfo(notifyInfo);
+#endif
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
 
         uint32_t prevGroupSum1 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1201,6 +1275,9 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_PULL_TOKENS);
+#endif
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
@@ -1212,10 +1289,18 @@ private:
                     (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
                 if (rowStart < params.maxOutputSize) {
                     uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    uint32_t rowSrc = prevSum;
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = prevSum;
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+                    MegaMoeAdumpStagePullTokensInfo ptInfo = {
+                        static_cast<uint32_t>(groupIdx),
+                        static_cast<uint32_t>(params.expertPerRank),
+                        static_cast<uint32_t>(dstEpIdx),
+                        rowSrc, prevGroupSum1, currentM, rowStart, rows};
+                    adumpAdapter_.UpdateStageInfo(ptInfo);
+#endif
                     prevSum += rows;
                     GM_ADDR otherRankPtr = shmem(0, dstEpIdx);
                     AscendC::GlobalTensor<ElementABefore> gmRemoteA;
@@ -1278,6 +1363,9 @@ private:
                 }
             }
         }
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
         if constexpr (std::is_same_v<ElementB, int8_t>) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -1306,6 +1394,11 @@ private:
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
         BlockEpilogue1 blockEpilogue1(resource, n);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_EPILOGUE1_WAIT_GMM1);
+        MegaMoeAdumpStageEpilogue1WaitGmm1Info ep1WaitInfo = {0, 0};
+        adumpAdapter_.UpdateStageInfo(ep1WaitInfo);
+#endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
@@ -1383,7 +1476,29 @@ private:
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
             }
         }
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+        adumpAdapter_.EnterStage(STAGE_EPILOGUE1_PROCESS);
+        MegaMoeAdumpStageEpilogue1ProcessInfo ep1ProcInfo = {0, 0, 0, 0};
+        adumpAdapter_.UpdateStageInfo(ep1ProcInfo);
+        adumpAdapter_.ExitStage();
+        adumpAdapter_.EnterStage(STAGE_EPILOGUE1_NOTIFY_GMM2);
+        MegaMoeAdumpStageEpilogue1NotifyGmm2Info ep1NotifyInfo = {0};
+        adumpAdapter_.UpdateStageInfo(ep1NotifyInfo);
+        adumpAdapter_.ExitStage();
+#endif
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_COMBINE_WAIT_GMM2);
+        MegaMoeAdumpStageCombineWaitGmm2Info combWaitInfo = {0, 0};
+        adumpAdapter_.UpdateStageInfo(combWaitInfo);
+#endif
         blockEpilogue1.Finalize();
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+        adumpAdapter_.EnterStage(STAGE_COMBINE_PROCESS);
+        MegaMoeAdumpStageCombineProcessInfo combProcInfo = {0, 0, 0, isCombineV1 ? 1u : 0u, 0, 0, 0};
+        adumpAdapter_.UpdateStageInfo(combProcInfo);
+#endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             blockEpilogue3.InitFlag();
             CombineV2(params, blockEpilogue3);
@@ -1395,9 +1510,26 @@ private:
             CombineV2(params, blockEpilogue3);
         }
 
-        AscendC::SyncAll<true>();
-        ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
 
+        AscendC::SyncAll<true>();
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_RESET);
+        MegaMoeAdumpStageResetInfo rstInfo = {coreIdx};
+        adumpAdapter_.UpdateStageInfo(rstInfo);
+#endif
+        ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.ExitStage();
+#endif
+
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+        adumpAdapter_.EnterStage(STAGE_CROSS_RANK_SYNC2);
+        MegaMoeAdumpStageCrossRankSync2Info crs2Info = {0, 0, 0, 0};
+        adumpAdapter_.UpdateStageInfo(crs2Info);
+#endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             shmem.InitStatusTargetSum();
             if (get_subblockid() == 0) {
@@ -1435,6 +1567,19 @@ private:
             }
         } else {
             shmem.CrossRankSync();
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+            adumpAdapter_.ExitStage();
+#endif
+
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+            adumpAdapter_.EnterStage(STAGE_UNPERMUTE);
+            MegaMoeAdumpStageUnpermuteInfo unpInfo = {
+                static_cast<uint32_t>(params.problemShape.m() * params.topK),
+                static_cast<uint32_t>(params.problemShape.k()),
+                static_cast<uint32_t>(params.topK),
+                coreNum};
+            adumpAdapter_.UpdateStageInfo(unpInfo);
+#endif
 
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum);
@@ -1442,6 +1587,9 @@ private:
             kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs,
                                            reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+            adumpAdapter_.ExitStage();
+#endif
         }
     }
 
@@ -1690,7 +1838,11 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+            offsetA = MEGA_MOE_ADUMP_RESERVED_SIZE;
+#else
             offsetA = 0;
+#endif
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
             offsetD = offsetPeerPerTokenScale + MB_SIZE;
             offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
@@ -1722,6 +1874,9 @@ private:
     HcclShmem<false> shmem;
     int32_t paddedExpertNumAligned;
     bool isCombineV1;
+#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+    MegaMoeAdumpAdapterA3 adumpAdapter_;
+#endif
 
     AscendC::GlobalTensor<ElementScale> gmS;
     AscendC::GlobalTensor<ElementScale> gmS2;
