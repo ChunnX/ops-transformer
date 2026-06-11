@@ -37,7 +37,6 @@ using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
-constexpr uint32_t L1_TILE_M = 256;  // A8W4 path alias
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
@@ -47,7 +46,6 @@ constexpr uint32_t MAX_SINGLE_MN_256_256 = 256 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
-constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = MAX_SINGLE_MN_ALIGN32_NUM_256;  // A8W4 path alias
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
@@ -497,8 +495,8 @@ __aicore__ inline void WaitForUpstreamReadyA8W4(
     const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
 {
     if constexpr (Policy::IS_GMM1) {
-        uint32_t waveIdx = mLoc / L1_TILE_M;
-        uint32_t targetValue = (mLoc + L1_TILE_M > config.m) ? (config.m - mLoc) : L1_TILE_M;
+        uint32_t waveIdx = mLoc / L1_TILE_M_256;
+        uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t* flagValueAddr = gmmAddrInfo.groupFlagList2 + waveIdx;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
@@ -511,7 +509,7 @@ __aicore__ inline void WaitForUpstreamReadyA8W4(
         BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             BlockScheduler::Params{
-                Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+                Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
         __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
@@ -540,7 +538,7 @@ __aicore__ inline void AicComputeA8W4(
         bool shouldWait = false;
         uint32_t waveIdx = 0;
         if constexpr (Policy::IS_GMM1) {
-            waveIdx = mLoc / L1_TILE_M;
+            waveIdx = mLoc / L1_TILE_M_256;
             shouldWait = waveIdx != lastWaveWaited;
         } else {
             shouldWait = loopIdx == startLoopIdx;
@@ -619,9 +617,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
         auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc + config.outputN),
             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
 
-        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
         int64_t ubOffsetFirst = 0;
-        int64_t ubOffsetSecond = ubOffsetFirst + MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
+        int64_t ubOffsetSecond = ubOffsetFirst + MAX_SINGLE_MN_ALIGN32_NUM_256 * sizeof(ElementC);
         auto tensorBlockUbFirst =
             Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUB);
         auto tensorBlockUbSecond =
@@ -659,11 +657,11 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         WaitForCubeFinishCopyout();
         auto tensorBlockGm = l0cOutGm.Slice(
             Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+        auto layoutL0cUB = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
         int64_t ubOffset = 0;
         auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutL0cUB);
         LocalTensor<ElementC> l0cOutUbGMM2 =
-            LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+            LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M_256 * L1_TILE_N);
         auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
         AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
 
@@ -698,7 +696,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
 {
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         AicComputeA8W4<Policy>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
@@ -759,7 +757,7 @@ __aicore__ inline void GroupMatmulA8W4Impl(const Params& params,
 
     BlockScheduler scheduler(
         {config.m, config.outputN, config.k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
