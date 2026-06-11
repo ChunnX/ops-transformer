@@ -36,7 +36,7 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen,                                      \
-            attenMask, /*prefix*/nullptr, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
+            attenMask, metadata, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
             /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
@@ -78,7 +78,6 @@ __global__ __aicore__ void quant_block_sparse_attention(
     (void)cuSeqlensKv;
     (void)sparseIndices;
     (void)sparseSeqLen;
-    (void)metadata;
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)RETURN_SOFTMAX_LSE;
 

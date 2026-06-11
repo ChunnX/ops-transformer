@@ -58,7 +58,7 @@ public:
 
     __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask,
-                            __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
+                            __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
                             __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
                             __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, 
                             __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, 
@@ -69,7 +69,7 @@ public:
     __aicore__ inline void Process();
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask,
-                            __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+                            __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                             __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                             __gm__ uint8_t *queryRope,
                             __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
@@ -121,6 +121,7 @@ public:
     keyGmType keyGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
+    GlobalTensor<int32_t> metadataGm;
     __gm__ int64_t *actualSeqQlenAddr;
     __gm__ int64_t *actualSeqKvlenAddr;
     int32_t aicIdx;
@@ -140,7 +141,7 @@ private:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitBaseAPI(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
     __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, 
@@ -175,7 +176,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     }
 
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, key, value, sparseIndices, sparseSeqLen, attenMask, prefix, actualSeqLengths,
+    this->InitGlobalBuffer(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, actualSeqLengths,
         actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe);
@@ -186,7 +187,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *keySharedPrefix,
     __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t*actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
@@ -197,9 +198,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
-    if constexpr (hasAtten) {
-        attenMaskInfo.prefixNAddr = prefix;
-    }
+    metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
     if constexpr (layout == BSALayout::TND) {
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
@@ -224,6 +223,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         bmm2ResGmBuffers.Init(gmBufferManager, mm2Offset);
         workspace += (totalOffset + mm2Offset * 3);
     }
+    __gm__ uint8_t *prefix = nullptr;
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale,
         prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
     cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
@@ -486,10 +486,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         return;
     }
     // 以下数据从metadata中获取
-    uint32_t bn1StartIdx;
-    uint32_t bn1EndIdx;
-    uint32_t s1StartIdx;
-    uint32_t s1EndIdx;
+    uint32_t bn1StartIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_BN1_START_INDEX);
+    uint32_t bn1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_BN1_END_INDEX);
+    uint32_t s1StartIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_START_INDEX);
+    uint32_t s1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_END_INDEX);
 
     int64_t s2LoopLimit;
     int64_t taskId = 0;
