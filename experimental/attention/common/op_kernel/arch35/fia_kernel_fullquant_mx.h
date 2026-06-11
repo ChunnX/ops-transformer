@@ -565,7 +565,7 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
                                1;
 
@@ -616,11 +616,11 @@ public:
 
         if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) { // first line
             headS2Split = constInfo.s2OStart > s2StartWithSparse ? true : false;
-            curS2Start = Max(s2StartWithSparse, constInfo.s2OStart);
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, constInfo.s2OStart);
         }
         if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) { // last line
             tailS2Split = constInfo.s2OEnd > 0U ? true : false;
-            curS2End = constInfo.s2OEnd > 0U ? Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
+            curS2End = constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
         }
 
         if (IsSpecialBandSparse() && curS2Start != s2StartWithSparse) {
@@ -726,7 +726,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         if (IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End)) {
-            info.actSingleLoopS2Size = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
+            info.actSingleLoopS2Size = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
         }
 
         info.bandHeadCopySkip = 0U;
@@ -736,7 +736,7 @@ public:
         }
 
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;

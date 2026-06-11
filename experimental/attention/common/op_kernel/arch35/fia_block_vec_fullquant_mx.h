@@ -27,6 +27,7 @@
 #include "fia_public_define_arch35.h"
 #include "../vector_common.h"
 #include "../memory_copy_arch35.h"
+#include "attenmask_gs1.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -823,14 +824,14 @@ public:
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (HAS_MASK) {
-            int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
-            int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            int64_t s1FirstValidToken = AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
             if constexpr (USE_DN) {
                 if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.actS2Size > 0) {
                     s1LastValidToken = runInfo.actS1Size;
                 }
             }
-            s1LastValidToken = Max(s1LastValidToken - 1, 0);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
                                        ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
@@ -1098,7 +1099,7 @@ public:
         maskInfo.batchIdx = (constInfo.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = (s2BaseSizeCur - Align(maskInfo.s2dealNum, 32U)) / 32;
+        maskInfo.attenMaskDstStride = (s2BaseSizeCur - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
@@ -1183,7 +1184,7 @@ public:
         }
         if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.s2Idx == 0U && subLoop == 0U &&
             isSkipMaskForNext) {
-            uint32_t globalKeepSize = Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) * (maskInfo.gs1dealNum >> 1);
+            uint32_t globalKeepSize = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) * (maskInfo.gs1dealNum >> 1);
             Duplicate(attenMaskUb, static_cast<uint8_t>(1U), globalKeepSize);
         }
     }

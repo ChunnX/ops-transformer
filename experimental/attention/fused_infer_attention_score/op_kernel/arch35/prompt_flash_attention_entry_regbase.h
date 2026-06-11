@@ -21,6 +21,8 @@
 #include "prompt_flash_attention_template_tiling_key_enum.h"
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
+#include "../../../common/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #else
 #include "../../common/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
 #endif
