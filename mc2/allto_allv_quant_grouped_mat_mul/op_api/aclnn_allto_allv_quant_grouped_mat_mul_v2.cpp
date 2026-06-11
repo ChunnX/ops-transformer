@@ -16,6 +16,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
 #include "opdev/format_utils.h"
@@ -118,7 +119,12 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight)
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, THREE_DIMS, return false);
+    if (gmmWeight->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize", "gmmWeight",
+            (std::to_string(gmmWeight->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of gmmWeight must be 3D.");
+        return false;
+    }
     return true;
 }
 
@@ -127,7 +133,12 @@ static bool CheckMmWeightValid(const aclTensor *mmWeightOptional)
     if (mmWeightOptional == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(mmWeightOptional, TWO_DIMS, return false);
+    if (mmWeightOptional->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize", "mmWeightOptional",
+            (std::to_string(mmWeightOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of mmWeightOptional must be 2D.");
+        return false;
+    }
     return true;
 }
 

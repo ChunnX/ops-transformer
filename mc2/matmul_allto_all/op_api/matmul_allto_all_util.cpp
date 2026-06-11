@@ -109,11 +109,31 @@ bool CheckGroupLength(const char *group)
 bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
                           const aclTensor* alltoAllOutOptional = nullptr)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(output, TWO_DIMS, return false);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return false;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
+    if (output->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "output",
+            (std::to_string(output->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of output must be 2D.");
+        return false;
+    }
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(alltoAllOutOptional, TWO_DIMS, return false);
+        if (alltoAllOutOptional->GetViewShape().GetDimNum() != TWO_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "alltoAllOutOptional",
+                (std::to_string(alltoAllOutOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of alltoAllOutOptional must be 2D.");
+            return false;
+        }
     }
     return true;
 }
@@ -122,7 +142,12 @@ bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTen
 bool CheckBiasShape(const aclTensor* biasOptional, int64_t nVal)
 {
     if (biasOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(biasOptional, ONE_DIM, return false);
+        if (biasOptional->GetViewShape().GetDimNum() != ONE_DIM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "biasOptional",
+                (std::to_string(biasOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of biasOptional must be 1D.");
+            return false;
+        }
         auto biasDim = biasOptional->GetViewShape().GetDim(0);
         if (biasDim != nVal) {
             OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "group.length()",
@@ -206,7 +231,12 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
     	OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "x2", "empty tensor", "non-empty tensor");
     	return ACLNN_ERR_PARAM_INVALID;
   	}
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("matmul_allto_all", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 

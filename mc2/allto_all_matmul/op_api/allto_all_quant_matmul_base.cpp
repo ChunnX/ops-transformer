@@ -131,7 +131,12 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
 // 校验Scale为1D时的shape（KC动态量化）
 static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, ONE_DIM, KCDYN_SCENE, return false);
+    if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 1D.");
+        return false;
+    }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
@@ -146,8 +151,18 @@ static bool Check1DScaleShape(const aclTensor *x2, const aclTensor *x2Scale, boo
 // 校验Scale为3D时的shape（MX量化）
 static bool Check3DScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1Scale, THREE_DIMS, MX_SCENE, return false);
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, THREE_DIMS, MX_SCENE, return false);
+    if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x1Scale",
+            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1Scale must be 3D.");
+        return false;
+    }
+    if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAlltoAllQuantMatmul", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 3D.");
+        return false;
+    }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleNVal = transposeX2 ? x2Scale->GetViewShape().GetDim(0) : x2Scale->GetViewShape().GetDim(1);
     auto x1ScaleLastDim = x1Scale->GetViewShape().GetDim(2);
