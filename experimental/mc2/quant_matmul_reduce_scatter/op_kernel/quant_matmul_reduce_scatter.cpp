@@ -26,8 +26,8 @@ __global__ __aicore__ void quant_matmul_reduce_scatter(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR dScaleA, GM_ADDR dScaleB,
     GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    // REGISTER_TILING_DEFAULT(QuantMatmulReduceScatterTilingData);
-    // GET_TILING_DATA_WITH_STRUCT(QuantMatmulReduceScatterTilingData, tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(QuantMatmulReduceScatterTilingData);
+    GET_TILING_DATA_WITH_STRUCT(QuantMatmulReduceScatterTilingData, tilingData, tilingGM);
     // using TypeA = fp8_e4m3fn_t;
     // using TypeB = fp8_e4m3fn_t;
     // using TypeC = bfloat16_t;

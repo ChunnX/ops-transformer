@@ -25,8 +25,8 @@ all_gather_quant_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR x1Scale, GM_ADDR x2Scale
                         GM_ADDR output, GM_ADDR allGatherDataOut, GM_ADDR allGatherScalesOut,
                         GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    // REGISTER_TILING_DEFAULT(allGatherMatmulTilingData);
-    // GET_TILING_DATA_WITH_STRUCT(allGatherMatmulTilingData, tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(allGatherMatmulTilingData);
+    GET_TILING_DATA_WITH_STRUCT(allGatherMatmulTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
     if (TILING_KEY_IS(0)) {
         // KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
