@@ -27,26 +27,20 @@ class StemOamPrepVarlenQ : public OpDef {
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
         .Format({ge::FORMAT_ND});
-    // * optional inputs
     this->Input("qScale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT})
         .Format({ge::FORMAT_ND});
-    this->Input("kScale")
-        .ParamType(OPTIONAL)
-        .DataType({ge::DT_FLOAT})
-        .Format({ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND});
     this->Output("qFlat")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16})
         .Format({ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND});
     this->Attr("stemBlockSize")
-        .AttrType(REQUIRED)
+        .AttrType(OPTIONAL)
         .Int(128);
     this->Attr("stemStride")
-        .AttrType(REQUIRED)
+        .AttrType(OPTIONAL)
         .Int(16);
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
