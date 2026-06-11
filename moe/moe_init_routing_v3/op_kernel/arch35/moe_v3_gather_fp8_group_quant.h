@@ -48,7 +48,7 @@ __simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem
 }
 
 template <typename T, bool CLAMP_AMAX>
-__simd_vf__ inline void ComputeGroupAmax(__ubuf__ T *xAddr, RegTensor<float> &maxReg, MaskReg &maskRight,
+__simd_callee__ inline void ComputeGroupAmax(__ubuf__ T *xAddr, RegTensor<float> &maxReg, MaskReg &maskRight,
                                          uint32_t groupElemNum, uint16_t vfLen)
 {
     RegTensor<float> xLeftReg;
@@ -84,7 +84,7 @@ __simd_vf__ inline void ComputeGroupAmax(__ubuf__ T *xAddr, RegTensor<float> &ma
 }
 
 template <typename T>
-__simd_vf__ inline void ComputeRoundScale(RegTensor<float> &maxReg, RegTensor<float> &fp8MaxReg,
+__simd_callee__ inline void ComputeRoundScale(RegTensor<float> &maxReg, RegTensor<float> &fp8MaxReg,
                                           RegTensor<float> &roundScaleReg, __ubuf__ float *scaleAddr, uint16_t vfLen)
 {
     static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
@@ -121,7 +121,7 @@ __simd_vf__ inline void ComputeRoundScale(RegTensor<float> &maxReg, RegTensor<fl
 }
 
 template <typename T, typename U>
-__simd_vf__ inline void QuantizeAndStoreGroup(__ubuf__ T *xAddr, __ubuf__ U *yAddr,
+__simd_callee__ inline void QuantizeAndStoreGroup(__ubuf__ T *xAddr, __ubuf__ U *yAddr,
                                               RegTensor<float> &roundScaleReg, MaskReg &maskRight,
                                               uint32_t groupElemNum, uint16_t vfLen)
 {
