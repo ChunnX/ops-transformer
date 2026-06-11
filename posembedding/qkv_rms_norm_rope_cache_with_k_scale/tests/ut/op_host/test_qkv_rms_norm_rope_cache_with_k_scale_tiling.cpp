@@ -31,7 +31,6 @@ using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWi
 using ContractInput = optiling::QkvRmsNormRopeCacheWithKScale::ContractInput;
 using ContractTiling = optiling::QkvRmsNormRopeCacheWithKScale::ContractTiling;
 using TensorContractInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorContractInfo;
-using TensorStrideInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorStrideInfo;
 using TileParam = optiling::QkvRmsNormRopeCacheWithKScale::TileParam;
 using AivSlice = optiling::QkvRmsNormRopeCacheWithKScale::AivSlice;
 
@@ -92,23 +91,14 @@ void SetShape(TensorContractInfo &tensor, std::initializer_list<uint64_t> dims)
     tensor.shapePresent = true;
 }
 
-TensorStrideInfo Stride(std::initializer_list<uint64_t> strides, bool present = true)
+gert::Stride Stride(std::initializer_list<uint64_t> strides)
 {
-    TensorStrideInfo stride;
-    stride.present = present;
-    stride.rank = static_cast<uint32_t>(strides.size());
-    auto it = strides.begin();
-    if (it != strides.end()) {
-        stride.stride0 = *it++;
-    }
-    if (it != strides.end()) {
-        stride.stride1 = *it++;
-    }
-    if (it != strides.end()) {
-        stride.stride2 = *it++;
-    }
-    if (it != strides.end()) {
-        stride.stride3 = *it++;
+    gert::Stride stride;
+    stride.SetDimNum(strides.size());
+    int64_t index = 0;
+    for (const auto dimStride : strides) {
+        stride.SetStride(index, static_cast<int64_t>(dimStride));
+        ++index;
     }
     return stride;
 }
@@ -124,11 +114,14 @@ void RefreshShapes(ContractInput &input)
     SetShape(input.kCache, {input.blockNum, input.numKHeads, input.blockSize, input.headDim});
     input.kCache.stride = Stride({input.numKHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
         input.headDim, 1});
+    input.kCache.stridePresent = true;
     SetShape(input.vCache, {input.blockNum, input.numVHeads, input.blockSize, input.headDim});
     input.vCache.stride = Stride({input.numVHeads * input.blockSize * input.headDim, input.blockSize * input.headDim,
         input.headDim, 1});
+    input.vCache.stridePresent = true;
     SetShape(input.kScaleCache, {input.blockNum, input.numKHeads, input.blockSize, 1});
     input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
+    input.kScaleCache.stridePresent = true;
     SetShape(input.cuSeqLen, {static_cast<uint64_t>(input.batch) + 1});
     SetShape(input.qRotation, {input.headDim, input.headDim});
     SetShape(input.kRotation, {input.headDim, input.headDim});
@@ -804,23 +797,23 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
 {
     auto input = BuildInput();
-    input.kCache.stride.stride3 = 2;
+    input.kCache.stride.SetStride(3, 2);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.vCache.stride.stride1 = input.headDim - 1;
+    input.vCache.stride.SetStride(1, static_cast<int64_t>(input.headDim - 1));
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kCache.stride.rank = 3;
+    input.kCache.stride.SetDimNum(3);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kScaleCache.stride.stride3 = 2;
+    input.kScaleCache.stride.SetStride(3, 2);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.kScaleCache.stride.stride1 = 0;
+    input.kScaleCache.stride.SetStride(1, 0);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 

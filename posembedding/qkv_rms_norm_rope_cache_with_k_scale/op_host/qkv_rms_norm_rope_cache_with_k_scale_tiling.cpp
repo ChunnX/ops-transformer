@@ -44,8 +44,8 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu "
             "l0cSize=%lu opWorkspaceSize=%lu.",
-            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size,
-            compileInfo->l0cSize, compileInfo->opWorkspaceSize);
+            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size, compileInfo->l0cSize,
+            compileInfo->opWorkspaceSize);
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
                 OP_LOGE(opName.c_str(), "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),

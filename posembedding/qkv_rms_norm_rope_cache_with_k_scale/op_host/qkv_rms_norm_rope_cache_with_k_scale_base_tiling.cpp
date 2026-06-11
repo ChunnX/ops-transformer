@@ -43,106 +43,10 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr size_t WORKSPACE_COUNT = 1;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
-uint32_t ShapeRank(const gert::Shape &shape)
-{
-    return static_cast<uint32_t>(shape.GetDimNum());
-}
-
-uint64_t ShapeDim(const gert::Shape &shape, size_t index)
-{
-    return static_cast<uint64_t>(shape.GetDim(index));
-}
-
-uint64_t SafeShapeDim(const gert::Shape &shape, size_t index)
-{
-    return index < static_cast<size_t>(shape.GetDimNum()) ? ShapeDim(shape, index) : 0UL;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsShape1D(const TensorContractInfo &tensor, uint64_t d0)
-{
-    return tensor.shapePresent && tensor.shape.GetDimNum() == 1 && ShapeDim(tensor.shape, 0) == d0;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsShape2D(const TensorContractInfo &tensor, uint64_t d0, uint64_t d1)
-{
-    return tensor.shapePresent && tensor.shape.GetDimNum() == 2 && ShapeDim(tensor.shape, 0) == d0 &&
-           ShapeDim(tensor.shape, 1) == d1;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsShape3D(const TensorContractInfo &tensor, uint64_t d0, uint64_t d1,
-                                                    uint64_t d2)
-{
-    return tensor.shapePresent && tensor.shape.GetDimNum() == 3 && ShapeDim(tensor.shape, 0) == d0 &&
-           ShapeDim(tensor.shape, 1) == d1 && ShapeDim(tensor.shape, 2) == d2;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsShape4D(const TensorContractInfo &tensor, uint64_t d0, uint64_t d1,
-                                                    uint64_t d2,
-                                                    uint64_t d3)
-{
-    return tensor.shapePresent && tensor.shape.GetDimNum() == 4 && ShapeDim(tensor.shape, 0) == d0 &&
-           ShapeDim(tensor.shape, 1) == d1 && ShapeDim(tensor.shape, 2) == d2 && ShapeDim(tensor.shape, 3) == d3;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsCacheStrideValid(const TensorStrideInfo &stride, uint64_t headDim)
-{
-    return stride.present && stride.rank == 4 && stride.stride0 > 0 && stride.stride1 >= headDim &&
-           stride.stride2 >= headDim && stride.stride3 == 1;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsScaleStrideValid(const TensorStrideInfo &stride)
-{
-    return stride.present && stride.rank == 4 && stride.stride0 > 0 && stride.stride1 >= 1 && stride.stride2 >= 1 &&
-           stride.stride3 == 1;
-}
-
-bool QkvRmsNormRopeCacheWithKScaleTiling::CacheNonInnermostStridesMatch(const TensorStrideInfo &lhs,
-                                                                        const TensorStrideInfo &rhs)
-{
-    return lhs.stride0 == rhs.stride0 && lhs.stride1 == rhs.stride1 && lhs.stride2 == rhs.stride2;
-}
-
 uint64_t QkvRmsNormRopeCacheWithKScaleTiling::CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads,
                                                                 uint64_t numKHeads)
 {
     return Ops::Base::CeilAlign(tokenTile * numQHeads, 16UL) + Ops::Base::CeilAlign(tokenTile * numKHeads, 16UL);
-}
-
-void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInputSummary(const std::string &opName, const ContractInput &input,
-                                                                  uint64_t aicNum)
-{
-    const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
-    const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale contract input: T=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
-            "headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
-            input.totalTokens, input.batch, input.numQHeads, input.numKHeads, input.numVHeads, numQkHeads,
-            numQkvHeads, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu qkvInputRowsPerAiv=%lu "
-            "qkOutputRowsPerAiv=%lu vOutputRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
-            "aivPerAic=%lu.",
-            MAX_TOKEN_TILE, QKV_INPUT_ROWS_PER_AIV, QK_OUTPUT_ROWS_PER_AIV, V_OUTPUT_ROWS_PER_AIV,
-            L0A_FULL_DIM_SEGMENT_ROWS, L0C_MAX_ROWS, AIV_PER_AIC);
-}
-
-void QkvRmsNormRopeCacheWithKScaleTiling::LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv,
-                                                                uint64_t tokenTile, uint64_t rowTile,
-                                                                uint64_t rowTileAligned, uint64_t qkAlignedRows,
-                                                                bool fitsUb, bool fitsL0c, bool accepted)
-{
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
-            "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsSideBySideL0c=%u accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U,
-            fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
-}
-
-void QkvRmsNormRopeCacheWithKScaleTiling::FillContractHeadNums(const ContractInput &input, ContractTiling &tiling)
-{
-    tiling.numQHeads = input.numQHeads;
-    tiling.numKHeads = input.numKHeads;
-    tiling.numVHeads = input.numVHeads;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateHeadNums(const ContractInput &input,
@@ -237,31 +141,150 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtypes(const Contra
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeInputsForDerivedFields(
-    const ContractInput &input, const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeInputsForDerivedFields(const ContractInput &input,
+                                                                                         const std::string &opName)
 {
     OP_CHECK_IF(!input.qkv.shapePresent || input.qkv.shape.GetDimNum() != 3,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: qkv present=%u rank=%u, expected rank=3.",
-                        input.qkv.shapePresent ? 1U : 0U, ShapeRank(input.qkv.shape)),
+                        input.qkv.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.qkv.shape.GetDimNum())),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input.cosSin.shapePresent || input.cosSin.shape.GetDimNum() != 2,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: cosSin present=%u rank=%u, expected rank=2.",
-                        input.cosSin.shapePresent ? 1U : 0U, ShapeRank(input.cosSin.shape)),
+                        input.cosSin.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.cosSin.shape.GetDimNum())),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!input.cuSeqLen.shapePresent || input.cuSeqLen.shape.GetDimNum() != 1 ||
-                    ShapeDim(input.cuSeqLen.shape, 0) == 0,
+    OP_CHECK_IF(!input.cuSeqLen.shapePresent || input.cuSeqLen.shape.GetDimNum() != 1,
                 OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen present=%u rank=%u dim0=%lu, "
-                        "expected rank=1 and dim0>0.",
-                        input.cuSeqLen.shapePresent ? 1U : 0U, ShapeRank(input.cuSeqLen.shape),
-                        SafeShapeDim(input.cuSeqLen.shape, 0)),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen present=%u rank=%u, "
+                        "expected rank=1.",
+                        input.cuSeqLen.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.cuSeqLen.shape.GetDimNum())),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(input.cuSeqLen.shape.GetDim(0) == 0,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen dim0=%ld, expected dim0>0.",
+                        input.cuSeqLen.shape.GetDim(0)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input.kCache.shapePresent || input.kCache.shape.GetDimNum() != 4,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: kCache present=%u rank=%u, expected rank=4.",
-                        input.kCache.shapePresent ? 1U : 0U, ShapeRank(input.kCache.shape)),
+                        input.kCache.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.kCache.shape.GetDimNum())),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeRanks(const ContractInput &input,
+                                                                        const std::string &opName)
+{
+    struct RankRule {
+        const char *tensorName;
+        const TensorContractInfo *tensor;
+        size_t expectedRank;
+    };
+    const RankRule rankRules[] = {
+        {"qkv", &input.qkv, 3},
+        {"qGamma", &input.qGamma, 1},
+        {"kGamma", &input.kGamma, 1},
+        {"cosSin", &input.cosSin, 2},
+        {"slotMapping", &input.slotMapping, 1},
+        {"cuSeqLen", &input.cuSeqLen, 1},
+        {"qRotation", &input.qRotation, 2},
+        {"kRotation", &input.kRotation, 2},
+        {"vScale", &input.vScale, 1},
+        {"kCache", &input.kCache, 4},
+        {"vCache", &input.vCache, 4},
+        {"kScaleCache", &input.kScaleCache, 4},
+    };
+    for (const auto &rule : rankRules) {
+        OP_CHECK_IF(!rule.tensor->shapePresent || rule.tensor->shape.GetDimNum() != rule.expectedRank,
+                    OP_LOGE(opName.c_str(),
+                            "QkvRmsNormRopeCacheWithKScale contract reject: %s present=%u rank=%u, "
+                            "expected rank=%zu.",
+                            rule.tensorName, rule.tensor->shapePresent ? 1U : 0U,
+                            static_cast<uint32_t>(rule.tensor->shape.GetDimNum()), rule.expectedRank),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateNonCacheShapes(const ContractInput &input,
+                                                                            const std::string &opName)
+{
+    const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
+    OP_CHECK_IF(static_cast<uint64_t>(input.qkv.shape.GetDim(0)) != numQkvHeads ||
+                    static_cast<uint64_t>(input.qkv.shape.GetDim(1)) != input.totalTokens ||
+                    static_cast<uint64_t>(input.qkv.shape.GetDim(2)) != input.headDim,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: qkv dims={%ld,%ld,%ld}.",
+                        input.qkv.shape.GetDim(0), input.qkv.shape.GetDim(1), input.qkv.shape.GetDim(2)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.qGamma.shape.GetDim(0)) != input.headDim ||
+                    static_cast<uint64_t>(input.kGamma.shape.GetDim(0)) != input.headDim,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: gamma dims qGamma={%ld} kGamma={%ld}.",
+                        input.qGamma.shape.GetDim(0), input.kGamma.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.cosSin.shape.GetDim(0)) != input.maxSeqLen ||
+                    static_cast<uint64_t>(input.cosSin.shape.GetDim(1)) != input.headDim,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: cosSin dims={%ld,%ld}.",
+                        input.cosSin.shape.GetDim(0), input.cosSin.shape.GetDim(1)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.slotMapping.shape.GetDim(0)) != input.totalTokens,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: slotMapping dim0=%ld.",
+                        input.slotMapping.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.cuSeqLen.shape.GetDim(0)) != input.batch + 1,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen dim0=%ld.",
+                        input.cuSeqLen.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.qRotation.shape.GetDim(0)) != input.headDim ||
+                    static_cast<uint64_t>(input.qRotation.shape.GetDim(1)) != input.headDim,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: qRotation dims={%ld,%ld}.",
+                        input.qRotation.shape.GetDim(0), input.qRotation.shape.GetDim(1)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.kRotation.shape.GetDim(0)) != input.headDim ||
+                    static_cast<uint64_t>(input.kRotation.shape.GetDim(1)) != input.headDim,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: kRotation dims={%ld,%ld}.",
+                        input.kRotation.shape.GetDim(0), input.kRotation.shape.GetDim(1)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.vScale.shape.GetDim(0)) != input.numVHeads,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale dim0=%ld.",
+                        input.vScale.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateCacheShapes(const ContractInput &input,
+                                                                         const std::string &opName)
+{
+    OP_CHECK_IF(static_cast<uint64_t>(input.kCache.shape.GetDim(0)) != input.blockNum ||
+                    static_cast<uint64_t>(input.kCache.shape.GetDim(1)) != input.numKHeads ||
+                    static_cast<uint64_t>(input.kCache.shape.GetDim(2)) != input.blockSize ||
+                    static_cast<uint64_t>(input.kCache.shape.GetDim(3)) != input.headDim,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: kCache dims={%ld,%ld,%ld,%ld}, "
+                        "expected={%lu,%lu,%lu,%lu}.",
+                        input.kCache.shape.GetDim(0), input.kCache.shape.GetDim(1), input.kCache.shape.GetDim(2),
+                        input.kCache.shape.GetDim(3), input.blockNum, input.numKHeads, input.blockSize, input.headDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.vCache.shape.GetDim(0)) != input.blockNum ||
+                    static_cast<uint64_t>(input.vCache.shape.GetDim(1)) != input.numVHeads ||
+                    static_cast<uint64_t>(input.vCache.shape.GetDim(2)) != input.blockSize ||
+                    static_cast<uint64_t>(input.vCache.shape.GetDim(3)) != input.headDim,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: vCache dims={%ld,%ld,%ld,%ld}, "
+                        "expected={%lu,%lu,%lu,%lu}.",
+                        input.vCache.shape.GetDim(0), input.vCache.shape.GetDim(1), input.vCache.shape.GetDim(2),
+                        input.vCache.shape.GetDim(3), input.blockNum, input.numVHeads, input.blockSize, input.headDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(input.kScaleCache.shape.GetDim(0)) != input.blockNum ||
+                    static_cast<uint64_t>(input.kScaleCache.shape.GetDim(1)) != input.numKHeads ||
+                    static_cast<uint64_t>(input.kScaleCache.shape.GetDim(2)) != input.blockSize ||
+                    input.kScaleCache.shape.GetDim(3) != 1,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache dims={%ld,%ld,%ld,%ld}.",
+                        input.kScaleCache.shape.GetDim(0), input.kScaleCache.shape.GetDim(1),
+                        input.kScaleCache.shape.GetDim(2), input.kScaleCache.shape.GetDim(3)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -269,78 +292,19 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeInputsForDeriv
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapes(const ContractInput &input,
                                                                     const std::string &opName)
 {
-    const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
-    const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
-    OP_CHECK_IF(!IsShape3D(input.qkv, numQkvHeads, input.totalTokens, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: qkv shape rank=%u dims={%lu,%lu,%lu,%lu}.",
-                        ShapeRank(input.qkv.shape), SafeShapeDim(input.qkv.shape, 0), SafeShapeDim(input.qkv.shape, 1),
-                        SafeShapeDim(input.qkv.shape, 2), SafeShapeDim(input.qkv.shape, 3)),
+    ge::graphStatus status = ValidateShapeRanks(input, opName);
+    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale shape rank validation failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape1D(input.qGamma, input.headDim) || !IsShape1D(input.kGamma, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: gamma shape qGamma rank=%u dim0=%lu, "
-                        "kGamma rank=%u dim0=%lu.",
-                        ShapeRank(input.qGamma.shape), SafeShapeDim(input.qGamma.shape, 0),
-                        ShapeRank(input.kGamma.shape), SafeShapeDim(input.kGamma.shape, 0)),
+
+    status = ValidateNonCacheShapes(input, opName);
+    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale non-cache shape validation failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape2D(input.cosSin, input.maxSeqLen, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: cosSin shape rank=%u dims={%lu,%lu}.",
-                        ShapeRank(input.cosSin.shape), SafeShapeDim(input.cosSin.shape, 0),
-                        SafeShapeDim(input.cosSin.shape, 1)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape1D(input.slotMapping, input.totalTokens),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: slotMapping shape rank=%u dim0=%lu.",
-                        ShapeRank(input.slotMapping.shape), SafeShapeDim(input.slotMapping.shape, 0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape1D(input.cuSeqLen, static_cast<uint64_t>(input.batch) + 1),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen shape rank=%u dim0=%lu.",
-                        ShapeRank(input.cuSeqLen.shape), SafeShapeDim(input.cuSeqLen.shape, 0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape2D(input.qRotation, input.headDim, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: qRotation shape rank=%u dims={%lu,%lu}.",
-                        ShapeRank(input.qRotation.shape), SafeShapeDim(input.qRotation.shape, 0),
-                        SafeShapeDim(input.qRotation.shape, 1)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape2D(input.kRotation, input.headDim, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: kRotation shape rank=%u dims={%lu,%lu}.",
-                        ShapeRank(input.kRotation.shape), SafeShapeDim(input.kRotation.shape, 0),
-                        SafeShapeDim(input.kRotation.shape, 1)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape1D(input.vScale, input.numVHeads),
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale shape rank=%u dim0=%lu.",
-                        ShapeRank(input.vScale.shape), SafeShapeDim(input.vScale.shape, 0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape4D(input.kCache, input.blockNum, input.numKHeads, input.blockSize, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: kCache shape rank=%u "
-                        "dims={%lu,%lu,%lu,%lu}, expected={%lu,%lu,%lu,%lu}.",
-                        ShapeRank(input.kCache.shape), SafeShapeDim(input.kCache.shape, 0),
-                        SafeShapeDim(input.kCache.shape, 1), SafeShapeDim(input.kCache.shape, 2),
-                        SafeShapeDim(input.kCache.shape, 3), input.blockNum, input.numKHeads, input.blockSize,
-                        input.headDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape4D(input.vCache, input.blockNum, input.numVHeads, input.blockSize, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: vCache shape rank=%u "
-                        "dims={%lu,%lu,%lu,%lu}, expected={%lu,%lu,%lu,%lu}.",
-                        ShapeRank(input.vCache.shape), SafeShapeDim(input.vCache.shape, 0),
-                        SafeShapeDim(input.vCache.shape, 1), SafeShapeDim(input.vCache.shape, 2),
-                        SafeShapeDim(input.vCache.shape, 3), input.blockNum, input.numVHeads, input.blockSize,
-                        input.headDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsShape4D(input.kScaleCache, input.blockNum, input.numKHeads, input.blockSize, 1),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache shape rank=%u "
-                        "dims={%lu,%lu,%lu,%lu}.",
-                        ShapeRank(input.kScaleCache.shape), SafeShapeDim(input.kScaleCache.shape, 0),
-                        SafeShapeDim(input.kScaleCache.shape, 1), SafeShapeDim(input.kScaleCache.shape, 2),
-                        SafeShapeDim(input.kScaleCache.shape, 3)),
+
+    status = ValidateCacheShapes(input, opName);
+    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale cache shape validation failed."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -348,42 +312,57 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapes(const Contra
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateStrides(const ContractInput &input,
                                                                      const std::string &opName)
 {
-    OP_CHECK_IF(!IsCacheStrideValid(input.kCache.stride, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
-                        "strides={%lu,%lu,%lu,%lu}, headDim=%lu.",
-                        input.kCache.stride.present ? 1U : 0U, input.kCache.stride.rank, input.kCache.stride.stride0,
-                        input.kCache.stride.stride1, input.kCache.stride.stride2, input.kCache.stride.stride3,
-                        input.headDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsCacheStrideValid(input.vCache.stride, input.headDim),
-                OP_LOGE(opName.c_str(),
-                        "QkvRmsNormRopeCacheWithKScale contract reject: vCache stride present=%u rank=%u "
-                        "strides={%lu,%lu,%lu,%lu}, headDim=%lu.",
-                        input.vCache.stride.present ? 1U : 0U, input.vCache.stride.rank, input.vCache.stride.stride0,
-                        input.vCache.stride.stride1, input.vCache.stride.stride2, input.vCache.stride.stride3,
-                        input.headDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CacheNonInnermostStridesMatch(input.kCache.stride, input.vCache.stride),
+    const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
+        return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
+    };
+    const int64_t headDimValue = static_cast<int64_t>(input.headDim);
+    const gert::Stride &kStride = input.kCache.stride;
+    const gert::Stride &vStride = input.vCache.stride;
+    const gert::Stride &kScaleStride = input.kScaleCache.stride;
+    OP_CHECK_IF(
+        !input.kCache.stridePresent || kStride.GetDimNum() != 4 || kStride.GetStride(0) <= 0 ||
+            kStride.GetStride(1) < headDimValue || kStride.GetStride(2) < headDimValue || kStride.GetStride(3) != 1,
+        OP_LOGE(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
+                "strides={%lld,%lld,%lld,%lld}, headDim=%lu.",
+                input.kCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input.kCache.stride.GetDimNum()),
+                strideDimOrZero(input.kCache.stride, 0), strideDimOrZero(input.kCache.stride, 1),
+                strideDimOrZero(input.kCache.stride, 2), strideDimOrZero(input.kCache.stride, 3), input.headDim),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !input.vCache.stridePresent || vStride.GetDimNum() != 4 || vStride.GetStride(0) <= 0 ||
+            vStride.GetStride(1) < headDimValue || vStride.GetStride(2) < headDimValue || vStride.GetStride(3) != 1,
+        OP_LOGE(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale contract reject: vCache stride present=%u rank=%u "
+                "strides={%lld,%lld,%lld,%lld}, headDim=%lu.",
+                input.vCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input.vCache.stride.GetDimNum()),
+                strideDimOrZero(input.vCache.stride, 0), strideDimOrZero(input.vCache.stride, 1),
+                strideDimOrZero(input.vCache.stride, 2), strideDimOrZero(input.vCache.stride, 3), input.headDim),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kStride.GetStride(0) != vStride.GetStride(0) || kStride.GetStride(1) != vStride.GetStride(1) ||
+                    kStride.GetStride(2) != vStride.GetStride(2),
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: k/v cache non-innermost strides mismatch "
-                        "k={%lu,%lu,%lu} v={%lu,%lu,%lu}.",
-                        input.kCache.stride.stride0, input.kCache.stride.stride1, input.kCache.stride.stride2,
-                        input.vCache.stride.stride0, input.vCache.stride.stride1, input.vCache.stride.stride2),
+                        "k={%lld,%lld,%lld} v={%lld,%lld,%lld}.",
+                        input.kCache.stride.GetStride(0), input.kCache.stride.GetStride(1),
+                        input.kCache.stride.GetStride(2), input.vCache.stride.GetStride(0),
+                        input.vCache.stride.GetStride(1), input.vCache.stride.GetStride(2)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsScaleStrideValid(input.kScaleCache.stride),
+    OP_CHECK_IF(!input.kScaleCache.stridePresent || kScaleStride.GetDimNum() != 4 || kScaleStride.GetStride(0) <= 0 ||
+                    kScaleStride.GetStride(1) < 1 || kScaleStride.GetStride(2) < 1 || kScaleStride.GetStride(3) != 1,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache stride present=%u rank=%u "
-                        "strides={%lu,%lu,%lu,%lu}.",
-                        input.kScaleCache.stride.present ? 1U : 0U, input.kScaleCache.stride.rank,
-                        input.kScaleCache.stride.stride0, input.kScaleCache.stride.stride1,
-                        input.kScaleCache.stride.stride2, input.kScaleCache.stride.stride3),
+                        "strides={%lld,%lld,%lld,%lld}.",
+                        input.kScaleCache.stridePresent ? 1U : 0U,
+                        static_cast<uint32_t>(input.kScaleCache.stride.GetDimNum()),
+                        strideDimOrZero(input.kScaleCache.stride, 0), strideDimOrZero(input.kScaleCache.stride, 1),
+                        strideDimOrZero(input.kScaleCache.stride, 2), strideDimOrZero(input.kScaleCache.stride, 3)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFeasible(
-    const ContractInput &input, const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFeasible(const ContractInput &input,
+                                                                                      const std::string &opName)
 {
     const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
@@ -416,8 +395,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFea
 }
 
 bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile,
-                                                             const std::string &opName,
-                                                             TokenTileSelection &selection)
+                                                             const std::string &opName, TokenTileSelection &selection)
 {
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
     const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
@@ -430,8 +408,11 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTilin
                         tokenTilePerAiv * tiling.numVHeads <= V_OUTPUT_ROWS_PER_AIV;
     const bool fitsL0c = rowTile <= L0C_MAX_ROWS && rowTileAligned <= L0C_MAX_ROWS && qkAlignedRows <= L0C_MAX_ROWS;
     const bool accepted = fitsUb && fitsL0c;
-    LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
-                          fitsL0c, accepted);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
+            "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsSideBySideL0c=%u accepted=%u.",
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U,
+            accepted ? 1U : 0U);
     if (accepted) {
         selection.tokenTile = tokenTile;
         selection.tokenTilePerAiv = tokenTilePerAiv;
@@ -447,13 +428,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(const Contr
     const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
     const uint64_t initialTokenTilePerAiv =
-        std::min({MAX_TOKEN_TILE / 2, QK_OUTPUT_ROWS_PER_AIV / numQkHeads,
-                  QKV_INPUT_ROWS_PER_AIV / numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads});
+        std::min({MAX_TOKEN_TILE / 2, QK_OUTPUT_ROWS_PER_AIV / numQkHeads, QKV_INPUT_ROWS_PER_AIV / numQkvHeads,
+                  V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads});
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%lu "
             "qkOutputLimit=%lu qkvInputLimit=%lu vOutputLimit=%lu.",
-            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / numQkHeads,
-            QKV_INPUT_ROWS_PER_AIV / numQkvHeads, V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads);
+            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / numQkHeads, QKV_INPUT_ROWS_PER_AIV / numQkvHeads,
+            V_OUTPUT_ROWS_PER_AIV / tiling.numVHeads);
 
     uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
     while (searchTokenTilePerAiv > 0) {
@@ -483,33 +464,12 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(const ContractInput
     tiling.dimTile = DIM_TILE_FAST;
     tiling.rowTile = tiling.tokenTile * numQkHeads;
     tiling.rowTileAligned = Ops::Base::CeilAlign(tiling.rowTile, 16UL);
-    tiling.kvCacheStrideBlock = input.kCache.stride.stride0;
-    tiling.kvCacheStrideHead = input.kCache.stride.stride1;
-    tiling.kvCacheStrideToken = input.kCache.stride.stride2;
-    tiling.kScaleCacheStrideBlock = input.kScaleCache.stride.stride0;
-    tiling.kScaleCacheStrideHead = input.kScaleCache.stride.stride1;
-    tiling.kScaleCacheStrideToken = input.kScaleCache.stride.stride2;
-}
-
-void QkvRmsNormRopeCacheWithKScaleTiling::LogContractTilingResult(const std::string &opName,
-                                                                  const ContractTiling &tiling)
-{
-    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
-    const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
-            "tokenTile=%lu tokenTilePerAiv=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
-            "rowTile=%lu rowTileAligned=%lu "
-            "dimTile=%lu.",
-            tiling.coreTokenTile, tiling.coreGroupNum, tiling.tokenTile, tiling.tokenTilePerAiv, tiling.numQHeads,
-            tiling.numKHeads, tiling.numVHeads, numQkHeads, numQkvHeads, tiling.rowTile,
-            tiling.rowTileAligned, tiling.dimTile);
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale contract stride result: kvCache={%lu,%lu,%lu} "
-            "kScaleCache={%lu,%lu,%lu}.",
-            tiling.kvCacheStrideBlock, tiling.kvCacheStrideHead, tiling.kvCacheStrideToken,
-            tiling.kScaleCacheStrideBlock,
-            tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
+    tiling.kvCacheStrideBlock = static_cast<uint64_t>(input.kCache.stride.GetStride(0));
+    tiling.kvCacheStrideHead = static_cast<uint64_t>(input.kCache.stride.GetStride(1));
+    tiling.kvCacheStrideToken = static_cast<uint64_t>(input.kCache.stride.GetStride(2));
+    tiling.kScaleCacheStrideBlock = static_cast<uint64_t>(input.kScaleCache.stride.GetStride(0));
+    tiling.kScaleCacheStrideHead = static_cast<uint64_t>(input.kScaleCache.stride.GetStride(1));
+    tiling.kScaleCacheStrideToken = static_cast<uint64_t>(input.kScaleCache.stride.GetStride(2));
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractInput(const ContractInput &input,
@@ -550,15 +510,41 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(const C
                                                                          const std::string &opName)
 {
     tiling = {};
-    FillContractHeadNums(input, tiling);
-    LogContractInputSummary(opName, input, aicNum);
+    tiling.numQHeads = input.numQHeads;
+    tiling.numKHeads = input.numKHeads;
+    tiling.numVHeads = input.numVHeads;
+    const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
+    const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale contract input: T=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
+            "headDim=%lu maxSeqLen=%lu blockNum=%lu blockSize=%lu aicNum=%lu.",
+            input.totalTokens, input.batch, input.numQHeads, input.numKHeads, input.numVHeads, numQkHeads, numQkvHeads,
+            input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu qkvInputRowsPerAiv=%lu "
+            "qkOutputRowsPerAiv=%lu vOutputRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
+            "aivPerAic=%lu.",
+            MAX_TOKEN_TILE, QKV_INPUT_ROWS_PER_AIV, QK_OUTPUT_ROWS_PER_AIV, V_OUTPUT_ROWS_PER_AIV,
+            L0A_FULL_DIM_SEGMENT_ROWS, L0C_MAX_ROWS, AIV_PER_AIC);
     TokenTileSelection selection;
     OP_CHECK_IF(SelectTokenTile(tiling, opName, selection) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale token tile selection failed."),
                 return ge::GRAPH_FAILED);
 
     FillContractTiling(input, aicNum, selection, tiling);
-    LogContractTilingResult(opName, tiling);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale contract tiling result: coreTokenTile=%lu coreGroupNum=%lu "
+            "tokenTile=%lu tokenTilePerAiv=%lu Nq=%lu Nk=%lu Nv=%lu Nqk=%lu Nqkv=%lu "
+            "rowTile=%lu rowTileAligned=%lu "
+            "dimTile=%lu.",
+            tiling.coreTokenTile, tiling.coreGroupNum, tiling.tokenTile, tiling.tokenTilePerAiv, tiling.numQHeads,
+            tiling.numKHeads, tiling.numVHeads, numQkHeads, numQkvHeads, tiling.rowTile, tiling.rowTileAligned,
+            tiling.dimTile);
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale contract stride result: kvCache={%lu,%lu,%lu} "
+            "kScaleCache={%lu,%lu,%lu}.",
+            tiling.kvCacheStrideBlock, tiling.kvCacheStrideHead, tiling.kvCacheStrideToken,
+            tiling.kScaleCacheStrideBlock, tiling.kScaleCacheStrideHead, tiling.kScaleCacheStrideToken);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -576,28 +562,9 @@ AivSlice QkvRmsNormRopeCacheWithKScaleTiling::MakeAivSlice(const TileParam &tile
     return slice;
 }
 
-TensorStrideInfo QkvRmsNormRopeCacheWithKScaleTiling::ToStrideInfo(const gert::Stride &stride)
-{
-    TensorStrideInfo info;
-    info.rank = static_cast<uint32_t>(stride.GetDimNum());
-    if (info.rank > 0) {
-        info.stride0 = static_cast<uint64_t>(stride.GetStride(0));
-    }
-    if (info.rank > 1) {
-        info.stride1 = static_cast<uint64_t>(stride.GetStride(1));
-    }
-    if (info.rank > 2) {
-        info.stride2 = static_cast<uint64_t>(stride.GetStride(2));
-    }
-    if (info.rank > 3) {
-        info.stride3 = static_cast<uint64_t>(stride.GetStride(3));
-    }
-    return info;
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::MakeContiguousStrideInfo(const gert::Shape &shape,
                                                                               const std::string &opName,
-                                                                              TensorStrideInfo &strideInfo)
+                                                                              gert::Stride &strideInfo)
 {
     gert::Stride stride;
     stride.SetDimNum(shape.GetDimNum());
@@ -615,7 +582,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::MakeContiguousStrideInfo(co
                     return ge::GRAPH_FAILED);
         currentStride *= dimValue;
     }
-    strideInfo = ToStrideInfo(stride);
+    strideInfo = stride;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -670,8 +637,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::Til
     }
     const auto storageShape = context->GetInputShape(index);
     if (storageShape == nullptr) {
-        OP_LOGE(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale cache input index=%zu has no storage shape.", index);
+        OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale cache input index=%zu has no storage shape.", index);
         return ge::GRAPH_FAILED;
     }
 
@@ -680,11 +646,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::Til
     const bool inputIsView = context->InputIsView(index);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale cache input index=%zu InputIsView=%u storageRank=%u "
-            "storageShape={%lu,%lu,%lu,%lu} logicalRank=%u logicalShape={%lu,%lu,%lu,%lu}.",
-            index, inputIsView ? 1U : 0U, ShapeRank(storageShapeInfo), SafeShapeDim(storageShapeInfo, 0),
-            SafeShapeDim(storageShapeInfo, 1), SafeShapeDim(storageShapeInfo, 2), SafeShapeDim(storageShapeInfo, 3),
-            ShapeRank(logicalShapeInfo), SafeShapeDim(logicalShapeInfo, 0), SafeShapeDim(logicalShapeInfo, 1),
-            SafeShapeDim(logicalShapeInfo, 2), SafeShapeDim(logicalShapeInfo, 3));
+            "logicalRank=%u.",
+            index, inputIsView ? 1U : 0U, static_cast<uint32_t>(storageShapeInfo.GetDimNum()),
+            static_cast<uint32_t>(logicalShapeInfo.GetDimNum()));
 
     if (inputIsView) {
         const auto inputStride = context->GetInputStride(index);
@@ -696,14 +660,15 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::Til
         if (inputStride != nullptr && inputStride->GetDimNum() != 0) {
             info.shape = logicalShapeInfo;
             info.shapePresent = true;
-            info.stride = ToStrideInfo(*inputStride);
+            info.stride = *inputStride;
+            info.stridePresent = true;
             info.dtype = desc->GetDataType();
             OP_LOGD(opName.c_str(),
                     "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses view shape/stride: "
-                    "shapeRank=%u shape={%lu,%lu,%lu,%lu} strideRank=%u stride={%lu,%lu,%lu,%lu}.",
-                    index, ShapeRank(info.shape), SafeShapeDim(info.shape, 0), SafeShapeDim(info.shape, 1),
-                    SafeShapeDim(info.shape, 2), SafeShapeDim(info.shape, 3), info.stride.rank, info.stride.stride0,
-                    info.stride.stride1, info.stride.stride2, info.stride.stride3);
+                    "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
+                    index, static_cast<uint32_t>(info.shape.GetDimNum()),
+                    static_cast<uint32_t>(info.stride.GetDimNum()), info.stride.GetStride(0), info.stride.GetStride(1),
+                    info.stride.GetStride(2), info.stride.GetStride(3));
             return ge::GRAPH_SUCCESS;
         }
         OP_LOGD(opName.c_str(),
@@ -718,13 +683,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::Til
     OP_CHECK_IF(MakeContiguousStrideInfo(shape, opName, info.stride) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "make contiguous cache stride failed, input index=%zu.", index),
                 return ge::GRAPH_FAILED);
+    info.stridePresent = true;
     info.dtype = desc->GetDataType();
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses contiguous storage shape/stride: "
-            "shapeRank=%u shape={%lu,%lu,%lu,%lu} strideRank=%u stride={%lu,%lu,%lu,%lu}.",
-            index, ShapeRank(info.shape), SafeShapeDim(info.shape, 0), SafeShapeDim(info.shape, 1),
-            SafeShapeDim(info.shape, 2), SafeShapeDim(info.shape, 3), info.stride.rank, info.stride.stride0,
-            info.stride.stride1, info.stride.stride2, info.stride.stride3);
+            "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
+            index, static_cast<uint32_t>(info.shape.GetDimNum()), static_cast<uint32_t>(info.stride.GetDimNum()),
+            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -748,13 +713,16 @@ TensorContractInfo QkvRmsNormRopeCacheWithKScaleTiling::ToOptionalTensorInfo(ger
 void QkvRmsNormRopeCacheWithKScaleTiling::LogTensorInfo(const std::string &opName, const char *tensorName,
                                                         const TensorContractInfo &info)
 {
+    const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
+        return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
+    };
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale input tensor %s: dtype=%s(%u) shapePresent=%u shapeRank=%u "
-            "shape={%lu,%lu,%lu,%lu} stridePresent=%u strideRank=%u stride={%lu,%lu,%lu,%lu}.",
+            "stridePresent=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
             tensorName, DtypeName(info.dtype), static_cast<uint32_t>(info.dtype), info.shapePresent ? 1U : 0U,
-            ShapeRank(info.shape), SafeShapeDim(info.shape, 0), SafeShapeDim(info.shape, 1),
-            SafeShapeDim(info.shape, 2), SafeShapeDim(info.shape, 3), info.stride.present ? 1U : 0U,
-            info.stride.rank, info.stride.stride0, info.stride.stride1, info.stride.stride2, info.stride.stride3);
+            static_cast<uint32_t>(info.shape.GetDimNum()), info.stridePresent ? 1U : 0U,
+            static_cast<uint32_t>(info.stride.GetDimNum()), strideDimOrZero(info.stride, 0),
+            strideDimOrZero(info.stride, 1), strideDimOrZero(info.stride, 2), strideDimOrZero(info.stride, 3));
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInput(const std::string &opName, const ContractInput &input,
@@ -815,8 +783,8 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogTilingData(const std::string &opNam
         "QkvRmsNormRopeCacheWithKScale final launch: tilingKey=%lu blockDim=%lu tilingDataSize=%zu workspaceSize=%zu "
         "Nqk=%lu Nv=%lu rowTile=%lu rowTileAligned=%lu tokenTilePerAiv=%lu dimTile=%lu.",
         tilingKey, blockDim, dataSize, workspaceSize, contractTiling.numQHeads + contractTiling.numKHeads,
-        contractTiling.numVHeads,
-        contractTiling.rowTile, contractTiling.rowTileAligned, contractTiling.tokenTilePerAiv, contractTiling.dimTile);
+        contractTiling.numVHeads, contractTiling.rowTile, contractTiling.rowTileAligned, contractTiling.tokenTilePerAiv,
+        contractTiling.dimTile);
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ParseHeadNumsAttr(gert::TilingContext *context,
@@ -854,12 +822,12 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillShapeDerivedFields(const std::stri
     const auto &cosSinShape = input.cosSin.shape;
     const auto &cuSeqLenShape = input.cuSeqLen.shape;
     const auto &kCacheShape = input.kCache.shape;
-    input.totalTokens = ShapeDim(qkvShape, 1);
-    input.headDim = ShapeDim(qkvShape, 2);
-    input.batch = ShapeDim(cuSeqLenShape, 0) - 1;
-    input.maxSeqLen = ShapeDim(cosSinShape, 0);
-    input.blockNum = ShapeDim(kCacheShape, 0);
-    input.blockSize = ShapeDim(kCacheShape, 2);
+    input.totalTokens = static_cast<uint64_t>(qkvShape.GetDim(1));
+    input.headDim = static_cast<uint64_t>(qkvShape.GetDim(2));
+    input.batch = static_cast<uint64_t>(cuSeqLenShape.GetDim(0)) - 1;
+    input.maxSeqLen = static_cast<uint64_t>(cosSinShape.GetDim(0));
+    input.blockNum = static_cast<uint64_t>(kCacheShape.GetDim(0));
+    input.blockSize = static_cast<uint64_t>(kCacheShape.GetDim(2));
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale derived shape fields: totalTokens=%lu batch=%lu headDim=%lu "
             "maxSeqLen=%lu blockNum=%lu blockSize=%lu.",
@@ -878,7 +846,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::FillRequiredTensorInputs(ge
                 OP_LOGE(opName.c_str(), "failed to parse kGamma tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToTensorInfo(context, opName, "cosSin", COS_SIN_INDEX, input.cosSin) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse cosSin tensor info."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ToTensorInfo(context, opName, "slotMapping", SLOT_MAPPING_INDEX, input.slotMapping) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(ToTensorInfo(context, opName, "slotMapping", SLOT_MAPPING_INDEX, input.slotMapping) !=
+                    ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse slotMapping tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context, opName, K_CACHE_INDEX, input.kCache) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse kCache tensor info."), return ge::GRAPH_FAILED);
