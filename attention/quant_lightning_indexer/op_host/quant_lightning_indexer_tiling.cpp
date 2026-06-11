@@ -451,8 +451,10 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 "The dtype of block_table must be int32."), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                   OP_LOGE(opName_, "key layout is not PA_BSND, input block_table must be null"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
+                        Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+                        "when key layout is not PA_BSND, input block_table must be null."), 
+                    return ge::GRAPH_FAILED);
     }
 
     if (kLayout_ == DataLayout::TND) {
