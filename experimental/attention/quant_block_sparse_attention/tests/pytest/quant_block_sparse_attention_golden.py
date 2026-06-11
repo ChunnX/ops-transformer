@@ -456,7 +456,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
-            "pa_block_stride": kv_cache_meta["pa_block_stride"],
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
