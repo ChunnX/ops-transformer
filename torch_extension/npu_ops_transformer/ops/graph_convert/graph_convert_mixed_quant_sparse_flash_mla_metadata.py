@@ -33,8 +33,8 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla_metadata.default)
-    def convert_npu_mixed_quant_sparse_flash_mla_metadata(
+    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.mixed_quant_sparse_flash_mla_metadata.default)
+    def convert_mixed_quant_sparse_flash_mla_metadata(
         num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: int, *, cu_seqlens_q: Optional[Tensor] = None,
         cu_seqlens_ori_kv: Optional[Tensor] = None, cu_seqlens_cmp_kv: Optional[Tensor] = None,
         seqused_q: Optional[Tensor] = None, seqused_ori_kv: Optional[Tensor] = None,
@@ -46,4 +46,4 @@ if _TORCHAIR_AVAILABLE:
         cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
         has_cmp_kv: Optional[bool] = None, meta_outputs: TensorSpec = None):
-        raise RuntimeError("GE converter doesn't support op: 'npu_mixed_quant_sparse_flash_mla_metadata'")
+        raise RuntimeError("GE converter doesn't support op: 'mixed_quant_sparse_flash_mla_metadata'")
