@@ -30,8 +30,8 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &c
     if (!success) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
-    SplitResult splitRes(static_cast<uint32_t>(aicCoreNum_));
-    success = BalanceSchedule(splitRes) && GenMetadata(splitRes);
+    load_balance::BlockBalanceResult splitRes(static_cast<uint32_t>(aicCoreNum_));
+    success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
@@ -118,7 +118,16 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
 {
-    batchSize_ = sparseSeqLen_->GetTensorShape()->GetDimSize(0);
+    int64_t sparseSeqLenBatchSize = sparseSeqLen_->GetTensorShape()->GetDimSize(0);
+    if (batchSize_ <= 0) {
+        KERNEL_LOG_ERROR("invalid batch size, batchSize=%d", batchSize_);
+        return false;
+    }
+    if (sparseSeqLenBatchSize != static_cast<int64_t>(batchSize_)) {
+        KERNEL_LOG_ERROR("sparseSeqLen shape[0] must be batchSize, got shape[0]=%ld, batchSize=%d",
+                         sparseSeqLenBatchSize, batchSize_);
+        return false;
+    }
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
         groupSize_ = 1;
@@ -132,233 +141,25 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     mBaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeQ_, 1));
     s2BaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeKv_, 1));
     Qbmax_ = static_cast<uint32_t>(sparseSeqLen_->GetTensorShape()->GetDimSize(1));
-    if (batchSize_ <= 0 || numHeadsKv_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
+    if (numHeadsKv_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
         KERNEL_LOG_ERROR("invalid split params, batchSize=%d, numHeadsKv=%d, aicCoreNum=%d, Qbmax=%u",
                          batchSize_, numHeadsKv_, aicCoreNum_, Qbmax_);
         return false;
     }
+    param.batchSize = static_cast<uint32_t>(batchSize_);
+    param.kvHeadNum = static_cast<uint32_t>(numHeadsKv_);
+    param.aicCoreNum = static_cast<uint32_t>(aicCoreNum_);
+    param.qBlockMax = Qbmax_;
+    param.sparseSeqLen = static_cast<const int32_t *>(sparseSeqLen_->GetData());
     return true;
 }
 
-uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(const SplitInfo &splitInfo,
-                                                                    uint32_t bIdx, uint32_t s1Idx) const
+bool QuantBlockSparseAttentionMetadataCpuKernel::BalanceSchedule(load_balance::BlockBalanceResult &splitRes)
 {
-    if (bIdx >= static_cast<uint32_t>(batchSize_) || s1Idx >= Qbmax_) {
-        return 0U;
-    }
-    if (bIdx >= splitInfo.sparseSeqLen.size() || s1Idx >= splitInfo.sparseSeqLen[bIdx].size()) {
-        return 0U;
-    }
-    return splitInfo.sparseSeqLen[bIdx][s1Idx];
+    return load_balance::BlockBalance::Compute(param, splitRes) == load_balance::BLOCK_BALANCE_SUCCESS;
 }
 
-void QuantBlockSparseAttentionMetadataCpuKernel::CalcSplitInfo(SplitInfo &splitInfo)
-{
-    uint32_t sparseSeqLenSize = static_cast<uint32_t>(batchSize_) * Qbmax_;
-    const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
-    uint32_t batchSize = static_cast<uint32_t>(batchSize_);
-    splitInfo.sparseSeqLen.assign(batchSize, std::vector<uint32_t>(Qbmax_, 0U));
-    splitInfo.blockOfEachBatch.assign(batchSize, 0U);
-    splitInfo.totalBlock = 0U;
-    splitInfo.isAllZero = true;
-
-    for (uint32_t bIdx = 0; bIdx < batchSize; ++bIdx) {
-        uint64_t batchBlock = 0U;
-        for (uint32_t s1Idx = 0; s1Idx < Qbmax_; ++s1Idx) {
-            // sparse_seq_len逻辑shape为(B, Qbmax)，GetData获取的是连续内存。
-            uint32_t idx = bIdx * Qbmax_ + s1Idx;
-            uint32_t rowBlock = 0U;
-            if (idx < sparseSeqLenSize && sparseSeqLenData[idx] > 0) {
-                rowBlock = static_cast<uint32_t>(sparseSeqLenData[idx]);
-            }
-            splitInfo.sparseSeqLen[bIdx][s1Idx] = rowBlock;
-            batchBlock += rowBlock;
-        }
-        // blockOfEachBatch记录单个batch在单个kv head上的基本块数量。
-        splitInfo.blockOfEachBatch[bIdx] = batchBlock;
-        splitInfo.totalBlock += batchBlock * static_cast<uint32_t>(numHeadsKv_);
-    }
-    splitInfo.isAllZero = (splitInfo.totalBlock == 0U);
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::UpdateCurrentBN2Block(const SplitInfo &splitInfo,
-                                                                       AssignContext &assignContext) const
-{
-    if (assignContext.curBN2Idx >= static_cast<uint32_t>(batchSize_ * numHeadsKv_)) {
-        assignContext.bN2Block = 0U;
-        return;
-    }
-    // BN2按batch * numHeadsKv + kvHeadIdx展平。
-    assignContext.curBIdx = assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsKv_);
-    assignContext.bN2Block = splitInfo.blockOfEachBatch[assignContext.curBIdx];
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::UpdateCursor(const SplitInfo &splitInfo,
-                                                                 AssignContext &assignContext) const
-{
-    while (assignContext.curBN2Idx < static_cast<uint32_t>(batchSize_ * numHeadsKv_)) {
-        assignContext.curBIdx = assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsKv_);
-        // 跳过空S1行，不同batch实际Qb不足Qbmax的padding区域应为0。
-        while (assignContext.curS1Idx < Qbmax_ &&
-               GetRowBlockNum(splitInfo, assignContext.curBIdx, assignContext.curS1Idx) == 0U) {
-            assignContext.curS1Idx++;
-        }
-        if (assignContext.curS1Idx < Qbmax_) {
-            assignContext.curS2Idx = 0U;
-            UpdateCurrentBN2Block(splitInfo, assignContext);
-            return;
-        }
-        // 当前BN2已没有有效S1行，移动到下一个BN2。
-        assignContext.curBN2Idx++;
-        assignContext.curS1Idx = 0U;
-        assignContext.curS2Idx = 0U;
-    }
-    assignContext.curS1Idx = 0U;
-    assignContext.curS2Idx = 0U;
-    assignContext.isFinished = true;
-    UpdateCurrentBN2Block(splitInfo, assignContext);
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(const SplitInfo &splitInfo,
-                                                               AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-    UpdateCursor(splitInfo, assignContext);
-    while (!assignContext.isFinished &&
-           assignContext.curBN2Idx < static_cast<uint32_t>(batchSize_ * numHeadsKv_) &&
-           assignContext.curS1Idx == 0U) {
-        UpdateCurrentBN2Block(splitInfo, assignContext);
-        if (assignContext.bN2Block == 0U) {
-            assignContext.curBN2Idx++;
-            UpdateCursor(splitInfo, assignContext);
-            continue;
-        }
-        if (assignContext.coreCache.block + assignContext.bN2Block > assignContext.coreCache.blockLimit) {
-            break;
-        }
-        // 当前BN2完整负载能放入本核时，按整BN2分配。
-        assignContext.coreCache.block += assignContext.bN2Block;
-        assignContext.curBN2Idx++;
-        assignContext.curS1Idx = 0U;
-        assignContext.curS2Idx = 0U;
-        UpdateCursor(splitInfo, assignContext);
-    }
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(const SplitInfo &splitInfo,
-                                                             AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-    UpdateCursor(splitInfo, assignContext);
-    while (!assignContext.isFinished &&
-           assignContext.curBN2Idx < static_cast<uint32_t>(batchSize_ * numHeadsKv_)) {
-        uint32_t rowBlock = GetRowBlockNum(splitInfo, assignContext.curBIdx, assignContext.curS1Idx);
-        if (rowBlock == 0U) {
-            assignContext.curS1Idx++;
-            UpdateCursor(splitInfo, assignContext);
-            continue;
-        }
-        if (assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
-            break;
-        }
-        // 当前方案不切S2，一个S1行是最小分配粒度。
-        assignContext.coreCache.block += rowBlock;
-        if (assignContext.bN2Block > rowBlock) {
-            assignContext.bN2Block -= rowBlock;
-        } else {
-            assignContext.bN2Block = 0U;
-        }
-        assignContext.curS1Idx++;
-        UpdateCursor(splitInfo, assignContext);
-    }
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::ForceAssign(const SplitInfo &splitInfo,
-                                                             AssignContext &assignContext)
-{
-    if (assignContext.isFinished || assignContext.coreCache.block != 0U) {
-        return;
-    }
-    UpdateCursor(splitInfo, assignContext);
-    if (assignContext.isFinished) {
-        return;
-    }
-    uint32_t rowBlock = GetRowBlockNum(splitInfo, assignContext.curBIdx, assignContext.curS1Idx);
-    // 当单行超过当前核负载上限时，强制分配一行
-    assignContext.coreCache.block += rowBlock;
-    if (assignContext.bN2Block > rowBlock) {
-        assignContext.bN2Block -= rowBlock;
-    } else {
-        assignContext.bN2Block = 0U;
-    }
-    assignContext.curS1Idx++;
-    UpdateCursor(splitInfo, assignContext);
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::AssignBlocksToCore(const SplitInfo &splitInfo,
-                                                                    AssignContext &assignContext, SplitResult &result)
-{
-    assignContext.coreCache = {};
-    uint32_t remainingCore = static_cast<uint32_t>(aicCoreNum_) - assignContext.curCoreIdx;
-    // 根据剩余基本块数和剩余核数，动态重新计算当前核负载上限。
-    assignContext.coreCache.blockLimit =
-        (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
-
-    AssignByBatch(splitInfo, assignContext);
-    AssignByRow(splitInfo, assignContext);
-    ForceAssign(splitInfo, assignContext);
-
-    result.bN2End[assignContext.curCoreIdx] = assignContext.curBN2Idx;
-    result.s1End[assignContext.curCoreIdx] = assignContext.curS1Idx;
-    result.s2End[assignContext.curCoreIdx] = 0U;
-    result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = 0U;
-    result.maxBlock = std::max(result.maxBlock, assignContext.coreCache.block);
-    if (assignContext.unassignedBlock > assignContext.coreCache.block) {
-        assignContext.unassignedBlock -= assignContext.coreCache.block;
-    } else {
-        assignContext.unassignedBlock = 0U;
-    }
-}
-
-void QuantBlockSparseAttentionMetadataCpuKernel::CalcSplitPlan(const SplitInfo &splitInfo, SplitResult &result)
-{
-    AssignContext assignContext {};
-    assignContext.unassignedBlock = splitInfo.totalBlock;
-    UpdateCurrentBN2Block(splitInfo, assignContext);
-    UpdateCursor(splitInfo, assignContext);
-
-    for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); i++) {
-        if (assignContext.isFinished || assignContext.unassignedBlock == 0U) {
-            break;
-        }
-        assignContext.curCoreIdx = i;
-        AssignBlocksToCore(splitInfo, assignContext, result);
-        result.usedCoreNum = i + 1U;
-    }
-    result.usedCoreNum = std::max(result.usedCoreNum, 1U);
-}
-
-bool QuantBlockSparseAttentionMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
-{
-    SplitInfo splitInfo;
-    CalcSplitInfo(splitInfo);
-    if (splitInfo.isAllZero) {
-        splitRes.usedCoreNum = 1U;
-        splitRes.bN2End[0] = static_cast<uint32_t>(batchSize_ * numHeadsKv_);
-        splitRes.s1End[0] = 0U;
-        splitRes.s2End[0] = 0U;
-        splitRes.firstFdDataWorkspaceIdx[0] = 0U;
-        return true;
-    }
-    CalcSplitPlan(splitInfo, splitRes);
-    return true;
-}
-
-bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
+bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetaData(const load_balance::BlockBalanceResult &splitRes)
 {
     if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
