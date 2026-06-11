@@ -33,9 +33,16 @@ def match_op_proto(file_path):
 
 def merge_op_proto(protos_path, output_file):
     op_defs = []
+    check_same_files = set()
     for proto_path in protos_path:
         if not proto_path.endswith("_proto.h"):
             continue
+        # 过滤同名proto.h
+        file_name = os.path.basename(proto_path)
+        if file_name in check_same_files:
+            continue
+        check_same_files.add(file_name)
+
         print(f"proto_path: {proto_path}")
         op_name, op_def = match_op_proto(proto_path)
         if op_def:
