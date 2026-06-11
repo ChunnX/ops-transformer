@@ -64,10 +64,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<float> fp8MaxReg;
         RegTensor<float> rawScaleReg;
         RegTensor<float> roundScaleReg;
-        RegTensor<float> divisorReg;
         RegTensor<float> quantReg;
-        RegTensor<float> zeroReg;
-        RegTensor<float> oneReg;
         RegTensor<U> outReg;
 
         RegTensor<uint32_t> expBitsReg;
@@ -83,12 +80,9 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         MaskReg maskAllUint = CreateMask<uint32_t, MaskPattern::ALL>();
         MaskReg maskLoop;
         MaskReg maskMantNonZero;
-        MaskReg maskScaleNonZero;
 
         Duplicate(maxReg, 0.0f, maskAll);
         Duplicate(fp8MaxReg, fp8MaxValue, maskAll);
-        Duplicate(zeroReg, 0.0f, maskAll);
-        Duplicate(oneReg, 1.0f, maskAll);
         Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
         Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
         Duplicate(oneIntReg, 1U, maskAllUint);
@@ -118,17 +112,14 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Add(roundedExpBitsReg, expBitsReg, mantAddReg, maskAllUint);
         ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
-        Compare<float, CMPMODE::NE>(maskScaleNonZero, rawScaleReg, zeroReg, maskAll);
-        Select(roundScaleReg, roundScaleReg, zeroReg, maskScaleNonZero);
         DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, roundScaleReg, maskAll);
-        Select(divisorReg, roundScaleReg, oneReg, maskScaleNonZero);
 
         remain = groupElemNum;
         for (uint16_t i = 0; i < loopNum; i++) {
             uint32_t loopElemNum = (remain > vfLen) ? vfLen : remain;
             maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xReg, xAddr, maskLoop, i * vfLen);
-            Div<float, &divMode>(quantReg, xReg, divisorReg, maskLoop);
+            Div<float, &divMode>(quantReg, xReg, roundScaleReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outReg, quantReg, maskLoop);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + i * vfLen, outReg, maskLoop);
             remain = (remain > vfLen) ? (remain - vfLen) : 0;
