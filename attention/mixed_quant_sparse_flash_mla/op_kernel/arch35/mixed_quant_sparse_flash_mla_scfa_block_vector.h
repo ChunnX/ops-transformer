@@ -124,7 +124,7 @@ public:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo,
         mm2ResPos &tempBuf);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -210,7 +210,6 @@ private:
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
     TBuf<> fdPartialBuf;
-    TBuf<> fdLseExpBuf;
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -912,6 +911,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                 vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+        } else if (runInfo.isS2Split) {
+            // S2跨核切分: 最后一轮只做flash累加(pre*expMax+cur)不除sum,
+            // 归一化(/sum)留给FD规约阶段ReduceFinalRes用lseExp权重完成, 避免双重除sum
+            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
             FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
@@ -926,45 +930,48 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
                 Duplicate(sumUb, 1.0f, runInfo.vec2MRealSize);
             }
-            constexpr uint32_t OUTPUT_BYTES = regbaseutil::S2_SPLIT_STAGING_OUTPUT_BYTES;
-            constexpr uint32_t FLOAT_BYTES = regbaseutil::S2_SPLIT_STAGING_FLOAT_BYTES;
+            constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+            constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
             constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
             uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
             __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
-            LocalTensor<OUTPUT_T> attenOut;
-            attenOut.SetAddr(vec2ResUb.address_);
-            Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
-            SetFlag<HardEvent::V_MTE3>(vToMte3Id);
-            WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
-
-            GlobalTensor<OUTPUT_T> stagingOut;
+            GlobalTensor<float> stagingOut;
             uint32_t baseWorkspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx);
             uint32_t workspaceIdx = static_cast<uint32_t>(baseWorkspaceIdx + runInfo.s2SplitIdx);
-            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)(basePtr + workspaceIdx * OUTPUT_BYTES));
+            stagingOut.SetGlobalBuffer((__gm__ float *)(basePtr + workspaceIdx * ATTEN_OUT_BYTES));
             uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
                 static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
             DataCopyExtParams outParams;
-            outParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            outParams.blockLen = constInfo.dSizeV * sizeof(float);
             outParams.srcStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
             outParams.dstStride = 0;
             outParams.blockCount = runInfo.vec2MRealSize;
-            DataCopyPad(stagingOut[stagingMOffset * dTemplateAlign64], attenOut, outParams);
+            DataCopyPad(stagingOut[stagingMOffset * constInfo.dSizeV], vec2ResUb, outParams);
 
-            __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * OUTPUT_BYTES;
-            __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * FLOAT_BYTES;
+            __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
+            __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
             GlobalTensor<float> maxGm;
             maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
             GlobalTensor<float> sumGm;
             sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
 
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            uint32_t floatOffset = baseWorkspaceIdx * (FLOAT_BYTES / sizeof(float)) +
-                static_cast<uint32_t>(runInfo.s2SplitIdx * runInfo.mRealSize + stagingMOffset);
-            DataCopy(sumGm[floatOffset], sumUb, runInfo.vec2MRealSize);
-
             LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            DataCopy(maxGm[floatOffset], maxUb, runInfo.vec2MRealSize);
+            LocalTensor<float> tmpMaxBlockUb = this->stage0OutBuf[0].template Get<float>();
+            LocalTensor<float> tmpSumBlockUb = this->stage0OutBuf[1].template Get<float>();
+            constexpr uint32_t FD_BLOCK_ELEM = 8;
+            uint32_t mSizeAlign8 = (runInfo.vec2MRealSize + FD_BLOCK_ELEM - 1) / FD_BLOCK_ELEM * FD_BLOCK_ELEM;
+            uint32_t brcbRepeat = mSizeAlign8 / FD_BLOCK_ELEM;
+            Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, FD_BLOCK_ELEM});
+            Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, FD_BLOCK_ELEM});
+            PipeBarrier<PIPE_V>();
+            uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
+                static_cast<uint32_t>(stagingMOffset) * FD_BLOCK_ELEM;
+            DataCopyExtParams lseOutParams{static_cast<uint16_t>(FD_BLOCK_ELEM * sizeof(float)),
+                static_cast<uint32_t>(mSizeAlign8 * sizeof(float)), 0, 0, 0};
+            DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
+            DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
         } else {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -979,101 +986,114 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
-    FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+    FdRunInfo &fdRunInfo, ConstInfo &constInfo,
     mm2ResPos &tempBuf)
 {
-    uint32_t numSplits = static_cast<uint32_t>(fdRunInfo.workspaceNum);
-    uint32_t baseIdx = static_cast<uint32_t>(fdRunInfo.workspaceIdx);
-    uint32_t mSize = static_cast<uint32_t>(runInfo.halfMRealSize);
-    int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+    printf("fdRunInfo.mIdx: %d\n", fdRunInfo.mIdx);
+    printf("fdRunInfo.mStartIdx: %d\n", fdRunInfo.mStartIdx);
+    printf("fdRunInfo.mNum: %d\n", fdRunInfo.mNum);
+    int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
+    int64_t seqOffset = 0;
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+        seqOffset = this->cuSeqlensQGm.GetValue(fdRunInfo.bn2Idx);
+    } else {
+        seqOffset = fdRunInfo.bn2Idx * constInfo.s1Size;
+    }
+    int64_t attentionOutOffset = seqOffset * constInfo.n2GDv + // batch维度起始偏移（token数 × 每token所有head的V元素数）
+        fdRunInfo.mIdx * constInfo.s1BaseSize * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
+        fdRunInfo.mStartIdx * constInfo.n2GDv; // 当前核负责的M轴token起始偏移
     constexpr uint32_t DEAL_ROW_COUNT = 8;
+    constexpr uint32_t BLOCK_ELEM = 8; // common VF按每行8 float块布局访问max/sum/lse
 
+    // ========== 1. 内存准备：分配UB buffer、定位GM staging区域 ==========
     LocalTensor<T> accumulatedO = this->stage2OutBuf.template Get<T>();
-    LocalTensor<float> allMaxUb = this->commonTBuf.template Get<float>();
-    LocalTensor<float> allSumUb = allMaxUb[numSplits * mSize];
-    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
+    LocalTensor<float> lseExpUb = this->dequantScaleBuff.template Get<float>();
+    LocalTensor<float> blockMaxUb = this->stage0OutBuf[0].template Get<float>();
+    LocalTensor<float> blockSumUb = this->stage0OutBuf[1].template Get<float>();
     LocalTensor<float> globalMaxReduceUb = this->softmaxMaxBuf[0].template Get<float>();
-    LocalTensor<float> globalSumUb = this->softmaxSumBuf[0].template Get<float>();
-    LocalTensor<T> dummySinkUb = this->sinksBuf.template Get<T>();
+    LocalTensor<T> sinkUb = this->sinksBuf.template Get<T>();
 
-    constexpr uint32_t OUTPUT_BYTES = regbaseutil::S2_SPLIT_STAGING_OUTPUT_BYTES;
-    constexpr uint32_t FLOAT_BYTES = regbaseutil::S2_SPLIT_STAGING_FLOAT_BYTES;
+    constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+    constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
     constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
     uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
-    __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * OUTPUT_BYTES;
-    __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * FLOAT_BYTES;
-
-    GlobalTensor<float> maxGm;
-    maxGm.SetGlobalBuffer((__gm__ float *)(maxRegion + baseIdx * FLOAT_BYTES));
-    GlobalTensor<float> sumGm;
-    sumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + baseIdx * FLOAT_BYTES));
-    uint32_t fdMOffset = static_cast<uint32_t>(fdRunInfo.mStartIdx);
-    for (uint32_t splitIdx = 0; splitIdx < numSplits; splitIdx++) {
-        uint32_t srcOffset = splitIdx * (FLOAT_BYTES / sizeof(float)) + fdMOffset;
-        uint32_t dstOffset = splitIdx * mSize;
-        DataCopy(allMaxUb[dstOffset], maxGm[srcOffset], mSize);
-        DataCopy(allSumUb[dstOffset], sumGm[srcOffset], mSize);
-    }
+    __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
+    __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
 
     Duplicate(accumulatedO, (T)0.0, vec2CalcSize);
 
-    uint32_t mChunks = (mSize + DEAL_ROW_COUNT - 1) / DEAL_ROW_COUNT;
+    uint32_t fdMOffset = static_cast<uint32_t>(fdRunInfo.mStartIdx);
+    GlobalTensor<float> maxGm;
+    maxGm.SetGlobalBuffer((__gm__ float *)(maxRegion + fdRunInfo.workspaceIdx * MAX_SUM_BYTES));
+    GlobalTensor<float> sumGm;
+    sumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + fdRunInfo.workspaceIdx * MAX_SUM_BYTES));
+    uint32_t splitStride = MAX_SUM_BYTES / sizeof(float);
+    GlobalTensor<float> stagingOutGm;
+    stagingOutGm.SetGlobalBuffer((__gm__ float *)(basePtr + fdRunInfo.workspaceIdx * ATTEN_OUT_BYTES));
+    uint32_t outSplitStride = ATTEN_OUT_BYTES / sizeof(float);
+    LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
+
+    uint32_t mChunks = (fdRunInfo.mNum + DEAL_ROW_COUNT - 1) / DEAL_ROW_COUNT;
     for (uint32_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
         uint32_t startRow = chunkIdx * DEAL_ROW_COUNT;
         uint32_t dealRowCount = DEAL_ROW_COUNT;
-        if (startRow + dealRowCount > mSize) {
-            dealRowCount = mSize - startRow;
+        if (startRow + dealRowCount > fdRunInfo.mNum) {
+            dealRowCount = fdRunInfo.mNum - startRow;
         }
 
-        LocalTensor<float> chunkMaxUb = allMaxUb[startRow];
-        LocalTensor<float> chunkSumUb = allSumUb[startRow];
-        LocalTensor<float> chunkLseExpUb = lseExpUb[startRow * numSplits];
-        LocalTensor<float> chunkGlobalMaxUb = globalMaxReduceUb[startRow];
+        // ========== 2. 从GM staging按chunk读回已广播的block布局max/sum ==========
+        for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
+            uint32_t srcOffset = splitIdx * splitStride + (fdMOffset + startRow) * BLOCK_ELEM;
+            uint32_t dstOffset = splitIdx * dealRowCount * BLOCK_ELEM;
+            DataCopy(blockMaxUb[dstOffset], maxGm[srcOffset], dealRowCount * BLOCK_ELEM);
+            DataCopy(blockSumUb[dstOffset], sumGm[srcOffset], dealRowCount * BLOCK_ELEM);
+        }
+        SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
+        WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 
+        // ========== 3. 调用VF计算LSE reduce权重 ==========
         FaVectorApi::ComputeScaleValue_8_FD<T, T>(
-            dummySinkUb, chunkMaxUb, chunkSumUb,
-            chunkLseExpUb, chunkGlobalMaxUb, chunkGlobalMaxUb,
-            dealRowCount, numSplits, false, false);
+            sinkUb, blockMaxUb, blockSumUb,
+            lseExpUb, globalMaxReduceUb, globalMaxReduceUb,
+            dealRowCount, fdRunInfo.workspaceNum, false, this->isSinks);
+        PipeBarrier<PIPE_V>();
 
-        DataCopy(globalSumUb[startRow], chunkSumUb, dealRowCount);
-
-        for (uint32_t splitIdx = 0; splitIdx < numSplits; splitIdx++) {
-            GlobalTensor<OUTPUT_T> stagingOut;
-            stagingOut.SetGlobalBuffer((__gm__ OUTPUT_T *)(basePtr + (baseIdx + splitIdx) * OUTPUT_BYTES));
-
-            LocalTensor<OUTPUT_T> partialOOut = this->stage1OutQue[0].template AllocTensor<OUTPUT_T>();
-            DataCopyExtParams inParams;
-            inParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
-            inParams.srcStride = 0;
-            inParams.dstStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) >> 4);
-            inParams.blockCount = dealRowCount;
-            DataCopyPad(partialOOut, stagingOut[(fdMOffset + startRow) * dTemplateAlign64], inParams);
-            this->stage1OutQue[0].template EnQue(partialOOut);
-            LocalTensor<OUTPUT_T> partialOOutCast = this->stage1OutQue[0].template DeQue<OUTPUT_T>();
-
-            LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
-            Cast(partialOFp32, partialOOutCast, RoundMode::CAST_ROUND, dealRowCount * dTemplateAlign64);
-            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+        // ========== 4. 逐split读回partial output并reduce累加 ==========
+        for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
             WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
-            this->stage1OutQue[0].template FreeTensor(partialOOutCast);
+            DataCopyExtParams inParams;
+            inParams.blockLen = constInfo.dSizeV * sizeof(float);
+            inParams.srcStride = 0;
+            constexpr uint32_t outputElemsPerBlock = BUFFER_SIZE_BYTE_32B / sizeof(float);
+            inParams.dstStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) / outputElemsPerBlock);
+            inParams.blockCount = dealRowCount;
+            DataCopyPadExtParams<float> padParams{true, 0,
+                static_cast<uint8_t>((dTemplateAlign64 - constInfo.dSizeV) % outputElemsPerBlock), 0};
+            uint32_t outSrcOffset = splitIdx * outSplitStride + (fdMOffset + startRow) * constInfo.dSizeV;
+            DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
+            SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
+            WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 
+            DumpTensor(lseExpUb, 111, 16);
+            DumpTensor(blockMaxUb, 112, 16);
+            DumpTensor(partialOFp32, 113, 16);
             LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
-            FaVectorApi::ReduceFinalRes_VF<T>(chunkAccumO, chunkLseExpUb, partialOFp32,
+            FaVectorApi::ReduceFinalRes_VF<T>(chunkAccumO, lseExpUb, partialOFp32,
                 dealRowCount, static_cast<uint64_t>(dTemplateAlign64), splitIdx);
         }
     }
 
-    LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-        accumulatedO, accumulatedO, globalSumUb,
-        static_cast<uint16_t>(mSize), dTemplateAlign64, 1.0);
-
+    // ========== 5. 数据拷出：reduce结果去padding写回GM ==========
+    RunInfo runInfo;
+    runInfo.vec2MRealSize = fdRunInfo.mNum;
+    runInfo.attentionOutOffset = attentionOutOffset;
     this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
     LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
@@ -1083,7 +1103,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &ru
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
-
+    // DumpTensor(attenOut, 111, 512);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
     dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) >> 4; // 以32B为单位偏移，bf16类型即偏移16个数，右移4
@@ -1215,7 +1235,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
     tPipe->InitBuffer(fdPartialBuf, 8 * dTemplateAlign64 * sizeof(T));
-    tPipe->InitBuffer(fdLseExpBuf, 512); // FD LSE exp: mSize * numSplits * sizeof(float)
+    // FD规约阶段临时buffer全部复用主计算阶段空闲buffer(stage0InBuf/stage0OutBuf/dequantScaleBuff),
+    // 避免新增UB导致总分配超过192KB物理上限
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
@@ -1267,7 +1288,7 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
-    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, RunInfo &runInfo, ConstInfo &constInfo,
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo,
         mm2ResPos &tempBuf) {}
 };
 }

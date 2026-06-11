@@ -86,7 +86,6 @@ private:
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
-    __aicore__ inline void ProcessFlashDecode();
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
                                                 int64_t s2StartPoint, int64_t s2EndPoint,
                                                 bool isFirstS2RangeTask, bool isLastS2RangeTask);
@@ -405,6 +404,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
             }
         }
         SyncAll();
+        if ASCEND_IS_AIV {
+            if (fdRunInfo.coreEnable > 0) {
+                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo, this->bmm2Buffers.Get());
+            }
+        }
         return;
     }
 
@@ -545,7 +549,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
-            ProcessFlashDecode();
+            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo, this->bmm2Buffers.Get());
         }
     }
 }
@@ -620,50 +624,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ProcessFlashDecode()
-{
-    FdRunInfo fdRunInfo;
-    ParseFdRunInfo(fdRunInfo);
-    if (!fdRunInfo.coreEnable) {
-        return;
-    }
-
-    int64_t firstHalfMRealSize = (fdRunInfo.mNum + 1) >> 1;
-    int64_t subBlockMOffset = 0;
-    int64_t subBlockMRealSize = firstHalfMRealSize;
-    if (this->constInfo.subBlockIdx == 1) {
-        subBlockMOffset = firstHalfMRealSize;
-        subBlockMRealSize = fdRunInfo.mNum - firstHalfMRealSize;
-    }
-    if (subBlockMRealSize == 0) {
-        return;
-    }
-    fdRunInfo.mStartIdx += subBlockMOffset;
-    fdRunInfo.mNum = subBlockMRealSize;
-
-    RunInfo runInfo;
-    runInfo.halfMRealSize = subBlockMRealSize;
-    runInfo.vec2MRealSize = subBlockMRealSize;
-    runInfo.vec2S1BaseSize = subBlockMRealSize;
-    runInfo.vec2MBaseSize = subBlockMRealSize;
-    runInfo.multiCoreIdxMod2 = 0;
-
-    int64_t batchIdx = fdRunInfo.bn2Idx;
-    int64_t seqOffset = 0;
-    if (this->hasCuSeqlensQ) {
-        seqOffset = this->cuSeqlensQGm.GetValue(batchIdx);
-    } else {
-        seqOffset = batchIdx * this->constInfo.s1Size;
-    }
-    int64_t attentionOutSeqOffset = seqOffset * this->constInfo.n2GDv;
-    runInfo.attentionOutOffset = attentionOutSeqOffset +
-        fdRunInfo.mIdx * this->constInfo.s1BaseSize * this->constInfo.n2GDv +
-        fdRunInfo.mStartIdx * this->constInfo.dSizeV;
-
-    this->vecBlock.ProcessFlashDecode(fdRunInfo, runInfo, this->constInfo, this->bmm2Buffers.Get());
+    
+    // printf("fdRunInfo.mIdx: %d\n", fdRunInfo.mIdx);
+    // printf("fdRunInfo.mStartIdx: %d\n", fdRunInfo.mStartIdx);
+    // printf("fdRunInfo.mNum: %d\n", fdRunInfo.mNum);
+    // printf("fdRunInfo.coreEnable: %d\n", fdRunInfo.coreEnable);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
