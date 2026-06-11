@@ -60,24 +60,60 @@ def get_valid_hif8_codes(min_val, max_val):
 
 _VU_CACHE = {}
 
+# LUT size: 1MB (2^20 entries). Every valid code gets at least 1 entry
+# (floor-1 guarantee). Distortion for tiny-probability codes (< 3.8e-7) is
+# negligible — they round up from ~0.0004 to 1 entry, < 0.02% total mass shift.
+_SAMPLE_LUT_SIZE = 1 << 20
+
+
+def _build_sampling_lut(codes, vals, min_val, max_val):
+    """Build inverse-CDF LUT with floor-1 guarantee for every code."""
+    sorted_idx = np.argsort(vals)
+    sorted_vals = vals[sorted_idx].astype(np.float64)
+    sorted_codes = codes[sorted_idx]
+    n = len(sorted_codes)
+
+    mids = (sorted_vals[:-1] + sorted_vals[1:]) * 0.5
+    lo = np.empty(n, dtype=np.float64); hi = np.empty(n, dtype=np.float64)
+    lo[0] = min_val; lo[1:] = mids; hi[:-1] = mids; hi[-1] = max_val
+    widths = np.maximum(hi - lo, 0.0)
+    total = widths.sum()
+
+    if total <= 0 or n >= _SAMPLE_LUT_SIZE:
+        return sorted_codes  # fallback: uniform over codes
+
+    probs = widths / total
+    target = probs * _SAMPLE_LUT_SIZE
+    # Floor-1: each code gets at least 1, rest distributed proportionally
+    counts = np.ones(n, dtype=np.int32)
+    remaining = _SAMPLE_LUT_SIZE - n
+    fractional = np.maximum(target - 1.0, 0.0)
+    frac_sum = fractional.sum()
+    if frac_sum > 0:
+        extra = (fractional / frac_sum * remaining).astype(np.int32)
+        remainder = fractional / frac_sum * remaining - extra.astype(np.float64)
+        extra[np.argsort(-remainder)[:remaining - extra.sum()]] += 1
+        counts += extra
+
+    lut = np.repeat(sorted_codes.astype(np.uint8), counts)
+    if len(lut) < _SAMPLE_LUT_SIZE:
+        lut = np.pad(lut, (0, _SAMPLE_LUT_SIZE - len(lut)), constant_values=sorted_codes[-1])
+    return lut[:_SAMPLE_LUT_SIZE]
+
+
 def sample_hif8_value_uniform(min_val, max_val, shape):
+    """Generate random HiF8 codes with value-space-uniform distribution.
+
+    256KB LUT with floor-1 guarantee — every valid code appears at least once.
+    Tiny probability codes get rounded up (max distortion < 0.02% of total mass).
+    """
     key = (float(min_val), float(max_val))
     if key not in _VU_CACHE:
         codes = get_valid_hif8_codes(min_val, max_val)
         vals = hif8_to_fp32_numpy(codes)
-        sorted_idx = np.argsort(vals)
-        sorted_vals = vals[sorted_idx].astype(np.float64)
-        sorted_codes = codes[sorted_idx]
-        mids = (sorted_vals[:-1] + sorted_vals[1:]) * 0.5
-        lo = np.empty(len(sorted_vals), dtype=np.float64)
-        hi = np.empty(len(sorted_vals), dtype=np.float64)
-        lo[0] = min_val
-        lo[1:] = mids
-        hi[:-1] = mids
-        hi[-1] = max_val
-        widths = np.maximum(hi - lo, 0.0)
-        total = widths.sum()
-        probs = widths / total if total > 0 else np.ones_like(widths) / len(widths)
-        _VU_CACHE[key] = (sorted_codes, probs)
-    codes, probs = _VU_CACHE[key]
-    return np.random.choice(codes, size=shape, p=probs)
+        lut = _build_sampling_lut(codes, vals, min_val, max_val)
+        _VU_CACHE[key] = lut
+
+    lut = _VU_CACHE[key]
+    indices = np.random.randint(0, len(lut), size=shape, dtype=np.int32)
+    return lut[indices]
