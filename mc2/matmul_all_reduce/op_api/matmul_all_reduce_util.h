@@ -49,9 +49,9 @@ constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;
 constexpr char DEBUG_MODE_ENV[] = "ASCEND_MC2_DEBUG_MODE";
 constexpr size_t DIM_LEN_ONE = 1;
 constexpr size_t DIM_LEN_TWO = 2;
-constexpr char COMM_MODE_AICPU[] = "ai_cpu";
-constexpr char COMM_MODE_CCU[] = "ccu";
-constexpr char COMM_MODE_DEFAULT[] = "";
+constexpr const char* COMM_MODE_AICPU_CHARPTR = "ai_cpu";
+constexpr const char* COMM_MODE_CCU_CHARPTR = "ccu";
+constexpr const char* COMM_MODE_DEFAULT_CHARPTR = "";
 
 struct NnopbaseDfxId {
     uint32_t id;

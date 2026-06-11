@@ -572,14 +572,14 @@ bool IsCommModeValid(const char* commModePtr)
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Its new Aclnn interface for A5, commModePtr should not be nullptr!");
             return false;
         }
-        if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
-        if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_AICPU_CHARPTR) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_CCU_CHARPTR) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_DEFAULT_CHARPTR) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "For A5, commMode only support 'ccu', 'ai_cpu' or '', but it is '%s'.", commModePtr);
     } else {
         if (commModePtr == nullptr) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_DEFAULT_CHARPTR) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "For A2, commMode only support nullptr or '', but it is '%s'.", commModePtr);
     }

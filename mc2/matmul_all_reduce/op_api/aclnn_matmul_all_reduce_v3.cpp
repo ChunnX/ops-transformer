@@ -116,13 +116,13 @@ aclnnStatus aclnnMatmulAllReduceV3(
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
-            if (strcmp(commMode, COMM_MODE_CCU) == 0) {
+            if (strcmp(commMode, COMM_MODE_CCU_CHARPTR) == 0) {
                 OP_LOGD("A5 aclnnMatmulAllReduceV3, commMode is 'ccu', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
+            } else if (strcmp(commMode, COMM_MODE_AICPU_CHARPTR) == 0) {
                 OP_LOGD("A5 aclnnMatmulAllReduceV3, commMode is 'aicpu', use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
+            } else if (strcmp(commMode, COMM_MODE_DEFAULT_CHARPTR) == 0) {
                 OP_LOGD("A5 aclnnMatmulAllReduceV3, commMode is '', use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }

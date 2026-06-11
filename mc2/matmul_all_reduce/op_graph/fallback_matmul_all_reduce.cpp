@@ -18,6 +18,8 @@
 
 namespace fallback {
 inline const char* kInnerDebug = "MmAllReduceFallback";
+constexpr const char* COMM_MODE_CCU_CHARPTR = "ccu";
+constexpr const char* COMM_MODE_AICPU_CHARPTR = "ai_cpu";
 
 struct MatmulParas {
     /* const aclTensor *会导致Release重载方法匹配不上，造成内存泄漏 */
@@ -124,19 +126,19 @@ struct CommParas {
 
 inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
-    para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
+    para.group = attrs->GetStr(ops::MmAllReduceAttrIdx::K_GROUP);
     OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"), return ge::GRAPH_FAILED);
 
-    para.op = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_OP));
+    para.op = attrs->GetStr(ops::MmAllReduceAttrIdx::K_OP);
     para.op = (para.op == nullptr ? "sum" : para.op);
 
-    const int64_t* comm_turn_ptr = attrs->GetInt(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_TURN));
+    const int64_t* comm_turn_ptr = attrs->GetInt(ops::MmAllReduceAttrIdx::K_COMM_TURN);
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
 
-    para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+    para.comm_mode = attrs->GetStr(ops::MmAllReduceAttrIdx::K_COMM_MODE);
     para.comm_mode = (para.comm_mode == nullptr ? "" : para.comm_mode);
 
     return ge::SUCCESS;
@@ -205,12 +207,9 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(ops::MC2OutputIdx::K_Y));
     OPS_CHECK(y == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "y"), return ge::GRAPH_FAILED);
 
-    bool isCommMode = false;
-    if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
-    }
+    bool isCommModeCCU = comm_para.comm_mode != nullptr && strcmp(comm_para.comm_mode, COMM_MODE_CCU_CHARPTR) == 0;
+    bool isCommModeAICPU = comm_para.comm_mode != nullptr && strcmp(comm_para.comm_mode, COMM_MODE_AICPU_CHARPTR) == 0;
+    bool isCommMode = isCommModeCCU || isCommModeAICPU;
 
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:
