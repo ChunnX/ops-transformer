@@ -12,27 +12,31 @@
 #define STEM_OAM_PREP_VARLEN_Q_REGBASE_H
 
 #include "kernel_operator.h"
-#include "stem_oam_prep_varlen_q_tiling_data.h"
 
 using namespace AscendC;
 
-__simd_vf__ inline void ComputeBlockVf(
-    __ubuf__ fp8_e4m3fn_t* qPtr,
+constexpr uint32_t DIM_QK = 128;
+constexpr uint32_t MAX_STEM_BLOCK_SIZE = 256;
+constexpr uint32_t MAX_STEM_STRIDE = 64;
+constexpr uint32_t MAX_QFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
+constexpr uint32_t VARLEN_READ_ALIGN = 8;
+
+__simd_vf__ inline void ComputeWeightedGroupSumVf(
+    __ubuf__ float* qFP32Ptr,
     __ubuf__ float* scalePtr,
-    __ubuf__ float* outFloatPtr,
-    uint16_t S, uint16_t R, uint16_t dimQk, float kscaleVal)
+    __ubuf__ float* groupSumPtr,
+    uint16_t S, uint16_t R, uint16_t dimQk)
 {
     using namespace AscendC::MicroAPI;
 
     constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
     uint16_t vlIterF = (dimQk + VL_F - 1) / VL_F;
 
-    RegTensor<float> accReg;
-    RegTensor<float> qFloatReg;
-    RegTensor<fp8_e4m3fn_t> qFp8Reg;
+    RegTensor<float> qReg;
     RegTensor<float> scaleBrcReg;
+    RegTensor<float> accReg;
 
-    static constexpr CastTrait castFp8ToFp32 = {
+    static constexpr CastTrait castTrait = {
         RegLayout::ZERO, SatMode::NO_SAT,
         MaskMergeMode::MERGING, RoundMode::CAST_NONE
     };
@@ -55,16 +59,11 @@ __simd_vf__ inline void ComputeBlockVf(
             for (uint16_t vi = 0; vi < vlIterF; vi++) {
                 uint32_t remainCount = static_cast<uint32_t>(dimQk - vi * VL_F);
                 maskF = UpdateMask<float>(remainCount);
-                uint32_t offset = static_cast<uint32_t>(row_idx) * dimQk + vi * VL_F;
+                uint32_t qOffset = static_cast<uint32_t>(row_idx) * dimQk + vi * VL_F;
 
-                DataCopy<fp8_e4m3fn_t, LoadDist::DIST_UNPACK4_B8>(
-                    qFp8Reg, qPtr + offset);
-                Cast<float, fp8_e4m3fn_t, castFp8ToFp32>(
-                    qFloatReg, qFp8Reg, maskF);
-
-                Mul(qFloatReg, qFloatReg, scaleBrcReg, maskF);
-                Muls(qFloatReg, qFloatReg, kscaleVal, maskF);
-                Add(accReg, accReg, qFloatReg, maskF);
+                DataCopy(qReg, qFP32Ptr + qOffset);
+                Mul(qReg, qReg, scaleBrcReg, maskF);
+                Add(accReg, accReg, qReg, maskF);
             }
         }
 
@@ -72,7 +71,7 @@ __simd_vf__ inline void ComputeBlockVf(
             uint32_t remainCount = static_cast<uint32_t>(dimQk - vi * VL_F);
             maskF = UpdateMask<float>(remainCount);
             uint32_t outOffset = static_cast<uint32_t>(g) * dimQk + vi * VL_F;
-            DataCopy(outFloatPtr + outOffset, accReg, maskF);
+            DataCopy(groupSumPtr + outOffset, accReg, maskF);
         }
     }
 }
@@ -82,10 +81,10 @@ public:
     __aicore__ inline KernelStemPrepQ() {}
 
     __aicore__ inline void Init(
-        GM_ADDR q, GM_ADDR qscale, GM_ADDR kscale,
+        GM_ADDR q, GM_ADDR qscale,
         GM_ADDR q_seq_lens, GM_ADDR cu_seqlens_q,
         GM_ADDR qflat,
-        const __gm__ StemPrepQTilingData* tiling)
+        StemPrepQTilingData* tiling)
     {
         tiling_ = tiling;
         task_id_ = GetBlockIdx();
@@ -123,18 +122,14 @@ public:
             head_idx_  = bh_idx % num_q_heads_;
             cores_per_bh_this_ = (bh_idx < rem) ? big : base;
         } else {
-            batch_idx_   = tiling->core_batch_idx[task_id_];
-            head_idx_    = tiling->core_head_idx[task_id_];
-            qb_start_    = tiling->core_block_idx[task_id_];
-            block_num_   = tiling->core_block_num[task_id_];
-            core_in_bh_  = 0;
+            batch_idx_ = 0;
+            head_idx_ = 0;
+            qb_start_ = 0;
+            core_in_bh_ = 0;
             cores_per_bh_this_ = 1;
         }
 
         ReadVarlenInfo(batch_idx_);
-        ReadKScale(head_idx_);
-
-        kScaleBase_ = kscale;
 
         if (tiling->split_mode == 0) {
             qb_start_ = 0;
@@ -157,9 +152,10 @@ public:
         qflatBase_ = qflat;
 
         pipe_.InitBuffer(qBlockBuf_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
+        pipe_.InitBuffer(qBlockFP32Buf_, B_ * dim_qk_ * sizeof(float));
         pipe_.InitBuffer(scalesBuf_, B_ * sizeof(float));
-        pipe_.InitBuffer(outBuf_, qflat_dim_ * sizeof(float));
-        pipe_.InitBuffer(outBf16Buf_, qflat_dim_ * sizeof(bfloat16_t));
+        pipe_.InitBuffer(groupSumBuf_, qflat_dim_ * sizeof(float));
+        pipe_.InitBuffer(outQueueQflat_, 1, qflat_dim_ * sizeof(bfloat16_t));
         pipe_.InitBuffer(varlenInfoBuf_, VARLEN_READ_ALIGN * sizeof(int32_t));
     }
 
@@ -167,38 +163,8 @@ public:
     {
         if (task_id_ >= tiling_->total_tasks) return;
 
-        if (tiling_->split_mode <= 1) {
-            for (uint32_t qb = qb_start_; qb < qb_end_; qb++) {
-                ProcessOneBlock(qb);
-            }
-        } else {
-            uint32_t remaining = block_num_;
-            uint32_t cur_b  = batch_idx_;
-            uint32_t cur_h  = head_idx_;
-            uint32_t cur_qb = qb_start_;
-
-            while (remaining > 0) {
-                uint32_t avail = num_Qb_ - cur_qb;
-                uint32_t step  = (remaining < avail) ? remaining : avail;
-
-                for (uint32_t i = 0; i < step; i++) {
-                    ProcessOneBlock(cur_qb + i);
-                }
-
-                remaining -= step;
-                if (remaining > 0) {
-                    cur_qb = 0;
-                    cur_h++;
-                    if (cur_h >= num_q_heads_) {
-                        cur_h = 0;
-                        cur_b++;
-                    }
-                    batch_idx_ = cur_b;
-                    head_idx_  = cur_h;
-                    ReadVarlenInfo(cur_b);
-                    ReadKScale(cur_h);
-                }
-            }
+        for (uint32_t qb = qb_start_; qb < qb_end_; qb++) {
+            ProcessOneBlock(qb);
         }
     }
 
@@ -224,22 +190,14 @@ private:
         num_Qb_   = q_padded_ / B_;
     }
 
-    __aicore__ inline void ReadKScale(uint32_t h)
-    {
-        kScaleGm_.SetGlobalBuffer((__gm__ float*)kScaleBase_ + h, 1);
-        LocalTensor<float> kScaleLocal = varlenInfoBuf_.Get<float>();
-        DataCopyPad(kScaleLocal, kScaleGm_,
-            {1, 4, 0, 0}, {false, 0, 0, 0});
-        PipeBarrier<PIPE_MTE2>();
-        kscale_val_ = kScaleLocal.GetValue(0);
-    }
-
     __aicore__ inline void ProcessOneBlock(uint32_t qb)
     {
         CopyInQBlock(qb);
-        CopyInScales(qb);
-        ComputeBlock();
-        CastAndCopyOut(qb);
+        CastBlockToFP32(qb);
+        CopyInScalesBulk(qb);
+        AccumulateBlock(qb);
+        FlattenAndCast();
+        CopyOutBlock(qb);
     }
 
     __aicore__ inline void CopyInQBlock(uint32_t qb)
@@ -264,7 +222,24 @@ private:
         PipeBarrier<PIPE_MTE2>();
     }
 
-    __aicore__ inline void CopyInScales(uint32_t qb)
+    __aicore__ inline void CastBlockToFP32(uint32_t qb)
+    {
+        LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.Get<fp8_e4m3fn_t>();
+        LocalTensor<float> qBlockFP32Local = qBlockFP32Buf_.Get<float>();
+        Duplicate(qBlockFP32Local, 0.0f, B_ * dim_qk_);
+
+        uint32_t start_row = qb * B_;
+        uint32_t valid_rows = (start_row + B_ <= q_len_) ? B_ :
+                              (q_len_ > start_row ? q_len_ - start_row : 0);
+        uint32_t cast_count = valid_rows * dim_qk_;
+        if (cast_count > 0) {
+            Cast<float, fp8_e4m3fn_t>(qBlockFP32Local, qBlockLocal,
+                RoundMode::CAST_NONE, cast_count);
+        }
+        PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void CopyInScalesBulk(uint32_t qb)
     {
         LocalTensor<float> scalesLocal = scalesBuf_.Get<float>();
         uint32_t scaleBase = batch_idx_ * (num_q_heads_ * max_q_padded_)
@@ -277,39 +252,44 @@ private:
         PipeBarrier<PIPE_MTE2>();
     }
 
-    __aicore__ inline void ComputeBlock()
+    __aicore__ inline void AccumulateBlock(uint32_t qb)
     {
-        __ubuf__ fp8_e4m3fn_t* qPtr =
-            (__ubuf__ fp8_e4m3fn_t*)qBlockBuf_.Get<fp8_e4m3fn_t>().GetPhyAddr();
+        __ubuf__ float* qFP32Ptr =
+            (__ubuf__ float*)qBlockFP32Buf_.Get<float>().GetPhyAddr();
         __ubuf__ float* scalePtr =
             (__ubuf__ float*)scalesBuf_.Get<float>().GetPhyAddr();
-        __ubuf__ float* outFloatPtr =
-            (__ubuf__ float*)outBuf_.Get<float>().GetPhyAddr();
+        __ubuf__ float* groupSumPtr =
+            (__ubuf__ float*)groupSumBuf_.Get<float>().GetPhyAddr();
 
-        VF_CALL<ComputeBlockVf>(qPtr, scalePtr, outFloatPtr,
+        VF_CALL<ComputeWeightedGroupSumVf>(qFP32Ptr, scalePtr, groupSumPtr,
             static_cast<uint16_t>(S_),
             static_cast<uint16_t>(R_),
-            static_cast<uint16_t>(dim_qk_),
-            kscale_val_);
+            static_cast<uint16_t>(dim_qk_));
     }
 
-    __aicore__ inline void CastAndCopyOut(uint32_t qb)
+    __aicore__ inline void FlattenAndCast()
     {
-        LocalTensor<float> outFloatLocal = outBuf_.Get<float>();
-        LocalTensor<bfloat16_t> outBf16Local = outBf16Buf_.Get<bfloat16_t>();
-        Cast<bfloat16_t, float>(outBf16Local, outFloatLocal, RoundMode::CAST_RINT, qflat_dim_);
-        PipeBarrier<PIPE_V>();
+        LocalTensor<float> groupSumLocal = groupSumBuf_.Get<float>();
+        LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
+        Cast<bfloat16_t, float>(qflatLocal, groupSumLocal,
+            RoundMode::CAST_RINT, qflat_dim_);
+        outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
+    }
 
+    __aicore__ inline void CopyOutBlock(uint32_t qb)
+    {
+        LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.DeQue<bfloat16_t>();
         uint32_t outOffset = batch_idx_ * (num_q_heads_ * tiling_->max_Qb * qflat_dim_)
                             + head_idx_  * (tiling_->max_Qb * qflat_dim_)
                             + qb         * qflat_dim_;
         qflatGm_.SetGlobalBuffer((__gm__ bfloat16_t*)qflatBase_ + outOffset, qflat_dim_);
-        DataCopyPad(qflatGm_, outBf16Local,
+        DataCopyPad(qflatGm_, qflatLocal,
             {1, static_cast<uint16_t>(qflat_dim_ * sizeof(bfloat16_t)), 0, 0});
+        outQueueQflat_.FreeTensor(qflatLocal);
     }
 
     TPipe pipe_;
-    const __gm__ StemPrepQTilingData* tiling_;
+    StemPrepQTilingData* tiling_;
 
     uint32_t task_id_ = 0;
     uint32_t batch_idx_ = 0;
@@ -325,32 +305,29 @@ private:
     uint32_t S_ = 0;
     uint32_t R_ = 0;
     uint32_t qflat_dim_ = 0;
-    float kscale_val_ = 0.0f;
 
     uint32_t qb_start_ = 0;
     uint32_t qb_end_ = 0;
     uint32_t core_in_bh_ = 0;
     uint32_t cores_per_bh_this_ = 1;
-    uint32_t block_num_ = 0;
 
     GM_ADDR qSeqLensBase_ = nullptr;
     GM_ADDR cuSeqLensBase_ = nullptr;
-    GM_ADDR kScaleBase_ = nullptr;
     GM_ADDR qBase_ = nullptr;
     GM_ADDR qscaleBase_ = nullptr;
     GM_ADDR qflatBase_ = nullptr;
 
     GlobalTensor<fp8_e4m3fn_t> qGm_;
     GlobalTensor<float> qscaleGm_;
-    GlobalTensor<float> kScaleGm_;
     GlobalTensor<int32_t> qSeqLensGm_;
     GlobalTensor<int32_t> cuSeqLensGm_;
     GlobalTensor<bfloat16_t> qflatGm_;
 
     TBuf<TPosition::VECCALC> qBlockBuf_;
+    TBuf<TPosition::VECCALC> qBlockFP32Buf_;
     TBuf<TPosition::VECCALC> scalesBuf_;
-    TBuf<TPosition::VECCALC> outBuf_;
-    TBuf<TPosition::VECCALC> outBf16Buf_;
+    TBuf<TPosition::VECCALC> groupSumBuf_;
+    TQue<TPosition::VECOUT, 1> outQueueQflat_;
     TBuf<TPosition::VECCALC> varlenInfoBuf_;
 };
 
