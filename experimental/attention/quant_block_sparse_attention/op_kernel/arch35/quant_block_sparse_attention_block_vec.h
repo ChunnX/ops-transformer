@@ -805,7 +805,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
     if constexpr (isPa) {
         sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
-        sharedParams.blockSize = inputParamsRegbase.blockSize;
+        sharedParams.kvSparseBlockSize = inputParamsRegbase.blockSize;
         sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
         sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
         sharedParams.paBlockStride = inputParamsRegbase.paBlockStride;

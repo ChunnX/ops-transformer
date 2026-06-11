@@ -54,6 +54,7 @@ struct CubeCoordInfo {
     uint32_t curBIdx;
     uint32_t s1Coord;
     uint32_t s2Coord;
+    int32_t sparseBlockIdx[2]; // BSA: 当前迭代的 2 个 sparse block index
 };
 
 __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
@@ -71,7 +72,7 @@ __aicore__ constexpr TPosition GetC2Position() {
 
 #define CHILD_SPEC_TEMPLATE_ARGS \
     INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isPa
+    hasAtten, OUTPUT_T, isPa, useDn
 
 #define TEMPLATE_INTF \
     template <typename INPUT_T, typename T, BSALayout layout, BSALayout kvLayout, \
@@ -81,7 +82,7 @@ __aicore__ constexpr TPosition GetC2Position() {
 
 #define TEMPLATE_INTF_ARGS \
     INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, \
-    hasAtten, OUTPUT_T, isPa
+    hasAtten, OUTPUT_T, isPa, useDn
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_T) \
@@ -97,6 +98,7 @@ __aicore__ constexpr TPosition GetC2Position() {
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128) \
     X(hasAtten, bool, false) \
     X(isPa, bool, false) \
+    X(useDn, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

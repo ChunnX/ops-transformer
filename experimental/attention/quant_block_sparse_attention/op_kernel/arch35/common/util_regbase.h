@@ -95,7 +95,7 @@ enum class SparseType : uint8_t {
 struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
-    int32_t sparseSeqLen;
+    int32_t actSparseLen;
     int64_t s1LoopStart;
     int64_t s1LoopEnd;
     // BN循环生产的数据
@@ -288,7 +288,10 @@ struct RunInfo {
     bool isPostQuantBF16; \
     bool isPostQuantOffsetExist; \
     float postQuantScaleValue; \
-    float postQuantOffsetValue
+    float postQuantOffsetValue; \
+    /* sparseBlockSize */ \
+    uint32_t qSparseBlockSize;     /* sparse_q_block_size (= 128)  */  \
+    uint32_t kvSparseBlockSize;    /* sparse_kv_block_size (= 128) */  \
 
 #define CV_SHARED_PARAMS \
     /* base params */ \
@@ -387,6 +390,8 @@ struct CVSharedParams<true> {
     uint32_t kvRightPaddingSize;
 
     int32_t blockSize;
+    int32_t qSparseBlockSize;
+    int32_t kvSparseBlockSize;
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     uint32_t paLayoutType;

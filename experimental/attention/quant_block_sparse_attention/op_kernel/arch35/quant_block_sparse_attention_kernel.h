@@ -375,15 +375,15 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint64_t sparseLoopCountOffset = sparseBase + s2LoopCount * 2;
     runInfo.sparseBlkIdx1 = sparseIndicesGm.GetValue(sparseLoopCountOffset);
     runInfo.sparseBlkIdx2 = sparseIndicesGm.GetValue(sparseLoopCountOffset + 1);
-    if ((runInfo.sparseBlkIdx1 + 1) * constInfo.blockSize > runParam.actualS2Size) {
-        runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.blockSize;
+    if ((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+        runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
     } else {
         runInfo.s2SparseBlk1RealSize = constInfo.blockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if ((runInfo.sparseBlkIdx2 + 1) * constInfo.blockSize > runParam.actualS2Size) {
-        runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.blockSize;
+    if ((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+        runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
     } else {
         runInfo.s2SparseBlk2RealSize = constInfo.blockSize;
@@ -393,9 +393,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     // 判断当前sparse块是否需要计算
     int64_t delta = runParam.nextTokensPerBatch;
     uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
-    uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
+    uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
     uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
-    uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.blockSize;
+    uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
     AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1, runInfo.sparseBlk1PartialMask);
     AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2, runInfo.sparseBlk2PartialMask);
 }
@@ -411,6 +411,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     runInfo.s2LoopCount = s2LoopCount;
     runInfo.qBOffset = runParam.qBOffset;
     runInfo.qBScalarOffset = runParam.qBScalarOffset;
+    runInfo.actSparseLen = runParam.actSparseLen;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
@@ -468,7 +469,7 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
     this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
     if constexpr (isPa) {
         this->constInfo.blockTableDim2 = this->sharedParams.blockTableDim2;
-        this->constInfo.blockSize = this->sharedParams.blockSize;
+        this->constInfo.kvSparseBlockSize = this->sharedParams.kvSparseBlockSize;
         this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
         this->constInfo.paBlockStride = this->sharedParams.paBlockStride;
