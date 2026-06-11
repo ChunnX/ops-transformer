@@ -80,7 +80,7 @@ struct AntiquantTaskParamBaseAPI {
     uint32_t paKvShapeType;
     uint64_t kvPaddingBeginOffset;
 
-    bool isPrefixLoop = 0;
+    bool isPrefixLoop = false;
 };
 
 

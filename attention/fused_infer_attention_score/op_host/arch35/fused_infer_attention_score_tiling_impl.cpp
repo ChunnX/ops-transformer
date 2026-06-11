@@ -12,7 +12,6 @@
  * \file fused_infer_attention_score_tiling_impl.cpp
  * \brief
  */
-
 #include "fused_infer_attention_score_tiling_impl.h"
 #include "../fused_infer_attention_score_tiling_info_parser.h"
 
@@ -59,7 +58,16 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetEmptyTensor(gert::TilingC
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-    uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
+    int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
+    uint32_t singleCoreSize;
+    if (singleCoreRawSize > UINT32_MAX) {
+        OP_LOGI(fiaInfo.opName,
+            "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u",
+            singleCoreRawSize, outSize, platformInfo_.aivNum);
+        singleCoreSize = UINT32_MAX;
+    } else {
+        singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
+    }
     if (fiaInfo.isOutQuantEnable) {
         singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
     }
@@ -409,7 +417,18 @@ int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, in
     if (d == 0) {
         return 0;
     }
-    return (an > 0) ? (an % d + an) * (an / d  + 1) / 2 : 0; // 2：等差数列求和公式分母 
+    if (an <= 0) {
+        return 0;
+    }
+    int64_t term1 = an % d + an;
+    int64_t term2 = an / d + 1;
+    if (term1 > INT64_MAX / term2) {
+        OP_LOGI("FusedInferAttentionScore",
+            "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", 
+            term1, term2, an, d);
+        return INT64_MAX;
+    }
+    return term1 * term2 / 2; // 2:等差数列求和公式分母
 }
 
 int64_t FusedInferAttentionScoreTilingImpl::GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength,
@@ -1529,8 +1548,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceAntiQuant(const 
                           sizeof(float);  // 2 : sMax 和 sSum
     }
 
-    workspaceSize_ += 100 * 1024 * 1024;  // 100*1024*1024: extra workspace for dump in david
-
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         workspaceSize_ += platformInfo_.coreNum * 64 * 2;  // bmm1 bmm2 2份
     }
@@ -1936,7 +1953,16 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-    uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
+    int64_t singleCoreRawSize = (outSize + platformInfo_.aivNum - 1) / platformInfo_.aivNum;
+    uint32_t singleCoreSize;
+    if (singleCoreRawSize > UINT32_MAX) {
+        OP_LOGI(fiaInfo.opName,
+            "singleCoreRawSize=%lld exceeds UINT32_MAX, clamped to UINT32_MAX, outSize=%lld, aivNum=%u",
+            singleCoreRawSize, outSize, platformInfo_.aivNum);
+        singleCoreSize = UINT32_MAX;
+    } else {
+        singleCoreSize = static_cast<uint32_t>(singleCoreRawSize);
+    }
     if (fiaInfo.isOutQuantEnable) {
         singleCoreSize = ((singleCoreSize + 1) / 2) * 2;
     }
