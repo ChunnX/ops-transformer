@@ -37,3 +37,4 @@ from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .elastic_buffer import ElasticBuffer, EPHandle
+from .urma_p2p_benchmark import npu_urma_p2p_benchmark
