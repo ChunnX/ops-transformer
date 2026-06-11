@@ -371,9 +371,9 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
         maskInfo.attenMaskSize = static_cast<int64_t>(sSize);
     } else if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
         if (attenMaskDim != MASK_DIM_SS) {
- 	        OP_LOGE(fiaInfo.opName, "Attenmask dim num only support 2 when sparse mode = %u, but got %zu",
- 	                SPARSE_MODE_INIT_SWA, attenMaskDim);
- 	            return ge::GRAPH_FAILED;
+                OP_LOGE(fiaInfo.opName, "Attenmask dim num only support 2 when sparse mode = %u, but got %zu",
+                    SPARSE_MODE_INIT_SWA, attenMaskDim);
+                return ge::GRAPH_FAILED;
  	    }
     } else {
         if (attenMaskDim == MASK_DIM_SS) {
