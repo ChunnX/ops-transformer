@@ -14,6 +14,7 @@
  */
 #include "onnx_common.h"
 #include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
+#include "op_common/log/log.h"
 
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;
@@ -86,7 +87,8 @@ static Status GetFinalDimsByOperator(
   } else if (input_layout == "SBH") {
     numels = dims[1] * dims[0] * dims[0] * head_num;
   } else {
-    OP_LOGE(GetOpName(op).c_str(), "input_layer is not support");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "input_layout",
+        input_layout, "The value of input_layout must be BSH or SBH");
     return FAILED;
   }
   int64_t length = (numels + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM / ONE_BYTE_BITS;
