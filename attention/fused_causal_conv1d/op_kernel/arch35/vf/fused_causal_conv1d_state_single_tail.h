@@ -40,12 +40,10 @@ constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float);
 // 对stateAddr的数据进行原地读写出操作， stateAddr=yAddr
 template <typename T>
 __simd_vf__ void Conv1dNeedStateSingleTailConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                                __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+                                                __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen, uint8_t dimLoopNum, uint16_t dimRem)
 {
     MicroAPI::RegTensor<float> xB32, mulB32, weightB32, yB32;
     MicroAPI::RegTensor<T> xB16, weightB16, yB16;
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -105,12 +103,10 @@ __simd_vf__ void Conv1dNeedStateSingleTailConVF(__ubuf__ T *xAddr, __ubuf__ T *w
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateSingleTailNoConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                                  __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+                                                  __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen, uint8_t dimLoopNum, uint16_t dimRem)
 {
     MicroAPI::RegTensor<float> xB32, mulB32, weightB32, yB32;
     MicroAPI::RegTensor<T> xB16, weightB16, yB16;
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -168,15 +164,13 @@ __simd_vf__ void Conv1dNeedStateSingleTailNoConVF(__ubuf__ T *xAddr, __ubuf__ T 
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateSingleTailConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                                  __ubuf__ T *yAddr, uint32_t dimLen)
+                                                  __ubuf__ T *yAddr, uint32_t dimLen, uint8_t dimLoopNum, uint16_t dimRem)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
     MicroAPI::RegTensor<float> x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32, y2B32;
     MicroAPI::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
     MicroAPI::RegTensor<T> x21B16, x22B16, x23B16, y2B16;
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -281,15 +275,13 @@ __simd_vf__ void Conv1dNeedStateSingleTailConBHVF(__ubuf__ T *xAddr, __ubuf__ T 
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateSingleTailNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                                    __ubuf__ T *yAddr, uint32_t dimLen)
+                                                    __ubuf__ T *yAddr, uint32_t dimLen, uint8_t dimLoopNum, uint16_t dimRem)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
     MicroAPI::RegTensor<float> x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32, y2B32;
     MicroAPI::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
     MicroAPI::RegTensor<T> x21B16, x22B16, x23B16, y2B16;
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
     MicroAPI::MaskReg maskB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskRem;
     int32_t offset = 0;
@@ -397,10 +389,16 @@ __aicore__ inline void Conv1dNeedStateSingleTail(LocalTensor<T> &xUb, LocalTenso
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
+    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
+    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
+    if(dimRem == 0) {
+        dimLoopNum -= 1;
+        dimRem = B32_REP_SIZE;
+    }    
     if (isResidualConnection == 1) {
-        Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen, dimLoopNum, dimRem);
     } else {
-        Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen, dimLoopNum, dimRem);
     }
 }
 
@@ -414,21 +412,27 @@ __aicore__ inline void Conv1dNeedStateSingleTailBH(LocalTensor<T> &xUb, LocalTen
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
 
+    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
+    uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
+    if(dimRem == 0) {
+        dimLoopNum -= 1;
+        dimRem = B32_REP_SIZE;
+    }
     if (isResidualConnection == 1) {
         if (convStateLen == 2) {
-            Conv1dNeedStateSingleTailConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+            Conv1dNeedStateSingleTailConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen, dimLoopNum, dimRem);
         } else {
             uint32_t stateSLen = 2;
             uint32_t xSLen = 1;
-            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen, dimLoopNum, dimRem);
         }
     } else {
         if (convStateLen == 2) {
-            Conv1dNeedStateSingleTailNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+            Conv1dNeedStateSingleTailNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen, dimLoopNum, dimRem);
         } else {
             uint32_t stateSLen = 2;
             uint32_t xSLen = 1;
-            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen, dimLoopNum, dimRem);
         }
     }
 }
