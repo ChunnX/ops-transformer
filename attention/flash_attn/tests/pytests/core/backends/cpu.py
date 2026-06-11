@@ -36,8 +36,11 @@ class CPUBackend(Backend):
 
         if layout_kv.startswith("PA_") and layout_q == "TND":
             actual_b = params.get("actual_b", params["B"])
-            s2 = params["S2"]
-            tforward_kwargs["cu_seqlens_kv"] = [i * s2 for i in range(actual_b + 1)]
+            seq_kv = params["seqused_kv"]
+            cu_kv = [0]
+            for i in range(actual_b):
+                cu_kv.append(cu_kv[-1] + (seq_kv[i] if i < len(seq_kv) else seq_kv[0]))
+            tforward_kwargs["cu_seqlens_kv"] = cu_kv
 
         out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
         lse = torch.log(x_sum) + x_max
@@ -53,9 +56,18 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     if layout.startswith("PA_"):
         bnsd = _pa_to_bnsd(t, layout, params)
         if params.get("layout_q", "") == "TND":
-            # TND+PA: BNSD(B,N,S,D) → TND(1,N,B*S,D)
+            # TND+PA: PA→BNSD后按 seqused_kv 紧密拼接，与纯 TND+TND 一致
+            # result[0, n, cum_kv[b]+s, :] = bnsd[b, n, s, :]  (s < seqused_kv[b])
             B, N2, S2, D = bnsd.shape
-            return bnsd.reshape(1, N2, B * S2, D).clone().float()
+            seq_kv = params["seqused_kv"]
+            total_kv = sum(seq_kv[:B])
+            result = torch.zeros(1, N2, total_kv, D, dtype=torch.float32)
+            offset = 0
+            for b in range(B):
+                slen = seq_kv[b] if b < len(seq_kv) else seq_kv[0]
+                result[0, :, offset:offset + slen, :] = bnsd[b, :, :slen, :]
+                offset += slen
+            return result
         return bnsd.float()
     return t.clone().float()
 
