@@ -30,6 +30,8 @@ using namespace op;
 extern "C" {
 #endif
 
+static constexpr size_t COMM_ALG_LEN_MAX = 128U;
+
 // 将int4打包为int32输入的Tensor还原回int4
 aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor *executor)
 {
@@ -73,6 +75,13 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
         emptyTensors.emplace_back(emptyTensor);
         outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
         ioList = outList;
+    }
+}
+
+static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, size_t maxCopyLen)
+{
+    if (src != nullptr) {
+        (void)strncpy_s(dst, dstSize, src, maxCopyLen);
     }
 }
 
@@ -126,12 +135,20 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
             weight2 = ConvertTensorListToInt4(weight2, *executor);
         }
     }
+    
+    if (commAlg != nullptr && strlen(commAlg) >= COMM_ALG_LEN_MAX) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commAlg length %zu exceeds max limit %zu.",
+                strlen(commAlg), COMM_ALG_LEN_MAX);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    char commAlgBuf[COMM_ALG_LEN_MAX] = {0};
+    SafeCopyGroupBuf(commAlgBuf, COMM_ALG_LEN_MAX, commAlg, COMM_ALG_LEN_MAX - 1);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
-        dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
+        dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, commAlgBuf, 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
         workspaceSize, executor);
 
