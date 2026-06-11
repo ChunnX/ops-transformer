@@ -122,8 +122,8 @@ public:
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> metadataGm;
-    __gm__ int64_t *actualSeqQlenAddr;
-    __gm__ int64_t *actualSeqKvlenAddr;
+    __gm__ int32_t *actualSeqQlenAddr;
+    __gm__ int32_t *actualSeqKvlenAddr;
     int32_t aicIdx;
 
     ConstInfo constInfo;
@@ -200,8 +200,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
     metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
     if constexpr (layout == BSALayout::TND) {
-        actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
-        actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
+        actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengths;
+        actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengthsKv;
     }
 
     uint64_t singleCoreOffset = 0;
@@ -378,14 +378,20 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     if ((runInfo.sparseBlkIdx1 + 1) * constInfo.blockSize > runParam.actualS2Size) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.blockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
+    } else {
+        runInfo.s2SparseBlk1RealSize = constInfo.blockSize;
+        runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
     if ((runInfo.sparseBlkIdx2 + 1) * constInfo.blockSize > runParam.actualS2Size) {
         runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.blockSize;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
+    } else {
+        runInfo.s2SparseBlk2RealSize = constInfo.blockSize;
+        runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk2RealSize;
     }
 
     // 判断当前sparse块是否需要计算
-    uint32_t delta = -runParam.nextTokensPerBatch;
+    int64_t delta = runParam.nextTokensPerBatch;
     uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
     uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
     uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
