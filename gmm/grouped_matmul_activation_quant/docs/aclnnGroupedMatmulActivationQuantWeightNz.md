@@ -80,20 +80,70 @@
 
           注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`。
 
-        - 4. 对激活结果进行MX量化：
+        - 4. 对激活结果进行MX量化，目标数据类型DType由quantDtype指定：
 
-          $shared\_exp = floor(log_2(max(|S_i|))) - emax$
+          - 场景1，当scaleAlg为0时，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
 
-          $YScale = 2 ^ {shared\_exp}$
+            $$
+            shared\_exp = floor(log_2(max_j(|V_j|))) - emax
+            $$
 
-          $Y_i = quantize\_to\_element\_format(S_i / YScale), \space i \space from \space 1 \space to \space blocksize$
+            $$
+            YScale = 2 ^ {shared\_exp}
+            $$
 
-          - $emax$：对应数据类型的最大正则数的指数位。
+            $$
+            P_j = cast\_to\_dst\_type(V_j / YScale, roundMode), \space j \space from \space 1 \space to \space blocksize
+            $$
 
-            | DataType | emax |
-            | :---: | :---: |
-            | FLOAT8_E4M3FN | 8 |
-            | FLOAT8_E5M2 | 15 |
+            量化后的$P_j$按对应$V_j$的位置组成输出$Y$，$YScale$按对应N轴分组组成输出$YScale$。
+
+            - $emax$：对应数据类型的最大正则数的指数位。
+
+              | DataType | emax |
+              | :---: | :---: |
+              | FLOAT8_E4M3FN | 8 |
+              | FLOAT8_E5M2 | 15 |
+
+          - 场景2，当scaleAlg为1时，只涉及FP8类型。将激活结果$S_i$在N轴按$k=blocksize$分组，每块单独计算一个块缩放因子$S_{fp32}^b$，再把块内所有元素用同一个$S_{fp32}^b$映射到目标FP8类型。如果最后一块不足$k$个元素，缺失值视为0并按完整块处理。
+
+            找到该块中数值的最大绝对值：
+
+            $$
+            Amax(D_{fp32}^b)=max(\{|d_j|\}_{j=1}^{k})
+            $$
+
+            将FP32映射到目标数据类型FP8可表示的范围内，其中$Amax(DType)$是目标精度能表示的最大值：
+
+            $$
+            S_{fp32}^b = \frac{Amax(D_{fp32}^b)}{Amax(DType)}
+            $$
+
+            将块缩放因子$S_{fp32}^b$转换为FP8格式下可表示的缩放值$S_{ue8m0}^b$。先从$S_{fp32}^b$中提取无偏指数$E_{int}^b$和尾数$M_{fixp}^b$，再为避免量化溢出对指数向上取整：
+
+            $$
+            E_{int}^b = \begin{cases}
+            E_{int}^b + 1, & \text{如果} S_{fp32}^b \text{为正规数，且} E_{int}^b < 254 \text{且} M_{fixp}^b > 0 \\
+            E_{int}^b + 1, & \text{如果} S_{fp32}^b \text{为非正规数，且} M_{fixp}^b > 0.5 \\
+            E_{int}^b, & \text{否则}
+            \end{cases}
+            $$
+
+            $$
+            S_{ue8m0}^b = 2 ^ {E_{int}^b}
+            $$
+
+            $$
+            R_{fp32}^b = \frac{1}{fp32(S_{ue8m0}^b)}
+            $$
+
+            对块内每个元素执行量化：
+
+            $$
+            d^j = DType(d_{fp32}^j \cdot R_{fp32}^b), \space j \space from \space 1 \space to \space blocksize
+            $$
+
+            最终输出的量化结果为$\left(S^b, [d^j]_{j=1}^{k}\right)$，其中$S^b$表示块缩放因子$S_{ue8m0}^b$，$[d^j]_{j=1}^{k}$表示块内量化后的数据。
 
     </details>
 
