@@ -2,7 +2,6 @@
 
 import numpy as np
 import torch
-import torch_npu
 from typing import Any, Dict
 
 from .base import Backend
@@ -101,6 +100,10 @@ class NPUBackend(Backend):
 
     def is_available(self) -> bool:
         return _HAS_NPU
+
+    def clear_cache(self):
+        if _HAS_NPU:
+            torch.npu.empty_cache()
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:

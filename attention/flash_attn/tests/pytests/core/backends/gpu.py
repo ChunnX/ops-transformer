@@ -6,7 +6,7 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from backends.gpu_impl import flash_attn_gpu
+    from core.backends.gpu_impl import flash_attn_gpu
     _HAS_GPU = True
 except ImportError:
     _HAS_GPU = False
@@ -26,6 +26,10 @@ class GPUBackend(Backend):
 
     def is_available(self) -> bool:
         return _HAS_GPU and torch.cuda.is_available()
+
+    def clear_cache(self):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
