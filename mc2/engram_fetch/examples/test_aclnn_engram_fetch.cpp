@@ -21,6 +21,188 @@
 #include <condition_variable>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_engram_fetch.h"
+#include <algorithm>
+#include <cstring>
+
+#include "acl/acl.h"
+#include "hccl/hccl.h"
+#include "hccl/hccl_comm.h"
+#include "hccl/hccl_res.h"
+#include "hccl/hccl_rank_graph.h"
+#include "hccl/hcomm_primitives.h"
+#include "hccl/hcomm_res_defs.h"
+#include "hccl/hccl_types.h"
+
+typedef uint64_t ChannelPtr;
+static constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4; // AIV URMA, local UB fabric (CTP)
+static constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;  // AIV URMA, local UB fabric (TP)
+struct EngramBufferHandle {
+    uint32_t rankId;
+    uint32_t rankSize;
+    uint64_t hcommHandle_[8];
+    uint64_t commBuffer[8];
+};
+
+static HcclResult build_channel_descs(HcclComm comm, uint32_t self, uint32_t world, HcclMemHandle *myMemHandle,
+                                      std::vector<HcclChannelDesc> &out)
+{
+    out.clear();
+    out.reserve(world > 0 ? world - 1 : 0);
+
+    uint32_t *netLayers = nullptr;
+    uint32_t netLayerNum = 0;
+    HcclResult r = HcclRankGraphGetLayers(comm, &netLayers, &netLayerNum);
+    if (r != HCCL_SUCCESS)
+        return r;
+
+    for (uint32_t peer = 0; peer < world; ++peer) {
+        if (peer == self)
+            continue;
+        bool found = false;
+        for (uint32_t li = 0; li < netLayerNum && !found; ++li) {
+            CommLink *linkList = nullptr;
+            uint32_t listSize = 0;
+            r = HcclRankGraphGetLinks(comm, netLayers[li], self, peer, &linkList, &listSize);
+            if (r != HCCL_SUCCESS)
+                continue;
+            for (uint32_t i = 0; i < listSize && !found; ++i) {
+                const int p = static_cast<int>(linkList[i].linkAttr.linkProtocol);
+                if (p != COMM_PROTOCOL_UBC_CTP_VALUE && p != COMM_PROTOCOL_UBC_TP_VALUE)
+                    continue;
+                HcclChannelDesc desc;
+                HcclChannelDescInit(&desc, 1);
+                desc.remoteRank = peer;
+                desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
+                desc.localEndpoint.protocol = linkList[i].srcEndpointDesc.protocol;
+                desc.localEndpoint.commAddr = linkList[i].srcEndpointDesc.commAddr;
+                desc.localEndpoint.loc = linkList[i].srcEndpointDesc.loc;
+                desc.remoteEndpoint.protocol = linkList[i].dstEndpointDesc.protocol;
+                desc.remoteEndpoint.commAddr = linkList[i].dstEndpointDesc.commAddr;
+                desc.remoteEndpoint.loc = linkList[i].dstEndpointDesc.loc;
+                desc.notifyNum = 3;
+                // The crucial difference vs `comm_with_urma`'s hccl path:
+                // attach MY registered workspace handle so peers' URMA writes
+                // land in MY 500 MiB region (and vice versa, after channel
+                // memory exchange via HcclChannelAcquire).
+                desc.memHandles = myMemHandle;
+                desc.memHandleNum = 1;
+                out.push_back(desc);
+                found = true;
+            }
+        }
+        if (!found)
+            return HCCL_E_NOT_FOUND;
+    }
+    return HCCL_SUCCESS;
+}
+
+EngramBufferHandle *get_or_create_ctx(const std::string &groupName, int64_t rank, int64_t worldSize, uint64_t bufBytes)
+{
+    const std::string tag = groupName + ".comm_with_urma_reg";
+    const uint32_t selfRank = static_cast<uint32_t>(rank);
+    const uint32_t worldSizeU = static_cast<uint32_t>(worldSize);
+
+    // 1. HcclComm handle.
+    HcclComm comm = nullptr;
+    HcclResult r = HcclCommGetHandleWithName(groupName.c_str(), &comm);
+    if (r != HCCL_SUCCESS) {
+        std::cerr << "[ERROR] HcclCommGetHandleWithName failed. ret: " << r << std::endl;
+        return nullptr;
+    }
+
+    // 2. Allocate + register OUR URMA-target workspace.
+    void *workspaceDev = nullptr;
+    aclError ar = aclrtMalloc(&workspaceDev, bufBytes, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (ar != ACL_SUCCESS) {
+        std::cerr << "[ERROR] aclrtMalloc failed. ret: " << ar << std::endl;
+        return nullptr;
+    }
+    ar = aclrtMemset(workspaceDev, bufBytes, 1, bufBytes);
+    if (ar != ACL_SUCCESS) {
+        std::cerr << "[ERROR] aclrtMemset failed. ret: " << ar << std::endl;
+        aclrtFree(workspaceDev);
+        return nullptr;
+    }
+
+    CommMem mem;
+    mem.type = COMM_MEM_TYPE_DEVICE;
+    mem.addr = workspaceDev;
+    mem.size = bufBytes;
+    HcclMemHandle workspaceHandle = nullptr;
+    r = HcclCommMemReg(comm, tag.c_str(), &mem, &workspaceHandle);
+    if (r != HCCL_SUCCESS) {
+        std::cerr << "[ERROR] HcclCommMemReg failed. ret: " << r << std::endl;
+        aclrtFree(workspaceDev);
+        return nullptr;
+    }
+
+    // 3. Per-peer ChannelDescs (UBC_CTP/UBC_TP, memHandles=&workspaceHandle).
+    std::vector<HcclChannelDesc> descs;
+    r = build_channel_descs(comm, selfRank, worldSizeU, &workspaceHandle, descs);
+    if (r != HCCL_SUCCESS) {
+        std::cerr << "[ERROR] build_channel_descs failed. ret: " << r << std::endl;
+        // HcclCommMemDereg(comm, workspaceHandle);
+        aclrtFree(workspaceDev);
+        return nullptr;
+    }
+
+    std::vector<ChannelHandle> peerHandles(descs.size(), 0);
+    r = HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_AIV, descs.data(), static_cast<uint32_t>(descs.size()),
+                           peerHandles.data());
+    if (r != HCCL_SUCCESS) {
+        std::cerr << "[ERROR] HcclChannelAcquire failed. Engine: AIV. ret: " << r << std::endl;
+        aclrtFree(workspaceDev);
+        return nullptr;
+    }
+
+    std::vector<ChannelHandle> handlesByRank(worldSizeU, 0);
+    for (size_t i = 0; i < descs.size(); ++i) {
+        handlesByRank[descs[i].remoteRank] = peerHandles[i];
+    }
+    std::vector<ChannelHandle> nonSelfHandles;
+    std::vector<uint32_t> nonSelfRanks;
+    nonSelfHandles.reserve(worldSizeU - 1);
+    nonSelfRanks.reserve(worldSizeU - 1);
+    for (uint32_t p = 0; p < worldSizeU; ++p) {
+        if (p == selfRank)
+            continue;
+        nonSelfHandles.push_back(handlesByRank[p]);
+        nonSelfRanks.push_back(p);
+    }
+    EngramBufferHandle *ctx = new EngramBufferHandle();
+
+    // 4. assign ctx attr
+    for (uint32_t i = 0; i < worldSize; ++i) {
+        if (i == rank) {
+            ctx->commBuffer[i] = reinterpret_cast<uint64_t>(workspaceDev);
+            std::cout << "[DEBUG] [Rank " << rank << "] ctx->commBuffer[" << i << "] = " << ctx->commBuffer[i]
+                      << " (Self workspaceDev)" << std::endl;
+            continue;
+        }
+        uint32_t memNum = 0;
+        CommMem *remoteMems = nullptr;
+        char **memTags = nullptr;
+        auto hcclRet = HcclChannelGetRemoteMems(comm, handlesByRank[i], &memNum, &remoteMems, &memTags);
+
+        if (hcclRet != HCCL_SUCCESS) {
+            std::cerr << "[ERROR] [Rank " << rank << "] HcclChannelGetRemoteMems failed for rank " << i
+                      << ", ret = " << hcclRet << std::endl;
+        }
+        ctx->commBuffer[i] = reinterpret_cast<uint64_t>(remoteMems->addr);
+        std::cout << "[DEBUG] [Rank " << rank << "] ctx->commBuffer[" << i << "] = " << ctx->commBuffer[i]
+                  << " (Peer buffer, size: " << remoteMems->size << ")" << std::endl;
+    }
+    ctx->rankId = selfRank;
+    std::cout << "[DEBUG] [Rank " << rank << "] ctx->rankId = " << ctx->rankId << std::endl;
+    ctx->rankSize = worldSize;
+    std::cout << "[DEBUG] [Rank " << rank << "] ctx->rankSize = " << ctx->rankSize << std::endl;
+    for (size_t i = 0; i < nonSelfHandles.size(); ++i) {
+        ctx->hcommHandle_[i] = nonSelfHandles[i];
+        std::cout << "[DEBUG] [Rank " << rank << "] ctx->hcommHandle_[" << i << "] = " << nonSelfHandles[i]
+                  << std::endl;
+    }
+    return ctx;
+}
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -48,7 +230,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
     aclDataType dataType, aclTensor **tensor, aclFormat format = aclFormat::ACL_FORMAT_ND)
 {
@@ -65,6 +247,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 struct Args {
     int rankId;
+    int rankSize;
     HcclComm hcclComm;
     aclrtStream stream;
     aclrtContext context;
@@ -83,7 +266,7 @@ int LaunchOneThreadEngramFetch(Args &args)
     // Test parameters
     int32_t hiddenSize = 512;
     int64_t numEntriesPerRank = 4;
-    int64_t numTokens = 8;
+    int64_t numTokens = 2;
     int64_t outputDtype = 1;  // BF16
 
     // Shapes
@@ -115,10 +298,30 @@ int LaunchOneThreadEngramFetch(Args &args)
     aclTensor *indices = nullptr;
     aclTensor *fetched = nullptr;
 
-    // Create input tensors
-    ret = CreateAclTensor(bufferHandleHostData, bufferHandleShape, &bufferHandleDeviceAddr,
-                          aclDataType::ACL_INT32, &bufferHandle);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    EngramBufferHandle *ctx = get_or_create_ctx(hcomName, args.rankId, args.rankSize, 200 * 1024 * 1024);
+
+    if (ctx != nullptr) {
+        std::cout << "rankId_: " << ctx->rankId << std::endl;
+        std::cout << "rankSize_: " << ctx->rankSize << std::endl;
+
+        // 打印 1 个 handle
+        std::cout << "hcommHandle_[0]: " << ctx->hcommHandle_[0] << std::endl;
+
+        // 打印 2 个 buffer
+        std::cout << "commBuffer_[0]: " << ctx->commBuffer[0] << std::endl;
+        std::cout << "commBuffer_[1]: " << ctx->commBuffer[1] << std::endl;
+    }
+    std::cout << "args.rankId:  " << args.rankId << std::endl;
+
+    ret = aclrtMalloc(&bufferHandleDeviceAddr, sizeof(EngramBufferHandle), ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc Mc2Context failed. ret: %d\n", ret); return ret);
+    ret = aclrtMemcpy(bufferHandleDeviceAddr, sizeof(EngramBufferHandle), ctx, sizeof(EngramBufferHandle),
+                      ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy Mc2Context failed. ret: %d\n", ret); return ret);
+    auto size = GetShapeSize(bufferHandleShape) * sizeof(int32_t);
+    bufferHandle = aclCreateTensor(bufferHandleShape.data(), bufferHandleShape.size(), aclDataType::ACL_INT32, nullptr,
+                                   0, aclFormat::ACL_FORMAT_ND, bufferHandleShape.data(), bufferHandleShape.size(),
+                                   bufferHandleDeviceAddr);
 
     ret = CreateAclTensor(indicesHostData, indicesShape, &indicesDeviceAddr,
                           aclDataType::ACL_INT32, &indices);
@@ -133,8 +336,21 @@ int LaunchOneThreadEngramFetch(Args &args)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
+
+    std::vector<uint16_t> fetchedResul0(fetchedSize);
+    ret = aclrtMemcpy(fetchedResul0.data(), fetchedSize * sizeof(uint16_t), fetchedDeviceAddr,
+                      fetchedSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy fetched failed. ret = %d\n", ret); return ret);
+
+    // Print first few output values
+    LOG_PRINT("[INFO] before  rank=%d, fetched first 10 values (bf16 hex):\n", args.rankId);
+    for (int64_t i = 0; i < 10 && i < fetchedSize; i++) {
+        LOG_PRINT("  [%lld] 0x%04x\n", static_cast<long long>(i), fetchedResul0[i]);
+    }
+
     LOG_PRINT("[INFO] rank = %d, Before aclnnEngramFetchGetWorkspaceSize\n", args.rankId);
 
+    // ----------------------------------------
     // Phase 1: Get workspace size
     ret = aclnnEngramFetchGetWorkspaceSize(
         bufferHandle, indices, fetched,
@@ -165,6 +381,7 @@ int LaunchOneThreadEngramFetch(Args &args)
         LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret);
 
     LOG_PRINT("[INFO] rank = %d, aclnnEngramFetch execute successfully.\n", args.rankId);
+    // ----------------------------------------
 
     // Copy output back
     std::vector<uint16_t> fetchedResult(fetchedSize);
@@ -224,7 +441,7 @@ int main(int argc, char *argv[])
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
-
+    printf("start host\n");
     aclrtStream stream[DEV_NUM];
     aclrtContext context[DEV_NUM];
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
@@ -251,6 +468,7 @@ int main(int argc, char *argv[])
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         args[rankId].rankId = rankId;
+        args[rankId].rankSize = DEV_NUM;
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];

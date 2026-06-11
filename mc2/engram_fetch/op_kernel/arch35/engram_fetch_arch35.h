@@ -9,6 +9,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch.h"
+#include "adv_api/hccl/hccl.h"
+#include "adv_api/hcomm/hcomm.h
 
 namespace EngramFetchImpl {
 
@@ -65,6 +67,7 @@ __aicore__ inline void EngramFetchArch35::Init(
 
     numEntriesPerRank_ = tilingData_->engramFetchInfo.numEntriesPerRank;
     numTokens_ = tilingData_->engramFetchInfo.numTokens;
+    hiddenDim_ = tilingData_->engramFetchInfo.hiddenDim;
     hiddenBytes_ = tilingData_->engramFetchInfo.hiddenBytes;
     aivNum_ = tilingData_->engramFetchInfo.aivNum;
 
@@ -124,7 +127,6 @@ __aicore__ inline void EngramFetchArch35::Process()
             }
         }
     }
-    SyncAll<true>();
 }
 
 __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
