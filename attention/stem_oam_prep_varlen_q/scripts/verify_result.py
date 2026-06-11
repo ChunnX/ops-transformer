@@ -6,20 +6,22 @@
 # ============================================================================
 
 import numpy as np
+import torch
 import sys
 
 # Verification parameters
-dtype = np.bfloat16    # Output dtype, matches kernel output
 rtol = 1e-2            # Relative tolerance (BF16 range)
 atol = 1e-2            # Absolute tolerance (BF16 range)
 
-def verify_result(output_path, golden_path):
-    output = np.fromfile(output_path, dtype=dtype)
-    golden = np.fromfile(golden_path, dtype=dtype)
+def read_bf16_bin(path):
+    """Read BF16 binary file as torch tensor, return float32 numpy array."""
+    raw = np.fromfile(path, dtype=np.uint16)
+    tensor = torch.from_numpy(raw).view(torch.bfloat16)
+    return tensor.float().numpy()
 
-    # Cast to float32 for comparison (bfloat16 numpy comparison is limited)
-    output_f = output.astype(np.float32)
-    golden_f = golden.astype(np.float32)
+def verify_result(output_path, golden_path):
+    output_f = read_bf16_bin(output_path)
+    golden_f = read_bf16_bin(golden_path)
 
     if output_f.shape != golden_f.shape:
         print(f"Shape mismatch: output {output_f.shape} vs golden {golden_f.shape}")
